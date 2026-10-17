@@ -160,7 +160,7 @@ async function main() {
     evidence.doctor = doctor;
     assert(doctor && doctor.node, 'doctor did not return a Node version');
     assert(doctor.ffmpeg && doctor.ffmpeg !== 'unavailable', 'ffmpeg is unavailable');
-    assert(doctor.chrome && doctor.chrome !== 'unavailable', 'Chrome is unavailable; stage with --browser');
+    assert(doctor.browser && doctor.browser !== 'unavailable', 'Chrome is unavailable; stage with --browser (registry.browserPath)');
 
     const opened = await bridge.invoke('open', { projectId: 'demo' });
     evidence.open = opened;
