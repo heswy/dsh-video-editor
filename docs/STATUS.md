@@ -60,6 +60,7 @@
 3. 程序员 1 按 [P3-001](tasks/P3-001-engine-multiscene-spike.md) 继续多 Scene/修订合并 spike；结果回来后总调度冻结 P3 契约。
 4. 总调度复审 P3-001 证据，把 [P3 创作闭环草案](research/P3-ai-creation-loop-plan.md) 冻结为 P3-003/P3-004 任务；P3 暂不开新树，若需端到端负责人先建整合分支。
 5. 总调度维护协调分支文档与 PR #1；保持 main 未合并；0.1.3 回滚可用（`…/p0-mode-shell/51c82a9/rollback-0.1.3/package` 与固定包）；用户已授权普通 feature push/草稿 PR，不自动 merge/发布。
+6. 新需求（用户 2026-10-17）：插件内播放/seek 预览未接入（0.2.0 只有单帧 + 导出）。候选 A：隔离预览面嵌入 HyperFrames Player/Studio（需先验证隔离）；候选 B：抽帧/时间点预览（轻量非真播放）。待用户定优先级后排任务，不混入 P2-004 验收。
 
 ## 阻塞与未验证
 
