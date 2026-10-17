@@ -34,4 +34,13 @@
 
 记录 base/提交、Slot 契约与精确位置证据、删减后的可见文案、测试及包摘要、未测项。提交后停在复审，不自行安装。
 
-开发记录：待 DSH 填写。
+## 开发记录（DSH）
+
+- 版本记录：功能 base `6f11ced`；收到本指南的文档提交与开工时实际 HEAD 均为 `bf0502b`。执行的 Host 为 Desktop `0.2.0-rc.2`。
+- 原生位置契约（只读核实，未操作页面）：Client `Slots.listSubTree` 显示 `sidebar` 的子 Slot 顺序为 brand.mark → **`sidebar.panellist`（list/root）** → footer.action → toggle.badge → settings → **`sidebar.workspaces`** → brand.name；panellist 的注册轴为 `id/order/label`，现有 occupants `plugins order 0`、`schedules order 10`、`dsh-context order 20`；`sidebar.workspaces` 是 panel list 的后声明兄弟。宿主源码（`dsh-client-ui-sidebar/lib/client.js`）：panel list 渲染在「新建会话」与 regionArea 之间、按 order 升序；`PanelRow` 用 `usePanelInfo` 取 active、`onClick: selectPanel(id)`、icon 以 `renderSlot('sidebar.panellist', { size: wide?16:18, active }, { only:id })` 渲染，label 仅展开时可见、折叠时作为 tooltip/可访问名。**结论：注册 `{ id:'dsh-video', order:30, label:'Vedio Editor' }` 精确落在「上下文洞察」之后、「工作区」分组之前，无需 DOM/overlay/替换侧栏。**证据与源码摘录见 `docs/research/P0-005-sidebar-contract.md` §2。
+- 实现：移除两处顶部「普通｜视频」胶囊与全部专属样式/thumbOrigin/introPlayed/解释文案；改为 `sidebar.panellist` 单入口 + `main` 面板原子对：main 先注册、sidebar 入口后注册，入口失败同步回滚面板，任一侧声明/注册失败或折叠时先撤入口再撤面板并安全回会话，声明恢复后自动重试；其它侧栏条目只读共存；选中态完全由宿主 row 提供，插件无本地模式布尔值。面板无工程时只渲染「尚无工程」一句，顶栏仅「返回对话」+ 单一「显示选项」菜单（`menuitemcheckbox`，含简化效果，持久化 `dsh-video.ui.v1`）；错误用 `role="alert"` 就近提示；图标为 16-unit `currentColor` 细线条（宿主请求 16/18px）；字号、顶栏 chrome clearance、focus ring 使用宿主变量/token；无创建/导出/时间线/预览假控件。`dsh.client.inject` 去除已不需要的 ui-conversation 激活依赖。
+- 本地检查（本轮实跑）：`node --check client.js/index.js` 通过；`node scripts/check.mjs` **26/26**；`node scripts/smoke-client.mjs` **25/25**（晚到 main/sidebar、共存、id/key 冲突、注册失败回滚、enumeration 不可用、sidebar/main 折叠、重复声明、其它面板不被抢、卸载、空状态文案、显示菜单、持久化/损坏/存储异常、图标 owner props）。`npm pack --dry-run --offline` 9 files。
+- 固定包：版本 `0.1.2`；commit 与新包路径/摘要见下条文档提交与 `docs/research/P0-005-sidebar-contract.md` §6（打包后回填本记录）。
+- 未安装 / 未验证：当前 profile 仍安装 `0.1.0`，`0.1.2` 未安装、未启停、未重启、未改 profile、未 push。按事故后规则未使用全局坐标/键盘/粘贴/窗口聚焦；真实页面位置、图标/间距、主题、窄窗、字号、键盘 Tab/焦点/返回、真实启停与卸载回退、草稿/引用/附件、静态阅读位置、冷启动、console 均待授权安装新包后验收。
+- 引擎线（P1-002）独立并行，本轮未触碰其文件或 worktree。
+

@@ -2,31 +2,28 @@
  * dsh-video — Client half.
  *
  * Hand-written DSH client bundle (no bundler, no JSX, no npm dependencies).
- * It contributes exactly three things:
+ * It contributes exactly two things:
  *
- *   1. a glass mode capsule (`普通 | 视频`) into the host's resident conversation
- *      header (`conversation.header.leading`, additive single seat);
- *   2. a global main panel under the `dsh-video` key, registered in the host
- *      `main` keyed slot and selected only through `ctx.layout.selectPanel`;
- *   3. an honest empty video workspace with the same capsule in its own top bar,
- *      a working return path, and a real "simplified UI effects" preference.
+ *   1. one native sidebar navigation entry ("Vedio Editor") in the host's
+ *      `sidebar.panellist` list, immediately after the shipped panel rows and
+ *      before the Workspace/Session browsing region;
+ *   2. one global main panel under the `dsh-video` key, registered in the host
+ *      `main` keyed slot and selected only through `ctx.layout.selectPanel`.
  *
- * Boundaries (P0-B):
- *   - the selected mode is read from the host (`usePanelInfo.activePanelId`), never
- *     duplicated in plugin state;
+ * Boundaries (P0-005):
+ *   - the selected state is read by the host from its own layout store; the
+ *     plugin keeps no second mode boolean and never registers a second nav row;
  *   - no overlay, no host-header replacement, no DOM geometry reads, no sidebar
- *     entry, no Remote, no session events, no project/media persistence;
+ *     replacement, no Remote, no session events, no project/media persistence;
+ *   - the main panel and the sidebar entry are one atomic pair: the panel is
+ *     registered first, the entry only after it; any failure, conflict or loss
+ *     releases both, and a later declaration retries. The panel can never stay
+ *     registered without a reachable navigation entry;
  *   - every registration is owned by the caller fiber through `ctx.slots.inject`
  *     / `ctx.effect`, so disabling the plugin removes it and the host's
- *     `retainMainPanels` mechanism can return the UI to the conversation;
- *   - the video panel and the normal-mode capsule are acquired and released as
- *     one atomic pair. A late, re-declared, refused or lost leading seat releases
- *     the pair (or keeps it unregistered), so the video panel can never exist
- *     without a reachable normal-mode entry; a later seat declaration retries;
- *   - if the leading seat or the main key is already occupied, the plugin refuses
- *     to mount (diagnostic error) instead of shadowing another occupant.
+ *     `retainMainPanels` mechanism can return the UI to the conversation.
  *
- * Optional browser persistence is limited to the simplified-effects preference,
+ * Optional browser persistence is limited to the reduced-effects preference,
  * versioned and corruption-safe. Project content is not stored here.
  */
 window.__ModuleLoader__.load({
@@ -38,165 +35,55 @@ window.__ModuleLoader__.load({
     const React = require('react');
     const h = React.createElement;
 
-    /** Main-panel key, Loader row id and Client module id are all equal. */
+    /** Main-panel key, sidebar list id, Loader row id and Client module id. */
     const PANEL_ID = 'dsh-video';
     /** Locale namespace registered for this plugin's UI text. */
     const NS = 'dshVideo';
     /** Browser preference key (version lives in the key and in the payload). */
     const PREFS_KEY = 'dsh-video.ui.v1';
     const PREFS_VERSION = 1;
+    /**
+     * Sidebar row position. The shipped panel rows use orders 0 (plugins),
+     * 10 (schedules) and 20 (context). The workspace/session region is a
+     * different sidebar slot rendered after the whole panel list, so any order
+     * greater than 20 lands after the last shipped row and before the Workspace
+     * group. 30 leaves room for future shipped rows without reordering them.
+     */
+    const SIDEBAR_ORDER = 30;
     //#endregion
 
     //#region locale dictionaries
     const ZH = {
-      'mode.label': '模式切换',
-      'mode.normal': '普通',
-      'mode.video': '视频',
-      'video.brand': 'DSH Video',
-      'video.empty.badge': '空工作区',
-      'video.empty.title': '从一个想法，开始一支影片。',
-      'video.empty.body':
-        '视频工作区已经接入 DSH。当前阶段只验证模式切换、主题与状态保持；工程创建、预览、时间线与导出会在后续阶段加入。',
-      'video.empty.note': '现在没有可打开的工程，也没有可预览的媒体，所以这里保持安静。',
-      'video.empty.pending': '工程创建将在后续阶段开放',
-      'video.empty.back': '返回普通模式',
-      'video.simplify.label': '简化界面效果',
-      'video.simplify.hint': '关闭玻璃模糊并缩短过渡',
-      'video.stage.label': '视频工作区',
-      'video.status.left': 'DSH Video · 原生工作区',
-      'video.status.right': '尚未包含工程、预览与导出',
+      'nav.label': 'Vedio Editor',
+      'video.back': '返回对话',
+      'video.empty': '尚无工程',
+      'video.display.label': '显示选项',
+      'video.display.simplified': '简化界面效果',
+      'video.error.back': '返回对话失败，请重试。',
     };
 
     const EN = {
-      'mode.label': 'Mode',
-      'mode.normal': 'Normal',
-      'mode.video': 'Video',
-      'video.brand': 'DSH Video',
-      'video.empty.badge': 'Empty workspace',
-      'video.empty.title': 'Start a film from a single idea.',
-      'video.empty.body':
-        'The video workspace is wired into DSH. This phase only verifies the mode switch, theming, and state retention; project creation, preview, timeline, and export arrive in later phases.',
-      'video.empty.note': 'There is no project to open and no media to preview yet, so this space stays quiet.',
-      'video.empty.pending': 'Project creation opens in a later phase',
-      'video.empty.back': 'Back to normal',
-      'video.simplify.label': 'Reduce UI effects',
-      'video.simplify.hint': 'Turn off glass blur and shorten transitions',
-      'video.stage.label': 'Video workspace',
-      'video.status.left': 'DSH Video · native workspace',
-      'video.status.right': 'No project, preview, or export yet',
+      'nav.label': 'Vedio Editor',
+      'video.back': 'Back to conversation',
+      'video.empty': 'No project yet',
+      'video.display.label': 'Display options',
+      'video.display.simplified': 'Reduce UI effects',
+      'video.error.back': 'Could not return to the conversation. Try again.',
     };
     //#endregion
 
     //#region styles
-    // Only inspected theme tokens (--dsw-alias-*) are used for colors, mixed with
-    // color-mix/opacity. Host-published vars --dsh-frame-leading-clearance and
-    // --dsh-content-font-size are used for window-chrome avoidance and font scale.
+    // Only inspected theme tokens (--dsw-alias-*) are used for colors; the
+    // host-published --dsh-content-font-size and --dsh-frame-top-clearance
+    // variables keep typography and the macOS window-chrome clearance native.
+    // The empty workspace is deliberately plain: one quiet sentence, no cards,
+    // badges, stage framing, decorative motion or future-capability copy.
     const CSS = `
-.dv-mode-wrap{
-  display:inline-flex;
-  align-items:center;
-  flex:none;
-  min-width:0;
-  -webkit-app-region:no-drag;
-  margin-inline-start:max(0px, calc(var(--dsh-frame-leading-clearance, 0px) - 20px));
-}
-.dv-mode{
-  /* The capsule scales with the host content font size instead of pinning a
-     pixel font: text and the space it needs grow together. Width/height stay
-     within sane bounds; narrow windows collapse secondary chrome instead of
-     shrinking this primary navigation text. */
-  --dv-mode-width:clamp(176px, 13.5em, 248px);
-  --dv-mode-height:clamp(40px, 2.86em, 56px);
-  --dv-dur-thumb:220ms;
-  --dv-dur-fast:140ms;
-  --dv-dur-med:180ms;
-  --dv-dur-slow:260ms;
-  --dv-ease:cubic-bezier(.2,.8,.2,1);
-  position:relative;
-  display:inline-grid;
-  grid-template-columns:1fr 1fr;
-  align-items:stretch;
-  box-sizing:border-box;
-  flex:none;
-  width:var(--dv-mode-width);
-  height:var(--dv-mode-height);
-  padding:4px;
-  border-radius:999px;
-  border:1px solid color-mix(in srgb, var(--dsw-alias-border-l2, rgba(127,127,140,.45)) 62%, transparent);
-  background:color-mix(in srgb, var(--dsw-alias-bg-overlay, #26262b) 74%, transparent);
-  -webkit-backdrop-filter:blur(18px) saturate(1.25);
-  backdrop-filter:blur(18px) saturate(1.25);
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.09), 0 8px 24px -14px rgba(0,0,0,.42);
-  isolation:isolate;
-  font-family:inherit;
-  font-size:var(--dsh-content-font-size, 14px);
-  user-select:none;
-  -webkit-user-select:none;
-  -webkit-app-region:no-drag;
-}
-.dv-mode-thumb{
-  position:absolute;
-  top:4px;
-  bottom:4px;
-  left:4px;
-  width:calc(50% - 4px);
-  border-radius:999px;
-  border:1px solid color-mix(in srgb, var(--dsw-alias-border-l2, rgba(127,127,140,.45)) 52%, transparent);
-  background:color-mix(in srgb, var(--dsw-alias-bg-layer-2, #303036) 94%, transparent);
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.10), 0 2px 10px -4px rgba(0,0,0,.38);
-  transform:translate3d(0,0,0);
-  transition:transform var(--dv-dur-thumb) var(--dv-ease);
-  pointer-events:none;
-  z-index:0;
-}
-.dv-mode[data-thumb="video"] .dv-mode-thumb{transform:translate3d(100%,0,0);}
-.dv-mode[data-ready="false"] .dv-mode-thumb{transition:none;}
-.dv-mode-btn{
-  -webkit-appearance:none;
-  appearance:none;
-  position:relative;
-  z-index:1;
-  display:inline-flex;
-  align-items:center;
-  justify-content:center;
-  height:100%;
-  margin:0;
-  padding:0;
-  border:0;
-  border-radius:999px;
-  background:transparent;
-  color:var(--dsw-alias-label-secondary, #a4a4ad);
-  font:inherit;
-  font-size:.93em;
-  font-weight:500;
-  letter-spacing:.01em;
-  line-height:1;
-  white-space:nowrap;
-  cursor:pointer;
-  transition:color var(--dv-dur-fast) var(--dv-ease), transform var(--dv-dur-fast) var(--dv-ease);
-  -webkit-app-region:no-drag;
-}
-.dv-mode-btn::after{content:"";position:absolute;inset:-7px 0;border-radius:inherit;}
-.dv-mode-btn:hover{color:var(--dsw-alias-label-primary, #f2f2f5);}
-.dv-mode-btn:active{transform:scale(.97);}
-.dv-mode[data-active="normal"] .dv-mode-btn[data-mode="normal"],
-.dv-mode[data-active="video"] .dv-mode-btn[data-mode="video"]{color:var(--dsw-alias-label-primary, #f2f2f5);}
-.dv-mode-btn:focus-visible{outline:2px solid var(--dsw-alias-brand-primary, #5b8cff);outline-offset:2px;}
-.dv-mode[data-simplified="true"]{--dv-dur-thumb:0ms;--dv-dur-fast:0ms;--dv-dur-med:0ms;--dv-dur-slow:0ms;}
-.dv-mode[data-simplified="true"]{
-  -webkit-backdrop-filter:none;
-  backdrop-filter:none;
-  background:color-mix(in srgb, var(--dsw-alias-bg-layer-2, #303036) 96%, var(--dsw-alias-bg-base, #1a1a1c));
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.06), 0 2px 8px -6px rgba(0,0,0,.35);
-}
-
 .dv-root{
   --dv-dur-fast:120ms;
-  --dv-dur-med:180ms;
-  --dv-dur-slow:260ms;
+  --dv-dur-med:160ms;
   --dv-ease:cubic-bezier(.2,.8,.2,1);
   box-sizing:border-box;
-  position:relative;
   display:flex;
   flex-direction:column;
   width:100%;
@@ -211,300 +98,156 @@ window.__ModuleLoader__.load({
   font-family:inherit;
   font-size:var(--dsh-content-font-size, 14px);
   line-height:1.5;
+  animation:dv-panel-in var(--dv-dur-med) var(--dv-ease) both;
 }
 .dv-root *,.dv-root *::before,.dv-root *::after{box-sizing:border-box;}
-.dv-root[data-simplified="true"]{--dv-dur-fast:0ms;--dv-dur-med:0ms;--dv-dur-slow:0ms;}
-
+.dv-root[data-simplified="true"]{--dv-dur-fast:0ms;--dv-dur-med:0ms;}
+@keyframes dv-panel-in{
+  from{opacity:0;transform:translateY(2px);}
+  to{opacity:1;transform:none;}
+}
 .dv-topbar{
   display:flex;
   align-items:center;
-  gap:12px;
+  gap:8px;
   flex:none;
-  height:clamp(52px, 3.72em, 72px);
-  padding-inline-start:max(20px, var(--dsh-frame-leading-clearance, 0px));
-  padding-inline-end:16px;
+  min-height:52px;
+  padding:10px max(16px, var(--dsh-frame-leading-clearance, 0px)) 10px 16px;
   border-bottom:1px solid color-mix(in srgb, var(--dsw-alias-border-l1, rgba(127,127,140,.28)) 62%, transparent);
-  background:linear-gradient(to bottom, color-mix(in srgb, var(--dsw-alias-bg-base, #1a1a1c) 55%, transparent), transparent);
 }
-.dv-brand{
+[data-platform="darwin"] .dv-topbar{
+  padding-top:calc(10px + var(--dsh-frame-top-clearance, 0px));
+}
+.dv-back{
   display:inline-flex;
   align-items:center;
-  gap:8px;
+  gap:6px;
   flex:none;
-  color:var(--dsw-alias-label-secondary, #a4a4ad);
-  font-size:.76em;
-  font-weight:500;
-  letter-spacing:.1em;
-  text-transform:uppercase;
-  white-space:nowrap;
-}
-.dv-brand-dot{
-  width:6px;
-  height:6px;
-  border-radius:50%;
-  flex:none;
-  background:var(--dsw-alias-brand-primary, #5b8cff);
-  box-shadow:0 0 0 3px color-mix(in srgb, var(--dsw-alias-brand-primary, #5b8cff) 16%, transparent);
-}
-.dv-spacer{flex:1;min-width:0;}
-
-.dv-simplify{
-  display:inline-flex;
-  align-items:center;
-  gap:8px;
-  flex:none;
-  height:clamp(34px, 2.4em, 48px);
-  padding:0 12px;
-  border-radius:999px;
-  border:1px solid color-mix(in srgb, var(--dsw-alias-border-l2, rgba(127,127,140,.45)) 55%, transparent);
-  background:color-mix(in srgb, var(--dsw-alias-bg-overlay, #26262b) 66%, transparent);
-  -webkit-backdrop-filter:blur(16px) saturate(1.2);
-  backdrop-filter:blur(16px) saturate(1.2);
+  height:32px;
+  padding:0 10px;
+  border:0;
+  border-radius:8px;
+  background:transparent;
   color:var(--dsw-alias-label-secondary, #a4a4ad);
   font:inherit;
-  font-size:.82em;
-  line-height:1;
-  cursor:pointer;
-  transition:color var(--dv-dur-fast) var(--dv-ease), background var(--dv-dur-fast) var(--dv-ease);
-  -webkit-app-region:no-drag;
-}
-.dv-simplify:hover{color:var(--dsw-alias-label-primary, #f2f2f5);}
-.dv-simplify:focus-visible{outline:2px solid var(--dsw-alias-brand-primary, #5b8cff);outline-offset:2px;}
-.dv-simplify-track{
-  position:relative;
-  flex:none;
-  width:26px;
-  height:16px;
-  border-radius:999px;
-  background:color-mix(in srgb, var(--dsw-alias-state-idle-primary, #7a7a83) 62%, transparent);
-  transition:background var(--dv-dur-fast) var(--dv-ease);
-}
-.dv-simplify-knob{
-  position:absolute;
-  top:2px;
-  left:2px;
-  width:12px;
-  height:12px;
-  border-radius:50%;
-  background:var(--dsw-alias-bg-layer-1, #f4f4f6);
-  box-shadow:0 1px 2px rgba(0,0,0,.28);
-  transition:transform var(--dv-dur-fast) var(--dv-ease);
-}
-.dv-simplify[aria-checked="true"] .dv-simplify-track{background:color-mix(in srgb, var(--dsw-alias-brand-primary, #5b8cff) 72%, transparent);}
-.dv-simplify[aria-checked="true"] .dv-simplify-knob{transform:translate3d(10px,0,0);}
-.dv-root[data-simplified="true"] .dv-simplify,
-.dv-root[data-simplified="true"] .dv-button-primary{
-  -webkit-backdrop-filter:none;
-  backdrop-filter:none;
-  background:color-mix(in srgb, var(--dsw-alias-bg-layer-1, #f4f4f6) 12%, var(--dsw-alias-bg-base, #1a1a1c));
-}
-
-.dv-main{
-  display:flex;
-  flex:1;
-  min-height:0;
-  min-width:0;
-  padding:16px;
-  gap:12px;
-}
-.dv-stage{
-  position:relative;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  flex:1;
-  min-width:0;
-  min-height:0;
-  padding:24px;
-  padding:clamp(24px, 5cqi, 56px);
-  border-radius:18px;
-  border:1px solid color-mix(in srgb, var(--dsw-alias-border-l1, rgba(127,127,140,.28)) 88%, transparent);
-  background:
-    radial-gradient(120% 92% at 50% 0%, color-mix(in srgb, var(--dsw-alias-brand-primary, #5b8cff) 7%, transparent), transparent 62%),
-    linear-gradient(180deg, color-mix(in srgb, var(--dsw-alias-bg-layer-1, #f4f4f6) 8%, transparent), transparent 58%),
-    var(--dsw-alias-bg-layer-1, #232327);
-  overflow:auto;
-  overscroll-behavior:contain;
-}
-.dv-stage::after{
-  content:"";
-  position:absolute;
-  inset:0;
-  border-radius:inherit;
-  pointer-events:none;
-  background:radial-gradient(90% 60% at 50% 118%, color-mix(in srgb, var(--dsw-alias-label-primary, #f2f2f5) 5%, transparent), transparent 70%);
-}
-.dv-empty{
-  position:relative;
-  z-index:1;
-  display:flex;
-  flex-direction:column;
-  align-items:center;
-  gap:12px;
-  width:min(100%, 560px);
-  text-align:center;
-}
-.dv-empty-badge{
-  display:inline-flex;
-  align-items:center;
-  gap:8px;
-  padding:4px 8px;
-  border-radius:999px;
-  border:1px solid color-mix(in srgb, var(--dsw-alias-border-l2, rgba(127,127,140,.45)) 48%, transparent);
-  background:color-mix(in srgb, var(--dsw-alias-bg-layer-2, #303036) 46%, transparent);
-  color:var(--dsw-alias-label-secondary, #a4a4ad);
-  font-size:.78em;
-  font-weight:500;
-  letter-spacing:.06em;
-  text-transform:uppercase;
-}
-.dv-empty-badge::before{
-  content:"";
-  width:5px;
-  height:5px;
-  border-radius:50%;
-  background:var(--dsw-alias-brand-primary, #5b8cff);
-  opacity:.85;
-}
-.dv-empty-title{
-  margin:4px 0 0;
-  font-size:1.85em;
-  font-size:clamp(1.5em, 3.6cqi, 1.95em);
-  font-weight:500;
-  line-height:1.28;
-  letter-spacing:-.01em;
-  color:var(--dsw-alias-label-primary, #f2f2f5);
-}
-.dv-empty-body{
-  margin:0;
-  max-width:46ch;
-  font-size:1em;
-  line-height:1.6;
-  color:var(--dsw-alias-label-secondary, #a4a4ad);
-}
-.dv-empty-note{
-  margin:0;
-  max-width:44ch;
   font-size:.86em;
-  line-height:1.55;
-  color:color-mix(in srgb, var(--dsw-alias-label-secondary, #a4a4ad) 82%, transparent);
+  cursor:pointer;
+  -webkit-app-region:no-drag;
+  transition:color var(--dv-dur-fast) var(--dv-ease), background var(--dv-dur-fast) var(--dv-ease);
 }
-.dv-empty-actions{
-  display:flex;
-  flex-wrap:wrap;
-  align-items:center;
-  justify-content:center;
-  gap:8px 12px;
-  margin-top:4px;
+.dv-back:hover{
+  color:var(--dsw-alias-label-primary, #f2f2f5);
+  background:var(--dsw-alias-interactive-bg-hover, rgba(127,127,140,.14));
 }
-.dv-button-primary{
+.dv-back:focus-visible{
+  outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-brand-primary, #5b8cff));
+  outline-offset:2px;
+}
+.dv-back-label{white-space:nowrap;}
+.dv-spacer{flex:1;min-width:0;}
+.dv-display{position:relative;display:inline-flex;flex:none;}
+.dv-icon-button{
   display:inline-flex;
   align-items:center;
   justify-content:center;
-  height:clamp(38px, 2.7em, 52px);
-  padding:0 18px;
-  border-radius:999px;
-  border:1px solid color-mix(in srgb, var(--dsw-alias-border-l2, rgba(127,127,140,.45)) 58%, transparent);
-  background:color-mix(in srgb, var(--dsw-alias-bg-overlay, #26262b) 82%, transparent);
-  -webkit-backdrop-filter:blur(16px) saturate(1.2);
-  backdrop-filter:blur(16px) saturate(1.2);
-  color:var(--dsw-alias-label-primary, #f2f2f5);
-  font:inherit;
-  font-size:.92em;
-  font-weight:500;
-  line-height:1;
+  width:32px;
+  height:32px;
+  padding:0;
+  border:0;
+  border-radius:8px;
+  background:transparent;
+  color:var(--dsw-alias-label-secondary, #a4a4ad);
   cursor:pointer;
-  transition:transform var(--dv-dur-fast) var(--dv-ease), background var(--dv-dur-fast) var(--dv-ease);
+  -webkit-app-region:no-drag;
+  transition:color var(--dv-dur-fast) var(--dv-ease), background var(--dv-dur-fast) var(--dv-ease);
+}
+.dv-icon-button:hover,.dv-icon-button[aria-expanded="true"]{
+  color:var(--dsw-alias-label-primary, #f2f2f5);
+  background:var(--dsw-alias-interactive-bg-hover, rgba(127,127,140,.14));
+}
+.dv-icon-button:focus-visible{
+  outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-brand-primary, #5b8cff));
+  outline-offset:2px;
+}
+.dv-menu{
+  position:absolute;
+  top:calc(100% + 6px);
+  right:0;
+  z-index:2;
+  min-width:190px;
+  padding:6px;
+  border:1px solid color-mix(in srgb, var(--dsw-alias-border-l1, rgba(127,127,140,.28)) 84%, transparent);
+  border-radius:10px;
+  background:var(--dsw-alias-bg-overlay, var(--dsw-alias-bg-layer-1, #232327));
+  box-shadow:0 12px 32px -20px rgba(0,0,0,.5);
   -webkit-app-region:no-drag;
 }
-.dv-button-primary:hover{background:color-mix(in srgb, var(--dsw-alias-bg-layer-2, #303036) 92%, transparent);}
-.dv-button-primary:active{transform:scale(.985);}
-.dv-button-primary:focus-visible{outline:2px solid var(--dsw-alias-brand-primary, #5b8cff);outline-offset:2px;}
-.dv-pending{
-  display:inline-flex;
-  align-items:center;
-  gap:8px;
-  color:color-mix(in srgb, var(--dsw-alias-label-secondary, #a4a4ad) 88%, transparent);
-  font-size:.82em;
-}
-.dv-pending::before{
-  content:"";
-  width:5px;
-  height:5px;
-  border-radius:50%;
-  background:var(--dsw-alias-state-idle-primary, #7a7a83);
-}
-
-.dv-statusbar{
+.dv-menu-item{
   display:flex;
   align-items:center;
   justify-content:space-between;
   gap:12px;
-  flex:none;
-  height:clamp(34px, 2.4em, 48px);
-  padding-inline:16px;
-  border-top:1px solid color-mix(in srgb, var(--dsw-alias-border-l1, rgba(127,127,140,.28)) 52%, transparent);
-  color:color-mix(in srgb, var(--dsw-alias-label-secondary, #a4a4ad) 78%, transparent);
-  font-size:.78em;
-  letter-spacing:.02em;
-  white-space:nowrap;
-  overflow:hidden;
+  width:100%;
+  height:34px;
+  padding:0 10px;
+  border:0;
+  border-radius:7px;
+  background:transparent;
+  color:var(--dsw-alias-label-primary, #f2f2f5);
+  font:inherit;
+  font-size:.86em;
+  text-align:left;
+  cursor:pointer;
 }
-.dv-statusbar > span{overflow:hidden;text-overflow:ellipsis;}
-
-@keyframes dv-fade-in{from{opacity:0}to{opacity:1}}
-@keyframes dv-rise{from{opacity:0;transform:translate3d(0,6px,0)}to{opacity:1;transform:none}}
-.dv-root[data-intro="first"] .dv-stage{animation:dv-rise var(--dv-dur-slow) var(--dv-ease) both;}
-.dv-root[data-intro="first"] .dv-empty{animation:dv-rise var(--dv-dur-slow) 60ms var(--dv-ease) both;}
-.dv-root[data-intro="repeat"] .dv-stage,
-.dv-root[data-intro="repeat"] .dv-empty{animation:dv-fade-in var(--dv-dur-med) var(--dv-ease) both;}
-
-@container dsh-video (max-width: 760px){
-  .dv-topbar{height:48px;gap:10px;}
-  .dv-brand{display:none;}
-  .dv-main{padding:12px;}
-  .dv-stage{padding:20px;border-radius:14px;}
-  .dv-empty{gap:12px;}
-  .dv-statusbar{font-size:.74em;}
+.dv-menu-item:hover{background:var(--dsw-alias-interactive-bg-hover, rgba(127,127,140,.14));}
+.dv-menu-item:focus-visible{
+  outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-brand-primary, #5b8cff));
+  outline-offset:-2px;
+}
+.dv-menu-check{
+  flex:none;
+  min-width:1em;
+  color:var(--dsw-alias-label-secondary, #a4a4ad);
+  text-align:center;
+}
+.dv-menu-text{
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.dv-main{
+  display:flex;
+  flex:1;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:12px;
+  min-width:0;
+  min-height:0;
+  padding:24px;
+  overflow:auto;
+}
+.dv-empty{
+  margin:0;
+  color:var(--dsw-alias-label-secondary, #a4a4ad);
+  font-size:1em;
+}
+.dv-error{
+  margin:0;
+  max-width:38em;
+  color:var(--dsw-alias-state-error-primary, #e5484d);
+  font-size:.86em;
+  text-align:center;
+}
+@media (prefers-reduced-motion: reduce){
+  .dv-root{animation:none;}
 }
 @container dsh-video (max-width: 520px){
-  .dv-simplify-label{display:none;}
-  .dv-simplify{width:34px;padding:0;justify-content:center;}
-  .dv-statusbar > span:last-child{display:none;}
-}
-
-@media (prefers-reduced-motion: reduce){
-  .dv-root .dv-stage,
-  .dv-root .dv-empty,
-  .dv-mode-thumb,
-  .dv-mode-btn,
-  .dv-simplify,
-  .dv-simplify-track,
-  .dv-simplify-knob,
-  .dv-button-primary{animation:none !important;transition-duration:1ms !important;}
-}
-@media (prefers-reduced-transparency: reduce){
-  .dv-mode,.dv-simplify,.dv-button-primary{
-    -webkit-backdrop-filter:none;
-    backdrop-filter:none;
-  }
-}
-@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))){
-  .dv-mode,.dv-simplify,.dv-button-primary{
-    -webkit-backdrop-filter:none;
-    backdrop-filter:none;
-    background:color-mix(in srgb, var(--dsw-alias-bg-layer-2, #303036) 96%, var(--dsw-alias-bg-base, #1a1a1c));
-  }
+  .dv-topbar{padding-left:12px;padding-right:12px;}
+  .dv-back{padding:0 8px;}
 }
 `;
-
-    /** One style element per mounted plugin surface; unmounting removes it. */
-    function StyleTag() {
-      return h('style', {
-        'data-dsh-video': 'styles',
-        dangerouslySetInnerHTML: { __html: CSS },
-      });
-    }
     //#endregion
 
     //#region diagnostics
@@ -632,19 +375,13 @@ window.__ModuleLoader__.load({
       };
     }
 
-    /**
-     * Plugin-scope store shared by both mount points; survives panel unmounts.
-     * `thumbOrigin` is a short-lived presentation hint only: navigation records
-     * which segment the user is leaving, the next mount consumes it for the
-     * slide-in and clears it. The authoritative selected mode always comes from
-     * the host active panel.
-     */
+    /** Plugin-scope store shared by the panel and its display menu. */
     let uiStore = null;
 
     function getStore() {
       if (uiStore === null) {
         uiStore = createUiStore(
-          { simplifiedEffects: false, introPlayed: false, thumbOrigin: null },
+          { simplifiedEffects: false, navigationError: null },
           function noop() {}
         );
       }
@@ -664,43 +401,16 @@ window.__ModuleLoader__.load({
       writePrefs(store.getSnapshot());
     }
 
-    function markIntroPlayed() {
+    function setNavigationError(code) {
       const store = getStore();
-      if (store.getSnapshot().introPlayed === true) return;
-      store.setPatch({ introPlayed: true });
-    }
-
-    /** One animation frame, with a cancellable disposer; timer fallback. */
-    function nextFrame(callback) {
-      if (typeof requestAnimationFrame === 'function') {
-        const frame = requestAnimationFrame(callback);
-        return function cancelFrame() {
-          if (typeof cancelAnimationFrame === 'function') cancelAnimationFrame(frame);
-        };
-      }
-      const timer = setTimeout(callback, 0);
-      return function cancelTimer() {
-        clearTimeout(timer);
-      };
-    }
-
-    /** Simplified effects or the host reduced-motion preference disable the slide. */
-    function motionAllowed() {
-      try {
-        if (getStore().getSnapshot().simplifiedEffects === true) return false;
-        if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
-          const query = window.matchMedia('(prefers-reduced-motion: reduce)');
-          if (query && query.matches === true) return false;
-        }
-      } catch (_error) {
-        return true;
-      }
-      return true;
+      const value = typeof code === 'string' ? code : null;
+      if (store.getSnapshot().navigationError === value) return;
+      store.setPatch({ navigationError: value });
     }
     //#endregion
 
     //#region host helpers
-    /** Feature-detected slot enumeration, used only for conflict diagnostics. */
+    /** Feature-detected slot enumeration, used for occupancy diagnostics. */
     function slotEntries(ctx, slotName) {
       try {
         const slots = ctx.slots;
@@ -715,8 +425,8 @@ window.__ModuleLoader__.load({
 
     /**
      * Detect whether a slot already has occupants. `field === null` matches any
-     * entry (single slots); otherwise the entry's options[field] must equal value.
-     * Returns null when the runtime cannot answer.
+     * entry (single/list slots); otherwise the entry's options[field] must equal
+     * value. Returns null when the runtime cannot answer.
      */
     function findOccupants(ctx, slotName, field, value) {
       const entries = slotEntries(ctx, slotName);
@@ -741,217 +451,195 @@ window.__ModuleLoader__.load({
     }
     //#endregion
 
-    //#region components
+    //#region icons
     /**
-     * The single mode capsule shared by the conversation header seat and the
-     * video top bar. The active segment comes from the host's active main panel.
+     * Refined one-pixel video-camera outline for the host sidebar row. The host
+     * supplies the square edge (`size`: 16 expanded / 18 collapsed in 0.2.0-rc.2)
+     * and the selected state; the glyph follows the row's currentColor only.
      */
-    function ModeSwitch(props) {
-      const t = props.t;
-      const usePanelInfo = props.usePanelInfo;
-      const onSelectMode = props.onSelectMode;
-      const ui = usePluginState();
-      const activePanelId = usePanelInfo(function selectActive(info) {
-        return info.activePanelId;
-      });
-      // Authoritative selection always comes from the host. `thumbOrigin` only
-      // decides where the glass thumb visually starts on this mount; it can never
-      // make a segment look selected on its own.
-      const active = activePanelId === PANEL_ID ? 'video' : 'normal';
-      const [initialThumb] = React.useState(function readThumbOrigin() {
-        const origin = getStore().getSnapshot().thumbOrigin;
-        return origin === 'normal' || origin === 'video' ? origin : null;
-      });
-      const [thumbAt, setThumbAt] = React.useState(
-        initialThumb === null || initialThumb === active ? active : initialThumb
-      );
-      const [ready, setReady] = React.useState(false);
-
-      React.useEffect(function startThumbTransition() {
-        const store = getStore();
-        // A hint belongs to exactly one mount; clear it even when it is stale.
-        if (store.getSnapshot().thumbOrigin !== null) store.setPatch({ thumbOrigin: null });
-        if (initialThumb === null || initialThumb === active) {
-          setReady(true);
-          return function noopTransition() {};
-        }
-        let cancelMove = null;
-        const cancelEnable = nextFrame(function enableTransition() {
-          setReady(true);
-          cancelMove = nextFrame(function moveThumb() {
-            setThumbAt(active);
-          });
-        });
-        return function cancelThumbTransition() {
-          cancelEnable();
-          if (cancelMove !== null) cancelMove();
-        };
-      }, []);
-
-      function activate(mode) {
-        if (mode === active) return;
-        onSelectMode(mode);
-      }
-
-      function onKeyDown(event) {
-        if (event.key === 'ArrowLeft') {
-          event.preventDefault();
-          activate('normal');
-        } else if (event.key === 'ArrowRight') {
-          event.preventDefault();
-          activate('video');
-        }
-      }
-
+    function SidebarVideoIcon(props) {
+      let size = props && typeof props.size === 'number' && isFinite(props.size) ? props.size : 16;
+      if (size < 12) size = 12;
+      if (size > 24) size = 24;
       return h(
-        'div',
+        'svg',
         {
-          className: 'dv-mode',
-          role: 'group',
-          'aria-label': t('mode.label'),
-          'data-active': active,
-          'data-thumb': thumbAt,
-          'data-ready': ready ? 'true' : 'false',
-          'data-simplified': ui.simplifiedEffects ? 'true' : 'false',
-          onKeyDown: onKeyDown,
+          width: size,
+          height: size,
+          viewBox: '0 0 16 16',
+          fill: 'none',
+          xmlns: 'http://www.w3.org/2000/svg',
+          'aria-hidden': 'true',
+          focusable: 'false',
+          stroke: 'currentColor',
+          strokeWidth: 1,
+          strokeLinecap: 'round',
+          strokeLinejoin: 'round',
         },
-        h(StyleTag, { key: 'style' }),
-        h('span', { className: 'dv-mode-thumb', 'aria-hidden': true, key: 'thumb' }),
-        h(
-          'button',
-          {
-            type: 'button',
-            key: 'normal',
-            className: 'dv-mode-btn',
-            'data-mode': 'normal',
-            'aria-pressed': active === 'normal' ? 'true' : 'false',
-            onClick: function onClickNormal() {
-              activate('normal');
-            },
-          },
-          t('mode.normal')
-        ),
-        h(
-          'button',
-          {
-            type: 'button',
-            key: 'video',
-            className: 'dv-mode-btn',
-            'data-mode': 'video',
-            'aria-pressed': active === 'video' ? 'true' : 'false',
-            onClick: function onClickVideo() {
-              activate('video');
-            },
-          },
-          t('mode.video')
-        )
+        h('rect', { x: 1.25, y: 3.5, width: 8.75, height: 9, rx: 2 }),
+        h('path', { d: 'M10 7.15 13.9 5a.55.55 0 0 1 .82.48v5.04a.55.55 0 0 1-.82.48L10 8.85' })
       );
     }
 
-    /** Additive occupant of `conversation.header.leading` (root slot, single). */
-    function LeadingModeSwitch(props) {
-      const t = props.t;
-      const usePanelInfo = props.usePanelInfo;
-      const onSelectMode = props.onSelectMode;
+    function BackIcon() {
       return h(
-        'div',
-        { className: 'dv-mode-wrap' },
-        h(ModeSwitch, { t: t, usePanelInfo: usePanelInfo, onSelectMode: onSelectMode })
-      );
-    }
-
-    function SimplifiedToggle(props) {
-      const t = props.t;
-      const value = props.value === true;
-      return h(
-        'button',
+        'svg',
         {
-          type: 'button',
-          className: 'dv-simplify',
-          role: 'switch',
-          'aria-checked': value ? 'true' : 'false',
-          'aria-label': t('video.simplify.label'),
-          title: t('video.simplify.hint'),
-          onClick: function onClickToggle() {
-            setSimplifiedEffects(!value);
-          },
+          width: 14,
+          height: 14,
+          viewBox: '0 0 16 16',
+          fill: 'none',
+          xmlns: 'http://www.w3.org/2000/svg',
+          'aria-hidden': 'true',
+          focusable: 'false',
+          stroke: 'currentColor',
+          strokeWidth: 1.2,
+          strokeLinecap: 'round',
+          strokeLinejoin: 'round',
         },
-        h('span', { className: 'dv-simplify-track', 'aria-hidden': true, key: 'track' }, h('span', { className: 'dv-simplify-knob' })),
-        h('span', { className: 'dv-simplify-label', key: 'label' }, t('video.simplify.label'))
+        h('path', { d: 'M9.75 3.5 5.25 8l4.5 4.5' })
       );
     }
 
-    function EmptyWorkspace(props) {
-      const t = props.t;
+    function DisplayOptionsIcon() {
       return h(
-        'div',
-        { className: 'dv-empty' },
-        h('span', { className: 'dv-empty-badge' }, t('video.empty.badge')),
-        h('h1', { className: 'dv-empty-title' }, t('video.empty.title')),
-        h('p', { className: 'dv-empty-body' }, t('video.empty.body')),
-        h('p', { className: 'dv-empty-note' }, t('video.empty.note')),
-        h(
-          'div',
-          { className: 'dv-empty-actions' },
-          h(
-            'button',
-            {
-              type: 'button',
-              className: 'dv-button-primary',
-              onClick: function onBack() {
-                props.onSelectMode('normal');
-              },
-            },
-            t('video.empty.back')
-          ),
-          h('span', { className: 'dv-pending' }, t('video.empty.pending'))
-        )
+        'svg',
+        {
+          width: 16,
+          height: 16,
+          viewBox: '0 0 16 16',
+          fill: 'none',
+          xmlns: 'http://www.w3.org/2000/svg',
+          'aria-hidden': 'true',
+          focusable: 'false',
+          stroke: 'currentColor',
+          strokeWidth: 1,
+          strokeLinecap: 'round',
+        },
+        h('path', { d: 'M2.5 4.25h2.2M8.3 4.25h5.2' }),
+        h('circle', { cx: 6.5, cy: 4.25, r: 1.5 }),
+        h('path', { d: 'M2.5 8h5.3M11.4 8h2.1' }),
+        h('circle', { cx: 9.6, cy: 8, r: 1.5 }),
+        h('path', { d: 'M2.5 11.75h1.9M7.9 11.75h5.6' }),
+        h('circle', { cx: 6.1, cy: 11.75, r: 1.5 })
       );
     }
+    //#endregion
 
-    /** Occupant of the `dsh-video` key in the host `main` slot. */
+    //#region components
+    function StyleTag() {
+      return h('style', {
+        'data-dsh-video': 'styles',
+        dangerouslySetInnerHTML: { __html: CSS },
+      });
+    }
+
+    /**
+     * Occupant of the `dsh-video` key in the host `main` slot. The host owns
+     * navigation selection; this panel only renders the restrained empty state,
+     * one lightweight return action and one accessible display-options menu.
+     */
     function VideoWorkspace(props) {
       const t = props.t;
-      const usePanelInfo = props.usePanelInfo;
-      const onSelectMode = props.onSelectMode;
+      const onBack = props.onBack;
       const ui = usePluginState();
-      const [playIntro] = React.useState(function readInitialIntro() {
-        return getStore().getSnapshot().introPlayed !== true;
-      });
+      const [menuOpen, setMenuOpen] = React.useState(false);
 
-      React.useEffect(function recordIntro() {
-        markIntroPlayed();
-      }, []);
+      function onKeyDown(event) {
+        if (event && event.key === 'Escape' && menuOpen) {
+          event.preventDefault();
+          setMenuOpen(false);
+        }
+      }
+
+      function onToggleMenu() {
+        setMenuOpen(!menuOpen);
+      }
+
+      function onToggleSimplified() {
+        setSimplifiedEffects(!ui.simplifiedEffects);
+      }
 
       return h(
         'div',
         {
           className: 'dv-root',
           'data-simplified': ui.simplifiedEffects ? 'true' : 'false',
-          'data-intro': playIntro ? 'first' : 'repeat',
+          'data-panel': PANEL_ID,
+          onKeyDown: onKeyDown,
         },
+        h(StyleTag, { key: 'style' }),
         h(
           'header',
           { className: 'dv-topbar', 'data-window-drag': true, key: 'topbar' },
-          h(ModeSwitch, { t: t, usePanelInfo: usePanelInfo, onSelectMode: onSelectMode }),
-          h('span', { className: 'dv-brand', key: 'brand' }, h('span', { className: 'dv-brand-dot' }), t('video.brand')),
+          h(
+            'button',
+            {
+              type: 'button',
+              key: 'back',
+              className: 'dv-back',
+              onClick: onBack,
+              'aria-label': t('video.back'),
+              title: t('video.back'),
+            },
+            h(BackIcon, { key: 'icon' }),
+            h('span', { className: 'dv-back-label', key: 'label' }, t('video.back'))
+          ),
           h('span', { className: 'dv-spacer', key: 'spacer' }),
-          h(SimplifiedToggle, { t: t, value: ui.simplifiedEffects, key: 'simplify' })
+          h(
+            'div',
+            { className: 'dv-display', key: 'display' },
+            h(
+              'button',
+              {
+                type: 'button',
+                className: 'dv-icon-button',
+                'aria-haspopup': 'menu',
+                'aria-expanded': menuOpen ? 'true' : 'false',
+                'aria-controls': 'dsh-video-display-menu',
+                'aria-label': t('video.display.label'),
+                title: t('video.display.label'),
+                onClick: onToggleMenu,
+              },
+              h(DisplayOptionsIcon)
+            ),
+            menuOpen
+              ? h(
+                  'div',
+                  {
+                    className: 'dv-menu',
+                    id: 'dsh-video-display-menu',
+                    role: 'menu',
+                    'aria-label': t('video.display.label'),
+                    key: 'menu',
+                  },
+                  h(
+                    'button',
+                    {
+                      type: 'button',
+                      className: 'dv-menu-item',
+                      role: 'menuitemcheckbox',
+                      'aria-checked': ui.simplifiedEffects ? 'true' : 'false',
+                      onClick: onToggleSimplified,
+                    },
+                    h('span', { className: 'dv-menu-text', key: 'text' }, t('video.display.simplified')),
+                    h(
+                      'span',
+                      { className: 'dv-menu-check', 'aria-hidden': 'true', key: 'check' },
+                      ui.simplifiedEffects ? '✓' : ''
+                    )
+                  )
+                )
+              : null
+          )
         ),
         h(
           'main',
           { className: 'dv-main', key: 'main' },
-          h(
-            'section',
-            { className: 'dv-stage', 'aria-label': t('video.stage.label') },
-            h(EmptyWorkspace, { t: t, onSelectMode: onSelectMode })
-          )
-        ),
-        h(
-          'footer',
-          { className: 'dv-statusbar', key: 'statusbar' },
-          h('span', null, t('video.status.left')),
-          h('span', null, t('video.status.right'))
+          ui.navigationError === null
+            ? null
+            : h('p', { className: 'dv-error', role: 'alert', key: 'error' }, t('video.error.back')),
+          h('p', { className: 'dv-empty', key: 'empty' }, t('video.empty'))
         )
       );
     }
@@ -963,8 +651,9 @@ window.__ModuleLoader__.load({
     function apply(ctx) {
       reportIssue = makeReporter(ctx);
       reportedCodes.clear();
+      const initialPrefs = readPrefs();
       uiStore = createUiStore(
-        Object.assign({ introPlayed: false, thumbOrigin: null }, readPrefs()),
+        { simplifiedEffects: initialPrefs.simplifiedEffects === true, navigationError: null },
         reportIssue
       );
 
@@ -1001,29 +690,43 @@ window.__ModuleLoader__.load({
         'dsh-video: leave video on unload'
       );
 
+      // Locale-aware sidebar label. The host re-reads this thunk on every
+      // projection (and after locale changes); the exact user-requested spelling
+      // is also the fallback if the locale service is unavailable.
+      let boundText = null;
+      function sidebarLabel() {
+        try {
+          if (boundText === null && ctx.locale && typeof ctx.locale.bind === 'function') {
+            boundText = ctx.locale.bind(NS);
+          }
+          if (typeof boundText === 'function') {
+            const text = boundText('nav.label');
+            if (typeof text === 'string' && text !== '' && text !== 'nav.label') return text;
+          }
+        } catch (error) {
+          reportOnce('sidebar-label-failed', error);
+        }
+        return 'Vedio Editor';
+      }
+
       function navigation() {
         return {
-          onSelectMode: function onSelectMode(mode) {
-            const nextPanel = mode === 'video' ? PANEL_ID : null;
-            const leavingMode = mode === 'video' ? 'normal' : 'video';
+          onBack: function onBack() {
+            setNavigationError(null);
             try {
               if (typeof ctx.layout.selectPanel !== 'function') {
                 throw new Error('layout.selectPanel is unavailable');
               }
-              // Presentation hint only; navigation itself never waits for motion.
-              if (motionAllowed()) getStore().setPatch({ thumbOrigin: leavingMode });
-              ctx.layout.selectPanel(nextPanel);
+              ctx.layout.selectPanel(null);
             } catch (error) {
-              getStore().setPatch({ thumbOrigin: null });
-              reportOnce('navigation-failed:' + String(mode), error);
+              setNavigationError('back');
+              reportOnce('navigation-failed', error);
             }
           },
         };
       }
 
-      let mainController = null;
-
-      /** Ask the host to leave our panel when its entry disappears mid-selection. */
+      // Ask the host to leave our panel when its entry disappears mid-selection.
       function settleSelection() {
         try {
           const panelInfo = ctx.layout && ctx.layout.panelInfo;
@@ -1035,15 +738,15 @@ window.__ModuleLoader__.load({
         }
       }
 
-      // 3. The video panel and the normal-mode capsule are one atomic pair. The
-      //    chain lives for one `main` declaration lifetime; inside it, every
-      //    `conversation.header.leading` declaration lifetime re-acquires the
-      //    pair (capsule first, then panel). A late, refused or lost seat releases
-      //    whatever was already acquired, so the video panel can never exist
-      //    without its normal-mode entry. A later declaration retries the pair;
-      //    each acquisition is released exactly once through its own flag, so no
-      //    recursive dispose or duplicate registration is possible.
-      function registerMainAndEntry() {
+      // 1. One `main` declaration lifetime owns a chain. Inside that chain each
+      //    `sidebar.panellist` declaration lifetime re-acquires one atomic pair:
+      //    the video panel is registered first, then the sidebar row. A refused
+      //    or failed entry disposes the panel synchronously; a lost leading or
+      //    sidebar declaration releases both. A later declaration retries, so no
+      //    reachable row ever points at a missing main panel.
+      let mainController = null;
+
+      function registerPanelAndEntry() {
         const initialMainOccupants = findOccupants(ctx, 'main', 'key', PANEL_ID);
         if (initialMainOccupants === null) {
           reportIssue('main-entries-unavailable');
@@ -1055,17 +758,27 @@ window.__ModuleLoader__.load({
         }
 
         let closed = false;
-        let leadingRegistered = false;
-        let leadingController = null;
+        let sidebarRegistered = false;
+        let sidebarController = null;
         let cycle = null;
 
         function releaseCycle(target) {
           if (target === null || target.disposed === true) return;
           target.disposed = true;
           if (cycle === target) cycle = null;
-          leadingRegistered = false;
-          // Release the panel first so the host can fall back to the conversation
-          // before the entry disappears, never the other way around.
+          sidebarRegistered = false;
+          // Drop the navigation row first: the video panel must never be left
+          // registered without its reachable entry, and the row must never stay
+          // clickable after its panel is gone.
+          try {
+            if (target.sidebarDispose !== null) {
+              const dispose = target.sidebarDispose;
+              target.sidebarDispose = null;
+              dispose();
+            }
+          } catch (error) {
+            reportOnce('sidebar-cleanup-failed', error);
+          }
           try {
             if (target.mainDispose !== null) {
               const dispose = target.mainDispose;
@@ -1075,15 +788,6 @@ window.__ModuleLoader__.load({
           } catch (error) {
             reportOnce('main-cleanup-failed', error);
           }
-          try {
-            if (target.capsuleDispose !== null) {
-              const dispose = target.capsuleDispose;
-              target.capsuleDispose = null;
-              dispose();
-            }
-          } catch (error) {
-            reportOnce('leading-cleanup-failed', error);
-          }
           settleSelection();
         }
 
@@ -1091,18 +795,22 @@ window.__ModuleLoader__.load({
           if (closed) return function noopDispose() {};
           if (cycle !== null) releaseCycle(cycle);
 
-          const leadingOccupants = findOccupants(ctx, 'conversation.header.leading', null, null);
-          if (leadingOccupants === null) {
-            reportIssue('leading-entries-unavailable');
-            reportIssue('leading-entry-unavailable');
+          const sidebarEntries = findOccupants(ctx, 'sidebar.panellist', null, null);
+          if (sidebarEntries === null) {
+            reportIssue('sidebar-entries-unavailable');
+            reportIssue('sidebar-entry-unavailable');
             return function noopDispose() {};
           }
-          if (leadingOccupants.length > 0) {
-            reportIssue('leading-seat-conflict:' + String(leadingOccupants.length));
+          const ourSidebarEntries = sidebarEntries.filter(function ours(entry) {
+            return entry !== null && typeof entry === 'object' && entry.options && entry.options.id === PANEL_ID;
+          });
+          if (ourSidebarEntries.length > 0) {
+            reportIssue('sidebar-entry-conflict:' + String(ourSidebarEntries.length));
+            reportIssue('sidebar-entry-unavailable');
             return function noopDispose() {};
           }
           // Re-check the main key right before committing the pair: a competitor
-          // may have registered while this declaration was running.
+          // may have registered while declarations were being processed.
           const mainOccupants = findOccupants(ctx, 'main', 'key', PANEL_ID);
           if (mainOccupants === null) {
             reportIssue('main-entries-unavailable');
@@ -1113,18 +821,8 @@ window.__ModuleLoader__.load({
             return function noopDispose() {};
           }
 
-          let capsuleDispose = null;
           let mainDispose = null;
-          try {
-            capsuleDispose = ctx.slots.register(
-              { name: 'conversation.header.leading', locale: NS, inject: navigation },
-              LeadingModeSwitch
-            );
-          } catch (error) {
-            reportIssue('leading-register-failed', error);
-            reportIssue('leading-entry-unavailable');
-            return function noopDispose() {};
-          }
+          let sidebarDispose = null;
           try {
             mainDispose = ctx.slots.register(
               { name: 'main', key: PANEL_ID, locale: NS, inject: navigation },
@@ -1132,22 +830,32 @@ window.__ModuleLoader__.load({
             );
           } catch (error) {
             reportIssue('main-register-failed', error);
+            return function noopDispose() {};
+          }
+          try {
+            sidebarDispose = ctx.slots.register(
+              { name: 'sidebar.panellist', id: PANEL_ID, order: SIDEBAR_ORDER, label: sidebarLabel, locale: NS },
+              SidebarVideoIcon
+            );
+          } catch (error) {
+            reportIssue('sidebar-register-failed', error);
+            reportIssue('sidebar-entry-unavailable');
             try {
-              capsuleDispose();
+              mainDispose();
             } catch (cleanupError) {
-              reportOnce('leading-cleanup-failed', cleanupError);
+              reportOnce('main-cleanup-failed', cleanupError);
             }
             return function noopDispose() {};
           }
 
-          leadingRegistered = true;
+          sidebarRegistered = true;
           const acquired = {
             disposed: false,
-            capsuleDispose: capsuleDispose,
             mainDispose: mainDispose,
+            sidebarDispose: sidebarDispose,
             inner: null,
           };
-          acquired.inner = function releaseLeadingDeclaration() {
+          acquired.inner = function releaseSidebarDeclaration() {
             releaseCycle(acquired);
           };
           cycle = acquired;
@@ -1158,37 +866,37 @@ window.__ModuleLoader__.load({
           if (closed) return;
           closed = true;
           try {
-            if (leadingController !== null) {
-              const dispose = leadingController;
-              leadingController = null;
+            if (sidebarController !== null) {
+              const dispose = sidebarController;
+              sidebarController = null;
               dispose();
             }
           } catch (error) {
-            reportOnce('leading-cleanup-failed', error);
+            reportOnce('sidebar-cleanup-failed', error);
           }
           releaseCycle(cycle);
         }
 
         try {
-          leadingController = ctx.slots.inject('conversation.header.leading', acquirePair);
+          sidebarController = ctx.slots.inject('sidebar.panellist', acquirePair);
         } catch (error) {
-          reportIssue('leading-inject-failed', error);
+          reportIssue('sidebar-inject-failed', error);
           closeChain();
           return function noopDispose() {};
         }
 
-        if (isSlotDeclared(ctx, 'conversation.header.leading') !== false && leadingRegistered !== true && cycle === null) {
+        if (isSlotDeclared(ctx, 'sidebar.panellist') !== false && sidebarRegistered !== true && cycle === null) {
           // The seat exists but our pair was refused. No video panel was
           // registered in this order, so there is nothing left to retract; a
-          // later seat declaration retries the acquisition.
-          reportIssue('leading-entry-unavailable');
+          // later sidebar declaration retries the acquisition.
+          reportIssue('sidebar-entry-unavailable');
         }
 
         return closeChain;
       }
 
       try {
-        mainController = ctx.slots.inject('main', registerMainAndEntry);
+        mainController = ctx.slots.inject('main', registerPanelAndEntry);
       } catch (error) {
         reportIssue('main-inject-failed', error);
         return;

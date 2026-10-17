@@ -117,10 +117,19 @@ check('bundle manifest declares patch and client', () => {
   assert(pkg.dsh.manifestVersion === 1, 'dsh.manifestVersion must be 1');
   assert(pkg.dsh.bundle && pkg.dsh.bundle.patch === './cordis.patch.yml', 'dsh.bundle.patch must point at ./cordis.patch.yml');
   assert(pkg.dsh.client && pkg.dsh.client.platform === 'web', 'dsh.client.platform must be "web"');
-  assert(pkg.dsh.client.immediately === true, 'dsh.client.immediately should be true so the capsule exists before first navigation');
+  assert(pkg.dsh.client.immediately === true, 'dsh.client.immediately should be true so the sidebar entry registers before first navigation');
   assert(Array.isArray(pkg.dsh.client.inject), 'dsh.client.inject must be an array');
   for (const entry of pkg.dsh.client.inject) assert(typeof entry === 'string', 'dsh.client.inject entries must be package names');
+  assert(
+    pkg.dsh.client.inject.indexOf('@deepseek-ai/dsh-client-ui-conversation') === -1,
+    'P0-005 no longer registers into the conversation header; drop the ui-conversation activation dependency'
+  );
   return `platform=web, inject=[${pkg.dsh.client.inject.join(', ')}]`;
+});
+
+check('package version advanced for the P0-005 fixed package', () => {
+  assert(pkg.version === '0.1.2', `expected version 0.1.2, found "${pkg.version}"`);
+  return pkg.version;
 });
 
 check('patch inserts exactly one dsh-video row', () => {
@@ -232,7 +241,7 @@ check('component class names exist in the stylesheet', () => {
 
 check('inline stylesheet is structurally sane', () => {
   const start = clientSource.indexOf('const CSS = `');
-  const end = clientSource.indexOf('`;\n\n    /** One style element', start);
+  const end = clientSource.indexOf('`;\n    //#endregion', start);
   assert(start >= 0 && end > start, 'CSS template literal not found');
   const css = clientSource.slice(start, end);
   assert(css.includes('${') === false, 'CSS template literal contains ${} interpolation');
@@ -249,78 +258,97 @@ check('inline stylesheet is structurally sane', () => {
   return `${Math.round(css.length / 1024)} KiB CSS, balanced braces`;
 });
 
-check('R3: capsule text and space scale with the host content font size', () => {
-  assert(
-    /\.dv-mode\{[^}]*font-size:var\(--dsh-content-font-size/.test(clientSource),
-    '.dv-mode must derive its font size from --dsh-content-font-size'
-  );
-  assert(
-    /\.dv-mode-btn\{[^}]*font-size:\.93em/.test(clientSource),
-    '.dv-mode-btn must size text relative to the capsule (em), not a fixed px value'
-  );
-  assert(clientSource.includes('font-size:13px') === false, 'mode text must not be pinned to 13px');
-  assert(clientSource.includes('font-size:12.5px') === false, 'narrow layout must not shrink navigation text');
-  assert(
-    clientSource.includes('--dv-mode-width:clamp(176px, 13.5em, 248px)'),
-    'capsule width must scale with the host font size within clamps'
-  );
-  assert(
-    clientSource.includes('--dv-mode-height:clamp(40px, 2.86em, 56px)'),
-    'capsule height must scale with the host font size within clamps'
-  );
-  return 'host-font-derived text, em-based capsule, clamped bounds';
+check('P0-005: sidebar entry registration matches the verified list contract', () => {
+  assert(clientSource.includes("name: 'sidebar.panellist'"), 'sidebar entry registration not found');
+  assert(clientSource.includes('id: PANEL_ID'), 'sidebar entry must address the same id as the main panel');
+  assert(clientSource.includes('order: SIDEBAR_ORDER'), 'sidebar entry must declare its native order');
+  assert(clientSource.includes('label: sidebarLabel'), 'sidebar entry must declare the locale-aware label thunk');
+  assert(clientSource.includes('const SIDEBAR_ORDER = 30'), 'sidebar order should sit after the shipped panel rows (0/10/20)');
+  assert(clientSource.includes("ctx.slots.inject('sidebar.panellist'"), 'sidebar entry must follow declaration lifetimes through slots.inject');
+  assert(clientSource.includes("ctx.slots.inject('main'"), 'main panel declaration hook missing');
+  assert(clientSource.includes("name: 'main', key: PANEL_ID"), 'main panel key must stay dsh-video');
+  assert(clientSource.includes("'nav.label': 'Vedio Editor'"), 'exact user-requested label spelling missing from locale dictionaries');
+  assert(clientSource.indexOf("'nav.label': 'Vedio Editor'") !== clientSource.lastIndexOf("'nav.label': 'Vedio Editor'"), 'label must exist in both shipped dictionaries');
+  return 'native sidebar.panellist id/order/label + main key';
 });
 
-check('R2: slide motion is a consumable hint, not a second mode source', () => {
-  assert(clientSource.includes('thumbOrigin'), 'missing short-lived presentation hint');
-  assert(clientSource.includes("'data-thumb': thumbAt"), 'capsule must expose the visual thumb position separately');
-  assert(clientSource.includes('.dv-mode[data-thumb="video"] .dv-mode-thumb'), 'thumb transform must key on the visual position');
-  assert(clientSource.includes('motionAllowed()'), 'motion must be gated by simplified effects / reduced motion');
-  assert(clientSource.includes('animation:dv-fade-in 140ms') === false, 'repeat intro must not hard-code 140ms');
-  assert(
-    clientSource.includes('animation:dv-fade-in var(--dv-dur-med)') || clientSource.includes('animation:dv-fade-in var('),
-    'repeat intro must use the motion tokens'
-  );
-  assert(clientSource.includes('transition:color var(--dv-dur-fast)'), 'button transitions must use the motion tokens');
-  return 'consumable origin hint, token-based timing';
-});
-
-check('R1: the video panel and the normal-mode entry are one atomic pair', () => {
+check('P0-005: the video panel and sidebar entry form one atomic pair', () => {
   const applyStart = clientSource.indexOf('function apply(ctx)');
   const applyEnd = clientSource.indexOf('return { inject: inject, apply: apply }');
   assert(applyStart >= 0 && applyEnd > applyStart, 'apply body not found');
   const applyBody = clientSource.slice(applyStart, applyEnd);
-  assert(applyBody.includes("ctx.slots.inject('main'"), 'main declaration hook not found');
-  const entryStart = applyBody.indexOf('function registerMainAndEntry()');
+  const entryStart = applyBody.indexOf('function registerPanelAndEntry()');
   assert(entryStart >= 0, 'missing declaration-scoped registration entry point');
   const entryEnd = applyBody.indexOf('mainController = ctx.slots.inject', entryStart);
   assert(entryEnd > entryStart, 'main registration call site not found');
   const entryBody = applyBody.slice(entryStart, entryEnd);
-  assert(
-    entryBody.includes("ctx.slots.inject('conversation.header.leading'"),
-    'leading registration must be chained inside the main declaration path'
-  );
-  assert(entryBody.includes('ctx.slots.register('), 'entry registration missing from the declaration path');
-  const capsuleIndex = entryBody.indexOf("name: 'conversation.header.leading'");
-  const panelIndex = entryBody.indexOf('key: PANEL_ID, locale: NS, inject: navigation');
-  assert(capsuleIndex >= 0, 'capsule registration is not in the declaration path');
-  assert(panelIndex > capsuleIndex, 'the video panel must only be registered after the capsule');
-  assert(entryBody.includes('leadingRegistered'), 'missing registration-success tracking for the entry');
-  assert(entryBody.includes('leading-entry-unavailable'), 'missing unreachable-panel guard');
+  const panelIndex = entryBody.indexOf("name: 'main'");
+  const sidebarIndex = entryBody.indexOf("name: 'sidebar.panellist'");
+  assert(panelIndex >= 0, 'main panel registration missing from the declaration path');
+  assert(sidebarIndex > panelIndex, 'the sidebar entry must only be registered after the video panel');
   assert(entryBody.includes('releaseCycle'), 'missing atomic pair release path');
+  const sidebarRelease = entryBody.indexOf('target.sidebarDispose');
+  const panelRelease = entryBody.indexOf('target.mainDispose');
+  assert(sidebarRelease >= 0 && panelRelease > sidebarRelease, 'the sidebar entry must be released before the video panel');
   assert(entryBody.includes('settleSelection'), 'missing conversation fallback when the entry is lost');
-  assert(applyBody.includes('leading-inject-failed'), 'missing leading injection failure containment');
-  return 'capsule -> panel pair per declaration, released together and retried';
+  assert(entryBody.includes('sidebar-entry-unavailable'), 'missing unreachable-panel guard');
+  assert(entryBody.includes('sidebar-register-failed'), 'missing sidebar registration failure containment');
+  return 'panel -> entry pair, entry released first, retried per declaration';
 });
 
-check('mode wiring matches P0-002 contract', () => {
+check('P0-005: the old top capsule and its presentation machinery are gone', () => {
+  const removed = ['dv-mode', 'thumbOrigin', 'conversation.header.leading', 'LeadingModeSwitch', 'dv-simplify', 'dv-stage'];
+  for (const needle of removed) assert(clientSource.includes(needle) === false, `client.js still contains removed capsule code "${needle}"`);
+  return 'no mode capsule / thumb origin / leading seat / stage framing code';
+});
+
+check('P0-005: panel transition is short and honours both reductions', () => {
+  assert(clientSource.includes('animation:dv-panel-in var(--dv-dur-med)'), 'panel entry must use the short motion token');
+  assert(clientSource.includes('--dv-dur-med:160ms'), 'panel transition should stay within the 120-180ms range');
+  assert(clientSource.includes('@media (prefers-reduced-motion: reduce)'), 'reduced-motion media query missing');
+  assert(clientSource.includes('.dv-root[data-simplified="true"]'), 'simplified-effects gate missing');
+  assert(clientSource.includes("'data-simplified': ui.simplifiedEffects ? 'true' : 'false'"), 'root must expose the simplified-effects state');
+  return '160ms panel fade; simplified / reduced-motion disable it';
+});
+
+check('P0-005: empty state is one exact sentence with no future-feature copy', () => {
+  assert(clientSource.includes("'video.empty': '尚无工程'"), 'the empty state must be exactly 尚无工程');
+  assert(clientSource.includes("'video.empty': 'No project yet'"), 'English empty state missing');
+  const forbidden = ['空工作区', '从一个想法', '视频工作区已经接入', '当前阶段只验证', '工程创建将在后续阶段开放', '尚未包含工程', 'DSH Video · 原生工作区'];
+  for (const needle of forbidden) assert(clientSource.includes(needle) === false, `client.js still contains removed copy "${needle}"`);
+  return 'one empty-state sentence; old explanatory copy removed';
+});
+
+check('P0-005: the display preference lives in one accessible menu', () => {
+  assert(clientSource.includes('aria-haspopup'), 'display menu trigger must expose aria-haspopup');
+  assert(clientSource.includes('aria-expanded'), 'display menu trigger must expose aria-expanded');
+  assert(clientSource.includes("role: 'menuitemcheckbox'"), 'display option must expose checkbox menu semantics');
+  assert(clientSource.includes("'aria-checked': ui.simplifiedEffects ? 'true' : 'false'"), 'display option must expose its checked state');
+  assert(clientSource.includes("t('video.display.label')"), 'display menu needs an accessible name from locale');
+  return 'single labelled display-options menu with checkbox semantics';
+});
+
+check('P0-005: sidebar icon follows the host owner props and native stroke', () => {
+  assert(clientSource.includes('function SidebarVideoIcon(props)'), 'sidebar icon component missing');
+  assert(clientSource.includes('props.size'), 'sidebar icon must honour the host-provided square edge');
+  assert(clientSource.includes("stroke: 'currentColor'"), 'sidebar icon must follow the row colour with currentColor');
+  assert(clientSource.includes("viewBox: '0 0 16 16'"), 'sidebar icon should use the host 16-unit line-icon grid');
+  assert(clientSource.includes("'aria-hidden': 'true'"), 'sidebar icon must be hidden from the accessible name (the host row carries the label)');
+  return '16-viewBox currentColor line glyph sized by the host';
+});
+
+check('P0-005: no fake editor or project affordances are rendered', () => {
+  const forbidden = ['创建工程', '导出', '时间线', '预览'];
+  for (const needle of forbidden) assert(clientSource.includes(needle) === false, `client.js advertises unavailable capability "${needle}"`);
+  return 'no create/export/timeline/preview affordances';
+});
+
+check('P0-005: mode wiring is host-owned and has no local mode source', () => {
   assert(clientSource.includes("const PANEL_ID = 'dsh-video'"), 'main-panel key must be dsh-video');
-  assert(clientSource.includes("'conversation.header.leading'"), 'normal-mode capsule must mount in conversation.header.leading');
   assert(clientSource.includes('selectPanel'), 'navigation must go through ctx.layout.selectPanel');
-  assert(/activePanelId/.test(clientSource), 'selected mode must be derived from usePanelInfo.activePanelId');
-  assert(clientSource.includes('sidebar.panellist') === false, 'P0-B must not add a sidebar entry');
-  assert(clientSource.includes('shell.overlay') === false, 'P0-B must not use the overlay');
-  return 'panel key, leading seat, host-derived selection, no sidebar/overlay';
+  assert(clientSource.includes('usePanelInfo') === false, 'the sidebar row already owns selection; no panel-local mode hook is needed');
+  assert(clientSource.includes('sidebar.panellist') === true && clientSource.includes('shell.overlay') === false, 'must use the supported sidebar list, not an overlay');
+  return 'host-owned selection, native sidebar list, no local mode boolean';
 });
 
 for (const [name, detail] of passes) console.log(`PASS  ${name}${detail === 'ok' ? '' : `  [${detail}]`}`);

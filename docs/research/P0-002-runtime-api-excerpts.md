@@ -157,6 +157,18 @@ inject(key, callback)
 
 ## 7. 明确未使用 / 未验证
 
-- 未使用：`sidebar.panellist`、`shell.overlay`、`shell.leading`、替换宿主 header、自定义 Remote、`defineStore` 宿主存储、任何业务 HTTP 路由。
+- 未使用：`shell.overlay`、`shell.leading`、替换宿主 header、自定义 Remote、`defineStore` 宿主存储、任何业务 HTTP 路由。**更正（P0-005）**：此条原先写「未使用 `sidebar.panellist`」是 P0-B 顶部胶囊方案下的结论；P0-005 已改为该原生导航 list 作为唯一入口，顶部 `conversation.header.leading` 方案废弃。详见 §8 与 `P0-005-sidebar-contract.md`。
 - P0-003 已在本机真实页面覆盖：Slot 渲染与尺寸、胶囊位置、R2 动画真实播放、模式往返/快速反向、停用与重启用、视频模式内停用回退、草稿文字+图片附件、宿主字号、深色主题、1000×760 窄窗；证据见 `P0-003-live-validation.md` 与 `evidence/P0-003/`。
 - 仍未验证：冷启动/首次加载、no-drag 拖动、浏览器 console、reduced-motion、引用 chip、普通文件附件、静态阅读位置、键盘 Tab/焦点环；以及 0.1.1 修复包在真实宿主上的替换验证（需用户另行授权，先不替换已安装 0.1.0）。
+
+## 8. P0-005 侧栏入口补充契约（0.2.0-rc.2，本轮只读核实）
+
+### `sidebar.panellist`（list / root）
+
+- purpose：`Global panel icons.`；catalog：每个 list `id` 寻址同 id 的 `main` 面板，sidebar 持有按钮并按 list metadata 解析 label。
+- 注册轴：`id`（string，必填；list 相同 id 在相同 priority 冲突）、`order`（number，升序，默认 0）、`label`（string | () => string；宿主投影为可见文本/可访问名/折叠 tooltip，locale thunk 每次投影重读）。
+- ownerProps（注册的 icon 组件收到）：`{ size: number; active: boolean }`；standardProps 同其它 Slot。
+- 位置：`sidebar` 的子 Slot 声明顺序为 brand.mark → **panellist** → footer.action → toggle.badge → settings → **workspaces** → brand.name。`sidebar.workspaces` 是 panel list 的后声明兄弟，因此所有 panel row 都渲染在「工作区」分组之前；本机现有 rows：`plugins order 0`、`schedules order 10`、`dsh-context order 20`。
+- 渲染（`dsh-client-ui-sidebar/lib/client.js` 只读）：`PanelRow` 用 `usePanelInfo(info => info.activePanelId === id)` 取选中、`aria-label={label}`、`aria-current`、`onClick: selectPanel(id)`；icon 以 `renderSlot('sidebar.panellist', { size: wide ? 16 : 18, active }, { only: id })` 渲染；label 仅在展开时可见；折叠态为 36×36 图标行 + tooltip。
+- 语义结论：注册 `{ name:'sidebar.panellist', id:'dsh-video', order:30, label: () => t('nav.label'), locale }` 精确落在「上下文洞察」之后、「工作区」之前，无需 DOM/overlay；`id` 对应 `main` key，二者必须共同存在（面板先注册、入口后注册，失败整对回滚）。
+- 面板可见文案与生命周期细节见 `P0-005-sidebar-contract.md`；真实页面位置/主题/键盘等仍需安装新包后验收。

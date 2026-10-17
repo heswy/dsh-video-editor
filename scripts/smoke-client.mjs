@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Local smoke test for the dsh-video Client half.
+ * Local smoke test for the dsh-video Client half (P0-005 sidebar entry).
  *
  * Executes the real `client.js` in a Node VM with a minimal fake Slot runtime and
  * a minimal React-compatible hook shim. The fake runtime models the verified
@@ -9,16 +9,20 @@
  *   - `ctx.slots.inject(key, callback)` WAITS while the slot is undeclared and
  *     runs the callback on every declaration lifetime (no throw for "not yet");
  *   - a collapsed declaration disposes the effect (and its registrations);
- *   - `ctx.slots.entries()` is the live occupant list used for conflict checks.
+ *   - `ctx.slots.entries()` is the live occupant list used for conflict checks;
+ *   - `main` is keyed, `sidebar.panellist` is a list keyed by `id` (0.2.0-rc.2
+ *     source: ui-slots registers one cell per list id at one priority);
+ *   - a sidebar row points at the matching `main` id, so both must be an atomic
+ *     pair: the panel first, the entry only after it, and both released together.
  *
- * Covered here: registration shape, declaration-bound entry lifecycle (R1),
- * navigation, activePanel-derived selection, presentation hint start/end and
- * interruption logic (R2, no real animation), preference persistence,
- * corruption/write failures, conflicts and disposal.
+ * Covered here: registration shape, the panel -> sidebar atomic lifecycle under
+ * late/repeated/collapsed declarations, failure rollback, coexistence with the
+ * shipped rows, unload fallback without stealing another panel, restrained empty
+ * state, display-menu semantics, preference persistence and corruption safety,
+ * and the sidebar icon owner-props contract.
  *
  * Not covered / not claimed: real browser rendering, CSS animation playback,
- * layout, host activation, or any install-time verification. Those stay in
- * P0-002's post-install checklist.
+ * layout, the exact host row pixels, installation or any live host verification.
  *
  * Run: node scripts/smoke-client.mjs
  */
@@ -31,7 +35,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const CLIENT_SOURCE = readFileSync(join(ROOT, 'client.js'), 'utf8');
 const PREFS_KEY = 'dsh-video.ui.v1';
 const PANEL_ID = 'dsh-video';
-const LEADING_SLOT = 'conversation.header.leading';
+const SIDEBAR_SLOT = 'sidebar.panellist';
 
 const passes = [];
 const failures = [];
@@ -124,6 +128,25 @@ function createReact() {
       runtime();
       return getSnapshot();
     },
+    renderInteractive(component, props) {
+      const scope = { hooks: {}, hookIndex: 0, effects: [] };
+      let currentTree = null;
+      function renderOnce() {
+        scope.hookIndex = 0;
+        scope.effects = [];
+        const previous = currentRuntime;
+        currentRuntime = scope;
+        let rendered;
+        try {
+          rendered = component(props);
+        } finally {
+          currentRuntime = previous;
+        }
+        currentTree = renderNode(rendered, { effects: [], cleanups: [] });
+        return currentTree;
+      }
+      return { render: renderOnce, rerender: renderOnce, tree: () => currentTree };
+    },
     render(element) {
       const context = { effects: [], cleanups: [] };
       const tree = renderNode(element, context);
@@ -198,13 +221,13 @@ function createMemoryStorage(initial, behavior) {
 function createFakeEnvironment(options) {
   const config = options || {};
   const declared = {};
-  const initialDeclared = Object.assign({ main: 'keyed', [LEADING_SLOT]: 'single' }, config.declaredSlots || {});
+  const initialDeclared = Object.assign({ main: 'keyed', [SIDEBAR_SLOT]: 'list' }, config.declaredSlots || {});
   for (const [slot, kind] of Object.entries(initialDeclared)) {
     if (kind !== false) declared[slot] = kind;
   }
   const entriesBySlot = {
     main: (config.mainOccupants || []).slice(),
-    [LEADING_SLOT]: (config.leadingOccupants || []).slice(),
+    [SIDEBAR_SLOT]: (config.sidebarOccupants || []).slice(),
   };
   const events = {
     registrations: [],
@@ -216,7 +239,13 @@ function createFakeEnvironment(options) {
     effectDisposers: [],
   };
   let activePanelId = config.activePanelId === undefined ? null : config.activePanelId;
+  let currentLocale = config.locale === undefined ? 'zh' : config.locale;
   const controllersBySlot = new Map();
+
+  function entriesFor(slot) {
+    if (entriesBySlot[slot] === undefined) entriesBySlot[slot] = [];
+    return entriesBySlot[slot];
+  }
 
   function activateController(controller) {
     controller.running = true;
@@ -245,7 +274,7 @@ function createFakeEnvironment(options) {
   const slots = {
     entries(slot) {
       if (config.entriesUnavailable) throw new Error('entries unavailable by test');
-      return (entriesBySlot[slot] || []).slice();
+      return entriesFor(slot).slice();
     },
     spec(slot) {
       return declared[slot] === undefined ? undefined : { kind: declared[slot] };
@@ -277,7 +306,7 @@ function createFakeEnvironment(options) {
       if (config.registerThrows && config.registerThrows[registration.name]) {
         throw new Error(`registration blocked for "${registration.name}" by test`);
       }
-      const list = entriesBySlot[registration.name] || (entriesBySlot[registration.name] = []);
+      const list = entriesFor(registration.name);
       if (kind === 'single' && list.length > 0) {
         throw new Error(`single slot "${registration.name}" already has a registration`);
       }
@@ -285,6 +314,12 @@ function createFakeEnvironment(options) {
         if (registration.key === undefined) throw new Error(`keyed slot "${registration.name}" requires key`);
         if (list.some((entry) => entry.options.key === registration.key)) {
           throw new Error(`keyed slot "${registration.name}" already has key "${registration.key}"`);
+        }
+      }
+      if (kind === 'list') {
+        if (registration.id === undefined) throw new Error(`list slot "${registration.name}" requires an id`);
+        if (list.some((entry) => entry.options.id === registration.id && (entry.options.priority || 0) === (registration.priority || 0))) {
+          throw new Error(`list slot "${registration.name}" already has an entry with id "${registration.id}"`);
         }
       }
       const record = { options: Object.assign({}, registration), component, live: true };
@@ -311,16 +346,14 @@ function createFakeEnvironment(options) {
 
   function declareSlot(slot, kind) {
     if (declared[slot] !== undefined) return;
-    declared[slot] = kind || (slot === 'main' ? 'keyed' : 'single');
+    declared[slot] = kind || (slot === 'main' ? 'keyed' : slot === SIDEBAR_SLOT ? 'list' : 'single');
     runWaitingControllers(slot);
   }
 
   function collapseSlot(slot) {
     if (declared[slot] === undefined) return;
     delete declared[slot];
-    for (const controller of controllersBySlot.get(slot) || []) {
-      deactivateController(controller);
-    }
+    for (const controller of controllersBySlot.get(slot) || []) deactivateController(controller);
   }
 
   const ctx = {
@@ -342,11 +375,27 @@ function createFakeEnvironment(options) {
         events.locale.push({ ns, dicts });
         return function unregisterLocale() {};
       },
+      bind(ns) {
+        return function resolve(key) {
+          const record = [...events.locale].reverse().find((entry) => entry.ns === ns);
+          const dictionary = record && record.dicts ? record.dicts[currentLocale] || record.dicts.zh : null;
+          return dictionary && typeof dictionary[key] === 'string' ? dictionary[key] : key;
+        };
+      },
+      getSnapshot() {
+        return { locale: currentLocale, revision: 0 };
+      },
+      subscribe() {
+        return function unsubscribe() {};
+      },
     },
     layout: {
       panelInfo: {
         getSnapshot() {
           return { activePanelId };
+        },
+        subscribe() {
+          return function unsubscribe() {};
         },
       },
       selectPanel(panelId) {
@@ -370,6 +419,9 @@ function createFakeEnvironment(options) {
     },
     getActivePanel() {
       return activePanelId;
+    },
+    setLocale(locale) {
+      currentLocale = locale;
     },
     disposeAllInjections() {
       for (const controller of events.injections.slice().reverse()) disposeController(controller);
@@ -446,12 +498,6 @@ function loadClientWithStorage(storage, options) {
   return loaded;
 }
 
-function activePanelHook(env) {
-  return function usePanelInfo(selector) {
-    return selector({ activePanelId: env.getActivePanel() });
-  };
-}
-
 function mount(react, component, props) {
   return react.render(react.createElement(component, props)).tree;
 }
@@ -460,27 +506,41 @@ function registrationOf(env, slotName) {
   return env.events.registrations.find((entry) => entry.options.name === slotName);
 }
 
-function mountSwitch(loaded, env, slotName) {
-  const registration = registrationOf(env, slotName);
-  assert(registration !== undefined, `no registration on ${slotName}`);
-  const props = Object.assign(
-    { t: translate, usePanelInfo: activePanelHook(env) },
-    registration.options.inject()
-  );
-  return mount(loaded.react, registration.component, props);
+function dictionaryOf(env, locale) {
+  const record = env.events.locale[0];
+  return record && record.dicts ? record.dicts[locale || 'zh'] || {} : {};
 }
 
-function modeButtons(tree) {
-  const buttons = findAll(tree, (node) => node.type === 'button' && node.props['data-mode'] !== undefined);
-  return {
-    all: buttons,
-    normal: buttons.find((button) => button.props['data-mode'] === 'normal'),
-    video: buttons.find((button) => button.props['data-mode'] === 'video'),
+function translateFor(env, locale) {
+  const dictionary = dictionaryOf(env, locale);
+  return function t(key) {
+    return typeof dictionary[key] === 'string' ? dictionary[key] : key;
   };
 }
 
-function capsule(tree) {
-  return find(tree, (node) => node.props && node.props.className === 'dv-mode');
+function mountPanel(loaded, env) {
+  const registration = registrationOf(env, 'main');
+  assert(registration !== undefined, 'main panel is not registered');
+  const props = Object.assign({ t: translateFor(env) }, registration.options.inject());
+  return mount(loaded.react, registration.component, props);
+}
+
+function mountInteractivePanel(loaded, env) {
+  const registration = registrationOf(env, 'main');
+  assert(registration !== undefined, 'main panel is not registered');
+  const props = Object.assign({ t: translateFor(env) }, registration.options.inject());
+  return loaded.react.renderInteractive(registration.component, props);
+}
+
+function mountSidebarIcon(loaded, env, ownerProps) {
+  const registration = registrationOf(env, SIDEBAR_SLOT);
+  assert(registration !== undefined, 'sidebar entry is not registered');
+  const props = Object.assign({ size: 16, active: false }, ownerProps || {});
+  return mount(loaded.react, registration.component, props);
+}
+
+function sidebarEntryOf(env) {
+  return registrationOf(env, SIDEBAR_SLOT);
 }
 
 function navigationOf(env) {
@@ -498,6 +558,30 @@ function activationErrors(env) {
 function liveRegistrations(env) {
   return env.events.registrations.filter((entry) => entry.live);
 }
+
+function liveMain(env) {
+  return liveRegistrations(env).filter((entry) => entry.options.name === 'main');
+}
+
+function liveSidebar(env) {
+  return liveRegistrations(env).filter((entry) => entry.options.name === SIDEBAR_SLOT);
+}
+
+function findNode(tree, predicate) {
+  return find(tree, predicate);
+}
+
+function findNodes(tree, predicate) {
+  return findAll(tree, predicate);
+}
+
+function panelButton(tree, className) {
+  return findNode(tree, (node) => node.type === 'button' && node.props && node.props.className === className);
+}
+
+function panelMenuItem(tree) {
+  return findNode(tree, (node) => node.type === 'button' && node.props && node.props.role === 'menuitemcheckbox');
+}
 //#endregion
 
 //#region tests: module + registration baseline
@@ -506,175 +590,295 @@ test('module registers one browser module with the dsh-video id and factory', ()
   assert(loaded.registration.id === PANEL_ID, `module id is "${loaded.registration.id}"`);
   assert(typeof loaded.registration.factory === 'function', 'factory missing');
   assert(typeof loaded.exports.apply === 'function', 'plugin body lacks apply()');
-  assert(Array.isArray(loaded.exports.inject), 'plugin body lacks inject array');
   assert(
     JSON.stringify(loaded.exports.inject) === JSON.stringify(['slots', 'layout', 'locale']),
     `unexpected inject list: ${JSON.stringify(loaded.exports.inject)}`
   );
 });
 
-test('apply registers the video main panel and the additive leading capsule', () => {
+test('apply registers the video main panel and one native sidebar entry', () => {
   const loaded = loadClient();
   const env = createFakeEnvironment();
   loaded.exports.apply(env.ctx);
   const main = registrationOf(env, 'main');
-  const leading = registrationOf(env, LEADING_SLOT);
   assert(main !== undefined, 'main panel was not registered');
   assert(main.options.key === PANEL_ID, `main key is "${main.options.key}"`);
-  assert(leading !== undefined, 'leading capsule was not registered');
-  assert(leading.options.locale === 'dshVideo', 'leading capsule must bind the plugin locale namespace');
+  const entry = sidebarEntryOf(env);
+  assert(entry !== undefined, 'sidebar entry was not registered');
+  assert(entry.options.id === PANEL_ID, 'sidebar id must address the same main panel');
+  assert(entry.options.order === 30, `sidebar order is ${entry.options.order}`);
+  assert(typeof entry.options.label === 'function', 'sidebar label must be a locale-aware thunk');
+  assert(entry.options.label() === 'Vedio Editor', `sidebar label is "${entry.options.label()}"`);
   assert(env.events.locale.length === 1 && env.events.locale[0].ns === 'dshVideo', 'locale dictionaries not registered');
+  assert(registrationOf(env, 'conversation.header.leading') === undefined, 'the old top capsule seat must not be used');
   assert(env.events.errors.length === 0, `unexpected activation errors: ${activationErrors(env).join('; ')}`);
 });
 
-test('navigation goes through the host layout service with video/null', () => {
+test('sidebar label keeps the exact user spelling in both locales', () => {
   const loaded = loadClient();
   const env = createFakeEnvironment();
   loaded.exports.apply(env.ctx);
-  const nav = navigationOf(env);
-  nav.onSelectMode('video');
-  nav.onSelectMode('normal');
-  assert(
-    JSON.stringify(env.events.panelCalls) === JSON.stringify([PANEL_ID, null]),
-    `panel calls: ${JSON.stringify(env.events.panelCalls)}`
-  );
+  const entry = sidebarEntryOf(env);
+  assert(entry.options.label() === 'Vedio Editor', 'zh label must be exactly Vedio Editor');
+  env.setLocale('en');
+  assert(entry.options.label() === 'Vedio Editor', 'en label must keep the exact user spelling');
+  assert(dictionaryOf(env, 'zh')['nav.label'] === 'Vedio Editor', 'zh dictionary label missing');
+  assert(dictionaryOf(env, 'en')['nav.label'] === 'Vedio Editor', 'en dictionary label missing');
 });
 
-test('navigation failures are contained and reported once', () => {
-  const loaded = loadClient();
-  const env = createFakeEnvironment({ selectPanelThrows: true });
-  loaded.exports.apply(env.ctx);
-  const nav = navigationOf(env);
-  let threw = false;
-  try {
-    nav.onSelectMode('video');
-  } catch (_error) {
-    threw = true;
-  }
-  assert(threw === false, 'navigation failure escaped into the UI');
-  assert(activationErrors(env).some((message) => message.includes('navigation-failed')), 'navigation failure was not reported');
-});
-
-test('mode capsule derives selection from the host active panel', () => {
+test('sidebar icon honours the host owner props and native line style', () => {
   const loaded = loadClient();
   const env = createFakeEnvironment();
   loaded.exports.apply(env.ctx);
-  const tree = mountSwitch(loaded, env, LEADING_SLOT);
-  const buttons = modeButtons(tree);
-  assert(buttons.all.length === 2, `expected two mode buttons, got ${buttons.all.length}`);
-  assert(buttons.normal.props['aria-pressed'] === 'true', 'normal segment should be pressed while conversation is active');
-  assert(buttons.video.props['aria-pressed'] === 'false', 'video segment must not be pressed while conversation is active');
-  buttons.video.props.onClick();
-  assert(env.events.panelCalls[env.events.panelCalls.length - 1] === PANEL_ID, 'video segment did not navigate to the video panel');
-  const style = find(tree, (node) => node.type === 'style');
-  assert(style !== null && typeof style.props.dangerouslySetInnerHTML.__html === 'string', 'component-scoped styles were not rendered');
-  assert(style.props['data-dsh-video'] === 'styles', 'style tag is not marked for this plugin');
-});
-
-test('video workspace shows the same capsule with video pressed and no fake controls', () => {
-  const loaded = loadClient();
-  const env = createFakeEnvironment();
-  loaded.exports.apply(env.ctx);
-  env.setActivePanel(PANEL_ID);
-  const tree = mountSwitch(loaded, env, 'main');
-  const buttons = modeButtons(tree);
-  assert(buttons.video.props['aria-pressed'] === 'true', 'video segment should be pressed inside the video panel');
-  const toggles = findAll(tree, (node) => node.type === 'button' && node.props.role === 'switch');
-  assert(toggles.length === 1, 'expected exactly one simplified-effects switch');
-  assert(toggles[0].props['aria-checked'] === 'false', 'simplified effects should default to off');
-  const back = findAll(tree, (node) => node.type === 'button').find((button) => textOf(button).includes('video.empty.back'));
-  assert(back !== undefined, 'working back-to-normal entry is missing');
-  back.props.onClick();
-  assert(env.events.panelCalls[env.events.panelCalls.length - 1] === null, 'back entry did not return to the conversation');
-  const text = textOf(tree);
-  for (const forbidden of ['timeline', 'export', 'create']) {
-    assert(text.includes(forbidden) === false, `empty workspace rendered a fake "${forbidden}" affordance`);
-  }
+  const tree = mountSidebarIcon(loaded, env, { size: 18, active: true });
+  const svg = findNode(tree, (node) => node.type === 'svg');
+  assert(svg !== null, 'sidebar icon did not render an svg');
+  assert(svg.props.width === 18 && svg.props.height === 18, 'icon must use the host-provided square edge');
+  assert(svg.props.viewBox === '0 0 16 16', 'icon must use the host 16-unit grid');
+  assert(svg.props.stroke === 'currentColor', 'icon must follow the row colour with currentColor');
+  assert(svg.props['aria-hidden'] === 'true', 'icon is decorative; the host row owns the accessible name');
+  const defaultIcon = mountSidebarIcon(loaded, env);
+  const defaultSvg = findNode(defaultIcon, (node) => node.type === 'svg');
+  assert(defaultSvg.props.width === 16, 'icon must fall back to the expanded 16px edge');
 });
 //#endregion
 
-//#region tests: R1 declaration-bound entry lifecycle
-test('R1: main undeclared -> no capsule; declaration -> both mount points appear', () => {
+//#region tests: panel content + display options
+test('panel renders exactly one empty sentence, one return action and one display menu', () => {
+  const loaded = loadClient();
+  const env = createFakeEnvironment();
+  loaded.exports.apply(env.ctx);
+  const tree = mountPanel(loaded, env);
+  const root = findNode(tree, (node) => node.props && node.props.className === 'dv-root');
+  assert(root !== null, 'video panel root missing');
+  assert(root.props['data-simplified'] === 'false', 'simplified effects should default to off');
+  const empty = findNode(tree, (node) => node.props && node.props.className === 'dv-empty');
+  assert(empty !== null, 'empty state missing');
+  assert(textOf(empty) === '尚无工程', `empty state is "${textOf(empty)}"`);
+  const back = panelButton(tree, 'dv-back');
+  assert(back !== null, 'return action missing');
+  assert(back.props['aria-label'] === '返回对话', 'return action needs an accessible name');
+  assert(textOf(back) === '返回对话', 'return action label missing');
+  const display = findNode(tree, (node) => node.type === 'button' && node.props && node.props.className === 'dv-icon-button');
+  assert(display !== null, 'display options trigger missing');
+  assert(display.props['aria-label'] === '显示选项', 'display options trigger needs an accessible name');
+  assert(panelMenuItem(tree) === null, 'display menu must start closed');
+  const text = textOf(tree);
+  for (const forbidden of ['空工作区', '从一个想法', '创建工程', '导出', '时间线', '预览', 'Vedio Editor']) {
+    assert(text.includes(forbidden) === false, `panel still renders removed content "${forbidden}"`);
+  }
+});
+
+test('return action leaves the video panel through the host layout service', () => {
+  const loaded = loadClient();
+  const env = createFakeEnvironment({ activePanelId: PANEL_ID });
+  loaded.exports.apply(env.ctx);
+  const interactive = mountInteractivePanel(loaded, env);
+  let tree = interactive.render();
+  const back = panelButton(tree, 'dv-back');
+  back.props.onClick();
+  assert(env.events.panelCalls[env.events.panelCalls.length - 1] === null, 'return action did not ask for the conversation');
+  tree = interactive.rerender();
+  assert(findNode(tree, (node) => node.props && node.props.role === 'alert') === null, 'successful return must not show an error');
+});
+
+test('failed return is surfaced in place and reported once', () => {
+  const loaded = loadClient();
+  const env = createFakeEnvironment({ activePanelId: PANEL_ID, selectPanelThrows: true });
+  loaded.exports.apply(env.ctx);
+  const interactive = mountInteractivePanel(loaded, env);
+  let tree = interactive.render();
+  panelButton(tree, 'dv-back').props.onClick();
+  tree = interactive.rerender();
+  const alert = findNode(tree, (node) => node.props && node.props.role === 'alert');
+  assert(alert !== null, 'failed return must render an in-place error');
+  assert(textOf(alert) === '返回对话失败，请重试。', `error text is "${textOf(alert)}"`);
+  assert(
+    activationErrors(env).filter((message) => message.includes('navigation-failed')).length === 1,
+    'navigation failure must be reported exactly once'
+  );
+});
+
+test('display options menu toggles and persists the reduced-effects preference', () => {
+  const storage = createMemoryStorage();
+  const loaded = loadClientWithStorage(storage);
+  const env = createFakeEnvironment();
+  loaded.exports.apply(env.ctx);
+  const interactive = mountInteractivePanel(loaded, env);
+  let tree = interactive.render();
+  const display = findNode(tree, (node) => node.type === 'button' && node.props.className === 'dv-icon-button');
+  assert(display.props['aria-expanded'] === 'false', 'menu must start collapsed');
+  display.props.onClick();
+  tree = interactive.rerender();
+  const item = panelMenuItem(tree);
+  assert(item !== null, 'display menu did not open');
+  assert(item.props['aria-checked'] === 'false', 'simplified effects should default to off');
+  const expanded = findNode(tree, (node) => node.type === 'button' && node.props.className === 'dv-icon-button');
+  assert(expanded.props['aria-expanded'] === 'true', 'menu trigger did not expose the open state');
+  item.props.onClick();
+  tree = interactive.rerender();
+  const root = findNode(tree, (node) => node.props && node.props.className === 'dv-root');
+  assert(root.props['data-simplified'] === 'true', 'root did not apply the simplified state');
+  const checked = panelMenuItem(tree);
+  assert(checked.props['aria-checked'] === 'true', 'display option did not expose its checked state');
+  const stored = storage.map.get(PREFS_KEY);
+  assert(typeof stored === 'string', 'preference was not persisted');
+  const parsed = JSON.parse(stored);
+  assert(parsed.version === 1 && parsed.simplifiedEffects === true, 'stored preference payload is wrong');
+  // Escape closes the menu again without leaving the panel.
+  const panelRoot = findNode(tree, (node) => node.props && node.props.className === 'dv-root');
+  panelRoot.props.onKeyDown({ key: 'Escape', preventDefault() {} });
+  tree = interactive.rerender();
+  assert(panelMenuItem(tree) === null, 'Escape did not close the display menu');
+});
+
+test('preferences are restored on a fresh module load', () => {
+  const storage = createMemoryStorage({ [PREFS_KEY]: JSON.stringify({ version: 1, simplifiedEffects: true }) });
+  const loaded = loadClientWithStorage(storage);
+  const env = createFakeEnvironment();
+  loaded.exports.apply(env.ctx);
+  const tree = mountPanel(loaded, env);
+  const root = findNode(tree, (node) => node.props && node.props.className === 'dv-root');
+  assert(root.props['data-simplified'] === 'true', 'stored preference was not restored');
+});
+
+test('corrupt, unknown-version and wrong-shape preferences fall back safely', () => {
+  const cases = [
+    ['invalid JSON', '{"version":1,'],
+    ['old version', JSON.stringify({ version: 0, simplifiedEffects: true })],
+    ['unknown version', JSON.stringify({ version: 99, simplifiedEffects: true })],
+    ['null payload', 'null'],
+    ['array payload', '[]'],
+    ['missing field', JSON.stringify({ version: 1 })],
+  ];
+  for (const [label, raw] of cases) {
+    const storage = createMemoryStorage({ [PREFS_KEY]: raw });
+    const loaded = loadClientWithStorage(storage);
+    const env = createFakeEnvironment();
+    loaded.exports.apply(env.ctx);
+    const tree = mountPanel(loaded, env);
+    const root = findNode(tree, (node) => node.props && node.props.className === 'dv-root');
+    assert(root.props['data-simplified'] === 'false', `${label}: corrupt preference was not rejected`);
+  }
+});
+
+test('storage read/write exceptions do not break activation or the menu', () => {
+  const storage = createMemoryStorage({}, { getThrows: true, setThrows: true });
+  const loaded = loadClientWithStorage(storage);
+  const env = createFakeEnvironment();
+  let threw = false;
+  try {
+    loaded.exports.apply(env.ctx);
+  } catch (_error) {
+    threw = true;
+  }
+  assert(threw === false, 'apply threw when storage was unavailable');
+  const interactive = mountInteractivePanel(loaded, env);
+  let tree = interactive.render();
+  findNode(tree, (node) => node.type === 'button' && node.props.className === 'dv-icon-button').props.onClick();
+  tree = interactive.rerender();
+  try {
+    panelMenuItem(tree).props.onClick();
+    tree = interactive.rerender();
+  } catch (_error) {
+    threw = true;
+  }
+  assert(threw === false, 'display option threw when the storage write failed');
+  const root = findNode(tree, (node) => node.props && node.props.className === 'dv-root');
+  assert(root.props['data-simplified'] === 'true', 'in-memory value was lost after a failed write');
+  assert(activationErrors(env).some((message) => message.includes('prefs-')), 'storage failures were not reported');
+});
+//#endregion
+
+//#region tests: sidebar/main atomic lifecycle
+test('sidebar declared late: the pair mounts only together', () => {
+  const loaded = loadClient();
+  const env = createFakeEnvironment({ declaredSlots: { [SIDEBAR_SLOT]: false } });
+  loaded.exports.apply(env.ctx);
+  assert(liveRegistrations(env).length === 0, 'nothing may register before the sidebar entry exists');
+  assert(registrationOf(env, 'main') === undefined, 'main panel must not exist before its sidebar entry');
+  env.declareSlot(SIDEBAR_SLOT, 'list');
+  assert(liveMain(env).length === 1, 'main panel missing after sidebar declaration');
+  assert(liveSidebar(env).length === 1, 'sidebar entry missing after declaration');
+  const nav = navigationOf(env);
+  nav.onBack();
+  assert(env.events.panelCalls[env.events.panelCalls.length - 1] === null, 'navigation unavailable after late mount');
+});
+
+test('main declared late: the pair mounts only together', () => {
   const loaded = loadClient();
   const env = createFakeEnvironment({ declaredSlots: { main: false } });
   loaded.exports.apply(env.ctx);
-  assert(liveRegistrations(env).length === 0, `expected no visible entry before main exists, got ${liveRegistrations(env).length}`);
-  assert(registrationOf(env, LEADING_SLOT) === undefined, 'normal-mode capsule must not exist before the video panel does');
+  assert(liveRegistrations(env).length === 0, 'nothing may register before the main declaration exists');
+  assert(registrationOf(env, SIDEBAR_SLOT) === undefined, 'sidebar entry must not exist before its panel');
   env.declareSlot('main', 'keyed');
-  const live = liveRegistrations(env);
-  assert(live.length === 2, `expected main + capsule after declaration, got ${live.length}`);
-  assert(registrationOf(env, 'main') !== undefined, 'main panel missing after declaration');
-  assert(registrationOf(env, LEADING_SLOT) !== undefined, 'capsule missing after declaration');
+  assert(liveMain(env).length === 1, 'main panel missing after declaration');
+  assert(liveSidebar(env).length === 1, 'sidebar entry missing after declaration');
 });
 
-test('R1: collapsing main retracts the capsule; re-declaration restores both', () => {
+test('the new sidebar row coexists with the shipped panel rows', () => {
   const loaded = loadClient();
-  const env = createFakeEnvironment();
+  const shipped = [
+    { options: { id: 'plugins', order: 0, label: 'plugins' } },
+    { options: { id: 'schedules', order: 10, label: 'schedules' } },
+    { options: { id: 'dsh-context', order: 20, label: 'context' } },
+  ];
+  const env = createFakeEnvironment({ sidebarOccupants: shipped });
   loaded.exports.apply(env.ctx);
-  assert(liveRegistrations(env).length === 2, 'baseline registrations missing');
-  env.collapseSlot('main');
-  assert(liveRegistrations(env).length === 0, `collapsing main left ${liveRegistrations(env).length} live registration(s)`);
-  env.declareSlot('main', 'keyed');
-  assert(liveRegistrations(env).length === 2, `re-declaration did not restore both mount points (got ${liveRegistrations(env).length})`);
-  const nav = navigationOf(env);
-  nav.onSelectMode('video');
-  assert(env.events.panelCalls[env.events.panelCalls.length - 1] === PANEL_ID, 'navigation unavailable after re-declaration');
+  const entries = env.entriesBySlot[SIDEBAR_SLOT];
+  assert(entries.length === 4, `expected 3 shipped rows + ours, got ${entries.length}`);
+  assert(entries.indexOf(shipped[0]) >= 0 && entries.indexOf(shipped[2]) >= 0, 'shipped rows were replaced');
+  const ours = entries.find((entry) => entry.options && entry.options.id === PANEL_ID);
+  assert(ours !== undefined, 'our sidebar row is missing');
+  assert(ours.options.order === 30, 'our row must sort after the shipped rows');
+  assert(env.events.errors.length === 0, `unexpected activation errors: ${activationErrors(env).join('; ')}`);
 });
 
-test('R1: re-declaration re-checks the main key and retracts everything on conflict', () => {
+test('an occupied sidebar id refuses the whole pair', () => {
   const loaded = loadClient();
-  const env = createFakeEnvironment();
+  const env = createFakeEnvironment({ sidebarOccupants: [{ options: { id: PANEL_ID, order: 30 } }] });
   loaded.exports.apply(env.ctx);
-  env.collapseSlot('main');
-  env.entriesBySlot.main.push({ options: { key: PANEL_ID } });
-  env.declareSlot('main', 'keyed');
-  assert(liveRegistrations(env).length === 0, 'conflicting re-declaration left registrations behind');
+  assert(liveRegistrations(env).length === 0, 'a conflicting sidebar id left registrations behind');
+  assert(registrationOf(env, 'main') === undefined, 'video panel was registered without a usable entry');
   assert(
-    activationErrors(env).some((message) => message.includes('main-key-conflict')),
-    're-declaration conflict was not reported'
+    activationErrors(env).some((message) => message.includes('sidebar-entry-conflict')),
+    'sidebar id conflict was not reported'
+  );
+  assert(
+    activationErrors(env).some((message) => message.includes('sidebar-entry-unavailable')),
+    'missing reachable entry was not diagnosed'
   );
 });
 
-test('R1: main registration failure at declaration time exposes no entry', () => {
-  const loaded = loadClient();
-  const env = createFakeEnvironment({ declaredSlots: { main: false }, registerThrows: { main: true } });
-  loaded.exports.apply(env.ctx);
-  env.declareSlot('main', 'keyed');
-  assert(liveRegistrations(env).length === 0, 'failed main registration left an entry behind');
-  assert(
-    activationErrors(env).some((message) => message.includes('main-register-failed')),
-    'main registration failure was not reported'
-  );
-});
-
-test('R1: failed capsule registration retracts the video panel (no unreachable panel)', () => {
-  const loaded = loadClient();
-  const env = createFakeEnvironment({ declaredSlots: { main: false }, registerThrows: { [LEADING_SLOT]: true } });
-  loaded.exports.apply(env.ctx);
-  env.declareSlot('main', 'keyed');
-  assert(liveRegistrations(env).length === 0, 'a video panel without its capsule was left registered');
-  const errors = activationErrors(env);
-  assert(errors.some((message) => message.includes('leading-register-failed')), 'capsule registration failure was not reported');
-  assert(errors.some((message) => message.includes('leading-entry-unavailable')), 'missing entry was not diagnosed');
-});
-
-test('occupied leading seat refuses to mount anything (no dead entry, no shadowing)', () => {
-  const loaded = loadClient();
-  const env = createFakeEnvironment({ leadingOccupants: [{ options: { priority: 0 } }] });
-  loaded.exports.apply(env.ctx);
-  assert(liveRegistrations(env).length === 0, `expected no registrations, got ${liveRegistrations(env).length}`);
-  assert(activationErrors(env).some((message) => message.includes('leading-seat-conflict')), 'leading conflict was not reported');
-});
-
-test('occupied dsh-video main key refuses to mount anything', () => {
+test('an occupied main key refuses the whole pair', () => {
   const loaded = loadClient();
   const env = createFakeEnvironment({ mainOccupants: [{ options: { key: PANEL_ID } }] });
   loaded.exports.apply(env.ctx);
-  assert(liveRegistrations(env).length === 0, `expected no registrations, got ${liveRegistrations(env).length}`);
+  assert(liveRegistrations(env).length === 0, 'expected no registrations');
   assert(activationErrors(env).some((message) => message.includes('main-key-conflict')), 'main key conflict was not reported');
 });
 
-test('slot enumeration unavailable refuses to mount without shadowing (reported, no throw)', () => {
+test('a sidebar registration failure rolls the video panel back', () => {
+  const loaded = loadClient();
+  const env = createFakeEnvironment({ registerThrows: { [SIDEBAR_SLOT]: true } });
+  loaded.exports.apply(env.ctx);
+  assert(liveRegistrations(env).length === 0, 'a failed sidebar entry left the video panel registered');
+  assert(env.entriesBySlot.main.length === 0, 'main panel registration survived the rollback');
+  const errors = activationErrors(env);
+  assert(errors.some((message) => message.includes('sidebar-register-failed')), 'sidebar registration failure was not reported');
+  assert(errors.some((message) => message.includes('sidebar-entry-unavailable')), 'missing entry was not diagnosed');
+});
+
+test('a main registration failure leaves no sidebar entry', () => {
+  const loaded = loadClient();
+  const env = createFakeEnvironment({ registerThrows: { main: true } });
+  loaded.exports.apply(env.ctx);
+  assert(liveRegistrations(env).length === 0, 'a failed main panel left registrations behind');
+  assert(registrationOf(env, SIDEBAR_SLOT) === undefined, 'a sidebar entry was registered without its panel');
+  assert(activationErrors(env).some((message) => message.includes('main-register-failed')), 'main registration failure was not reported');
+});
+
+test('slot enumeration failure refuses to mount without throwing', () => {
   const loaded = loadClient();
   const env = createFakeEnvironment({ entriesUnavailable: true });
   let threw = false;
@@ -692,339 +896,81 @@ test('slot enumeration unavailable refuses to mount without shadowing (reported,
 });
 //#endregion
 
-test('R1/D-P0-003-1: a late free leading declaration mounts the pair only then', () => {
-  const loaded = loadClient();
-  const env = createFakeEnvironment({ declaredSlots: { [LEADING_SLOT]: false } });
-  loaded.exports.apply(env.ctx);
-  assert(liveRegistrations(env).length === 0, 'video panel must not exist before its leading entry does');
-  assert(registrationOf(env, 'main') === undefined, 'main panel was registered before the leading seat existed');
-  env.declareSlot(LEADING_SLOT, 'single');
-  const live = liveRegistrations(env);
-  assert(live.length === 2, `late free declaration did not mount the pair (got ${live.length})`);
-  assert(
-    JSON.stringify(live.map((entry) => entry.options.name)) === JSON.stringify([LEADING_SLOT, 'main']),
-    `capsule must be registered before the panel: ${JSON.stringify(live.map((entry) => entry.options.name))}`
-  );
-  const nav = navigationOf(env);
-  nav.onSelectMode('video');
-  assert(env.events.panelCalls[env.events.panelCalls.length - 1] === PANEL_ID, 'navigation unavailable after late mount');
-});
-
-test('R1/D-P0-003-1: a late leading declaration with a competitor leaves no panel and recovers later', () => {
-  const loaded = loadClient();
-  const env = createFakeEnvironment({ declaredSlots: { [LEADING_SLOT]: false } });
-  loaded.exports.apply(env.ctx);
-  assert(liveRegistrations(env).length === 0, 'video panel registered before its entry existed');
-  // Competitor claims the seat while it is being declared, before our callback registers.
-  env.entriesBySlot[LEADING_SLOT].push({ options: { priority: 0 } });
-  env.declareSlot(LEADING_SLOT, 'single');
-  assert(liveRegistrations(env).length === 0, `late conflicting declaration left ${liveRegistrations(env).length} registration(s)`);
-  assert(
-    activationErrors(env).some((message) => message.includes('leading-seat-conflict')),
-    'late conflicting declaration was not reported'
-  );
-  assert(registrationOf(env, 'main') === undefined, 'a refused late entry still registered the video panel');
-  // The competitor leaves and the seat is re-declared: the pair must recover together.
-  env.entriesBySlot[LEADING_SLOT].length = 0;
-  env.collapseSlot(LEADING_SLOT);
-  env.declareSlot(LEADING_SLOT, 'single');
-  const live = liveRegistrations(env);
-  assert(live.length === 2, `recovered declaration did not mount the pair (got ${live.length})`);
-  assert(live.filter((entry) => entry.options.name === 'main').length === 1, 'expected exactly one main registration');
-  assert(live.filter((entry) => entry.options.name === LEADING_SLOT).length === 1, 'expected exactly one capsule registration');
-});
-
-test('R1/D-P0-003-1: a failed independent re-declaration releases the mounted pair', () => {
+//#region tests: collapse, retry and unload
+test('sidebar collapse while video is selected releases the pair and returns to the conversation', () => {
   const loaded = loadClient();
   const env = createFakeEnvironment();
   loaded.exports.apply(env.ctx);
   env.setActivePanel(PANEL_ID);
   assert(liveRegistrations(env).length === 2, 'baseline pair missing');
-  env.collapseSlot(LEADING_SLOT);
-  assert(liveRegistrations(env).length === 0, `a lost leading seat left ${liveRegistrations(env).length} registration(s)`);
-  assert(
-    env.events.panelCalls[env.events.panelCalls.length - 1] === null,
-    'losing the entry while video was selected did not return the UI to the conversation'
-  );
-  // Competitor claims the re-declared seat: the panel must stay absent.
-  env.entriesBySlot[LEADING_SLOT].push({ options: { priority: 0 } });
-  env.declareSlot(LEADING_SLOT, 'single');
-  assert(liveRegistrations(env).length === 0, 'refused re-declaration left a registration behind');
-  assert(
-    activationErrors(env).some((message) => message.includes('leading-seat-conflict')),
-    'refused re-declaration was not reported'
-  );
-  // Seat becomes available again: re-declaration restores exactly one pair.
-  env.entriesBySlot[LEADING_SLOT].length = 0;
-  env.collapseSlot(LEADING_SLOT);
-  env.declareSlot(LEADING_SLOT, 'single');
-  const live = liveRegistrations(env);
-  assert(live.length === 2, `re-declaration after conflict did not restore the pair (got ${live.length})`);
-  const nav = navigationOf(env);
-  nav.onSelectMode('video');
-  assert(env.events.panelCalls[env.events.panelCalls.length - 1] === PANEL_ID, 'navigation unavailable after recovery');
+  env.collapseSlot(SIDEBAR_SLOT);
+  assert(liveRegistrations(env).length === 0, `a lost sidebar entry left ${liveRegistrations(env).length} registration(s)`);
+  assert(env.events.panelCalls[env.events.panelCalls.length - 1] === null, 'losing the entry did not return the UI to the conversation');
+  env.declareSlot(SIDEBAR_SLOT, 'list');
+  assert(liveMain(env).length === 1 && liveSidebar(env).length === 1, 'redeclaration did not restore the pair');
+  const cleanupErrors = activationErrors(env).filter((message) => message.includes('cleanup-failed'));
+  assert(cleanupErrors.length === 0, `cleanup errors after collapse: ${cleanupErrors.join('; ')}`);
 });
 
-test('R1: repeated leading re-declarations keep one pair live and clean up exactly once', () => {
+test('main collapse releases the sidebar entry; redeclaration restores the pair', () => {
+  const loaded = loadClient();
+  const env = createFakeEnvironment();
+  loaded.exports.apply(env.ctx);
+  env.setActivePanel(PANEL_ID);
+  env.collapseSlot('main');
+  assert(liveRegistrations(env).length === 0, `main collapse left ${liveRegistrations(env).length} live registration(s)`);
+  assert(env.events.panelCalls[env.events.panelCalls.length - 1] === null, 'main collapse while video was selected did not return to the conversation');
+  env.declareSlot('main', 'keyed');
+  assert(liveMain(env).length === 1 && liveSidebar(env).length === 1, 'main redeclaration did not restore the pair');
+});
+
+test('losing the entry does not steal another panel', () => {
+  const loaded = loadClient();
+  const env = createFakeEnvironment();
+  loaded.exports.apply(env.ctx);
+  env.setActivePanel('plugins');
+  env.collapseSlot(SIDEBAR_SLOT);
+  assert(liveRegistrations(env).length === 0, 'pair was not released');
+  assert(env.events.panelCalls.length === 0, 'another panel selection was disturbed');
+  env.declareSlot(SIDEBAR_SLOT, 'list');
+  assert(liveMain(env).length === 1 && liveSidebar(env).length === 1, 'pair did not recover');
+});
+
+test('repeated declaration cycles keep exactly one pair and no duplicate registration', () => {
   const loaded = loadClient();
   const env = createFakeEnvironment();
   loaded.exports.apply(env.ctx);
   for (let round = 0; round < 3; round += 1) {
-    env.collapseSlot(LEADING_SLOT);
-    assert(liveRegistrations(env).length === 0, `round ${round}: lost seat left live registrations`);
-    env.declareSlot(LEADING_SLOT, 'single');
-    const live = liveRegistrations(env);
-    assert(live.length === 2, `round ${round}: expected exactly two live registrations, got ${live.length}`);
-    assert(live.filter((entry) => entry.options.name === 'main').length === 1, `round ${round}: duplicate main registration`);
-    assert(live.filter((entry) => entry.options.name === LEADING_SLOT).length === 1, `round ${round}: duplicate capsule registration`);
+    env.collapseSlot(SIDEBAR_SLOT);
+    assert(liveRegistrations(env).length === 0, `round ${round}: lost entry left live registrations`);
+    env.declareSlot(SIDEBAR_SLOT, 'list');
+    assert(liveMain(env).length === 1, `round ${round}: expected exactly one main registration`);
+    assert(liveSidebar(env).length === 1, `round ${round}: expected exactly one sidebar entry`);
   }
   const cleanupErrors = activationErrors(env).filter((message) => message.includes('cleanup-failed'));
   assert(cleanupErrors.length === 0, `repeated lifecycle produced cleanup errors: ${cleanupErrors.join('; ')}`);
 });
 
-test('R1: collapsing main while video mode is selected releases the pair and returns to conversation', () => {
+test('unloading while video is selected removes everything and returns to the conversation', () => {
   const loaded = loadClient();
   const env = createFakeEnvironment();
   loaded.exports.apply(env.ctx);
-  env.setActivePanel(PANEL_ID);
-  assert(liveRegistrations(env).length === 2, 'baseline pair missing');
-  env.collapseSlot('main');
-  assert(liveRegistrations(env).length === 0, `main collapse left ${liveRegistrations(env).length} live registration(s)`);
-  assert(
-    env.events.panelCalls[env.events.panelCalls.length - 1] === null,
-    'main collapse while video was selected did not return the UI to the conversation'
-  );
-  env.declareSlot('main', 'keyed');
-  assert(liveRegistrations(env).length === 2, 'main re-declaration did not restore the pair');
-});
-
-test('R1: unloading while the pair is pending or refused leaves nothing live', () => {
-  const pending = loadClient();
-  const pendingEnv = createFakeEnvironment({ declaredSlots: { [LEADING_SLOT]: false } });
-  pending.exports.apply(pendingEnv.ctx);
-  assert(liveRegistrations(pendingEnv).length === 0, 'pending state unexpectedly registered something');
-  pendingEnv.disposeAllInjections();
-  pendingEnv.disposeAllEffects();
-  assert(liveRegistrations(pendingEnv).length === 0, 'disposing a pending chain left registrations behind');
-
-  const refused = loadClient();
-  const refusedEnv = createFakeEnvironment();
-  refusedEnv.entriesBySlot[LEADING_SLOT].push({ options: { priority: 0 } });
-  refused.exports.apply(refusedEnv.ctx);
-  assert(liveRegistrations(refusedEnv).length === 0, 'refused activation registered something');
-  refusedEnv.disposeAllInjections();
-  refusedEnv.disposeAllEffects();
-  assert(liveRegistrations(refusedEnv).length === 0, 'disposing a refused chain left registrations behind');
-});
-
-//#region tests: R2 presentation continuity logic
-
-
-test('R2: first mount starts at the authoritative active segment (no flash)', () => {
-  const loaded = loadClient({ queueFrames: true });
-  const env = createFakeEnvironment();
-  loaded.exports.apply(env.ctx);
-  const tree = mountSwitch(loaded, env, LEADING_SLOT);
-  const view = capsule(tree);
-  assert(view !== null, 'mode capsule missing');
-  assert(view.props['data-active'] === 'normal', 'active state must be normal on first load');
-  assert(view.props['data-thumb'] === 'normal', 'first load must not animate from a wrong segment');
-  assert(view.props['data-ready'] === 'false', 'transition should be off for the first paint');
-  loaded.flushFrames();
-});
-
-test('R2: navigation records the leaving segment once and the next mount slides from it', () => {
-  const loaded = loadClient({ queueFrames: true });
-  const env = createFakeEnvironment();
-  loaded.exports.apply(env.ctx);
-  const nav = navigationOf(env);
-  nav.onSelectMode('video');
-  assert(env.events.panelCalls[env.events.panelCalls.length - 1] === PANEL_ID, 'navigation must be immediate');
-  env.setActivePanel(PANEL_ID);
-
-  const firstVideoMount = capsule(mountSwitch(loaded, env, 'main'));
-  assert(firstVideoMount.props['data-active'] === 'video', 'authoritative active state must be video');
-  assert(firstVideoMount.props['data-thumb'] === 'normal', 'new mount must start the glass at the leaving segment');
-  assert(firstVideoMount.props['data-ready'] === 'false', 'start frame must not transition yet');
-  const pressed = modeButtons(mountSwitch(loaded, env, 'main'));
-  assert(pressed.video.props['aria-pressed'] === 'true', 'pressed state must reflect the host active panel immediately');
-
-  // The hint is consumed by exactly one mount.
-  const secondVideoMount = capsule(mountSwitch(loaded, env, 'main'));
-  assert(secondVideoMount.props['data-thumb'] === 'video', 'presentation hint was replayed by a second mount');
-  loaded.flushFrames();
-});
-
-test('R2: rapid reverse navigation keeps only the latest origin (interruptible, no backlog)', () => {
-  const loaded = loadClient({ queueFrames: true });
-  const env = createFakeEnvironment();
-  loaded.exports.apply(env.ctx);
-  const nav = navigationOf(env);
-  nav.onSelectMode('video');
-  env.setActivePanel(PANEL_ID);
-  const videoMount = capsule(mountSwitch(loaded, env, 'main'));
-  assert(videoMount.props['data-thumb'] === 'normal', 'first direction did not record normal as origin');
-
-  nav.onSelectMode('normal');
-  env.setActivePanel(null);
-  const normalMount = capsule(mountSwitch(loaded, env, LEADING_SLOT));
-  assert(normalMount.props['data-active'] === 'normal', 'authoritative active state must be normal again');
-  assert(normalMount.props['data-thumb'] === 'video', 'rapid reverse must start from the latest leaving segment');
-  loaded.flushFrames();
-});
-
-test('R2: simplified effects skip the slide entirely', () => {
-  const loaded = loadClient({ queueFrames: true });
-  const env = createFakeEnvironment();
-  loaded.exports.apply(env.ctx);
-  env.setActivePanel(PANEL_ID);
-  const workspace = mountSwitch(loaded, env, 'main');
-  const toggle = find(workspace, (node) => node.type === 'button' && node.props.role === 'switch');
-  toggle.props.onClick();
-  const nav = navigationOf(env);
-  nav.onSelectMode('normal');
-  env.setActivePanel(null);
-  const normalMount = capsule(mountSwitch(loaded, env, LEADING_SLOT));
-  assert(normalMount.props['data-thumb'] === 'normal', 'simplified effects must not replay the slide');
-  loaded.flushFrames();
-});
-
-test('R2: reduced-motion host preference skips the slide', () => {
-  const loaded = loadClient({
-    queueFrames: true,
-    matchMedia: () => ({ matches: true }),
-  });
-  const env = createFakeEnvironment();
-  loaded.exports.apply(env.ctx);
-  const nav = navigationOf(env);
-  nav.onSelectMode('video');
-  env.setActivePanel(PANEL_ID);
-  const videoMount = capsule(mountSwitch(loaded, env, 'main'));
-  assert(videoMount.props['data-thumb'] === 'video', 'reduced-motion must start at the destination segment');
-  loaded.flushFrames();
-});
-
-test('R2: a failed navigation clears the presentation hint', () => {
-  const loaded = loadClient({ queueFrames: true });
-  const env = createFakeEnvironment({ selectPanelThrows: true });
-  loaded.exports.apply(env.ctx);
-  const nav = navigationOf(env);
-  nav.onSelectMode('video');
-  env.setActivePanel(PANEL_ID);
-  const videoMount = capsule(mountSwitch(loaded, env, 'main'));
-  assert(videoMount.props['data-thumb'] === 'video', 'failed navigation must not leave a stale origin');
-  loaded.flushFrames();
-});
-//#endregion
-
-//#region tests: persistence, rendering content, disposal
-test('simplified-effects preference is versioned and restored', () => {
-  const storage = createMemoryStorage();
-  const loaded = loadClientWithStorage(storage);
-  const env = createFakeEnvironment();
-  loaded.exports.apply(env.ctx);
-  env.setActivePanel(PANEL_ID);
-  const props = Object.assign(
-    { t: translate, usePanelInfo: activePanelHook(env) },
-    registrationOf(env, 'main').options.inject()
-  );
-
-  const first = mount(loaded.react, registrationOf(env, 'main').component, props);
-  const toggle = find(first, (node) => node.type === 'button' && node.props.role === 'switch');
-  toggle.props.onClick();
-  const stored = storage.map.get(PREFS_KEY);
-  assert(typeof stored === 'string', 'preference was not persisted');
-  const parsed = JSON.parse(stored);
-  assert(parsed.version === 1, `stored payload version is ${parsed.version}`);
-  assert(parsed.simplifiedEffects === true, 'stored payload did not record the simplified-effects value');
-
-  const second = mount(loaded.react, registrationOf(env, 'main').component, props);
-  const toggleAgain = find(second, (node) => node.type === 'button' && node.props.role === 'switch');
-  assert(toggleAgain.props['aria-checked'] === 'true', 'persisted preference was not restored');
-  const root = find(second, (node) => node.props && node.props.className === 'dv-root');
-  assert(root !== null && root.props['data-simplified'] === 'true', 'video root did not apply the simplified mode');
-
-  const fresh = loadClientWithStorage(storage);
-  const freshEnv = createFakeEnvironment();
-  fresh.exports.apply(freshEnv.ctx);
-  freshEnv.setActivePanel(PANEL_ID);
-  const freshProps = Object.assign(
-    { t: translate, usePanelInfo: activePanelHook(freshEnv) },
-    registrationOf(freshEnv, 'main').options.inject()
-  );
-  const freshRendered = mount(fresh.react, registrationOf(freshEnv, 'main').component, freshProps);
-  const freshToggle = find(freshRendered, (node) => node.type === 'button' && node.props.role === 'switch');
-  assert(freshToggle.props['aria-checked'] === 'true', 'a fresh module load did not restore the persisted preference');
-});
-
-test('corrupt, unknown-version and wrong-shape preferences fall back safely', () => {
-  const cases = [
-    ['invalid JSON', '{"version":1,'],
-    ['old version', JSON.stringify({ version: 0, simplifiedEffects: true })],
-    ['unknown version', JSON.stringify({ version: 99, simplifiedEffects: true })],
-    ['null payload', 'null'],
-    ['array payload', '[]'],
-    ['missing field', JSON.stringify({ version: 1 })],
-  ];
-  for (const [label, raw] of cases) {
-    const storage = createMemoryStorage({ [PREFS_KEY]: raw });
-    const loaded = loadClientWithStorage(storage);
-    const env = createFakeEnvironment();
-    loaded.exports.apply(env.ctx);
-    env.setActivePanel(PANEL_ID);
-    const props = Object.assign(
-      { t: translate, usePanelInfo: activePanelHook(env) },
-      registrationOf(env, 'main').options.inject()
-    );
-    const rendered = mount(loaded.react, registrationOf(env, 'main').component, props);
-    const toggle = find(rendered, (node) => node.type === 'button' && node.props.role === 'switch');
-    assert(toggle.props['aria-checked'] === 'false', `${label}: corrupt preference was not rejected`);
-  }
-});
-
-test('storage read/write exceptions do not break activation or the toggle', () => {
-  const storage = createMemoryStorage({}, { getThrows: true, setThrows: true });
-  const loaded = loadClientWithStorage(storage);
-  const env = createFakeEnvironment();
-  let threw = false;
-  try {
-    loaded.exports.apply(env.ctx);
-  } catch (_error) {
-    threw = true;
-  }
-  assert(threw === false, 'apply threw when storage was unavailable');
-  env.setActivePanel(PANEL_ID);
-  const props = Object.assign(
-    { t: translate, usePanelInfo: activePanelHook(env) },
-    registrationOf(env, 'main').options.inject()
-  );
-  const rendered = mount(loaded.react, registrationOf(env, 'main').component, props);
-  const toggle = find(rendered, (node) => node.type === 'button' && node.props.role === 'switch');
-  try {
-    toggle.props.onClick();
-  } catch (_error) {
-    threw = true;
-  }
-  assert(threw === false, 'toggle threw when the storage write failed');
-  const rerendered = mount(loaded.react, registrationOf(env, 'main').component, props);
-  const toggleAgain = find(rerendered, (node) => node.type === 'button' && node.props.role === 'switch');
-  assert(toggleAgain.props['aria-checked'] === 'true', 'in-memory value was lost after a failed write');
-  assert(activationErrors(env).some((message) => message.includes('prefs-')), 'storage failures were not reported');
-});
-
-test('every registration is removed through its disposer (unload simulation)', () => {
-  const loaded = loadClient();
-  const env = createFakeEnvironment();
-  loaded.exports.apply(env.ctx);
-  assert(liveRegistrations(env).length === 2, 'expected two registrations before unload');
   env.setActivePanel(PANEL_ID);
   env.disposeAllInjections();
   env.disposeAllEffects();
   assert(liveRegistrations(env).length === 0, `registrations left live after unload: ${liveRegistrations(env).length}`);
-  assert(
-    env.events.panelCalls[env.events.panelCalls.length - 1] === null,
-    'unload while the video panel was selected did not ask the host to return to the conversation'
-  );
+  assert(env.events.panelCalls[env.events.panelCalls.length - 1] === null, 'unload while video was selected did not return to the conversation');
+});
+
+test('unloading while another panel is selected does not steal it', () => {
+  const loaded = loadClient();
+  const env = createFakeEnvironment();
+  loaded.exports.apply(env.ctx);
+  env.setActivePanel('plugins');
+  env.disposeAllInjections();
+  env.disposeAllEffects();
+  assert(liveRegistrations(env).length === 0, 'registrations left live after unload');
+  assert(env.events.panelCalls.length === 0, 'unload disturbed another selected panel');
 });
 //#endregion
 

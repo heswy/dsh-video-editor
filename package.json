@@ -1,8 +1,8 @@
 {
   "name": "dsh-video",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
-  "description": "Native normal/video mode shell and an honest empty video workspace for DeepSeek Harness.",
+  "description": "Native sidebar entry and a restrained empty video workspace for DeepSeek Harness.",
   "type": "module",
   "main": "index.js",
   "exports": {
@@ -32,9 +32,7 @@
     "client": {
       "platform": "web",
       "immediately": true,
-      "inject": [
-        "@deepseek-ai/dsh-client-ui-conversation"
-      ]
+      "inject": []
     }
   }
 }
