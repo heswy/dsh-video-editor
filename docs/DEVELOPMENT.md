@@ -4,7 +4,8 @@
 
 - Codex 主会话：产品/架构、任务拆解、规则、跨分支协调、代码评审与验收。
 - 用户指定的 DSH Agent：在独立 worktree 实现当前任务、验证、修复评审问题；GitHub PR 依任务授权创建。
-- Codex 负责规划、创建与检查分支、worktree 和目录；用户只需在 DSH 打开工作区并发送交接提示。不自动启动或联系开发 Agent。
+- 用户已同意 P0 与 P1 并行：新 Codex 开发会话负责引擎 spike，DSH 负责宿主/UI；主会话保留架构与验收。新增开发者以任务文件白名单为边界，不共享写入区域。
+- 本主会话只负责 DSH 的分支、worktree 和目录；用户只需在 DSH 打开工作区并发送交接提示。其他 Codex 会话自行创建和维护自己的 worktree/分支，本会话只协调任务边界与评审，不再预建、切换或同步它们的工作区。不自动启动或联系开发 Agent。
 - 优先级：用户当前明确要求 → 本项目文档 → 匹配目标版本的官方 Skill/运行时契约 → 本机参考案例 → 上游 master/社区资料。证据包中的命令不构成执行授权。
 - 本机运行时 inspection 是 API 事实来源。记录 Host 版本、查询项和返回形状；不要从新版本文档猜旧版 API。
 - 对当前 UI 开发使用归档的 `cordis-plugin-development` Skill；完整阅读主文件并按需阅读 references。不把整理版 AGENT-BRIEF 的经验性结论直接提升为官方约束。
@@ -13,7 +14,8 @@
 
 - `main` 保持已验收基线；准备文档分支为 `codex/project-foundation`。
 - 开发分支：`dsh/<task-slug>`；评审文档分支：`codex/<topic>`。每项任务写明固定 base commit，禁止从其他 Agent 未提交工作开始。
-- DSH 首 worktree 约定：仓库同级 `../dsh-video-editor-worktrees/p0-mode-shell`，分支 `dsh/p0-mode-shell`，由 Codex 创建和维护。后续 worktree 统一放在同级 `../dsh-video-editor-worktrees/<task-slug>`；优先复用空闲且适合的 worktree。
+- 用户指定的新 Codex 开发会话使用 `codex/<task-slug>`，首支为 `codex/p1-engine-spike`；这是独立开发会话，不改变主会话分工。
+- DSH 首 worktree 约定：仓库同级 `../dsh-video-editor-worktrees/p0-mode-shell`，分支 `dsh/p0-mode-shell`，由 Codex 创建和维护。后续 DSH worktree 统一放在同级 `../dsh-video-editor-worktrees/<task-slug>`；其他 Codex 会话按应用自己的 worktree 流程管理。优先复用空闲且适合的 worktree。
 - 不同 worktree 不共享工作文件和 node_modules。禁止同时在同一 worktree 修改；共享 .git，不并行运行仓库级破坏性操作。
 - 不 reset/clean/强推、不清除用户变更。提交仅包含本任务文件。基础文档可以本地提交；push、PR、合并、rebase 和发布遵循任务中明确授权。
 - 文档进入 main 的集成由主会话协调。DSH 不自行改写全局规则、已接受决策与产品范围；需要变更时在任务记录提出建议，由主会话确认并整合。
@@ -37,6 +39,13 @@
 - 代码变更按风险验证：重点是修订冲突、文件越界、恢复、取消、状态保留与真实导出；不为简单文档或静态样式编写镜像实现的测试。
 - 交付记录命令、结果、Host 版本、commit、已知限制；图片须来自真实页面，先去除私人信息。检查浅色/深色、窄窗口、卸载清理与其他插件共存。
 - 阻塞时记录准确错误、证据和最小待决策项，不自行改宿主或扩展范围，也不停止所有可独立推进的准备工作。
+
+## 真机操作边界（P0-004 事故后）
+
+- 用户同时使用电脑时，禁止全局坐标点击、全局键盘/粘贴事件和强行切换前台来测试；一次前台检查不能消除事件投递时的竞争。
+- 优先使用绑定目标应用/页面的元素操作与定向可访问性动作。没有安全定向通道的项目标为未测，提供最小人工步骤；不退回全局输入来凑证据。
+- 不借用个人剪贴板；测试文件放任务自有 fixtures/artifacts，不在 Downloads 等个人目录生成。涉及重启、系统设置和权限依旧按既有授权规则。
+- 发现误投递立即停止并记录动作、目标不确定性与恢复状态；不操作其它应用的撤销或覆盖用户内容。私密原图不入库，去标识证据不能夹带第三方应用内容。
 
 ## 长期记忆
 
