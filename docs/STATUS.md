@@ -54,19 +54,19 @@
 | [P2-005 预览时间点+播放 spike](tasks/P2-005-preview-time-and-player-spike.md) | 程序员 2 | 原 P0 worktree/分支 | R1 补丁复审通过；**0.2.1 已真机安装**：深色主按钮可读、画面时间输入可见；播放实现按已定优先级后置 |
 | [P2-006 取消/时序 UX 修复](tasks/P2-006-cancel-and-timing-ux-fixes.md) | 程序员 2 | 原 P0 worktree/分支 | 已下发：R2 取消不再误报「操作失败。」；R3 开始+时长越界本地校验与中文化；升 0.2.2，交付复审后重装 |
 | [P3-001 多 Scene/修订 spike](tasks/P3-001-engine-multiscene-spike.md) | 程序员 1 | 原 b4bf worktree/分支 | 已复审通过：独立复跑 12/12、MP4/ffprobe/证据核对一致；契约冻结 D020–D022；见 [复审](reviews/P3-001-review-01.md) |
-| [P3-003 多 Scene 引擎实现](tasks/P3-003-engine-multiscene-implementation.md) | 程序员 1 | 原 b4bf worktree/分支 | 已下发：工程创建/Scene 操作/inspect 扩展/素材/历史 + AI 候选合并；分 Phase A/B，可提前报 Phase A |
+| [P3-003 多 Scene 引擎实现](tasks/P3-003-engine-multiscene-implementation.md) | 程序员 1 | 原 b4bf worktree/分支 | 复审通过（本机受控）：17/17、9/9、16+1 skip；两包 0.2.0 与 `9df968c` 字节一致；15s MP4/证据核对通过；附 R1 schema 待补 |
+| [P3-004 协议 schema+预览快照](tasks/P3-004-engine-preview-snapshot.md) | 程序员 1 | 原 b4bf worktree/分支 | 已下发：补 P3 方法 schema（R1）+ `preview.snapshot/release`（画布后端）+ 两包 0.2.1；小任务 |
 
 ## 下一动作
 
-并行线：P3 主线——程序员 1 实现 P3-003 引擎（多 Scene/创建/合并/历史）；程序员 2 修 P2-006 后做编辑器画布；总调度准备契约与任务。播放/点选需求合并到实时预览画布，排在 P3-004 之前。
+并行线：程序员 1 做 P3-004（协议 schema + 预览快照）；程序员 2 的 P2-006 尚未开工/推送（分支仍 123353c）；总调度准备 P3-005 编辑器画布任务。播放/点选需求合并到实时预览画布。
 
-1. 程序员 1 按 [P3-003](tasks/P3-003-engine-multiscene-implementation.md) 实现引擎；Phase A 完成后可先 push 交审；完成后出 0.2.0 固定包与真实 15 秒证据。
-2. 程序员 2 按 [P2-006](tasks/P2-006-cancel-and-timing-ux-fixes.md) 修 R2/R3（0.2.2 包/staging/真实链）；复审后用户重装复核取消与越界提示。等用户确认 0.2.1 剩余验收项（浅色/hover/focus/disabled、编辑保存、导出取消、生命周期）。
-3. 总调度复审 P3-003 Phase A；随后给程序员 1 下发 engine snapshot 小任务（按 `projectId+revision` 返回受控快照、资产清单/hash、精确读取，不允许任意 path/URL）。
-4. 程序员 2 在 snapshot 契约落地后做「编辑器画布 v1」：sandbox iframe + 播放/暂停/seek + 点击选中 + 选中描边 + 与右侧目标联动 + 失败回退单帧（用户 2026-10-17 要求）。
-5. 画布通过后下发 P3-004（根插件创作流程/AI 上下文/冲突 UI），再接端到端 15 秒 AI 样例；P3-003 Phase B 合并可与画布并行。
-6. 真机验收剩余项（编辑保存/导出取消/生命周期/主题窄窗）随 0.2.2 重装补验。
-7. 总调度维护协调分支文档与 PR #1；保持 main 未合并；不自动 merge/发布。
+1. 程序员 1 按 [P3-004](tasks/P3-004-engine-preview-snapshot.md) 补 schema、`preview.snapshot/release`、修 registry 失败清理，出 0.2.1 包与真实证据；Phase 完成后 push 更新 PR #2。
+2. 程序员 2 仍待 P2-006 回交（0.2.2：取消不报错、时序中文提示）；之后按 P3-005 画布任务施工（依赖 P3-004 snapshot 契约）。
+3. 总调度复审 P3-004 后下发 [P3-005 编辑器画布](tasks/P3-005-editor-canvas.md)（Host 精确资产路由 + sandbox iframe + 播放/seek + 画布点选/描边/目标联动）。
+4. 画布通过后下发 P3-006（根插件创作流程/AI 上下文/冲突 UI），再接 P3-007 端到端 15 秒 AI 样例；P3-003 已完成。
+5. 真机验收剩余项（浅色/hover/focus、编辑保存、生命周期）随 0.2.2 重装补验。
+6. 总调度维护协调分支文档与 PR #1；保持 main 未合并；不自动 merge/发布。
 
 ## 阻塞与未验证
 
@@ -74,7 +74,9 @@
 
 ## 最近交接
 
-2026-10-17 0.2.1 真机验收第二轮（V2/V3）：抽帧时间点验证正常——Tool 独立抽 0.1s/0.5s/2.5s，hash `949350af…`/`0240f557…`/`efca9296…` 互不相同。发现两个客户端 UX 缺陷：**V2** 取消导出后误报红色「操作失败。」（`waitForJob` 把 `cancelled` 当失败）；**V3** 开始 4+时长 5 超出 5s 工程时透出引擎英文 `Timing extends beyond composition`（客户端缺本地校验/本地化）。已下发 [P2-006](tasks/P2-006-cancel-and-timing-ux-fixes.md) 给程序员 2（升 0.2.2，复审后重装）。
+2026-10-17 P3-003 复审通过：独立复跑 worker 17/17（11s）、real 9/9（155s，含 15s 渲染/取消）、client 16 pass + 1 opt-in skip（exit 0）；两包 0.2.0 与 `9df968c` 逐字节一致（client 3/3、worker 12/12）；`ai-project-15s.mp4` 264,650 B `87a3d418…`、ffprobe 450 帧/15.000s/1280×720/30fps、帧 `4728e847…`、4 Scene 工程快照与证据一致。契约差异（初始 1 Scene、fps=30、revise 冲突 written:false、asset 不进 undo）已冻结；**R1：protocol.schema.json 未含 P3 新方法**，必须在 P3-005 接线前补。已下发 [P3-004 引擎快照任务](tasks/P3-004-engine-preview-snapshot.md)（R1 + preview snapshot + registry 失败清理，两包升 0.2.1）；D024 记录画布 A1 架构与任务重编号。见 [P3-003 复审](reviews/P3-003-review-01.md)。
+
+2026-10-17 P2-005 R1 补丁复审通过：`bdcfd72`/`123353c` 仅改主按钮 token 与静态断言；独立复跑 97/97；0.2.1 tarball 39,702 B、17/17 与提交字节一致；新 staging `staging-54f4671-bdcfd72`（INTEGRITY `b410ec2f…`、staged Host `07442c86…`）真实链通过、demo 干净。已核对宿主 app.asar 中 `button-primary-fill/hover/dimmed` 与 `label-primary-foreground` 真实存在、配对方向正确（深色 fill 实为 `#f9fafb`，报告笔误）。**0.2.1 可作安装候选**，待用户重装后做真实明暗/焦点/disabled 视觉复核。见 [R1 复审](reviews/P2-005-review-02.md)。
 
 2026-10-17 0.2.1 真机安装：用户卸载 0.2.0，link 安装 `staging-54f4671-bdcfd72/bundle`（profile 已指向该目录、版本 0.2.1）。深色模式主按钮「更新画面」可读（截图确认），右侧「画面时间（秒）」输入出现（默认 2.50）。播放按钮仍不存在：0.2.1 只做单帧 + 导出；A1 完整预览需 engine snapshot + Host 路由 + Client iframe，成品 MP4 内嵌播放只需 Client 小改。**按用户确认维持 P3 优先，播放后置**。待补验：浅色/hover/focus/disabled、编辑保存/导出取消/生命周期。
 

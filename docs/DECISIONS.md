@@ -43,3 +43,5 @@
 2026-10-17 D022 / accepted：工程创建采用 worker 管理 `projectsRoot` + 持久 registry + `project.create`（原子写、启动 reload、路径包含、单写者）；Host 不直接改 worker 文件，Host 重启 worker 为回退。v1 工程生成受模板约束（非任意 HTML/JS），任意 Agent 代码隔离另立任务。
 
 2026-10-17 D023 / accepted：编辑器画布 v1（sandbox iframe + 播放/暂停/seek + 画布点击选中 + 选中描边 + 右侧目标联动）排在 P3-004 之前；依赖 engine snapshot 与 Host 精确资产路由，P3-003 的合并 Phase B 可与画布并行。未接入实时画布前，PNG 画布不伪装可点选，右侧目标下拉是唯一选中入口。依据用户 2026-10-17 画布要求。
+
+2026-10-17 D024 / accepted：编辑器画布采用 A1 架构——worker 受控 `preview.snapshot`（entry+声明资产、只读、TTL、不进 revision）+ Host 精确资产路由（只认 snapshotId/声明路径，不接收任意 path/URL）+ Client sandbox iframe（播放/暂停/seek、画布点选、选中描边、目标联动）。任务编号相应调整为：P3-004 引擎预览快照、P3-005 编辑器画布、P3-006 插件创作流程/AI 上下文/冲突 UI、P3-007 端到端 15 秒样例验收；D023 中「P3-004」指插件创作 UI，按新编号为 P3-006。
