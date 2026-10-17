@@ -91,3 +91,34 @@ npm run test:real --prefix packages/video-engine-worker
 ```
 
 测试父进程实际启动 worker，非内存 SDK/CLI mock。覆盖协议纯净、坏JSON/重复id/行和响应大小、参数边界、竞争编辑、跨 handle 重开、资产/外部入口变化、重复 operationId、真实 SDK 保存失败、符号链接越界、合并 timing 越界；真实抽帧、H.264导出、渲染期间改源仍保持旧快照、取消/超时/EOF/shutdown/SIGTERM 清理且无关 sentinel 存活。真实产物 artifacts/worker.mp4 与 worker.png，元数据 artifacts/evidence/；可提交摘要在 evidence/，不提交字体、媒体、node_modules 或缓存。研究报告见 ../../docs/research/P1-002-engine-worker.md。
+
+## P3-003：多 Scene 工程、修订合并与历史（0.2.0）
+
+v1 模板 `product-launch-v1` 生成单 `index.html` 权威工程：`#main[data-composition-id]` 下每个 Scene 一个 `<section data-scene-id data-scene-order data-start data-duration>`，元素 `data-hf-id="<sceneId>-<elementId>"`，master GSAP timeline 按全局时间控制可见性与入场动画；Scene 局部时间在生成时换算为全局 `data-start`。模板约束 1–12 个 Scene、单 Scene 0.5–60s、总时长 ≤3600s；生成后由 SDK 重开校验，写入使用临时文件 + rename，失败不发布。
+
+worker 新配置模式（管理工程，Host 不直接改这些文件）：
+
+```json
+{
+  "projectsRoot": "/absolute/managed/projects",
+  "registryPath": "/absolute/managed/registry.json",
+  "outputRoot": "/absolute/worker-output",
+  "assetInboxRoot": "/absolute/read-only/images"
+}
+```
+
+`registry.json` 由 worker 原子维护（`{"projects":{"<projectId>":"<absolute dir>"}}`，启动时 reload；路径必须 realpath 在 `projectsRoot` 内）。旧的 `{root,projects,outputRoot}` 静态模式继续支持 P2 行为。
+
+新增方法（JSONL v1，参数与错误见 `src/worker.mjs`/`src/projects.mjs`）：
+
+| 方法 | 说明 |
+|---|---|
+| `project.create` | `{templateId,title?,width?,height?,fps?,assets?:[{inboxName,name?,mediaType?}]}`；worker 生成 projectId、复制模板与素材、原子更新 registry，返回 revision/scenes |
+| `asset.import` | `{projectId,expectedRevision,operationId,sourceName,name?,mediaType?}`；只读 inbox 导入 PNG/JPEG，校验路径/签名/限额后原子复制并更新 manifest |
+| `scene.create` / `scene.update` / `scene.remove` / `scene.reorder` | 以 expectedRevision + operationId 做单写者、幂等操作；Scene 模型 → 重新生成整份 HTML + timeline → SDK 校验 → 原子写 → revision 重算；校验失败不发布 |
+| `project.revise` | `{projectId,baseRevision,expectedRevision,operationId,sceneId,template}`；base 无人工改动时直接写入；否则从历史快照取 base 做 stableId 三方合并，冲突返回 `{written:false, conflicts:[{sceneId,stableId,reason,human,ai}]}` 且不写盘 |
+| `history` / `undo` / `redo` | `.dsh-video/history/` 保存 entries/ops/snapshots/state；单调 historyCursor，revision 仍是内容哈希；重启后可继续 undo/redo |
+
+`inspect` 只新增字段：`scenes:[{sceneId,order,start,duration,elements:[{stableId,sceneId,text,timing,capabilities}]}]`，原有字段不变。
+
+素材限额：仅 PNG/JPEG，单文件 ≤8 MiB，每工程 ≤16 张图片资产、声明资产总量 ≤64 MiB。历史保留最近 64 条/快照 ≤8 MiB。v1 仍只支持受控模板生成，不接受任意 Agent HTML/JS。

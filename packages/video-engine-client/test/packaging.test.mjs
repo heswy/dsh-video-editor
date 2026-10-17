@@ -16,16 +16,20 @@ import { join, resolve } from "node:path";
 
 const clientRoot = resolve(import.meta.dirname, "..");
 const workerRoot = resolve(import.meta.dirname, "../../video-engine-worker");
-const version = "0.1.1";
+const version = "0.2.0";
 const clientFiles = ["README.md", "package.json", "src/index.mjs"];
 const workerFiles = [
   "README.md",
   "package.json",
   "protocol.schema.json",
   "src/errors.mjs",
+  "src/history.mjs",
   "src/jobs.mjs",
+  "src/merge.mjs",
   "src/process.mjs",
   "src/projects.mjs",
+  "src/registry.mjs",
+  "src/scenes.mjs",
   "src/worker.mjs",
 ];
 
@@ -154,9 +158,13 @@ test("fixed tarballs expose runtime entries and resolve from staging", async (t)
     for (const file of [
       "src/index.mjs",
       "src/errors.mjs",
+      "src/history.mjs",
       "src/jobs.mjs",
+      "src/merge.mjs",
       "src/process.mjs",
       "src/projects.mjs",
+      "src/registry.mjs",
+      "src/scenes.mjs",
       "src/worker.mjs",
       "protocol.schema.json",
     ]) {

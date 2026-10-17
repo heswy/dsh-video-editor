@@ -1,6 +1,20 @@
 import { readFile, mkdir } from "node:fs/promises";
-import { resolve } from "node:path";
-import { Projects, validateEdit } from "./projects.mjs";
+import { dirname, resolve } from "node:path";
+import {
+  Projects,
+  validateCreateProject,
+  validateEdit,
+  validateHistory,
+  validateHistoryStep,
+  validateImportAsset,
+  validateRevise,
+  validateSceneCreate,
+  validateSceneRemove,
+  validateSceneReorder,
+  validateSceneUpdate,
+} from "./projects.mjs";
+import { TEMPLATE_IDS } from "./scenes.mjs";
+import { loadManagedRegistry } from "./registry.mjs";
 import { Jobs } from "./jobs.mjs";
 import {
   fail,
@@ -75,7 +89,7 @@ async function method(name, p) {
   switch (name) {
     case "doctor":
       keys(p, []);
-      return jobs.tools;
+      return { ...jobs.tools, templates: TEMPLATE_IDS };
     case "open":
       keys(p, ["projectId"], ["projectId"]);
       string(p.projectId);
@@ -87,6 +101,36 @@ async function method(name, p) {
     case "edit":
       validateEdit(p);
       return store.edit(p.projectId, p);
+    case "project.create":
+      validateCreateProject(p);
+      return store.createProject(p);
+    case "asset.import":
+      validateImportAsset(p);
+      return store.importAsset(p);
+    case "scene.create":
+      validateSceneCreate(p);
+      return store.sceneCreate(p);
+    case "scene.update":
+      validateSceneUpdate(p);
+      return store.sceneUpdate(p);
+    case "scene.remove":
+      validateSceneRemove(p);
+      return store.sceneRemove(p);
+    case "scene.reorder":
+      validateSceneReorder(p);
+      return store.sceneReorder(p);
+    case "project.revise":
+      validateRevise(p);
+      return store.revise(p);
+    case "history":
+      validateHistory(p);
+      return store.history(p);
+    case "undo":
+      validateHistoryStep(p);
+      return store.undo(p);
+    case "redo":
+      validateHistoryStep(p);
+      return store.redo(p);
     case "frame":
     case "render":
       keys(
@@ -164,19 +208,43 @@ try {
   const index = process.argv.indexOf("--registry");
   if (index < 0) throw Error("registry");
   const config = JSON.parse(await readFile(process.argv[index + 1], "utf8"));
-  keys(
-    config,
-    ["root", "projects", "outputRoot", "browserPath"],
-    ["root", "projects", "outputRoot"],
-  );
-  string(config.root, 4096);
-  string(config.outputRoot, 4096);
-  keys(config.projects, Object.keys(config.projects));
   if (process.platform === "win32") throw Error("POSIX only");
-  config.root = resolve(config.root);
-  config.outputRoot = resolve(config.outputRoot);
-  for (const path of Object.values(config.projects)) string(path, 4096);
-  await mkdir(config.outputRoot, { recursive: true });
+  if (Object.hasOwn(config, "projectsRoot")) {
+    keys(
+      config,
+      ["projectsRoot", "registryPath", "outputRoot", "assetInboxRoot", "browserPath"],
+      ["projectsRoot", "registryPath", "outputRoot"],
+    );
+    string(config.projectsRoot, 4096);
+    string(config.registryPath, 4096);
+    string(config.outputRoot, 4096);
+    if (config.assetInboxRoot !== undefined) string(config.assetInboxRoot, 4096);
+    config.projectsRoot = resolve(config.projectsRoot);
+    config.registryPath = resolve(config.registryPath);
+    config.outputRoot = resolve(config.outputRoot);
+    if (config.assetInboxRoot !== undefined)
+      config.assetInboxRoot = resolve(config.assetInboxRoot);
+    await mkdir(dirname(config.registryPath), { recursive: true });
+    await mkdir(config.outputRoot, { recursive: true });
+    const loaded = await loadManagedRegistry(config);
+    config.root = loaded.root;
+    config.projects = loaded.projects;
+    config.managed = true;
+  } else {
+    keys(
+      config,
+      ["root", "projects", "outputRoot", "browserPath"],
+      ["root", "projects", "outputRoot"],
+    );
+    string(config.root, 4096);
+    string(config.outputRoot, 4096);
+    keys(config.projects, Object.keys(config.projects));
+    config.root = resolve(config.root);
+    config.outputRoot = resolve(config.outputRoot);
+    for (const path of Object.values(config.projects)) string(path, 4096);
+    config.managed = false;
+    await mkdir(config.outputRoot, { recursive: true });
+  }
   store = new Projects(config);
   jobs = new Jobs(store, config);
   let buffered = Buffer.alloc(0),

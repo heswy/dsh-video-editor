@@ -367,6 +367,36 @@ export class WorkerClient {
   close(projectId) {
     return this.request("close", { projectId });
   }
+  projectCreate(params) {
+    return this.request("project.create", params);
+  }
+  assetImport(params) {
+    return this.request("asset.import", params);
+  }
+  sceneCreate(params) {
+    return this.request("scene.create", params);
+  }
+  sceneUpdate(params) {
+    return this.request("scene.update", params);
+  }
+  sceneRemove(params) {
+    return this.request("scene.remove", params);
+  }
+  sceneReorder(params) {
+    return this.request("scene.reorder", params);
+  }
+  projectRevise(params) {
+    return this.request("project.revise", params);
+  }
+  history(params) {
+    return this.request("history", params);
+  }
+  undo(params) {
+    return this.request("undo", params);
+  }
+  redo(params) {
+    return this.request("redo", params);
+  }
   async dispose() {
     if (this.disposePromise) return this.disposePromise;
     this.disposePromise = (async () => {
