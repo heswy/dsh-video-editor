@@ -15,6 +15,11 @@ import {
 } from "./projects.mjs";
 import { TEMPLATE_IDS } from "./scenes.mjs";
 import { loadManagedRegistry } from "./registry.mjs";
+import {
+  MIN_PREVIEW_TTL_MS,
+  MAX_PREVIEW_TTL_MS,
+  validSnapshotId,
+} from "./previews.mjs";
 import { Jobs } from "./jobs.mjs";
 import {
   fail,
@@ -62,6 +67,8 @@ async function shutdown() {
   shutdownPromise = (async () => {
     await jobs?.drain();
     await Promise.all([...(store?.queues.values() || [])]);
+    // Private preview snapshots must not survive worker shutdown/EOF/signal.
+    await store?.shutdown();
   })();
   return shutdownPromise;
 }
@@ -153,6 +160,22 @@ async function method(name, p) {
       keys(p, ["jobId"], ["jobId"]);
       string(p.jobId);
       return jobs.cancel(jobs.get(p.jobId));
+    case "preview.snapshot":
+      keys(p, ["projectId", "revision", "ttlMs"], ["projectId", "revision"]);
+      string(p.projectId);
+      revision(p.revision);
+      if (p.ttlMs !== undefined) {
+        number(p.ttlMs, MIN_PREVIEW_TTL_MS, MAX_PREVIEW_TTL_MS);
+        if (!Number.isInteger(p.ttlMs))
+          fail("E_PARAMS", "ttlMs must be an integer");
+      }
+      return store.previewSnapshot(p);
+    case "preview.release":
+      keys(p, ["snapshotId"], ["snapshotId"]);
+      string(p.snapshotId, 64);
+      if (!validSnapshotId(p.snapshotId))
+        fail("E_PARAMS", "Invalid snapshotId");
+      return store.previewRelease(p);
     case "close":
       keys(p, ["projectId"], ["projectId"]);
       string(p.projectId);
@@ -245,8 +268,11 @@ try {
     config.managed = false;
     await mkdir(config.outputRoot, { recursive: true });
   }
-  store = new Projects(config);
+  store = new Projects(config, { diagnostic });
   jobs = new Jobs(store, config);
+  // Discards private preview copies left behind by a previous process before
+  // serving the first request.
+  await store.initialize();
   let buffered = Buffer.alloc(0),
     dropping = false;
   process.stdin.on("data", (chunk) => {

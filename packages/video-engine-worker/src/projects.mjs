@@ -22,6 +22,7 @@ import {
   defaultScene,
   parseDocument,
   sceneSummaries,
+  templateId as validTemplateId,
   sceneId as validSceneId,
   validateDocumentHtml,
   validateSceneSpec,
@@ -45,6 +46,7 @@ import {
   undo as historyUndo,
 } from "./history.mjs";
 import { mergeSceneDocuments } from "./merge.mjs";
+import { DEFAULT_PREVIEW_TTL_MS, Previews } from "./previews.mjs";
 
 const packageRoot = fileURLToPath(new URL("../", import.meta.url));
 export const sha = (value) => createHash("sha256").update(value).digest("hex");
@@ -85,12 +87,20 @@ function capabilities(e) {
   return caps;
 }
 export class Projects {
-  constructor(config) {
+  constructor(config, { diagnostic = () => {} } = {}) {
     this.config = config;
     this.handles = new Map();
     this.queues = new Map();
     this.operations = new Map();
     this.lifecycle = new Map();
+    this.diagnostic = diagnostic;
+    this.previews = new Previews(config, diagnostic);
+  }
+  async initialize() {
+    await this.previews.initialize();
+  }
+  async shutdown() {
+    await this.previews.shutdown();
   }
   queue(id, fn) {
     const next = (this.queues.get(id) || Promise.resolve()).then(fn);
@@ -120,9 +130,13 @@ export class Projects {
   beginClose(id) {
     this.lifecycle.set(id, "closing");
   }
-  completeClose(id) {
+  async completeClose(id) {
     this.handles.delete(id);
     this.lifecycle.set(id, "closed");
+    // Preview snapshots are private copies of an open project's revision. A
+    // successful close means no lifecycle directory for that project is left
+    // behind, so drop them before reporting the close as complete.
+    await this.previews.releaseProject(id);
   }
   async open(id) {
     string(id);
@@ -423,6 +437,44 @@ export class Projects {
     });
   }
 
+  // ─── P3-004: read-only preview snapshots (editor canvas backend) ────────
+  // A preview snapshot is a private copy of exactly one open project revision.
+  // It is not a revision, is not editable through this worker, and is only
+  // addressed by its unpredictable snapshotId (relative file paths only).
+  previewSnapshot(p) {
+    this.assertActive(p.projectId);
+    return this.queue(p.projectId, async () => {
+      const current = await this.read(p.projectId);
+      if (current.revision !== p.revision)
+        fail(
+          "E_REVISION_CONFLICT",
+          "Requested revision is no longer current",
+          "preview",
+        );
+      const snapshot = await this.previews.create({
+        projectId: p.projectId,
+        revision: current.revision,
+        entry: current.manifest.entry,
+        files: current.files,
+        entries: current.entries,
+        ttlMs: p.ttlMs ?? DEFAULT_PREVIEW_TTL_MS,
+      });
+      const after = await this.read(p.projectId);
+      if (after.revision !== current.revision) {
+        await this.previews.discard(snapshot.snapshotId);
+        fail(
+          "E_REVISION_CONFLICT",
+          "Project changed while snapshotting",
+          "preview",
+        );
+      }
+      return snapshot;
+    });
+  }
+  previewRelease(p) {
+    return this.previews.release(p.snapshotId);
+  }
+
   // ─── P3-003: managed projects, scenes, assets, merge, history ───────────
   operationKey(projectId, operationId) {
     return projectId + "\0" + operationId;
@@ -503,13 +555,17 @@ export class Projects {
             await readFile(resolve(dir, "project.json"), "utf8"),
           );
         }
-        await addProjectToRegistry(this.config, projectId, dir);
+        // Publish the project in the registry only after it can be opened and
+        // has durable history. A registry entry pointing at a directory that
+        // create() later removes would make the next worker start fail with
+        // E_CONFIGURATION while reloading the managed registry.
         this.config.projects[projectId] = dir;
         const opened = await this.open(projectId);
         await ensureHistory(dir, {
           revision: opened.revision,
           html: await readFile(resolve(dir, "index.html"), "utf8"),
         });
+        await addProjectToRegistry(this.config, projectId, dir);
         return {
           projectId,
           templateId: TEMPLATE_ID,
@@ -520,7 +576,17 @@ export class Projects {
           scenes: opened.scenes,
         };
       } catch (error) {
-        await rm(dir, { recursive: true, force: true });
+        // Keep the in-memory mapping and the on-disk directory consistent with
+        // the registry even when a post-create step (open/ensureHistory/
+        // registry write) fails.
+        delete this.config.projects[projectId];
+        this.handles.delete(projectId);
+        this.lifecycle.delete(projectId);
+        try {
+          await rm(dir, { recursive: true, force: true });
+        } catch {
+          this.diagnostic("failed create cleanup failed");
+        }
         throw error;
       }
     });
@@ -1015,11 +1081,22 @@ function templateObject(value) {
   return value;
 }
 export function validateCreateProject(p) {
-  keys(p, ["templateId", "title", "width", "height", "fps", "assets"]);
-  string(p.templateId);
+  keys(
+    p,
+    ["templateId", "title", "width", "height", "fps", "assets"],
+    ["templateId"],
+  );
+  validTemplateId(p.templateId);
   if (p.title !== undefined) string(p.title, 120);
-  if (p.width !== undefined) number(p.width, 320, 3840);
-  if (p.height !== undefined) number(p.height, 180, 2160);
+  if (p.width !== undefined) {
+    number(p.width, 320, 3840);
+    if (!Number.isInteger(p.width)) fail("E_PARAMS", "width must be an integer");
+  }
+  if (p.height !== undefined) {
+    number(p.height, 180, 2160);
+    if (!Number.isInteger(p.height))
+      fail("E_PARAMS", "height must be an integer");
+  }
   if (p.fps !== undefined && p.fps !== 30)
     fail("E_PARAMS", "Only 30 fps is supported in v1");
   if (p.assets !== undefined) {

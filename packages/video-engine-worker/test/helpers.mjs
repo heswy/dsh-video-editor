@@ -131,3 +131,59 @@ export async function waitJob(
   }
   throw new Error("job timeout");
 }
+
+const PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+  "base64",
+);
+
+// Worker-managed (P3) fixture: projectsRoot + registry file + outputRoot +
+// read-only asset inbox. Starts one worker; `restart()` replaces it.
+export async function managed(label = "managed") {
+  const dir = await mkdtemp(resolve(base, `artifacts/${label}-`));
+  const projectsRoot = resolve(dir, "projects");
+  const outputRoot = resolve(dir, "output");
+  const assetInboxRoot = resolve(dir, "inbox");
+  const dataPath = resolve(dir, "registry-data.json");
+  const configPath = resolve(dir, "registry.json");
+  await mkdir(projectsRoot, { recursive: true });
+  await mkdir(outputRoot, { recursive: true });
+  await mkdir(assetInboxRoot, { recursive: true });
+  await writeFile(dataPath, JSON.stringify({ projects: {} }));
+  await writeFile(resolve(assetInboxRoot, "logo.png"), PNG);
+  await writeFile(
+    configPath,
+    JSON.stringify({ projectsRoot, registryPath: dataPath, outputRoot, assetInboxRoot }),
+  );
+  const clients = [];
+  let current = client(configPath);
+  clients.push(current);
+  return {
+    dir,
+    projectsRoot,
+    outputRoot,
+    assetInboxRoot,
+    dataPath,
+    configPath,
+    get c() {
+      return current;
+    },
+    set c(value) {
+      current = value;
+      clients.push(value);
+    },
+    async readRegistry() {
+      return JSON.parse(await readFile(dataPath, "utf8"));
+    },
+    async restart() {
+      await current.stop();
+      current = client(configPath);
+      clients.push(current);
+      return current;
+    },
+    async cleanup() {
+      for (const candidate of clients) await candidate.stop().catch(() => {});
+      await rm(dir, { recursive: true, force: true });
+    },
+  };
+}

@@ -44,20 +44,22 @@ v1 固定 index.html、30fps、H.264；frame 精确时间 PNG。项目根、入�
 {"v":1,"id":"a7","method":"shutdown","params":{}}
 ```
 
-以上响应是字段节选，尖括号需替换成实际值。完整请求/响应 envelope schema 在 protocol.schema.json。未来 Host 父进程需持续读 stdout、独立生成 request id、按 id 对应响应，不假定响应顺序。
+以上响应是字段节选，尖括号需替换成实际值。`protocol.schema.json` 是 v1 请求/响应契约（draft 2020-12，`$id` 稳定）：每个方法的 params 与 result 结构都列入 `$defs`，顶层 `x-methods` 方法表把方法名映射到 request/result 定义（响应 envelope 本身不带 method，无法单独定位）。未来 Host 父进程需持续读 stdout、独立生成 request id、按 id 对应响应，不假定响应顺序。
 
 | 方法 | params | result |
 |---|---|---|
-| doctor | {} | 启动时实际 Node/SDK/CLI/GSAP、Chrome、FFmpeg/ffprobe 版本；缺工具显示 unavailable |
-| open | projectId | 已注册工程的 inspect；未知映射拒绝，无 path/URL 参数 |
-| inspect | projectId | revision、尺寸、时长、stableId、文本、原生 timing、capabilities、路径/字节/hash 清单 |
-| edit | projectId, expectedRevision, operationId, ops | 保存/读回成功后的 revision；ops 限 text 与 timing，最多32项 |
-| frame | projectId, revision, time, timeoutMs? | 立即返回异步 PNG job；time 位于 [0,duration−1/30] |
-| render | projectId, revision, timeoutMs? | 立即返回异步 MP4 job，queued；不等待渲染完成 |
-| status | jobId | 当前状态、阶段、进度、projectId/revision/jobId、工具版本；成功时 artifact |
-| cancel | jobId | 非终态立即 ack cancelling；终态幂等返回；清理完成才 cancelled |
-| close | projectId | 同步关闭该工程的准入门，再取消/排空旧生命周期任务和编辑，最后释放 handle；并发重复 close 共同等待同一排空，保留本 worker 的幂等记录 |
-| shutdown | {} | 取消/排空全部任务、写队列，响应后退出 |
+| `doctor` | {} | 启动时实际 Node/SDK/CLI/GSAP、Chrome、FFmpeg/ffprobe 版本；缺工具显示 unavailable |
+| `open` | projectId | 已注册工程的 inspect；未知映射拒绝，无 path/URL 参数 |
+| `inspect` | projectId | revision、尺寸、时长、stableId、文本、原生 timing、capabilities、路径/字节/hash 清单 |
+| `edit` | projectId, expectedRevision, operationId, ops | 保存/读回成功后的 revision；ops 限 text 与 timing，最多32项 |
+| `frame` | projectId, revision, time, timeoutMs? | 立即返回异步 PNG job；time 位于 [0,duration−1/30] |
+| `render` | projectId, revision, timeoutMs? | 立即返回异步 MP4 job，queued；不等待渲染完成 |
+| `status` | jobId | 当前状态、阶段、进度、projectId/revision/jobId、工具版本；成功时 artifact |
+| `cancel` | jobId | 非终态立即 ack cancelling；终态幂等返回；清理完成才 cancelled |
+| `close` | projectId | 同步关闭该工程的准入门，再取消/排空旧生命周期任务和编辑，最后释放 handle 与私有预览快照；并发重复 close 共同等待同一排空 |
+| `shutdown` | {} | 取消/排空全部任务、写队列，清理私有预览快照，响应后退出 |
+| `preview.snapshot` | projectId, revision, ttlMs? | 为已 open 工程的当前 revision 建立只读私有快照，见下文 P3-004 |
+| `preview.release` | snapshotId | 删除指定私有快照，见下文 P3-004 |
 
 frame/render 后台通过同一工程队列取得快照。若源已变化，作业 failed + E_REVISION_CONFLICT，不能取最新文件冒充旧 revision。状态 queued→running→succeeded/failed/timed_out，或 queued/running→cancelling→cancelled。frame 超过实际场景末尾在快照阶段 failed + E_PARAMS；请求本身的负数、类型等立即返回错误。所有长作业有 100–120000ms deadline（默认120000）；范围检查、快照复制和文件哈希由受控大小限制，CLI deadline 从启动上游 CLI 开始。
 
@@ -81,7 +83,7 @@ operationId 以 projectId 为作用域：同一规范化请求（JSON 对象键�
 
 stdin EOF、shutdown、SIGINT/SIGTERM、未捕获异常路径均尝试排空并清理。EOF 和信号是真实行为测试；无法在 SIGKILL 或机器断电后执行用户态清理，P2 需父进程监督与重启恢复策略。采样式进程跟踪、路径 confinement 和独立进程均不是安全沙箱，不允许扩大到任意 Agent 生成代码。
 
-错误码：E_JSON/E_LINE_LIMIT/E_OUTPUT_LIMIT/E_VERSION/E_DUPLICATE_ID/E_METHOD/E_PARAMS/E_LIMIT、E_PROJECT_NOT_FOUND/E_PROJECT_NOT_OPEN/E_PROJECT_CLOSING/E_PROJECT/E_PATH/E_ASSET_MISSING、E_REVISION_CONFLICT/E_OPERATION_REUSED/E_UNSUPPORTED_EDIT/E_PERSIST、E_JOB_NOT_FOUND/E_SHUTDOWN/E_SNAPSHOT/E_RENDER/E_METADATA/E_CLEANUP/E_INTERNAL。状态 failed 的 error 有 stage；cancelled/timed_out 为明确终态。
+错误码：E_JSON/E_LINE_LIMIT/E_OUTPUT_LIMIT/E_VERSION/E_DUPLICATE_ID/E_METHOD/E_PARAMS/E_LIMIT、E_PROJECT_NOT_FOUND/E_PROJECT_NOT_OPEN/E_PROJECT_CLOSING/E_PROJECT/E_PATH/E_ASSET_MISSING、E_REVISION_CONFLICT/E_OPERATION_REUSED/E_UNSUPPORTED_EDIT/E_PERSIST、E_JOB_NOT_FOUND/E_SHUTDOWN/E_SNAPSHOT/E_SNAPSHOT_NOT_FOUND/E_RENDER/E_METADATA/E_CLEANUP/E_INTERNAL。状态 failed 的 error 有 stage；cancelled/timed_out 为明确终态。
 
 ## 测试与证据
 
@@ -122,3 +124,32 @@ worker 新配置模式（管理工程，Host 不直接改这些文件）：
 `inspect` 只新增字段：`scenes:[{sceneId,order,start,duration,elements:[{stableId,sceneId,text,timing,capabilities}]}]`，原有字段不变。
 
 素材限额：仅 PNG/JPEG，单文件 ≤8 MiB，每工程 ≤16 张图片资产、声明资产总量 ≤64 MiB。历史保留最近 64 条/快照 ≤8 MiB。v1 仍只支持受控模板生成，不接受任意 Agent HTML/JS。
+
+## P3-004：协议 schema 补齐与预览快照（0.2.1）
+
+本版两包升 **0.2.1**，不改变 0.2.0 的方法语义；新增编辑器画布所需的只读预览快照，并把 `protocol.schema.json` 从 P2 方法集补齐为全部 v1 方法（严格 keys/类型/范围，与 worker 校验一致）。
+
+### 协议 schema（R1）
+
+- 覆盖 `doctor/open/inspect/edit/frame/render/status/cancel/close/shutdown` 与 `project.create/asset.import/scene.*/project.revise/history/undo/redo/preview.*` 共 22 个方法。
+- 请求 params 使用 `additionalProperties:false` + `required`，范围与 `src/worker.mjs`/`src/projects.mjs` 校验一致（例如 `width`/`height` 为整数、`order` 唯一、`ttlMs` 为 100–1800000 的整数）。
+- 顺带消除三处 schema 与校验的隐藏漂移：`project.create.templateId` 现在必填且只接受受控模板（未知值 `E_TEMPLATE`）；`width`/`height` 必须为整数；`scene.update`/`project.revise` 的嵌套 template 不允许再携带 `sceneId`（此前会被静默忽略，现在返回 `E_PARAMS`；`scene.create` 仍可指定）。
+- 响应 envelope 保持严格；`x-methods` 把每个方法映射到对应 request/result 定义，测试据此校验真实响应（响应帧不带 method）。
+- `test/schema.test.mjs` 强制 schema 方法集 == worker switch 方法集、schema 引用的每个 `$ref` 可解析、README 方法表与 schema 同步；并对每个方法做“缺失必填字段/多传字段”双向探针，同时校验真实调用结果。
+
+### preview.snapshot / preview.release
+
+```json
+{"v":1,"id":"p1","method":"preview.snapshot","params":{"projectId":"proj-...","revision":"<64 hex>","ttlMs":60000}}
+{"v":1,"id":"p1","ok":true,"result":{"snapshotId":"<32 hex>","projectId":"proj-...","revision":"<64 hex>","entry":"index.html","files":[{"path":"index.html","bytes":1785,"sha256":"<64 hex>"}],"expiresAt":"2026-10-17T15:48:25.635Z","maxBytes":134217728}}
+{"v":1,"id":"p2","method":"preview.release","params":{"snapshotId":"<32 hex>"}}
+{"v":1,"id":"p2","ok":true,"result":{"snapshotId":"<32 hex>","projectId":"proj-...","revision":"<64 hex>","released":true}}
+```
+
+- **只对已 open 工程**；`revision` 必须等于当前 revision，过期/竞争返回 `E_REVISION_CONFLICT`（worker 不猜最新）。请求期间工程再次变化也会拒绝并删除半成品。
+- worker 只把 `project.json` 声明的 entry + 资产复制到 **`outputRoot/previews/<snapshotId>/`**；`snapshotId` 为 32 位小写 hex（128-bit 随机），不可预测。复制后逐文件重读磁盘，核对字节数/`sha256`/原始字节与 `read()` 清单，全部一致才发布快照。
+- 返回**仅相对路径**（`files[].path`），不含绝对路径或 URL；Host 只按 snapshotId + 相对路径读取，不向预览面传任意 path/URL。
+- 限额：文件数沿用 manifest 上限（entry + ≤64 资产），快照总字节 ≤128 MiB；超限 `E_LIMIT`。快照只读，不进入 revision/历史，不能用于 edit/revise。
+- TTL：默认 10 分钟，上限 30 分钟，最小 100 ms（测试/短会话）；`ttlMs` 必须是整数。到期后由 worker 清理，`preview.release` 对未知或过期 snapshotId 返回 `E_SNAPSHOT_NOT_FOUND`（重复 release 不会重复删除，返回同一错误码）。
+- 生命周期：`close` 清理该工程全部快照；`shutdown`/stdin EOF/SIGINT/SIGTERM/未捕获异常路径清理全部快照；worker 启动时丢弃上一进程遗留的整个 `previews/` 私有目录。清理失败不发布半成品、只记固定阶段诊断（stderr 不写路径或内容）。
+- 未来 Host 是唯一读取者；本 worker 没有预览内容读取或执行新方法，快照也不是安全沙箱。

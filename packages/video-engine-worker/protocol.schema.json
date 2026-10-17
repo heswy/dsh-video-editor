@@ -2,6 +2,97 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:dsh-video-engine-worker:v1",
   "title": "JSON Lines request and response frames; byte limits specified in README",
+  "$comment": "The response envelope carries no method field, so x-methods maps every method to its request and result definition; contract tests validate both directions against this file. Result definitions describe the worker's published result shape for Version 1 (0.2.1).",
+  "x-methods": {
+    "doctor": {
+      "request": "#/$defs/request_doctor",
+      "result": "#/$defs/result_doctor"
+    },
+    "open": {
+      "request": "#/$defs/request_open",
+      "result": "#/$defs/result_open"
+    },
+    "inspect": {
+      "request": "#/$defs/request_inspect",
+      "result": "#/$defs/result_inspect"
+    },
+    "edit": {
+      "request": "#/$defs/request_edit",
+      "result": "#/$defs/result_edit"
+    },
+    "frame": {
+      "request": "#/$defs/request_frame",
+      "result": "#/$defs/result_frame"
+    },
+    "render": {
+      "request": "#/$defs/request_render",
+      "result": "#/$defs/result_render"
+    },
+    "status": {
+      "request": "#/$defs/request_status",
+      "result": "#/$defs/result_status"
+    },
+    "cancel": {
+      "request": "#/$defs/request_cancel",
+      "result": "#/$defs/result_cancel"
+    },
+    "close": {
+      "request": "#/$defs/request_close",
+      "result": "#/$defs/result_close"
+    },
+    "shutdown": {
+      "request": "#/$defs/request_shutdown",
+      "result": "#/$defs/result_shutdown"
+    },
+    "project.create": {
+      "request": "#/$defs/request_project_create",
+      "result": "#/$defs/result_project_create"
+    },
+    "asset.import": {
+      "request": "#/$defs/request_asset_import",
+      "result": "#/$defs/result_asset_import"
+    },
+    "scene.create": {
+      "request": "#/$defs/request_scene_create",
+      "result": "#/$defs/result_scene_operation"
+    },
+    "scene.update": {
+      "request": "#/$defs/request_scene_update",
+      "result": "#/$defs/result_scene_operation"
+    },
+    "scene.remove": {
+      "request": "#/$defs/request_scene_remove",
+      "result": "#/$defs/result_scene_operation"
+    },
+    "scene.reorder": {
+      "request": "#/$defs/request_scene_reorder",
+      "result": "#/$defs/result_scene_operation"
+    },
+    "project.revise": {
+      "request": "#/$defs/request_project_revise",
+      "result": "#/$defs/result_revise"
+    },
+    "history": {
+      "request": "#/$defs/request_history",
+      "result": "#/$defs/result_history"
+    },
+    "undo": {
+      "request": "#/$defs/request_undo",
+      "result": "#/$defs/result_history_step"
+    },
+    "redo": {
+      "request": "#/$defs/request_redo",
+      "result": "#/$defs/result_history_step"
+    },
+    "preview.snapshot": {
+      "request": "#/$defs/request_preview_snapshot",
+      "result": "#/$defs/result_preview_snapshot"
+    },
+    "preview.release": {
+      "request": "#/$defs/request_preview_release",
+      "result": "#/$defs/result_preview_release"
+    }
+  },
   "oneOf": [
     {
       "$ref": "#/$defs/request"
@@ -11,471 +102,2523 @@
     }
   ],
   "$defs": {
-    "request": {
+    "fileEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 134217728
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      },
+      "required": [
+        "path",
+        "bytes",
+        "sha256"
+      ]
+    },
+    "timing": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "start": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "duration": {
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      }
+    },
+    "capabilities": {
+      "type": "array",
+      "maxItems": 2,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "enum": [
+          "text",
+          "timing"
+        ]
+      }
+    },
+    "inspectElement": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "stableId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "sceneId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "text": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "timing": {
+          "$ref": "#/$defs/timing"
+        },
+        "capabilities": {
+          "$ref": "#/$defs/capabilities"
+        }
+      },
+      "required": [
+        "stableId",
+        "sceneId",
+        "text",
+        "timing",
+        "capabilities"
+      ]
+    },
+    "sceneElement": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "stableId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "sceneId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "tag": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32
+        },
+        "text": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "timing": {
+          "$ref": "#/$defs/timing"
+        },
+        "capabilities": {
+          "$ref": "#/$defs/capabilities"
+        }
+      },
+      "required": [
+        "stableId",
+        "sceneId",
+        "tag",
+        "text",
+        "timing",
+        "capabilities"
+      ]
+    },
+    "sceneSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sceneId": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+        },
+        "order": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 11
+        },
+        "start": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 3600
+        },
+        "duration": {
+          "type": "number",
+          "minimum": 0.5,
+          "maximum": 60
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "sceneId",
+        "order",
+        "start",
+        "duration",
+        "title"
+      ]
+    },
+    "inspectScene": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sceneId": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+        },
+        "order": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 11
+        },
+        "start": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 3600
+        },
+        "duration": {
+          "type": "number",
+          "minimum": 0.5,
+          "maximum": 60
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "elements": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/sceneElement"
+          }
+        }
+      },
+      "required": [
+        "sceneId",
+        "order",
+        "start",
+        "duration",
+        "title",
+        "elements"
+      ]
+    },
+    "sceneTemplate": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "duration": {
+          "type": "number",
+          "minimum": 0.5,
+          "maximum": 60
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "subtitle": {
+          "type": "string",
+          "maxLength": 300
+        },
+        "badge": {
+          "type": "string",
+          "maxLength": 48
+        },
+        "color": {
+          "type": "string",
+          "pattern": "^#[0-9a-f]{6}$"
+        },
+        "accent": {
+          "type": "string",
+          "pattern": "^#[0-9a-f]{6}$"
+        },
+        "logo": {
+          "type": "string",
+          "pattern": "^assets/[A-Za-z0-9][A-Za-z0-9._-]*\\.(png|jpe?g)$"
+        },
+        "shot": {
+          "type": "string",
+          "pattern": "^assets/[A-Za-z0-9][A-Za-z0-9._-]*\\.(png|jpe?g)$"
+        }
+      },
+      "required": [
+        "title",
+        "duration"
+      ]
+    },
+    "sceneCreateTemplate": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sceneId": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+        },
+        "duration": {
+          "type": "number",
+          "minimum": 0.5,
+          "maximum": 60
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "subtitle": {
+          "type": "string",
+          "maxLength": 300
+        },
+        "badge": {
+          "type": "string",
+          "maxLength": 48
+        },
+        "color": {
+          "type": "string",
+          "pattern": "^#[0-9a-f]{6}$"
+        },
+        "accent": {
+          "type": "string",
+          "pattern": "^#[0-9a-f]{6}$"
+        },
+        "logo": {
+          "type": "string",
+          "pattern": "^assets/[A-Za-z0-9][A-Za-z0-9._-]*\\.(png|jpe?g)$"
+        },
+        "shot": {
+          "type": "string",
+          "pattern": "^assets/[A-Za-z0-9][A-Za-z0-9._-]*\\.(png|jpe?g)$"
+        }
+      },
+      "required": [
+        "title",
+        "duration"
+      ]
+    },
+    "createAsset": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "inboxName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "mediaType": {
+          "type": "string",
+          "enum": [
+            "image/png",
+            "image/jpeg"
+          ]
+        }
+      },
+      "required": [
+        "inboxName"
+      ]
+    },
+    "toolVersions": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "node": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "platform": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32
+        },
+        "hyperframes": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "sdk": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "gsap": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "fps": {
+          "const": 30
+        },
+        "browser": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "ffmpeg": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "ffprobe": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        }
+      },
+      "required": [
+        "node",
+        "platform",
+        "hyperframes",
+        "sdk",
+        "gsap",
+        "fps",
+        "browser",
+        "ffmpeg",
+        "ffprobe"
+      ]
+    },
+    "workerError": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "stage": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "stage"
+      ]
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "revision": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "jobId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "hash": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "metadata": {
+          "type": "object"
+        },
+        "tools": {
+          "$ref": "#/$defs/toolVersions"
+        }
+      },
+      "required": [
+        "projectId",
+        "revision",
+        "jobId",
+        "name",
+        "hash",
+        "bytes",
+        "metadata",
+        "tools"
+      ]
+    },
+    "jobView": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "jobId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "projectId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "revision": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "frame",
+            "render"
+          ]
+        },
+        "tools": {
+          "$ref": "#/$defs/toolVersions"
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "queued",
+            "running",
+            "cancelling",
+            "succeeded",
+            "failed",
+            "cancelled",
+            "timed_out"
+          ]
+        },
+        "stage": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32
+        },
+        "progress": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "time": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 3599.999
+        },
+        "frame": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 107999.97
+        },
+        "artifact": {
+          "$ref": "#/$defs/artifact"
+        },
+        "error": {
+          "$ref": "#/$defs/workerError"
+        },
+        "cleaned": {
+          "type": "boolean"
+        },
+        "ownedPids": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "survivors": {
+          "type": "array"
+        }
+      },
+      "required": [
+        "jobId",
+        "projectId",
+        "revision",
+        "kind",
+        "tools",
+        "state",
+        "stage",
+        "progress"
+      ]
+    },
+    "inspectResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "revision": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "width": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 3840
+        },
+        "height": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 2160
+        },
+        "duration": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 3600
+        },
+        "elements": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/inspectElement"
+          }
+        },
+        "scenes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/inspectScene"
+          }
+        },
+        "files": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/fileEntry"
+          }
+        }
+      },
+      "required": [
+        "projectId",
+        "revision",
+        "width",
+        "height",
+        "duration",
+        "elements",
+        "scenes",
+        "files"
+      ]
+    },
+    "historyEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "historyCursor": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "revision": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "actor": {
+          "type": "string",
+          "enum": [
+            "human",
+            "ai",
+            "system"
+          ]
+        },
+        "kind": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "sceneId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "summary": {
+          "type": "string",
+          "maxLength": 512
+        },
+        "operationId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "at": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        }
+      },
+      "required": [
+        "historyCursor",
+        "revision",
+        "actor",
+        "kind",
+        "summary",
+        "at"
+      ]
+    },
+    "conflict": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sceneId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "stableId": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 256
+        },
+        "reason": {
+          "type": "string",
+          "enum": [
+            "BOTH_MODIFIED",
+            "AI_DELETE_HUMAN_MODIFY",
+            "HUMAN_DELETE_AI_MODIFY",
+            "ADD_ADD",
+            "SCENE_META_CHANGED",
+            "STRUCTURAL_TAG",
+            "STRUCTURAL_PARENT",
+            "STRUCTURAL_NESTING",
+            "STRUCTURAL_OTHER_SCENE",
+            "STRUCTURAL_ORDER"
+          ]
+        },
+        "human": {},
+        "ai": {},
+        "hint": {
+          "type": "string",
+          "maxLength": 512
+        }
+      },
+      "required": [
+        "sceneId",
+        "stableId",
+        "reason",
+        "human",
+        "ai"
+      ]
+    },
+    "params_doctor": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {},
+      "required": []
+    },
+    "params_open": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      },
+      "required": [
+        "projectId"
+      ]
+    },
+    "params_inspect": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      },
+      "required": [
+        "projectId"
+      ]
+    },
+    "params_close": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      },
+      "required": [
+        "projectId"
+      ]
+    },
+    "editOp": {
       "oneOf": [
         {
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "v": {
-              "const": 1
+            "type": {
+              "const": "text"
             },
-            "id": {
+            "target": {
               "type": "string",
               "minLength": 1,
-              "maxLength": 128
+              "maxLength": 256
             },
-            "method": {
-              "const": "doctor"
-            },
-            "params": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {},
-              "required": []
+            "text": {
+              "type": "string",
+              "maxLength": 2048
             }
           },
           "required": [
-            "v",
-            "id",
-            "method",
-            "params"
+            "type",
+            "target",
+            "text"
           ]
         },
         {
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "v": {
-              "const": 1
+            "type": {
+              "const": "timing"
             },
-            "id": {
+            "target": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "start": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 3600
+            },
+            "duration": {
+              "type": "number",
+              "minimum": 0.004166666666666667,
+              "maximum": 3600
+            }
+          },
+          "required": [
+            "type",
+            "target"
+          ],
+          "anyOf": [
+            {
+              "required": [
+                "start"
+              ]
+            },
+            {
+              "required": [
+                "duration"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "params_edit": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "expectedRevision": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "operationId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "ops": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "items": {
+            "$ref": "#/$defs/editOp"
+          }
+        }
+      },
+      "required": [
+        "projectId",
+        "expectedRevision",
+        "operationId",
+        "ops"
+      ]
+    },
+    "params_frame": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "revision": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "time": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 3599.999
+        },
+        "timeoutMs": {
+          "type": "number",
+          "minimum": 100,
+          "maximum": 120000
+        }
+      },
+      "required": [
+        "projectId",
+        "revision",
+        "time"
+      ]
+    },
+    "params_render": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "revision": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "timeoutMs": {
+          "type": "number",
+          "minimum": 100,
+          "maximum": 120000
+        }
+      },
+      "required": [
+        "projectId",
+        "revision"
+      ]
+    },
+    "params_status": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "jobId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      },
+      "required": [
+        "jobId"
+      ]
+    },
+    "params_cancel": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "jobId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      },
+      "required": [
+        "jobId"
+      ]
+    },
+    "params_shutdown": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {},
+      "required": []
+    },
+    "params_project_create": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "templateId": {
+          "type": "string",
+          "enum": [
+            "product-launch-v1"
+          ]
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 320,
+          "maximum": 3840
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 180,
+          "maximum": 2160
+        },
+        "fps": {
+          "const": 30
+        },
+        "assets": {
+          "type": "array",
+          "maxItems": 16,
+          "items": {
+            "$ref": "#/$defs/createAsset"
+          }
+        }
+      },
+      "required": [
+        "templateId"
+      ]
+    },
+    "params_asset_import": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "expectedRevision": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "operationId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "sourceName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "mediaType": {
+          "type": "string",
+          "enum": [
+            "image/png",
+            "image/jpeg"
+          ]
+        }
+      },
+      "required": [
+        "projectId",
+        "expectedRevision",
+        "operationId",
+        "sourceName"
+      ]
+    },
+    "params_scene_create": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "expectedRevision": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "operationId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "sceneId": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+        },
+        "afterSceneId": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+        },
+        "template": {
+          "$ref": "#/$defs/sceneCreateTemplate"
+        }
+      },
+      "required": [
+        "projectId",
+        "expectedRevision",
+        "operationId",
+        "template"
+      ]
+    },
+    "params_scene_update": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "expectedRevision": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "operationId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "sceneId": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+        },
+        "template": {
+          "$ref": "#/$defs/sceneTemplate"
+        }
+      },
+      "required": [
+        "projectId",
+        "expectedRevision",
+        "operationId",
+        "sceneId",
+        "template"
+      ]
+    },
+    "params_scene_remove": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "expectedRevision": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "operationId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "sceneId": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+        }
+      },
+      "required": [
+        "projectId",
+        "expectedRevision",
+        "operationId",
+        "sceneId"
+      ]
+    },
+    "params_scene_reorder": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "expectedRevision": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "operationId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "order": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 12,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+          }
+        }
+      },
+      "required": [
+        "projectId",
+        "expectedRevision",
+        "operationId",
+        "order"
+      ]
+    },
+    "params_project_revise": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "baseRevision": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "expectedRevision": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "operationId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "sceneId": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+        },
+        "template": {
+          "$ref": "#/$defs/sceneTemplate"
+        }
+      },
+      "required": [
+        "projectId",
+        "baseRevision",
+        "expectedRevision",
+        "operationId",
+        "sceneId",
+        "template"
+      ]
+    },
+    "params_history": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 64
+        }
+      },
+      "required": [
+        "projectId"
+      ]
+    },
+    "params_undo": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "expectedRevision": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "operationId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      },
+      "required": [
+        "projectId",
+        "expectedRevision",
+        "operationId"
+      ]
+    },
+    "params_redo": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "expectedRevision": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "operationId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      },
+      "required": [
+        "projectId",
+        "expectedRevision",
+        "operationId"
+      ]
+    },
+    "params_preview_snapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "revision": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "ttlMs": {
+          "type": "integer",
+          "minimum": 100,
+          "maximum": 1800000
+        }
+      },
+      "required": [
+        "projectId",
+        "revision"
+      ]
+    },
+    "params_preview_release": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "snapshotId": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{32}$"
+        }
+      },
+      "required": [
+        "snapshotId"
+      ]
+    },
+    "result_doctor": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "node": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "platform": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32
+        },
+        "hyperframes": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "sdk": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "gsap": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "fps": {
+          "const": 30
+        },
+        "browser": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "ffmpeg": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "ffprobe": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "templates": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "const": "product-launch-v1"
+          }
+        }
+      },
+      "required": [
+        "node",
+        "platform",
+        "hyperframes",
+        "sdk",
+        "gsap",
+        "fps",
+        "browser",
+        "ffmpeg",
+        "ffprobe",
+        "templates"
+      ]
+    },
+    "result_open": {
+      "$ref": "#/$defs/inspectResult"
+    },
+    "result_inspect": {
+      "$ref": "#/$defs/inspectResult"
+    },
+    "result_edit": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "revision": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "operationId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      },
+      "required": [
+        "projectId",
+        "revision",
+        "operationId"
+      ]
+    },
+    "result_frame": {
+      "$ref": "#/$defs/jobView"
+    },
+    "result_render": {
+      "$ref": "#/$defs/jobView"
+    },
+    "result_status": {
+      "$ref": "#/$defs/jobView"
+    },
+    "result_cancel": {
+      "$ref": "#/$defs/jobView"
+    },
+    "result_close": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "closed": {
+          "const": true
+        }
+      },
+      "required": [
+        "projectId",
+        "closed"
+      ]
+    },
+    "result_shutdown": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "shutdown": {
+          "const": true
+        }
+      },
+      "required": [
+        "shutdown"
+      ]
+    },
+    "result_project_create": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "templateId": {
+          "const": "product-launch-v1"
+        },
+        "revision": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "width": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 3840
+        },
+        "height": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 2160
+        },
+        "fps": {
+          "const": 30
+        },
+        "scenes": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 12,
+          "items": {
+            "$ref": "#/$defs/inspectScene"
+          }
+        }
+      },
+      "required": [
+        "projectId",
+        "templateId",
+        "revision",
+        "width",
+        "height",
+        "fps",
+        "scenes"
+      ]
+    },
+    "result_asset_import": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "revision": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "asset": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "path": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "name": {
               "type": "string",
               "minLength": 1,
               "maxLength": 128
             },
-            "method": {
-              "const": "open"
+            "bytes": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 8388608
             },
-            "params": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "projectId": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 128
-                }
-              },
-              "required": [
-                "projectId"
+            "sha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "mediaType": {
+              "type": "string",
+              "enum": [
+                "image/png",
+                "image/jpeg"
               ]
             }
           },
           "required": [
-            "v",
-            "id",
-            "method",
-            "params"
+            "path",
+            "name",
+            "bytes",
+            "sha256",
+            "mediaType"
+          ]
+        },
+        "assets": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/fileEntry"
+          }
+        },
+        "historyCursor": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "projectId",
+        "revision",
+        "asset",
+        "assets",
+        "historyCursor"
+      ]
+    },
+    "result_scene_operation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "revision": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "scenes": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 12,
+          "items": {
+            "$ref": "#/$defs/sceneSummary"
+          }
+        },
+        "changeSummary": {
+          "type": "object"
+        },
+        "historyCursor": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "projectId",
+        "revision",
+        "scenes",
+        "changeSummary",
+        "historyCursor"
+      ]
+    },
+    "result_revise": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "projectId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "revision": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "written": {
+              "const": true
+            },
+            "conflicts": {
+              "type": "array",
+              "maxItems": 0
+            },
+            "changeSummary": {
+              "type": "object"
+            },
+            "scenes": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 12,
+              "items": {
+                "$ref": "#/$defs/sceneSummary"
+              }
+            },
+            "historyCursor": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "projectId",
+            "revision",
+            "written",
+            "conflicts",
+            "changeSummary",
+            "scenes",
+            "historyCursor"
           ]
         },
         {
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "v": {
-              "const": 1
-            },
-            "id": {
+            "projectId": {
               "type": "string",
               "minLength": 1,
               "maxLength": 128
             },
-            "method": {
-              "const": "inspect"
+            "revision": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
             },
-            "params": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "projectId": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 128
-                }
-              },
-              "required": [
-                "projectId"
+            "written": {
+              "const": false
+            },
+            "conflicts": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "$ref": "#/$defs/conflict"
+              }
+            },
+            "changeSummary": {
+              "const": null
+            },
+            "unsupported": {},
+            "baseRevision": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            }
+          },
+          "required": [
+            "projectId",
+            "revision",
+            "written",
+            "conflicts",
+            "changeSummary"
+          ]
+        }
+      ]
+    },
+    "result_history": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "revision": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "historyCursor": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cursor": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "canUndo": {
+          "type": "boolean"
+        },
+        "canRedo": {
+          "type": "boolean"
+        },
+        "entries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/historyEntry"
+          }
+        },
+        "snapshotBytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "maxEntries": {
+          "const": 64
+        },
+        "maxSnapshotBytes": {
+          "const": 8388608
+        }
+      },
+      "required": [
+        "projectId",
+        "revision",
+        "historyCursor",
+        "cursor",
+        "canUndo",
+        "canRedo",
+        "entries",
+        "snapshotBytes",
+        "maxEntries",
+        "maxSnapshotBytes"
+      ]
+    },
+    "result_history_step": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "revision": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "historyCursor": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "restored": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "historyCursor": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "revision": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "actor": {
+              "type": "string",
+              "enum": [
+                "human",
+                "ai",
+                "system"
               ]
-            }
-          },
-          "required": [
-            "v",
-            "id",
-            "method",
-            "params"
-          ]
-        },
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "v": {
-              "const": 1
             },
-            "id": {
+            "kind": {
               "type": "string",
               "minLength": 1,
-              "maxLength": 128
+              "maxLength": 64
             },
-            "method": {
-              "const": "edit"
-            },
-            "params": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "projectId": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 128
-                },
-                "expectedRevision": {
-                  "type": "string",
-                  "pattern": "^[a-f0-9]{64}$"
-                },
-                "operationId": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 128
-                },
-                "ops": {
-                  "type": "array",
-                  "minItems": 1,
-                  "maxItems": 32,
-                  "items": {
-                    "oneOf": [
-                      {
-                        "type": "object",
-                        "additionalProperties": false,
-                        "properties": {
-                          "type": {
-                            "const": "text"
-                          },
-                          "target": {
-                            "type": "string",
-                            "minLength": 1,
-                            "maxLength": 256
-                          },
-                          "text": {
-                            "type": "string",
-                            "maxLength": 2048
-                          }
-                        },
-                        "required": [
-                          "type",
-                          "target",
-                          "text"
-                        ]
-                      },
-                      {
-                        "type": "object",
-                        "additionalProperties": false,
-                        "properties": {
-                          "type": {
-                            "const": "timing"
-                          },
-                          "target": {
-                            "type": "string",
-                            "minLength": 1,
-                            "maxLength": 256
-                          },
-                          "start": {
-                            "type": "number",
-                            "minimum": 0,
-                            "maximum": 3600
-                          },
-                          "duration": {
-                            "type": "number",
-                            "minimum": 0.004166666666666667,
-                            "maximum": 3600
-                          }
-                        },
-                        "required": [
-                          "type",
-                          "target"
-                        ],
-                        "anyOf": [
-                          {
-                            "required": [
-                              "start"
-                            ]
-                          },
-                          {
-                            "required": [
-                              "duration"
-                            ]
-                          }
-                        ]
-                      }
-                    ]
-                  }
-                }
-              },
-              "required": [
-                "projectId",
-                "expectedRevision",
-                "operationId",
-                "ops"
+            "sceneId": {
+              "type": [
+                "string",
+                "null"
               ]
+            },
+            "summary": {
+              "type": "string",
+              "maxLength": 512
             }
           },
           "required": [
-            "v",
-            "id",
-            "method",
-            "params"
+            "historyCursor",
+            "revision",
+            "actor",
+            "kind",
+            "sceneId",
+            "summary"
           ]
+        }
+      },
+      "required": [
+        "projectId",
+        "revision",
+        "historyCursor",
+        "restored"
+      ]
+    },
+    "result_undo": {
+      "$ref": "#/$defs/result_history_step"
+    },
+    "result_redo": {
+      "$ref": "#/$defs/result_history_step"
+    },
+    "result_preview_snapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "snapshotId": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{32}$"
+        },
+        "projectId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "revision": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "entry": {
+          "const": "index.html"
+        },
+        "files": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 65,
+          "items": {
+            "$ref": "#/$defs/fileEntry"
+          }
+        },
+        "expiresAt": {
+          "type": "string",
+          "minLength": 20,
+          "maxLength": 32
+        },
+        "maxBytes": {
+          "const": 134217728
+        }
+      },
+      "required": [
+        "snapshotId",
+        "projectId",
+        "revision",
+        "entry",
+        "files",
+        "expiresAt",
+        "maxBytes"
+      ]
+    },
+    "result_preview_release": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "snapshotId": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{32}$"
+        },
+        "projectId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "revision": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "released": {
+          "const": true
+        }
+      },
+      "required": [
+        "snapshotId",
+        "projectId",
+        "revision",
+        "released"
+      ]
+    },
+    "request_doctor": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "id": {
+          "$ref": "#/$defs/requestId"
+        },
+        "method": {
+          "const": "doctor"
+        },
+        "params": {
+          "$ref": "#/$defs/params_doctor"
+        }
+      },
+      "required": [
+        "v",
+        "id",
+        "method",
+        "params"
+      ]
+    },
+    "request_open": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "id": {
+          "$ref": "#/$defs/requestId"
+        },
+        "method": {
+          "const": "open"
+        },
+        "params": {
+          "$ref": "#/$defs/params_open"
+        }
+      },
+      "required": [
+        "v",
+        "id",
+        "method",
+        "params"
+      ]
+    },
+    "request_inspect": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "id": {
+          "$ref": "#/$defs/requestId"
+        },
+        "method": {
+          "const": "inspect"
+        },
+        "params": {
+          "$ref": "#/$defs/params_inspect"
+        }
+      },
+      "required": [
+        "v",
+        "id",
+        "method",
+        "params"
+      ]
+    },
+    "request_edit": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "id": {
+          "$ref": "#/$defs/requestId"
+        },
+        "method": {
+          "const": "edit"
+        },
+        "params": {
+          "$ref": "#/$defs/params_edit"
+        }
+      },
+      "required": [
+        "v",
+        "id",
+        "method",
+        "params"
+      ]
+    },
+    "request_frame": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "id": {
+          "$ref": "#/$defs/requestId"
+        },
+        "method": {
+          "const": "frame"
+        },
+        "params": {
+          "$ref": "#/$defs/params_frame"
+        }
+      },
+      "required": [
+        "v",
+        "id",
+        "method",
+        "params"
+      ]
+    },
+    "request_render": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "id": {
+          "$ref": "#/$defs/requestId"
+        },
+        "method": {
+          "const": "render"
+        },
+        "params": {
+          "$ref": "#/$defs/params_render"
+        }
+      },
+      "required": [
+        "v",
+        "id",
+        "method",
+        "params"
+      ]
+    },
+    "request_status": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "id": {
+          "$ref": "#/$defs/requestId"
+        },
+        "method": {
+          "const": "status"
+        },
+        "params": {
+          "$ref": "#/$defs/params_status"
+        }
+      },
+      "required": [
+        "v",
+        "id",
+        "method",
+        "params"
+      ]
+    },
+    "request_cancel": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "id": {
+          "$ref": "#/$defs/requestId"
+        },
+        "method": {
+          "const": "cancel"
+        },
+        "params": {
+          "$ref": "#/$defs/params_cancel"
+        }
+      },
+      "required": [
+        "v",
+        "id",
+        "method",
+        "params"
+      ]
+    },
+    "request_close": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "id": {
+          "$ref": "#/$defs/requestId"
+        },
+        "method": {
+          "const": "close"
+        },
+        "params": {
+          "$ref": "#/$defs/params_close"
+        }
+      },
+      "required": [
+        "v",
+        "id",
+        "method",
+        "params"
+      ]
+    },
+    "request_shutdown": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "id": {
+          "$ref": "#/$defs/requestId"
+        },
+        "method": {
+          "const": "shutdown"
+        },
+        "params": {
+          "$ref": "#/$defs/params_shutdown"
+        }
+      },
+      "required": [
+        "v",
+        "id",
+        "method",
+        "params"
+      ]
+    },
+    "request_project_create": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "id": {
+          "$ref": "#/$defs/requestId"
+        },
+        "method": {
+          "const": "project.create"
+        },
+        "params": {
+          "$ref": "#/$defs/params_project_create"
+        }
+      },
+      "required": [
+        "v",
+        "id",
+        "method",
+        "params"
+      ]
+    },
+    "request_asset_import": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "id": {
+          "$ref": "#/$defs/requestId"
+        },
+        "method": {
+          "const": "asset.import"
+        },
+        "params": {
+          "$ref": "#/$defs/params_asset_import"
+        }
+      },
+      "required": [
+        "v",
+        "id",
+        "method",
+        "params"
+      ]
+    },
+    "request_scene_create": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "id": {
+          "$ref": "#/$defs/requestId"
+        },
+        "method": {
+          "const": "scene.create"
+        },
+        "params": {
+          "$ref": "#/$defs/params_scene_create"
+        }
+      },
+      "required": [
+        "v",
+        "id",
+        "method",
+        "params"
+      ]
+    },
+    "request_scene_update": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "id": {
+          "$ref": "#/$defs/requestId"
+        },
+        "method": {
+          "const": "scene.update"
+        },
+        "params": {
+          "$ref": "#/$defs/params_scene_update"
+        }
+      },
+      "required": [
+        "v",
+        "id",
+        "method",
+        "params"
+      ]
+    },
+    "request_scene_remove": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "id": {
+          "$ref": "#/$defs/requestId"
+        },
+        "method": {
+          "const": "scene.remove"
+        },
+        "params": {
+          "$ref": "#/$defs/params_scene_remove"
+        }
+      },
+      "required": [
+        "v",
+        "id",
+        "method",
+        "params"
+      ]
+    },
+    "request_scene_reorder": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "id": {
+          "$ref": "#/$defs/requestId"
+        },
+        "method": {
+          "const": "scene.reorder"
+        },
+        "params": {
+          "$ref": "#/$defs/params_scene_reorder"
+        }
+      },
+      "required": [
+        "v",
+        "id",
+        "method",
+        "params"
+      ]
+    },
+    "request_project_revise": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "id": {
+          "$ref": "#/$defs/requestId"
+        },
+        "method": {
+          "const": "project.revise"
+        },
+        "params": {
+          "$ref": "#/$defs/params_project_revise"
+        }
+      },
+      "required": [
+        "v",
+        "id",
+        "method",
+        "params"
+      ]
+    },
+    "request_history": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "id": {
+          "$ref": "#/$defs/requestId"
+        },
+        "method": {
+          "const": "history"
+        },
+        "params": {
+          "$ref": "#/$defs/params_history"
+        }
+      },
+      "required": [
+        "v",
+        "id",
+        "method",
+        "params"
+      ]
+    },
+    "request_undo": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "id": {
+          "$ref": "#/$defs/requestId"
+        },
+        "method": {
+          "const": "undo"
+        },
+        "params": {
+          "$ref": "#/$defs/params_undo"
+        }
+      },
+      "required": [
+        "v",
+        "id",
+        "method",
+        "params"
+      ]
+    },
+    "request_redo": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "id": {
+          "$ref": "#/$defs/requestId"
+        },
+        "method": {
+          "const": "redo"
+        },
+        "params": {
+          "$ref": "#/$defs/params_redo"
+        }
+      },
+      "required": [
+        "v",
+        "id",
+        "method",
+        "params"
+      ]
+    },
+    "request_preview_snapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "id": {
+          "$ref": "#/$defs/requestId"
+        },
+        "method": {
+          "const": "preview.snapshot"
+        },
+        "params": {
+          "$ref": "#/$defs/params_preview_snapshot"
+        }
+      },
+      "required": [
+        "v",
+        "id",
+        "method",
+        "params"
+      ]
+    },
+    "request_preview_release": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "id": {
+          "$ref": "#/$defs/requestId"
+        },
+        "method": {
+          "const": "preview.release"
+        },
+        "params": {
+          "$ref": "#/$defs/params_preview_release"
+        }
+      },
+      "required": [
+        "v",
+        "id",
+        "method",
+        "params"
+      ]
+    },
+    "requestId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "request": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/request_doctor"
         },
         {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "v": {
-              "const": 1
-            },
-            "id": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 128
-            },
-            "method": {
-              "const": "frame"
-            },
-            "params": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "projectId": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 128
-                },
-                "revision": {
-                  "type": "string",
-                  "pattern": "^[a-f0-9]{64}$"
-                },
-                "time": {
-                  "type": "number",
-                  "minimum": 0,
-                  "maximum": 3599.999
-                },
-                "timeoutMs": {
-                  "type": "number",
-                  "minimum": 100,
-                  "maximum": 120000
-                }
-              },
-              "required": [
-                "projectId",
-                "revision",
-                "time"
-              ]
-            }
-          },
-          "required": [
-            "v",
-            "id",
-            "method",
-            "params"
-          ]
+          "$ref": "#/$defs/request_open"
         },
         {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "v": {
-              "const": 1
-            },
-            "id": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 128
-            },
-            "method": {
-              "const": "render"
-            },
-            "params": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "projectId": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 128
-                },
-                "revision": {
-                  "type": "string",
-                  "pattern": "^[a-f0-9]{64}$"
-                },
-                "timeoutMs": {
-                  "type": "number",
-                  "minimum": 100,
-                  "maximum": 120000
-                }
-              },
-              "required": [
-                "projectId",
-                "revision"
-              ]
-            }
-          },
-          "required": [
-            "v",
-            "id",
-            "method",
-            "params"
-          ]
+          "$ref": "#/$defs/request_inspect"
         },
         {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "v": {
-              "const": 1
-            },
-            "id": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 128
-            },
-            "method": {
-              "const": "status"
-            },
-            "params": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "jobId": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 128
-                }
-              },
-              "required": [
-                "jobId"
-              ]
-            }
-          },
-          "required": [
-            "v",
-            "id",
-            "method",
-            "params"
-          ]
+          "$ref": "#/$defs/request_edit"
         },
         {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "v": {
-              "const": 1
-            },
-            "id": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 128
-            },
-            "method": {
-              "const": "cancel"
-            },
-            "params": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "jobId": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 128
-                }
-              },
-              "required": [
-                "jobId"
-              ]
-            }
-          },
-          "required": [
-            "v",
-            "id",
-            "method",
-            "params"
-          ]
+          "$ref": "#/$defs/request_frame"
         },
         {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "v": {
-              "const": 1
-            },
-            "id": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 128
-            },
-            "method": {
-              "const": "close"
-            },
-            "params": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "projectId": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 128
-                }
-              },
-              "required": [
-                "projectId"
-              ]
-            }
-          },
-          "required": [
-            "v",
-            "id",
-            "method",
-            "params"
-          ]
+          "$ref": "#/$defs/request_render"
         },
         {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "v": {
-              "const": 1
-            },
-            "id": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 128
-            },
-            "method": {
-              "const": "shutdown"
-            },
-            "params": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {},
-              "required": []
-            }
-          },
-          "required": [
-            "v",
-            "id",
-            "method",
-            "params"
-          ]
+          "$ref": "#/$defs/request_status"
+        },
+        {
+          "$ref": "#/$defs/request_cancel"
+        },
+        {
+          "$ref": "#/$defs/request_close"
+        },
+        {
+          "$ref": "#/$defs/request_shutdown"
+        },
+        {
+          "$ref": "#/$defs/request_project_create"
+        },
+        {
+          "$ref": "#/$defs/request_asset_import"
+        },
+        {
+          "$ref": "#/$defs/request_scene_create"
+        },
+        {
+          "$ref": "#/$defs/request_scene_update"
+        },
+        {
+          "$ref": "#/$defs/request_scene_remove"
+        },
+        {
+          "$ref": "#/$defs/request_scene_reorder"
+        },
+        {
+          "$ref": "#/$defs/request_project_revise"
+        },
+        {
+          "$ref": "#/$defs/request_history"
+        },
+        {
+          "$ref": "#/$defs/request_undo"
+        },
+        {
+          "$ref": "#/$defs/request_redo"
+        },
+        {
+          "$ref": "#/$defs/request_preview_snapshot"
+        },
+        {
+          "$ref": "#/$defs/request_preview_release"
         }
       ]
     },
@@ -525,24 +2668,7 @@
               "const": false
             },
             "error": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "code": {
-                  "type": "string"
-                },
-                "message": {
-                  "type": "string"
-                },
-                "stage": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "code",
-                "message",
-                "stage"
-              ]
+              "$ref": "#/$defs/workerError"
             }
           },
           "required": [

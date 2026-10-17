@@ -397,6 +397,12 @@ export class WorkerClient {
   redo(params) {
     return this.request("redo", params);
   }
+  previewSnapshot(params) {
+    return this.request("preview.snapshot", params);
+  }
+  previewRelease(params) {
+    return this.request("preview.release", params);
+  }
   async dispose() {
     if (this.disposePromise) return this.disposePromise;
     this.disposePromise = (async () => {

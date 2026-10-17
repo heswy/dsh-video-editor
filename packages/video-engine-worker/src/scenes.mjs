@@ -89,7 +89,10 @@ export function validateSceneSpec(value, { sceneId: allowId = false } = {}) {
   for (const key of Object.keys(value))
     if (!SCENE_KEYS.includes(key))
       parameter(`Unsupported scene template field ${key}`);
-  if (allowId && value.sceneId !== undefined) sceneId(value.sceneId);
+  if (value.sceneId !== undefined) {
+    if (!allowId) parameter("sceneId is not allowed in this template");
+    sceneId(value.sceneId);
+  }
   if (value.duration === undefined) parameter("Scene duration is required");
   if (
     typeof value.duration !== "number" ||
