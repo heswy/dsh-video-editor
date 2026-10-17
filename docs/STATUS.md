@@ -16,7 +16,8 @@
 |---|---|---|---|
 | 项目准备与长期记忆 | Codex | codex/project-foundation；主工作区 | 已完成，本地提交交接；归档完整性及链接检查通过 |
 | [P0-001](tasks/P0-001-mode-shell.md) | DSH 调查 / Codex 评审 | dsh/p0-mode-shell；同级 dsh-video-editor-worktrees/p0-mode-shell | a85308a / dcc0ae4 已审阅，调查验收通过；未做插件 live 验证 |
-| [P0-002](tasks/P0-002-mode-shell-implementation.md) | DSH 实现 / Codex 评审 | 继续 dsh/p0-mode-shell 与原 worktree | 52a1d1c / f3ac0c0 已评审，请求修复 R1–R3；本地检查 32/32 通过，未安装 |
+| [P0-002](tasks/P0-002-mode-shell-implementation.md) | DSH 实现 / Codex 评审 | 继续 dsh/p0-mode-shell 与原 worktree | 8ebf922 / a31ee51 主要修复复审通过；本地检查 44/44，固定包已产生；未安装 |
+| [P0-003](tasks/P0-003-install-validation.md) | 原 DSH 会话 | 原 P0 worktree | 安装/真页面验证准备好，待用户明确授权 |
 | [前端设计规划](design/FRONTEND-DESIGN.md) | Codex | codex/project-foundation；主工作区 | v0.1 方向草案已整理；未实现/未真页面验证 |
 | [P1-001 引擎验证](tasks/P1-001-engine-spike.md) | 用户新开的 Codex 开发会话 | codex/p1-engine-spike；同级 p1-engine-spike | 并行任务与独立 worktree 已准备，待用户打开 |
 
@@ -24,15 +25,17 @@
 
 并行线：用户在新 Codex 会话打开 `/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/p1-engine-spike`，按 P1-001 开始引擎验证。该会话只改 spike 与自身记录，不等 P0 修复，也不改 DSH Client 文件。
 
-1. Codex 将 [首轮评审](reviews/P0-002-review-01.md) 同步到干净的原 DSH worktree，不改其功能实现。
-2. 用户告诉 DSH 修复 R1–R3，更新任务记录并本地提交，不重新调查已确认项，不安装或改 profile。
-3. Codex 复审通过后再整理具体包供用户确认安装验证；目前未合并实现到协调分支或 main。
+1. Codex 将 [修复复审](reviews/P0-002-review-02.md) 与 P0-003 同步到干净的原 DSH worktree，不改其功能实现。
+2. 用户可在 DSH 明确授权安装/启用指定 tarball，随后执行 P0-003；新 Codex 引擎会话继续 P1-001，无需等待安装。
+3. DSH 返回真实页面与状态恢复证据，由主会话验收。当前未合并实现到协调分支或 main。
 
 ## 阻塞与未验证
 
 用户已确认首版原生顶部靠左入口；无产品决策阻塞。普通输入附件/引用及回退清理仍需真机验证。没有宿主集成、UI、生成、编辑或导出通过验证。
 
 ## 最近交接
+
+2026-10-17 P0-B 修复复审：实读 8ebf922/a31ee51，复跑 44 项检查通过，已产出并校验固定 tarball（来源与 SHA 见 review-02）；可进入受控安装验证，用户尚未授权执行安装。P0 与 P1 文件边界无冲突，P1 继续独立推进。晚到 leading 注册失败场景仍列为边界补验项。
 
 2026-10-17 并行分工：用户确认项目紧急，应并行。主会话准备 P1-001 worktree 和边界，建议用户新开 Codex 开发会话；DSH 修 P0，新会话验证 HyperFrames，主会话继续交叉评审与集成。P0 worktree 最新 HEAD 已变化，尚未在本轮复审，不以分支前移推断修复通过。
 
