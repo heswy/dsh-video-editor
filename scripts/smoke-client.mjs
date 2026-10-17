@@ -1277,6 +1277,8 @@ test('R1: eyebrow-first inspect selects hf-title and binds title/timing to one s
   tree = editor.rerender();
   elementById(tree, 'dsh-video-start').props.onChange({ target: { value: '1.00' } });
   tree = editor.rerender();
+  elementById(tree, 'dsh-video-duration').props.onChange({ target: { value: '4.00' } });
+  tree = editor.rerender();
   await buttonByText(tree, '保存修改').props.onClick();
   await settle();
   const editCall = hostFetch.calls.find((call) => call.body.method === 'edit');
@@ -1424,6 +1426,8 @@ test('P2-002-B: save edits with expectedRevision/operationId and refresh from th
   tree = editor.rerender();
   elementById(tree, 'dsh-video-start').props.onChange({ target: { value: '1.00' } });
   tree = editor.rerender();
+  elementById(tree, 'dsh-video-duration').props.onChange({ target: { value: '4.00' } });
+  tree = editor.rerender();
   await buttonByText(tree, '保存修改').props.onClick();
   await settle();
   tree = editor.rerender();
@@ -1532,8 +1536,177 @@ test('P2-002-B: export starts a real job, exposes cancel and keeps the structure
   assert(cancelled === true, 'cancel request was not sent');
   tree = editor.rerender();
   assert(textOf(tree).includes('正在取消') || textOf(tree).includes('已取消'), 'cancel state was not shown');
+  assert(findNode(tree, (node) => node.props && node.props.role === 'alert') === null, 'cancelled export was presented as an error');
+  const exportAgain = buttonByText(tree, '导出 MP4');
+  assert(exportAgain !== null && exportAgain.props.disabled === false, 'export settings/action were not preserved after cancellation');
   const renderCall = hostFetch.calls.find((call) => call.body.method === 'render');
   assert(renderCall !== undefined && typeof renderCall.body.params.revision === 'string', 'render did not use the current revision');
+});
+
+test('R2: cancelled render is neutral and can be retried; failed/timed_out stay localized', async () => {
+  const jobId = 'cccccccc-2222-4333-8444-555555555555';
+  let cancelled = false;
+  const hostFetch = makeHostFetch((request) => {
+    const method = request.body.method;
+    if (method === 'open') return { ok: true, result: { projectId: 'demo', revision: 'a'.repeat(64) } };
+    if (method === 'inspect') return { ok: true, result: sampleInspect() };
+    if (method === 'frame') return { ok: true, result: sampleJob('dddddddd-2222-4333-8444-555555555555') };
+    if (method === 'status') {
+      if (request.body.params.jobId === 'dddddddd-2222-4333-8444-555555555555') return { ok: true, result: Object.assign(sampleJob('dddddddd-2222-4333-8444-555555555555'), { state: 'succeeded', kind: 'frame', artifact: { name: 'frame.png' } }) };
+      return { ok: true, result: Object.assign(sampleJob(jobId), { state: cancelled ? 'cancelled' : 'running', kind: 'render' }) };
+    }
+    if (method === 'render') return { ok: true, result: Object.assign(sampleJob(jobId), { kind: 'render' }) };
+    if (method === 'cancel') { cancelled = true; return { ok: true, result: Object.assign(sampleJob(jobId), { kind: 'render', state: 'cancelling' }) }; }
+    return { ok: false, error: { code: 'E_METHOD', message: 'unexpected' } };
+  });
+  const editor = mountEditor(hostFetch);
+  await buttonByText(editor.tree(), '打开示例').props.onClick();
+  await settle();
+  let tree = editor.rerender();
+  buttonByText(tree, '导出 MP4').props.onClick();
+  await settle();
+  tree = editor.rerender();
+  await buttonByText(tree, '取消').props.onClick();
+  await settle();
+  await new Promise((resolve) => setTimeout(resolve, 850));
+  await settle();
+  tree = editor.rerender();
+  assert(findNode(tree, (node) => node.props && node.props.role === 'alert') === null, 'render cancellation produced an error alert');
+  assert(textOf(tree).includes('已取消'), 'render cancellation terminal state was not shown');
+  assert(buttonByText(tree, '导出 MP4').props.disabled === false, 'export cannot be retried after cancellation');
+
+  // A real failure is different from cancellation and must be localized.
+  for (const terminal of ['failed', 'timed_out']) {
+    const terminalJobId = terminal === 'failed' ? 'abababab-2222-4333-8444-555555555555' : 'acacacac-2222-4333-8444-555555555555';
+    const terminalFetch = makeHostFetch((request) => {
+      const method = request.body.method;
+      if (method === 'open') return { ok: true, result: { projectId: 'demo', revision: 'a'.repeat(64) } };
+      if (method === 'inspect') return { ok: true, result: sampleInspect() };
+      if (method === 'frame') return { ok: true, result: sampleJob('adadadad-2222-4333-8444-555555555555') };
+      if (method === 'status') {
+        if (request.body.params.jobId === 'adadadad-2222-4333-8444-555555555555') return { ok: true, result: Object.assign(sampleJob('adadadad-2222-4333-8444-555555555555'), { state: 'succeeded', kind: 'frame', artifact: { name: 'frame.png' } }) };
+        return { ok: true, result: Object.assign(sampleJob(terminalJobId), { state: terminal, kind: 'render', error: { code: 'E_RENDER', message: 'Job failed without publishing an artifact' } }) };
+      }
+      if (method === 'render') return { ok: true, result: Object.assign(sampleJob(terminalJobId), { kind: 'render' }) };
+      return { ok: false, error: { code: 'E_METHOD', message: 'unexpected' } };
+    });
+    const terminalEditor = mountEditor(terminalFetch);
+    await buttonByText(terminalEditor.tree(), '打开示例').props.onClick();
+    await settle();
+    let terminalTree = terminalEditor.rerender();
+    buttonByText(terminalTree, '导出 MP4').props.onClick();
+    await settle();
+    terminalTree = terminalEditor.rerender();
+    const terminalAlert = findNode(terminalTree, (node) => node.props && node.props.role === 'alert');
+    assert(terminalAlert !== null, `${terminal} render did not show an alert`);
+    const expected = terminal === 'failed' ? '导出失败' : '操作超时';
+    assert(textOf(terminalAlert).includes(expected), `${terminal} error was not localized: ${textOf(terminalAlert)}`);
+    assert(textOf(terminalAlert).includes('Job failed without publishing an artifact') === false, `${terminal} leaked English worker text`);
+  }
+});
+
+test('R2: frame cancellation keeps a neutral empty state without an error', async () => {
+  let frameIndex = 0;
+  const cancelled = new Set();
+  const hostFetch = makeHostFetch((request) => {
+    const method = request.body.method;
+    if (method === 'open') return { ok: true, result: { projectId: 'demo', revision: 'a'.repeat(64) } };
+    if (method === 'inspect') return { ok: true, result: sampleInspect() };
+    if (method === 'frame') {
+      frameIndex += 1;
+      return { ok: true, result: sampleJob('10000000-2222-4333-8444-55555555555' + frameIndex) };
+    }
+    if (method === 'status') {
+      const jobId = request.body.params.jobId;
+      if (jobId === '10000000-2222-4333-8444-555555555551') return { ok: true, result: Object.assign(sampleJob(jobId), { state: 'succeeded', artifact: { name: 'frame.png' } }) };
+      return { ok: true, result: Object.assign(sampleJob(jobId), { state: cancelled.has(jobId) ? 'cancelled' : 'running' }) };
+    }
+    if (method === 'cancel') { cancelled.add(request.body.params.jobId); return { ok: true, result: Object.assign(sampleJob(request.body.params.jobId), { state: 'cancelling' }) }; }
+    return { ok: false, error: { code: 'E_METHOD', message: 'unexpected' } };
+  });
+  const editor = mountEditor(hostFetch);
+  await buttonByText(editor.tree(), '打开示例').props.onClick();
+  await settle();
+  let tree = editor.rerender();
+  assert(findNode(tree, (node) => node.props && node.props.className === 'dv-frame') !== null, 'initial frame missing');
+  await buttonByText(tree, '更新画面').props.onClick();
+  await settle();
+  tree = editor.rerender();
+  await buttonByText(tree, '取消').props.onClick();
+  await settle();
+  await new Promise((resolve) => setTimeout(resolve, 850));
+  await settle();
+  tree = editor.rerender();
+  assert(findNode(tree, (node) => node.props && node.props.role === 'alert') === null, 'frame cancellation produced an error alert');
+  assert(findNode(tree, (node) => node.props && node.props.className === 'dv-frame') === null, 'frame cancellation should show the explicit empty state');
+  assert(textOf(tree).includes('已取消'), 'frame cancellation state was not shown');
+});
+
+test('R3: local timing validation rejects 4/5 without an edit request and accepts 0/5 and 2/3', async () => {
+  async function scenario(start, duration) {
+    const hostFetch = makeHostFetch((request) => {
+      const method = request.body.method;
+      if (method === 'open') return { ok: true, result: { projectId: 'demo', revision: 'a'.repeat(64) } };
+      if (method === 'inspect') return { ok: true, result: sampleInspect() };
+      if (method === 'edit') return { ok: true, result: { projectId: 'demo', revision: 'b'.repeat(64), operationId: request.body.params.operationId } };
+      if (method === 'frame') return { ok: true, result: sampleJob('20000000-2222-4333-8444-555555555555') };
+      if (method === 'status') return { ok: true, result: Object.assign(sampleJob('20000000-2222-4333-8444-555555555555'), { state: 'succeeded', artifact: { name: 'frame.png' } }) };
+      return { ok: false, error: { code: 'E_METHOD', message: 'unexpected' } };
+    });
+    const editor = mountEditor(hostFetch);
+    await buttonByText(editor.tree(), '打开示例').props.onClick();
+    await settle();
+    let tree = editor.rerender();
+    elementById(tree, 'dsh-video-title').props.onChange({ target: { value: '测试标题' } });
+    tree = editor.rerender();
+    elementById(tree, 'dsh-video-start').props.onChange({ target: { value: String(start) } });
+    tree = editor.rerender();
+    elementById(tree, 'dsh-video-duration').props.onChange({ target: { value: String(duration) } });
+    tree = editor.rerender();
+    await buttonByText(tree, '保存修改').props.onClick();
+    await settle();
+    tree = editor.rerender();
+    const editCalls = hostFetch.calls.filter((call) => call.body.method === 'edit');
+    return { tree, editCalls };
+  }
+
+  const rejected = await scenario(4, 5);
+  assert(rejected.editCalls.length === 0, 'local timing rejection still sent edit');
+  const rangeAlert = findNode(rejected.tree, (node) => node.props && node.props.role === 'alert');
+  assert(rangeAlert !== null && textOf(rangeAlert).includes('工程时长'), 'local timing rejection is not localized');
+  assert(textOf(rangeAlert).includes('Timing extends beyond composition') === false, 'local timing rejection leaked English');
+
+  const edge = await scenario(0, 5);
+  assert(edge.editCalls.length === 1, '0/5 edge timing was rejected locally');
+  assert(findNode(edge.tree, (node) => node.props && node.props.role === 'alert' && textOf(node).includes('工程时长')) === null, '0/5 edge produced a range error');
+
+  const valid = await scenario(2, 3);
+  assert(valid.editCalls.length === 1, '2/3 valid timing did not send edit');
+  assert(findNode(valid.tree, (node) => node.props && node.props.role === 'alert' && textOf(node).includes('工程时长')) === null, '2/3 valid timing produced a range error');
+});
+
+test('R3: worker timing rejection is mapped to the same localized message', async () => {
+  const hostFetch = makeHostFetch((request) => {
+    const method = request.body.method;
+    if (method === 'open') return { ok: true, result: { projectId: 'demo', revision: 'a'.repeat(64) } };
+    if (method === 'inspect') return { ok: true, result: sampleInspect() };
+    if (method === 'edit') return { ok: false, error: { code: 'E_PARAMS', message: 'Timing extends beyond composition' } };
+    if (method === 'frame') return { ok: true, result: sampleJob('30000000-2222-4333-8444-555555555555') };
+    if (method === 'status') return { ok: true, result: Object.assign(sampleJob('30000000-2222-4333-8444-555555555555'), { state: 'succeeded', artifact: { name: 'frame.png' } }) };
+    return { ok: false, error: { code: 'E_METHOD', message: 'unexpected' } };
+  });
+  const editor = mountEditor(hostFetch);
+  await buttonByText(editor.tree(), '打开示例').props.onClick();
+  await settle();
+  let tree = editor.rerender();
+  elementById(tree, 'dsh-video-title').props.onChange({ target: { value: '测试标题' } });
+  tree = editor.rerender();
+  await buttonByText(tree, '保存修改').props.onClick();
+  await settle();
+  tree = editor.rerender();
+  const alert = findNode(tree, (node) => node.props && node.props.role === 'alert');
+  assert(alert !== null && textOf(alert).includes('工程时长'), 'worker timing rejection was not mapped to localized text');
+  assert(textOf(alert).includes('Timing extends beyond composition') === false, 'worker timing rejection leaked English');
 });
 
 test('P2-002-B: returning to the panel restores the visible project without a second open request', async () => {

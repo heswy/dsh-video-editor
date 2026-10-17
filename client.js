@@ -65,6 +65,7 @@ window.__ModuleLoader__.load({
       'video.display.simplified': '简化界面效果',
       'video.title': '标题',
       'video.timing': '时间',
+      'video.timing.range': '开始时间与时长超出工程时长（最长 {duration} 秒）。',
       'video.start': '开始（秒）',
       'video.duration': '时长（秒）',
       'video.update': '更新画面',
@@ -88,6 +89,9 @@ window.__ModuleLoader__.load({
       'video.capabilities': '能力',
       'video.edit.empty': '没有需要保存的修改。',
       'video.edit.invalidTiming': '请输入有效的开始时间和时长。',
+      'video.error.frameFailed': '画面生成失败，请重试。',
+      'video.error.renderFailed': '导出失败，请重试。',
+      'video.error.timedOut': '操作超时，请重试。',
       'video.error.back': '返回对话失败，请重试。',
       'video.error.configuration': '视频服务尚未配置，请检查 Host 配置。',
       'video.error.network': '无法连接到视频服务。',
@@ -113,6 +117,7 @@ window.__ModuleLoader__.load({
       'video.display.simplified': 'Reduce UI effects',
       'video.title': 'Title',
       'video.timing': 'Timing',
+      'video.timing.range': 'Start time plus duration exceeds the project length (maximum {duration}s).',
       'video.start': 'Start (s)',
       'video.duration': 'Duration (s)',
       'video.update': 'Update frame',
@@ -136,6 +141,9 @@ window.__ModuleLoader__.load({
       'video.capabilities': 'Capabilities',
       'video.edit.empty': 'There is nothing to save.',
       'video.edit.invalidTiming': 'Enter a valid start time and duration.',
+      'video.error.frameFailed': 'The frame could not be generated. Try again.',
+      'video.error.renderFailed': 'The export failed. Try again.',
+      'video.error.timedOut': 'The operation timed out. Try again.',
       'video.error.back': 'Could not return to the conversation. Try again.',
       'video.error.configuration': 'The video service is not configured. Check the Host configuration.',
       'video.error.network': 'Could not reach the video service.',
@@ -974,6 +982,15 @@ window.__ModuleLoader__.load({
       return detail.length > 0 ? detail : t('video.error.generic');
     }
 
+    function timingRangeMessage(t, duration) {
+      if (duration === null) return t('video.edit.invalidTiming');
+      return t('video.timing.range').replace('{duration}', formatSeconds(duration));
+    }
+
+    function isTimingBeyondComposition(error) {
+      return error !== null && typeof error === 'object' && error.code === 'E_PARAMS' && typeof error.message === 'string' && /Timing extends beyond composition/i.test(error.message);
+    }
+
     function stateText(state, t) {
       return typeof state === 'string' && state.length > 0 ? t('video.state.' + state) : '';
     }
@@ -1185,24 +1202,32 @@ window.__ModuleLoader__.load({
           if (!aliveRef.current || token !== jobTokenRef.current) return null;
           setJob(current);
           if (isTerminalJob(current)) {
-            if (kind === 'frame') {
-              if (current.state === 'succeeded') {
+            if (current.state === 'cancelled') {
+              // A user-requested cancellation is a neutral terminal state, not a
+              // failure. For frame this leaves the explicit empty state (the old
+              // frame was cleared when the job started); render keeps its settings.
+              setError(null);
+            } else if (current.state === 'succeeded') {
+              if (kind === 'frame') {
                 setFrame({
                   url: artifactUrl(initialJob.jobId),
                   revision: targetProject.revision,
                   jobId: initialJob.jobId,
                   time: frameTimeSeconds,
                 });
-              } else {
-                setError(hostError(current.error || { code: 'E_FRAME_FAILED', message: t('video.error.generic') }));
               }
-            } else if (current.state !== 'succeeded') {
-              setError(hostError(current.error || { code: 'E_RENDER_FAILED', message: t('video.error.generic') }));
+            } else if (current.state === 'timed_out') {
+              setError({ code: 'E_TIMEOUT', message: t('video.error.timedOut') });
+            } else {
+              setError({
+                code: kind === 'frame' ? 'E_FRAME_FAILED' : 'E_RENDER_FAILED',
+                message: kind === 'frame' ? t('video.error.frameFailed') : t('video.error.renderFailed'),
+              });
             }
             return current;
           }
           if (Date.now() > deadline) {
-            setError({ code: 'E_TIMEOUT', message: t('video.error.generic') });
+            setError({ code: 'E_TIMEOUT', message: t('video.error.timedOut') });
             return null;
           }
           await sleep(700);
@@ -1306,6 +1331,11 @@ window.__ModuleLoader__.load({
             setError({ code: 'E_PARAMS', message: t('video.edit.invalidTiming') });
             return;
           }
+          const projectDuration = durationOf(project);
+          if (projectDuration !== null && nextStart + nextDuration > projectDuration + 1 / 240) {
+            setError({ code: 'E_PARAMS', message: timingRangeMessage(t, projectDuration) });
+            return;
+          }
           if (nextStart !== Number(target.timing.start) || nextDuration !== Number(target.timing.duration)) {
             ops.push({ type: 'timing', target: target.stableId, start: nextStart, duration: nextDuration });
           }
@@ -1329,7 +1359,13 @@ window.__ModuleLoader__.load({
           inspected = await hostRequest('inspect', { projectId: project.projectId });
           if (aliveRef.current && token === jobTokenRef.current) applyInspected(inspected, targetId);
         } catch (requestError) {
-          if (aliveRef.current && token === jobTokenRef.current) setError(hostError(requestError));
+          if (aliveRef.current && token === jobTokenRef.current) {
+            if (isTimingBeyondComposition(requestError)) {
+              setError({ code: 'E_PARAMS', message: timingRangeMessage(t, durationOf(project)) });
+            } else {
+              setError(hostError(requestError));
+            }
+          }
         } finally {
           if (aliveRef.current && token === jobTokenRef.current) setBusy(null);
         }

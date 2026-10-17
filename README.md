@@ -4,7 +4,7 @@
 
 用户确定的入口（P0-005，延续到本阶段）：DSH 左侧原生导航中，在「上下文洞察」之后、「工作区」分组之前，单行 **Vedio Editor** + 细线条视频图标。原顶部「普通｜视频」胶囊已移除。入口是产品工作区导航，不改变 Agent preset、模型或权限。
 
-当前阶段：**P2-005** 在已验收的 Host 桥基础上增加「画面时间」点抽帧预览（B 小改），包版本 **0.2.1**；本机已安装 0.2.0，本轮**未安装、未启停、未改 profile**，0.2.1 待复审后另行授权安装。播放器隔离可行性 spike 只记录在 `docs/research/P2-005-preview-spike.md`，不进生产。运行时基线为 DSH Desktop **0.2.1-rc.1**。
+当前阶段：**P2-006** 修复真机验收的取消/时序客户端问题，包版本 **0.2.2**；本机已安装 0.2.1，本轮**未安装、未启停、未改 profile**，0.2.2 待复审后另行授权安装。播放器隔离可行性 spike 只记录在 `docs/research/P2-005-preview-spike.md`，不进生产。运行时基线为 DSH Desktop **0.2.1-rc.1**。
 
 - [当前状态与下一步](docs/STATUS.md)
 - [开发与协作规则](docs/DEVELOPMENT.md)
@@ -20,7 +20,7 @@
 | 项 | 值 |
 |---|---|
 | 包名 / Loader 行 id / Client 模块 id | `dsh-video` |
-| Bundle 版本 | `0.2.1` |
+| Bundle 版本 | `0.2.2` |
 | Host 路由 | `POST /api/dsh-video/request`、`GET/HEAD /api/dsh-video/artifact?jobId=…` |
 | Tool | `video_engine`（action: doctor/open/inspect/edit/frame/render/status/cancel/close） |
 | 侧栏入口 | `sidebar.panellist`，`id: dsh-video`、`order: 30`、label `Vedio Editor` |
@@ -62,7 +62,7 @@
 
 - 无工程时保留一句「尚无工程」和一个可工作的「打开示例」动作；固定示例 id 为受控配置中的 `demo`，**不会自动伪造工程或进度**。
 - 打开后：显示来自真实 `inspect` 的标题/尺寸/时长；自动请求当前 revision 在默认 2.5s（或上次选择）的真实 PNG；提供「画面时间」输入（0–工程时长），「更新画面」按所选时间调用现有 frame，越界明确报错不静默换时刻；面板切换恢复时间点与画面。提供显式 target 选择器，标题与 start/duration 只作用于同一个选中 stableId（受控 fixture 默认 `hf-title`）；目标缺 capability 时字段隐藏。提供导出 MP4、取消与真实作业状态；没有假播放/时间线/自动轮播。
-- 编辑失败/修订冲突就近显示；编辑成功后重新 `inspect`，先清掉旧帧，再请求新 revision 画面，旧帧不会冒充新 revision。
+- 编辑失败/修订冲突就近显示；编辑成功后重新 `inspect`，先清掉旧帧，再请求新 revision 画面，旧帧不会冒充新 revision。开始+时长在客户端先按工程时长校验（容差 1/240s），越界不发请求并显示本地化提示；worker 拒绝仍保留为防线。
 - 详细元数据（stableId/capabilities）放在按需展开的「属性」区；不常驻 revision 哈希、路径、版本或开发阶段说明。没有时间线、连续播放、AI 生成等未接入能力。
 
 ## 开发 staging（固定引擎提交）

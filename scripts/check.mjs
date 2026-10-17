@@ -131,8 +131,8 @@ check('bundle manifest declares patch and client', () => {
   return `platform=web, inject=[${pkg.dsh.client.inject.join(', ')}]`;
 });
 
-check('package version advanced for the P2-005 fixed package', () => {
-  assert(pkg.version === '0.2.1', `expected version 0.2.1, found "${pkg.version}"`);
+check('package version advanced for the P2-006 fixed package', () => {
+  assert(pkg.version === '0.2.2', `expected version 0.2.2, found "${pkg.version}"`);
   return pkg.version;
 });
 
@@ -413,6 +413,25 @@ check('P2-002-B: Host modules do not import DSH-internal packages', () => {
     assert(source.includes('@deepseek-ai/') === false, `host/${name} imports a DSH-internal package`);
   }
   return 'node builtins + explicit engine package specifiers only';
+});
+
+check('P2-006 R2: cancelled jobs are neutral, failures stay localized', () => {
+  assert(clientSource.includes("current.state === 'cancelled'"), 'cancelled terminal state handling missing');
+  assert(clientSource.includes('setError(null);'), 'cancelled state does not clear/suppress the error');
+  assert(clientSource.includes("state !== 'succeeded'") === false, 'waitForJob still treats every non-success as an error');
+  for (const key of ['video.error.frameFailed', 'video.error.renderFailed', 'video.error.timedOut']) {
+    assert(clientSource.includes(key), `localized terminal error key missing: ${key}`);
+  }
+  return 'cancelled neutral; failed/timed_out localized';
+});
+
+check('P2-006 R3: timing sum is validated locally and worker English is mapped', () => {
+  assert(clientSource.includes('timingRangeMessage'), 'localized timing range helper missing');
+  assert(clientSource.includes('nextStart + nextDuration > projectDuration + 1 / 240'), 'local start+duration tolerance check missing');
+  assert(clientSource.includes('Timing extends beyond composition'), 'worker timing rejection is not mapped');
+  assert(clientSource.includes("'video.timing.range'"), 'timing range locale key missing');
+  assert(clientSource.includes("replace('{duration}'"), 'timing range message does not interpolate duration');
+  return 'local 1/240 check; worker E_PARAMS mapped to localized text';
 });
 
 check('P2-005 R1: primary button uses existing paired host tokens', () => {
