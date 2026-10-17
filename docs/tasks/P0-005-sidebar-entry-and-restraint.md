@@ -44,3 +44,10 @@
 - 未安装 / 未验证：当前 profile 仍安装 `0.1.0`，`0.1.2` 未安装、未启停、未重启、未改 profile、未 push。按事故后规则未使用全局坐标/键盘/粘贴/窗口聚焦；真实页面位置、图标/间距、主题、窄窗、字号、键盘 Tab/焦点/返回、真实启停与卸载回退、草稿/引用/附件、静态阅读位置、冷启动、console 均待授权安装新包后验收。
 - 引擎线（P1-002）独立并行，本轮未触碰其文件或 worktree。
 
+
+## 评审修复 R1（2026-10-17，回应 `docs/reviews/P0-005-review-01.md`）
+
+- R1 [P2]：显示菜单缺少焦点进入/关闭回归（键盘打开后焦点仍在触发按钮；Tab 进入选项再 Escape 会卸载聚焦元素）。采用完整管理现有单项菜单而非引入额外 primitive：触发按钮与菜单项 refs；点击/Enter/Space 原生 click/ArrowDown/ArrowUp 打开后 `useEffect` 聚焦 `menuitemcheckbox`（`tabIndex:-1`）；Escape 关闭并回焦触发按钮；Tab/Shift+Tab 在菜单内先关闭、回焦触发按钮并只阻止本次默认 Tab（焦点不会留在卸载节点，下一次 Tab 可正常离开）；再次点击触发按钮关闭并保持焦点；不安装全局 document/window 监听，卸载无可泄漏监听；焦点操作带 try/catch 兜底。未改变菜单语义、偏好持久化、空状态或导航生命周期。
+- 回归：`scripts/smoke-client.mjs` 追加 5 条焦点测试（打开→项聚焦、ArrowDown→项聚焦、Escape→触发按钮聚焦、Tab→触发按钮聚焦且事件被处理、再次点击关闭→焦点保持），fake runtime 增加 ref/effect/activeElement 模拟；静态检查追加 1 条 R1 契约检查。本地实跑：`node --check` 通过；`node scripts/check.mjs` **27/27**；`node scripts/smoke-client.mjs` **30/30**；`npm pack --dry-run` 9 files。该回归验证本地组件行为，不代表真实 Host 已实测；未启用全局键盘/坐标或假宿主截图。
+- 新固定包：版本 `0.1.3`；R1 修复提交 `51c82a9`；包路径 `/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/artifacts/p0-mode-shell/51c82a9/dsh-video-0.1.3.tgz`；SHA-256 `82def6de6129333179e015b9e841d967517ccc0def92cc48f677f0082a77f897`；15,074 bytes / 9 files；解包与工作树 9/9 逐字节一致；`0.1.0/0.1.1/0.1.2` 固定包保留归档。**未安装/未替换已安装 0.1.0、未启停、未改 profile、未重启、未 push；停在复审。**
+- 备注：评审指出交付消息把 README 链接写成 `docs/README.md` 属笔误；README 实际位于仓库根 `README.md`，本轮未移动文件，后续交付引用根路径。

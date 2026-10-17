@@ -111,13 +111,22 @@ const active = usePanelInfo((info) => info.activePanelId === id);
 
 侧栏行可见文本由宿主渲染 `nav.label`；面板内不重复显示入口名。
 
+## 4.4 评审 R1 修复：显示菜单焦点（0.1.3）
+
+首审 `P0-005-review-01.md` R1 指出：菜单只切换 `menuOpen`，没有菜单 ref 与焦点移入/返回逻辑；键盘打开后焦点仍在触发按钮，Tab 进入选项再按 Escape 会卸载被聚焦元素而丢失焦点；只声明 menu/menuitemcheckbox 角色不足以完成菜单键盘行为。修复采用完整管理现有单项菜单（未引入新依赖或宿主未验证的 primitive）：
+
+- 触发按钮与菜单项持有 `useRef`；打开路径（点击、Enter/Space 原生 click、ArrowDown/ArrowUp）后由 `useEffect([menuOpen])` 把焦点移到 `menuitemcheckbox`（`tabIndex:-1`，只允许程序化聚焦）。
+- `Escape` 关闭菜单并把焦点还给触发按钮；`Tab`/`Shift+Tab` 在菜单内按下时先关闭菜单、回焦触发按钮并只阻止本次默认 Tab（焦点不会留在随后卸载的节点上，下一次 Tab 可正常离开）；再次点击触发按钮也会关闭并保持焦点在按钮上。
+- 不安装全局 `document`/`window` 监听，因此菜单或面板卸载时没有可泄漏的监听器；焦点操作全部 `try/catch` 兜底。关闭菜单不会改变「简化界面效果」偏好或其它状态。
+- 回归：smoke 追加 5 条断言（点击打开→焦点在项；ArrowDown 打开→焦点在项；Escape 关闭→焦点回触发按钮；Tab 关闭→焦点回触发按钮且事件被处理；再次点击关闭→焦点保持触发按钮），fake runtime 增加 `ref`/`effect`/`activeElement` 模拟以验证本地组件行为；静态检查追加 1 条（refs/ArrowDown/Escape/Tab/focusTrigger/无全局监听）。这些是本地组件合约行为，不代表真实 Host 已实测。
+
 ## 5. 本地验证（本轮实跑）
 
 ```
 node --check client.js / index.js        → ok
-node scripts/check.mjs                   → 26 passed, 0 failed
-node scripts/smoke-client.mjs            → 25 passed, 0 failed
-npm pack --dry-run --offline             → dsh-video-0.1.2.tgz, 9 files
+node scripts/check.mjs                   → 27 passed, 0 failed
+node scripts/smoke-client.mjs            → 30 passed, 0 failed
+npm pack --dry-run --offline             → dsh-video-0.1.3.tgz, 9 files
 ```
 
 smoke 覆盖（真实声明生命周期语义的 fake runtime，未通过改桩规避真实等待）：
@@ -136,9 +145,10 @@ smoke 覆盖（真实声明生命周期语义的 fake runtime，未通过改桩�
 
 ## 6. 固定包与状态
 
-- 实现/测试/文档提交：`09b2708`（`feat: move video workspace entry to native sidebar and trim empty state`）；本记录与包摘要随后为本地文档提交（未 push）。
-- 包版本：`0.1.2`；tarball：`/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/artifacts/p0-mode-shell/09b2708/dsh-video-0.1.2.tgz`；SHA-256：`f33804af5c3baa850dce99b6ffdecfbedda1fd24f82b845d18563bbf39d6952b`；大小 14,359 bytes；9 files；解包后 9/9 文件与 `09b2708` 工作树逐字节一致（含 `client.js`、`package.json`、locale、README、LICENSE）。
-- 保留历史固定包 `a31ee51/dsh-video-0.1.0.tgz`、`ab4bc68/dsh-video-0.1.1.tgz` 与旧目录归档；当前 profile 安装依赖仍指向 `a31ee51/dsh-video-0.1.0.tgz`；本轮未安装/替换/启停/重启、未改 profile、未 push。
+- 首版实现提交：`09b2708`（`feat: move video workspace entry to native sidebar and trim empty state`）；首包 `0.1.2` 见归档。
+- **R1 修复提交**：`51c82a9`（`fix: manage display menu focus and add P0-005 R1 regression`）；本记录与包摘要随后为本地文档提交（未 push）。
+- 包版本：`0.1.3`；tarball：`/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/artifacts/p0-mode-shell/51c82a9/dsh-video-0.1.3.tgz`；SHA-256：`82def6de6129333179e015b9e841d967517ccc0def92cc48f677f0082a77f897`；大小 15,074 bytes；9 files；解包后 9/9 文件与 `51c82a9` 工作树逐字节一致（含 `client.js`、`package.json`、locale、README、LICENSE）。
+- 保留历史固定包 `a31ee51/dsh-video-0.1.0.tgz`、`ab4bc68/dsh-video-0.1.1.tgz`、`09b2708/dsh-video-0.1.2.tgz` 与旧目录归档；当前 profile 安装依赖仍指向 `a31ee51/dsh-video-0.1.0.tgz`；本轮未安装/替换/启停/重启、未改 profile、未 push。
 - 引擎线（P1-002）独立并行，本轮未触碰其文件或 worktree。
 
 ## 7. 未测 / 后续（需另行授权安装新包后）
