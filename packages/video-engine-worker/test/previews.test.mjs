@@ -8,6 +8,7 @@ import {
   readFile,
   readdir,
   rm,
+  stat,
   symlink,
   writeFile,
 } from "node:fs/promises";
@@ -115,8 +116,12 @@ test("preview.snapshot publishes a faithful private copy with relative paths onl
     assert.deepEqual(assertRelativeManifest(snapshot.files), new Set(before.files.map((file) => file.path)));
     assert.ok(snapshot.files.length <= MAX_PREVIEW_FILES);
 
-    // Private copy on disk under outputRoot/previews/<snapshotId>/ only.
-    const snapshotDir = resolve(f.outputRoot, "previews", snapshot.snapshotId);
+    // Private copy on disk under outputRoot/previews/<snapshotId>/ only, in a
+    // tree restricted to the worker user.
+    const previewsRoot = resolve(f.outputRoot, "previews");
+    const snapshotDir = resolve(previewsRoot, snapshot.snapshotId);
+    assert.equal((await stat(previewsRoot)).mode & 0o777, 0o700);
+    assert.equal((await stat(snapshotDir)).mode & 0o777, 0o700);
     assert.deepEqual(await filesUnder(snapshotDir), before.files.map((file) => file.path).sort());
     for (const file of before.files) {
       const copied = await readFile(resolve(snapshotDir, file.path));

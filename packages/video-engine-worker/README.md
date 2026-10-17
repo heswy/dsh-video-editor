@@ -127,7 +127,7 @@ worker 新配置模式（管理工程，Host 不直接改这些文件）：
 
 ## P3-004：协议 schema 补齐与预览快照（0.2.1）
 
-本版两包升 **0.2.1**，不改变 0.2.0 的方法语义；新增编辑器画布所需的只读预览快照，并把 `protocol.schema.json` 从 P2 方法集补齐为全部 v1 方法（严格 keys/类型/范围，与 worker 校验一致）。
+本版两包升 **0.2.1**：新增编辑器画布所需的只读预览快照，并把 `protocol.schema.json` 从 P2 方法集补齐为全部 v1 方法（严格 keys/类型/范围，与 worker 校验一致）。除下文列出的三处参数校验收紧外，0.2.0 已实现方法的成功结果与编辑/历史语义保持不变。
 
 ### 协议 schema（R1）
 
@@ -135,6 +135,7 @@ worker 新配置模式（管理工程，Host 不直接改这些文件）：
 - 请求 params 使用 `additionalProperties:false` + `required`，范围与 `src/worker.mjs`/`src/projects.mjs` 校验一致（例如 `width`/`height` 为整数、`order` 唯一、`ttlMs` 为 100–1800000 的整数）。
 - 顺带消除三处 schema 与校验的隐藏漂移：`project.create.templateId` 现在必填且只接受受控模板（未知值 `E_TEMPLATE`）；`width`/`height` 必须为整数；`scene.update`/`project.revise` 的嵌套 template 不允许再携带 `sceneId`（此前会被静默忽略，现在返回 `E_PARAMS`；`scene.create` 仍可指定）。
 - 响应 envelope 保持严格；`x-methods` 把每个方法映射到对应 request/result 定义，测试据此校验真实响应（响应帧不带 method）。
+- schema 负责参数的**结构/keys/类型/范围与路径、名称形态**（revision/snapshotId pattern、相对路径、inbox 文件名、图片资产名）；依赖磁盘或引用文件状态的检查（inbox 是否存在、图片签名、资产重复、内容大小、revision 是否当前）仍由 worker 语义校验，schema-valid 请求仍可能得到 `E_ASSET_MISSING`/`E_PARAMS`/`E_REVISION_CONFLICT`/`E_LIMIT`。
 - `test/schema.test.mjs` 强制 schema 方法集 == worker switch 方法集、schema 引用的每个 `$ref` 可解析、README 方法表与 schema 同步；并对每个方法做“缺失必填字段/多传字段”双向探针，同时校验真实调用结果。
 
 ### preview.snapshot / preview.release

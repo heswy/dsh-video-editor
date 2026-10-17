@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:dsh-video-engine-worker:v1",
   "title": "JSON Lines request and response frames; byte limits specified in README",
-  "$comment": "The response envelope carries no method field, so x-methods maps every method to its request and result definition; contract tests validate both directions against this file. Result definitions describe the worker's published result shape for Version 1 (0.2.1).",
+  "$comment": "The response envelope carries no method field, so x-methods maps every method to its request and result definition; contract tests validate both directions against this file. Result definitions describe the worker's published result shape for Version 1 (0.2.1). Params schemas enforce structure, keys, types, ranges and path/name shape; checks that depend on disk or referenced file state (inbox existence, image signature, duplicate assets, content size, revision currency) remain worker-side and can still reject a schema-valid request with E_ASSET_MISSING/E_PARAMS/E_REVISION_CONFLICT/E_LIMIT.",
   "x-methods": {
     "doctor": {
       "request": "#/$defs/request_doctor",
@@ -109,7 +109,8 @@
         "path": {
           "type": "string",
           "minLength": 1,
-          "maxLength": 256
+          "maxLength": 256,
+          "pattern": "^(?!/)(?!.*\\\\)(?!.*:)(?!.*//)(?!.*/$)(?!.*(?:^|/)\\.\\.?(?:/|$)).+$"
         },
         "bytes": {
           "type": "integer",
@@ -415,12 +416,14 @@
         "inboxName": {
           "type": "string",
           "minLength": 1,
-          "maxLength": 256
+          "maxLength": 256,
+          "pattern": "^(?!\\.)(?!.*[\\\\/]).+$"
         },
         "name": {
           "type": "string",
           "minLength": 1,
-          "maxLength": 128
+          "maxLength": 128,
+          "pattern": "^(?!.*\\.\\.)[A-Za-z0-9][A-Za-z0-9._-]{0,127}(\\.[Pp][Nn][Gg]|\\.[Jj][Pp][Ee]?[Gg])$"
         },
         "mediaType": {
           "type": "string",
@@ -1119,12 +1122,14 @@
         "sourceName": {
           "type": "string",
           "minLength": 1,
-          "maxLength": 256
+          "maxLength": 256,
+          "pattern": "^(?!\\.)(?!.*[\\\\/]).+$"
         },
         "name": {
           "type": "string",
           "minLength": 1,
-          "maxLength": 128
+          "maxLength": 128,
+          "pattern": "^(?!.*\\.\\.)[A-Za-z0-9][A-Za-z0-9._-]{0,127}(\\.[Pp][Nn][Gg]|\\.[Jj][Pp][Ee]?[Gg])$"
         },
         "mediaType": {
           "type": "string",

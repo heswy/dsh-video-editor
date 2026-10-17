@@ -108,8 +108,10 @@ export class Previews {
       fail("E_PATH", "Snapshot directory escapes preview root", "preview");
     const expected = new Map(entries.map((declared) => [declared.path, declared]));
     try {
-      await mkdir(this.root, { recursive: true });
-      await mkdir(dir, { recursive: false });
+      // Restrict the private preview tree to the worker user (path checks are
+      // the contract; 0700 is defence in depth, not the security boundary).
+      await mkdir(this.root, { recursive: true, mode: 0o700 });
+      await mkdir(dir, { recursive: false, mode: 0o700 });
       for (const [name, bytes] of files) {
         const target = resolve(dir, relativePath(name));
         if (!inside(dir, target))

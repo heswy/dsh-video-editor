@@ -334,6 +334,38 @@ test("schema params and worker validation agree for every method; results valida
       "template sceneId",
     );
 
+    // Parameter-level path/name safety is encoded in the schema too, while the
+    // worker still performs the disk-dependent checks itself.
+    await expectParamsRejected(
+      "asset.import",
+      {
+        projectId: state.projectId,
+        expectedRevision: state.revision,
+        operationId: "schema-unsafe-source",
+        sourceName: "../logo.png",
+      },
+      "unsafe sourceName",
+    );
+    await expectParamsRejected(
+      "asset.import",
+      {
+        projectId: state.projectId,
+        expectedRevision: state.revision,
+        operationId: "schema-bad-name",
+        sourceName: "logo.png",
+        name: "logo.txt",
+      },
+      "non-image asset name",
+    );
+    await expectParamsRejected(
+      "project.create",
+      {
+        templateId: TEMPLATE,
+        assets: [{ inboxName: "../logo.png" }],
+      },
+      "unsafe inboxName",
+    );
+
     await sendValid("close", { projectId: state.projectId });
     for (const method of Object.keys(schema["x-methods"]))
       assert.ok(validated.has(method), `no schema-validated response for ${method}`);
