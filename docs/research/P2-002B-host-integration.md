@@ -12,7 +12,7 @@
 | Client half | `client.js`：侧栏入口/面板原子生命周期保留，增加受控示例打开、真实 inspect/编辑/帧/导出/取消 |
 | Tool | `video_engine`（9 个 action），与 Fetch 路由共用 `VideoBridge.invoke` |
 | 根版本 | `0.2.0`；根 `package.json` 仍无引擎/开发依赖 |
-| 本地固定包 | `/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/artifacts/p2-b/dsh-video-0.2.0.tgz`，37,369 B，SHA-256 `4d5d9a07c155c2df2638943279f12d9067e61ee74dfc44c9cc4ff2a57efea58b`（16 文件） |
+| 本地固定包 | `/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/artifacts/p2-b/dsh-video-0.2.0.tgz`，37,335 B，SHA-256 `791639ef5a16b97e5da539e9452744b12263014913e361096db157dc3336200c`（16 文件） |
 | staging/真实引擎 | 脚本已备；**尚未运行**，等待主会话复审后的 P2-003 固定引擎提交 |
 | 已安装状态 | 保持 0.1.3；未触碰 profile |
 
