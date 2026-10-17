@@ -73,22 +73,21 @@ npm run check
 
 2026-10-17 本机结果：
 
-- `scripts/check.mjs`：**29 passed, 0 failed**（manifest/patch/exports/files/locale/侧栏原子生命周期/显示菜单/空状态/真实编辑器范围/无开发绝对路径/Host 无 DSH 内部 import 等）。
-- `scripts/smoke-client.mjs`：**38 passed, 0 failed**，包含 P2-B 新增：无工程不自动请求；打开示例固定 id + 真实标题/帧；edit expectedRevision/operationId/typed ops + 新 inspect；revision 冲突不覆盖；旧帧在更新期间清空；render/cancel 结构化状态；配置错误壳可用；面板重挂载恢复可见工程且不重复 open。
-- `scripts/check-host.mjs`：**16 passed, 0 failed**，覆盖配置缺失/绝对路径/registry 与 artifactRoot 一致性、allowlist/额外参数、typed edit、单飞 start、job 归属、artifact 文件/根/大小/SHA/越界/未成功、路由 body/错误状态、dispose 拒绝新工作并等待、启动失败重试、Tool 共用 dispatcher、engine 包从安装 bundle 上下文解析、apply 注册两路由+一 Tool。
+- `scripts/check.mjs`：**33 passed, 0 failed**（P2-004 新增 R1 单目标静态检查、R2 字节预算、R3 staged Host 执行、R4 严格 semver；另含 manifest/patch/exports/files/locale/侧栏原子生命周期/显示菜单/空状态/真实编辑器范围/无开发绝对路径/Host 无 DSH 内部 import 等）。
+- `scripts/smoke-client.mjs`：**39 passed, 0 failed**，包含 P2-004 R1 眉题在前回归（默认 `hf-title`、标题/timing 全部 target 同一 stableId），以及无工程不自动请求、打开示例固定 id + 真实标题/帧、edit expectedRevision/operationId/typed ops + 新 inspect、revision 冲突不覆盖、旧帧清空、render/cancel 结构化状态、配置错误壳可用、面板重挂载恢复。
+- `scripts/check-host.mjs`：**20 passed, 0 failed**，覆盖 R2 execute/render 同字节预算与超限、R3 staged Host 执行/篡改/未记录源文件拒绝、R4 0.1.0/无效版本拒绝与 0.1.1/0.2.0 接受；另覆盖配置缺失/绝对路径/registry 与 artifactRoot 一致性、allowlist/额外参数、typed edit、单飞 start、job 归属、artifact 文件/根/大小/SHA/越界/未成功、路由 body/错误状态、dispose、启动失败重试、Tool 共用 dispatcher、engine 包解析、apply 注册。
 
-这些都**不是** DSH 真实激活、真页面或真实引擎子进程证据；staging/真实引擎链未执行。
+`npm run check` 全通过；其中真实引擎子进程证据见 §8。这些仍**不是** DSH 真实激活或真页面验收。
 
-## 5. staging 与真实引擎（未执行）
+## 5. staging 与真实引擎
 
 - 新增 `scripts/stage-dev.mjs`：要求干净根 worktree + 指定 `--engine-commit <reviewed-P2-003-sha>` + 真实 Node（及可选 Chrome/font），通过 `git archive` 取固定根/引擎快照；校验 engine client/worker 版本 0.1.1、worker `./worker`/`./package.json` 导出；`npm ci --ignore-scripts` 准备 worker 依赖闭包（记录 esbuild 二进制缺失/不运行 postinstall），准备受控 fixture，写快照专属 `config.json`、`INTEGRITY.json`，并在**快照副本** patch 注入可信 config + 本地依赖/链接（根提交 patch 仍 `config: {}`）。
-- 新增 `scripts/test-host-engine.mjs`：通过同一 `VideoBridge` 在真实 staged engine 子进程上跑 doctor→open→inspect→text/timing edit→inspect→frame/status→PNG 字节→render/status→MP4 字节→取消→close→dispose，证据写到 staging 同级 `evidence/`（不修改不可变快照）。
-- **本轮没有运行上述两个脚本**，也没有生成任何 staging 目录：主会话尚未给出复审通过的 P2-003 固定 commit。只读核对了程序员 1 已存在但**未复审**的 `54f4671` 接口层（client/worker 0.1.1、`./worker`/`./package.json` 导出、可选完整 `env`/绝对 `cwd`）与本实现一致；该提交未被采用、未 stage、未运行。不能把 5b9032b（无 env/cwd seam）当作最终 staging。没有真实引擎子进程、PNG/MP4 证据，也没有安装。
+- 新增 `scripts/lib/staged-host.mjs`：按 INTEGRITY 重算并核对 bundle/config/patch/engine 源文件摘要，拒绝未记录源文件/错配版本/包解析逃逸，然后实际 import `staging/bundle/host/bridge.js`；`scripts/test-host-engine.mjs` 不再 import 开发工作树的 Host。
+- P2-004 已用**复审通过的 P2-003 `54f4671`** 和修复提交 `fa7b0e2` 实际运行 `stage-dev` 与真实链；结构与结果见 §8，仍未安装/未真实 DSH 激活。
 
 ## 6. 未验证 / 限制 / 下一动作
 
 - 真实 DSH 安装后的路由鉴权、Tool 模型可见性/结果体验、加载/卸载/重启、HMR 替换、真实页面视觉/键盘/明暗/窄窗/草稿保持、artifact 字节实际读取：均未执行；需要安装授权。
-- 真实引擎链、Chrome/FFmpeg/Node 24.21.0 的实际 doctor/PNG/MP4/取消：等待 P2-003 复审固定提交后 staging + `test-host-engine`；本轮仅只读核对了未复审的 `54f4671` 接口层，未运行。
 - 无 per-session ACL、无多用户工程隔离、无 OS 沙箱；受控 fixture 限制不变；artifact 不支持 Range/连续预览。
 - 根包不是正式可移植发行 tarball；staging 的相对 `file:` 依赖/链接只对该快照有效；正式发行、Windows/Linux、构建脚本/依赖分发另立任务。
 - 0.1.3 回滚保持当前安装不动；0.2.0 包/代码先交主会话复审。
@@ -96,3 +95,23 @@ npm run check
 ## 7. 文件清单
 
 根：`index.js`、`client.js`、`package.json`、`README.md`、`host/bridge.js`、`host/config.js`、`host/env.js`、`host/engine.js`、`host/errors.js`、`host/routes.js`、`host/tool.js`；检查/staging：`scripts/check.mjs`、`scripts/smoke-client.mjs`、`scripts/check-host.mjs`、`scripts/stage-dev.mjs`、`scripts/test-host-engine.mjs`。未修改 `packages/video-engine-*`、`spikes/**`、锁文件、全局规则/决策或历史证据。
+
+
+## 8. P2-004 复审修复与真实链（最终）
+
+依据 `docs/reviews/P2-002B-review-01.md` 修复 R1–R4；修复提交 `387cdc5`、`fa7b0e2`（本轮最终代码提交）。不再使用开发工作树 Host 冒充 staging 证据。
+
+- **R1 单一目标**：`client.js` 删除 textElement/timingElement 两次 first-capability 扫描；新增受控契约 `hf-title` 优先、其次同时具备 text+timing 元素、再落到单个可编辑元素的 `targetFor`，UI 提供显式 target 选择器；标题、start/duration、保存的 text/timing ops 全部使用该 stableId。真实 fixture 眉题在前时默认仍为 `hf-title`；smoke 与真实链均回归。
+- **R2 字节预算**：`host/limits.js` 的 `TOOL_RESULT_BYTES = 64 KiB` 同时约束 Bridge Tool result、Tool execute wrapper 与 render 文本；`Buffer.byteLength` 原始 UTF-8；移除 8000 字符 slice；超限明确 `E_RESULT_LIMIT`。回归覆盖 9000 字符、中文/emoji、超 64 KiB 和 Bridge 前置拒绝。
+- **R3 staged Host**：`scripts/lib/staged-host.mjs` 校验 INTEGRITY 的 bundle/config/patch/engine 源文件字节与 SHA-256、版本、完整文件集合（无未记录源文件）、包解析路径在 snapshot 内，然后动态 import staging 的 `host/bridge.js`；证据记录实际 Host 路径/摘要、root/engine commit、staged patch/config 摘要。临时快照篡改、config 篡改、engine 源篡改、未记录源文件均有拒绝回归；固定原 staging 不被修改。
+- **R4 版本门禁**：严格完整 semver（拒绝 0.1.0、0.1、0.1.1.0、unknown、undefined/null；接受 0.1.1/0.2.0），不再把解析失败归零。
+
+最终固定根包：`/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/artifacts/p2-b/fa7b0e2/dsh-video-0.2.0.tgz`，38,984 B / 17 files，SHA-256 `d7d0b40ce4ff92da6c9955c360572c65b3cbbd8839d1889eddd96aa32d4752de`（旧 `artifacts/p2-b/dsh-video-0.2.0.tgz` 保留未覆盖）。
+
+最终 staging：`/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/artifacts/p2-b/staging-54f4671-fa7b0e2`（`INTEGRITY.json` 记录 root `fa7b0e29933d36b59ed3ccd569276c3124fd4b0f`、engine `54f467147ae2f61e118099c4947f55e8da877500`、bundle/client/worker 0.2.0/0.1.1/0.1.1；bundle 16、client 12、worker 15 个源文件；`esbuildAvailable:true`；staged patch SHA `306dc966…`，config SHA `6e84a49f…`；安装前无构建脚本/pendingBuilds）。真实链证据 `/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/artifacts/p2-b/evidence/engine-run-2026-10-17T09-07-27-420Z.json`：
+
+- 执行路径：实际 import `staging-54f4671-fa7b0e2/bundle/host/bridge.js`（SHA-256 `07442c86…`），integrity verified；工作树 head `fa7b0e2`、clean，仅记录不作为实现来源。
+- doctor：Node `v24.21.0`、HyperFrames/SDK `0.8.167`、GSAP `3.15.0`、Chrome `155.0.8059.79`、FFmpeg/ffprobe `8.0.1`。
+- open/inspect → edit 目标 `hf-title`（text+timing，初始 `让创意成为影像`），text/timing 同一 target；revision `135a529…` → `f714e71…`。
+- frame 成功：PNG 279,463 B，hash `875b48c6…`，1280×720/2.5s；render 成功：H.264 MP4 135,855 B，hash `fae2687e…`，1280×720、30/1、150 帧、5s（独立 ffprobe 复核一致）；第二 render cancel ack `cancelling` → terminal `cancelled`、`cleaned:true`；close `{closed:true}`、dispose 完成；无 host warning。
+- **仍未做**：真实 DSH 安装/激活/页面交互/加载卸载、Tool 模型体验、真实路由字节读取；本轮未安装/未改 profile/未启停/未重启。
