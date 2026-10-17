@@ -57,11 +57,24 @@ base：Codex 同步本指南及设计文档后的 worktree HEAD；DSH 开工填�
 
 ## 交付记录（DSH 填写）
 
-- base / result commit：待填写。
-- 包名、插件行 id、绝对目录、构建/打包方式：待填写。
-- 改动文件、实际检查与结果：待填写。
-- 安装状态：未安装（除非后续用户明确授权）。
-- 未验证、风险、安装验证所需动作：待填写。
+- base / result commit：base `06dba3716c28b28c4183ea26769cdf218657568a`（Codex 同步 P0-002 与设计文档后的 worktree HEAD）；实现提交 `52a1d1c`（`feat: add native mode shell and empty video workspace bundle`，11 文件）。本交付记录随其后的 docs 提交进入 `dsh/p0-mode-shell`。
+- 包名、插件行 id、绝对目录、构建/打包方式：包名 `dsh-video`；Loader 行 id `dsh-video`；Client 模块 id `dsh-video`；`main` key `dsh-video`；普通模式入口 `conversation.header.leading`。目录＝本 worktree 根目录 `/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/p0-mode-shell`。**零构建**：`client.js` 是手写浏览器产物（`window.__ModuleLoader__.load`，仅 require 宿主 React），`index.js` 为空 Host half；无依赖、无锁文件。`npm pack --dry-run --offline` 列出 9 个文件（`package.json`、`index.js`、`client.js`、`cordis.patch.yml`、`icon.svg`、`locale/en.json`、`locale/zh.json`、`README.md`，npm 自动附 `LICENSE`），`files` 白名单只含交付文件，`scripts/` 不打包。
+- 改动文件：新增 `package.json`、`cordis.patch.yml`、`index.js`、`client.js`、`icon.svg`、`locale/{en,zh}.json`、`scripts/check.mjs`、`scripts/smoke-client.mjs`、`docs/research/P0-002-runtime-api-excerpts.md`；更新根 `README.md`（安装/停用/回滚/范围/本地检查）。
+- 实现要点：同一玻璃胶囊组件挂两处（普通模式 `conversation.header.leading`；视频模式自有顶栏），选中态只读宿主 `usePanelInfo.activePanelId`，切换统一走 `ctx.layout.selectPanel('dsh-video' | null)`。空工作区只包含标题、无工程说明、可工作的返回普通入口与「简化界面效果」开关，不含创建/预览/时间线/AI/导出假控件。跨面板 UI 状态用插件级内存 store；只有 `dsh-video.ui.v1` 偏好（版本化、损坏/旧版本/读写异常回退）写浏览器存储，不存工程/媒体/草稿/activePanel。主面板先注册并校验成功后才挂普通入口；`main` key 或 `conversation.header.leading` 已被占用、或无法枚举占用者时拒绝挂载并输出诊断（不降 priority、不影子替换）。停用/卸载依赖宿主 `retainMainPanels`，并加了一个仅在宿主仍报告 `dsh-video` 时 `selectPanel(null)` 的卸载兜底。全部注册经 `ctx.slots.inject`/`ctx.effect` 拥有，disposer 可完整移除；主题只用 inspection 到的 `--dsw-alias-*` token，`data-window-drag` 交给宿主基础 CSS，控件 no-drag。
+- 实际检查与结果（本地，未安装）：
+  - `node --check index.js`、`node --check client.js`、`node --check scripts/*.mjs`：通过。
+  - `node scripts/check.mjs`（manifest/exports/patch/Client id/打包文件/locale/README/双语 key/class 与 CSS 一致性/内联 CSS 括号与 token）：17 passed, 0 failed。
+  - `node scripts/smoke-client.mjs`（VM + 最小假 Slot 运行时：模块注册、两处 Slot 注册、导航与错误收容、activePanel 派生、空工作区无假控件、偏好版本化/损坏/旧版本/读写异常、leading/main 占用冲突、未声明 main、late leading 失败后移除 main、枚举不可用拒绝挂载、disposer 完整清理与卸载回普通）：15 passed, 0 failed。
+  - `npm run check`（上述两项合并）：通过。
+  - `npm pack --dry-run --json --offline`：9 files / 45605 B unpacked（清单见上）。
+  - `ruby -ryaml -e 'YAML.load_file("cordis.patch.yml")'`：解析为 `[{insert: [{id: "dsh-video", name: "dsh-video", config: {}}]}]`。
+  - `git diff --check`：通过。
+- 安装状态：**未安装、未启用、未修改 profile、未 push**。本轮未获安装授权，以上结果不代表宿主激活或真机验收。
+- 未验证 / 风险 / 安装后动作：
+  - 未验证：真实 Host 激活与 Client 半加载、胶囊在会话头行中的真实位置/高度与窗口拖拽带、侧栏折叠时 `--dsh-frame-leading-clearance` 避让、`selectPanel` 在插件上下文的真实调用、普通/blank/无 Session 三态入口、切换后草稿与引用/附件保留（宿主机制，仅按源码推断，未操纵宿主编辑器）、上滚阅读位置恢复、明暗主题/窄窗口/字体放大、停用与重新启用清理、与其他插件共存、无 backdrop-filter 环境。
+  - 已知限制：顶层槽位无「主列居中」；首版按用户确认靠左。视频主面板无 Session binding，视频状态为插件自持（P0-B 无工程内容）。普通模式文本选区/IME/光标瞬时态不承诺保留。
+  - 安装验证所需动作（需用户明确授权）：Plugins → Add plugin 填本 worktree 绝对路径 → Install → Enable now；随后按本指南「安装后验收清单」逐项执行并记录真机截图/错误；验证停用/重新启用与回滚。
+- 最小 API 摘录：见 [P0-002 运行时 API 摘录](../research/P0-002-runtime-api-excerpts.md)（版本固定 0.2.0-rc.2，含 Slot/layout/locale/loader/theme token/拖拽规则与源文件位置）。
 
 ## 评审记录（Codex）
 
