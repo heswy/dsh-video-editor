@@ -119,7 +119,30 @@ P0-B 使用的 inspection 主题 token（全部要求 light+dark）：
 - 所有注册都经 `ctx.slots.inject` / `ctx.effect` 持有，插件 fiber 卸载时自动 dispose；本地 smoke 测试以模拟 disposer 验证「注册可全部移除」。
 - Host 半为空 `apply()`；P0-B 无路由、Tool、存储或 session 事件。
 
-## 6. 明确未使用 / 未验证
+## 6. 首轮评审修复（R1–R3）用到的补充契约
+
+### R1：`slots.inject` 的等待与重声明语义（inspection 原文，已在 smoke 中按此建模）
+
+```
+inject(key, callback)
+  - The callback runs synchronously when the declaration already exists; otherwise it
+    runs inside the declaring register() call after the declaration is committed.
+    Collapse disposes the effect and a later declaration runs it again.
+  - The controller belongs to the caller's fiber, so plugin unload cancels a pending
+    wait and removes any active contribution.
+```
+
+因此 `inject` 对「尚未声明」是**等待**而不是错误。实现把普通模式入口的注册链在 `main` 声明回调内部：每次 `main`（重新）声明都先重查 live `main` key 占用、注册视频面板，再 `inject` leading 并注册胶囊；`main` 声明折叠时整条链（含胶囊）随之撤回，重新声明后自动恢复。`Slots.entries(key)`（SlotRegistry 方法，见 `dsh-client-ui-renderer/lib/client.js`）仍是每次声明时的占用检查来源，不做低 priority 影子替换。
+
+### R2：跨挂载点的呈现连续性没有宿主 API
+
+两个挂载点（会话头 leading / 视频顶栏）在切换时必然各自卸载、重新挂载，宿主不提供跨挂载的视觉状态。实现使用插件内**短暂呈现提示**：导航前记录「离开的段」到插件级 store（`thumbOrigin`），新挂载点首次渲染时让玻璃底片从该段开始，随后两帧内切到宿主 `activePanel` 对应的真实位置；提示只被一个挂载点消费并立即清除，导航本身不等待动画。断言来源仍只有宿主 `usePanelInfo.activePanelId`。简化效果开启或 `window.matchMedia('(prefers-reduced-motion: reduce)').matches` 为真时不记录提示；导航失败会清除提示。
+
+### R3：模式胶囊的宿主字号
+
+胶囊在 `.dv-root` 之外（普通模式会话头），因此不能依赖视频根字号；实现让 `.dv-mode` 自身 `font-size: var(--dsh-content-font-size, 14px)`，按钮文字用 `0.93em`，胶囊宽高用 `em` + `clamp()` 随字号增长并设上限；窄窗口只折叠品牌/简化开关文案等次要 chrome，不缩小导航文字。`--dsh-content-font-size` 由 `ui-layout` 的 ThemePresenter 写在 body 上（见 §4）。
+
+## 7. 明确未使用 / 未验证
 
 - 未使用：`sidebar.panellist`、`shell.overlay`、`shell.leading`、替换宿主 header、自定义 Remote、`defineStore` 宿主存储、任何业务 HTTP 路由。
-- 未验证（需安装后真机执行 P0-002 验收清单）：真实 Slot 渲染与尺寸、拖拽带内控件点击、`selectPanel` 在插件上下文的真实调用、切换前后草稿/滚动、停用/重新启用清理、明暗主题与窄窗口。
+- 未验证（需安装后真机执行 P0-002 验收清单）：真实 Slot 渲染与尺寸、拖拽带内控件点击、`selectPanel` 在插件上下文的真实调用、R2 动画在真实页面的播放（本地只验证起终态/中断逻辑）、宿主字号放大后的真实排版、键盘切换后的焦点落点、切换前后草稿/引用/附件与滚动、停用/重新启用清理、明暗主题与窄窗口。

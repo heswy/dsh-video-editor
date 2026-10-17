@@ -97,9 +97,16 @@ window.__ModuleLoader__.load({
   margin-inline-start:max(0px, calc(var(--dsh-frame-leading-clearance, 0px) - 20px));
 }
 .dv-mode{
-  --dv-mode-width:188px;
-  --dv-mode-height:40px;
+  /* The capsule scales with the host content font size instead of pinning a
+     pixel font: text and the space it needs grow together. Width/height stay
+     within sane bounds; narrow windows collapse secondary chrome instead of
+     shrinking this primary navigation text. */
+  --dv-mode-width:clamp(176px, 13.5em, 248px);
+  --dv-mode-height:clamp(40px, 2.86em, 56px);
   --dv-dur-thumb:220ms;
+  --dv-dur-fast:140ms;
+  --dv-dur-med:180ms;
+  --dv-dur-slow:260ms;
   --dv-ease:cubic-bezier(.2,.8,.2,1);
   position:relative;
   display:inline-grid;
@@ -117,6 +124,8 @@ window.__ModuleLoader__.load({
   backdrop-filter:blur(18px) saturate(1.25);
   box-shadow:inset 0 1px 0 rgba(255,255,255,.09), 0 8px 24px -14px rgba(0,0,0,.42);
   isolation:isolate;
+  font-family:inherit;
+  font-size:var(--dsh-content-font-size, 14px);
   user-select:none;
   -webkit-user-select:none;
   -webkit-app-region:no-drag;
@@ -136,7 +145,7 @@ window.__ModuleLoader__.load({
   pointer-events:none;
   z-index:0;
 }
-.dv-mode[data-active="video"] .dv-mode-thumb{transform:translate3d(100%,0,0);}
+.dv-mode[data-thumb="video"] .dv-mode-thumb{transform:translate3d(100%,0,0);}
 .dv-mode[data-ready="false"] .dv-mode-thumb{transition:none;}
 .dv-mode-btn{
   -webkit-appearance:none;
@@ -154,12 +163,13 @@ window.__ModuleLoader__.load({
   background:transparent;
   color:var(--dsw-alias-label-secondary, #a4a4ad);
   font:inherit;
-  font-size:13px;
+  font-size:.93em;
   font-weight:500;
   letter-spacing:.01em;
   line-height:1;
+  white-space:nowrap;
   cursor:pointer;
-  transition:color 140ms var(--dv-ease), transform 140ms var(--dv-ease);
+  transition:color var(--dv-dur-fast) var(--dv-ease), transform var(--dv-dur-fast) var(--dv-ease);
   -webkit-app-region:no-drag;
 }
 .dv-mode-btn::after{content:"";position:absolute;inset:-7px 0;border-radius:inherit;}
@@ -168,7 +178,7 @@ window.__ModuleLoader__.load({
 .dv-mode[data-active="normal"] .dv-mode-btn[data-mode="normal"],
 .dv-mode[data-active="video"] .dv-mode-btn[data-mode="video"]{color:var(--dsw-alias-label-primary, #f2f2f5);}
 .dv-mode-btn:focus-visible{outline:2px solid var(--dsw-alias-brand-primary, #5b8cff);outline-offset:2px;}
-.dv-mode[data-simplified="true"]{--dv-dur-thumb:0ms;}
+.dv-mode[data-simplified="true"]{--dv-dur-thumb:0ms;--dv-dur-fast:0ms;--dv-dur-med:0ms;--dv-dur-slow:0ms;}
 .dv-mode[data-simplified="true"]{
   -webkit-backdrop-filter:none;
   backdrop-filter:none;
@@ -206,7 +216,7 @@ window.__ModuleLoader__.load({
   align-items:center;
   gap:12px;
   flex:none;
-  height:52px;
+  height:clamp(52px, 3.72em, 72px);
   padding-inline-start:max(20px, var(--dsh-frame-leading-clearance, 0px));
   padding-inline-end:16px;
   border-bottom:1px solid color-mix(in srgb, var(--dsw-alias-border-l1, rgba(127,127,140,.28)) 62%, transparent);
@@ -239,7 +249,7 @@ window.__ModuleLoader__.load({
   align-items:center;
   gap:8px;
   flex:none;
-  height:34px;
+  height:clamp(34px, 2.4em, 48px);
   padding:0 12px;
   border-radius:999px;
   border:1px solid color-mix(in srgb, var(--dsw-alias-border-l2, rgba(127,127,140,.45)) 55%, transparent);
@@ -387,7 +397,7 @@ window.__ModuleLoader__.load({
   display:inline-flex;
   align-items:center;
   justify-content:center;
-  height:38px;
+  height:clamp(38px, 2.7em, 52px);
   padding:0 18px;
   border-radius:999px;
   border:1px solid color-mix(in srgb, var(--dsw-alias-border-l2, rgba(127,127,140,.45)) 58%, transparent);
@@ -427,7 +437,7 @@ window.__ModuleLoader__.load({
   justify-content:space-between;
   gap:12px;
   flex:none;
-  height:34px;
+  height:clamp(34px, 2.4em, 48px);
   padding-inline:16px;
   border-top:1px solid color-mix(in srgb, var(--dsw-alias-border-l1, rgba(127,127,140,.28)) 52%, transparent);
   color:color-mix(in srgb, var(--dsw-alias-label-secondary, #a4a4ad) 78%, transparent);
@@ -443,7 +453,7 @@ window.__ModuleLoader__.load({
 .dv-root[data-intro="first"] .dv-stage{animation:dv-rise var(--dv-dur-slow) var(--dv-ease) both;}
 .dv-root[data-intro="first"] .dv-empty{animation:dv-rise var(--dv-dur-slow) 60ms var(--dv-ease) both;}
 .dv-root[data-intro="repeat"] .dv-stage,
-.dv-root[data-intro="repeat"] .dv-empty{animation:dv-fade-in 140ms ease both;}
+.dv-root[data-intro="repeat"] .dv-empty{animation:dv-fade-in var(--dv-dur-med) var(--dv-ease) both;}
 
 @container dsh-video (max-width: 760px){
   .dv-topbar{height:48px;gap:10px;}
@@ -454,8 +464,6 @@ window.__ModuleLoader__.load({
   .dv-statusbar{font-size:.74em;}
 }
 @container dsh-video (max-width: 520px){
-  .dv-mode{--dv-mode-width:176px;}
-  .dv-mode-btn{font-size:12.5px;}
   .dv-simplify-label{display:none;}
   .dv-simplify{width:34px;padding:0;justify-content:center;}
   .dv-statusbar > span:last-child{display:none;}
@@ -620,12 +628,21 @@ window.__ModuleLoader__.load({
       };
     }
 
-    /** Plugin-scope store shared by both mount points; survives panel unmounts. */
+    /**
+     * Plugin-scope store shared by both mount points; survives panel unmounts.
+     * `thumbOrigin` is a short-lived presentation hint only: navigation records
+     * which segment the user is leaving, the next mount consumes it for the
+     * slide-in and clears it. The authoritative selected mode always comes from
+     * the host active panel.
+     */
     let uiStore = null;
 
     function getStore() {
       if (uiStore === null) {
-        uiStore = createUiStore({ simplifiedEffects: false, introPlayed: false }, function noop() {});
+        uiStore = createUiStore(
+          { simplifiedEffects: false, introPlayed: false, thumbOrigin: null },
+          function noop() {}
+        );
       }
       return uiStore;
     }
@@ -647,6 +664,34 @@ window.__ModuleLoader__.load({
       const store = getStore();
       if (store.getSnapshot().introPlayed === true) return;
       store.setPatch({ introPlayed: true });
+    }
+
+    /** One animation frame, with a cancellable disposer; timer fallback. */
+    function nextFrame(callback) {
+      if (typeof requestAnimationFrame === 'function') {
+        const frame = requestAnimationFrame(callback);
+        return function cancelFrame() {
+          if (typeof cancelAnimationFrame === 'function') cancelAnimationFrame(frame);
+        };
+      }
+      const timer = setTimeout(callback, 0);
+      return function cancelTimer() {
+        clearTimeout(timer);
+      };
+    }
+
+    /** Simplified effects or the host reduced-motion preference disable the slide. */
+    function motionAllowed() {
+      try {
+        if (getStore().getSnapshot().simplifiedEffects === true) return false;
+        if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
+          const query = window.matchMedia('(prefers-reduced-motion: reduce)');
+          if (query && query.matches === true) return false;
+        }
+      } catch (_error) {
+        return true;
+      }
+      return true;
     }
     //#endregion
 
@@ -705,24 +750,37 @@ window.__ModuleLoader__.load({
       const activePanelId = usePanelInfo(function selectActive(info) {
         return info.activePanelId;
       });
+      // Authoritative selection always comes from the host. `thumbOrigin` only
+      // decides where the glass thumb visually starts on this mount; it can never
+      // make a segment look selected on its own.
       const active = activePanelId === PANEL_ID ? 'video' : 'normal';
+      const [initialThumb] = React.useState(function readThumbOrigin() {
+        const origin = getStore().getSnapshot().thumbOrigin;
+        return origin === 'normal' || origin === 'video' ? origin : null;
+      });
+      const [thumbAt, setThumbAt] = React.useState(
+        initialThumb === null || initialThumb === active ? active : initialThumb
+      );
       const [ready, setReady] = React.useState(false);
 
-      React.useEffect(function enableThumbTransition() {
-        let timer = null;
-        if (typeof requestAnimationFrame === 'function') {
-          const frame = requestAnimationFrame(function markReady() {
-            setReady(true);
-          });
-          return function cleanupFrame() {
-            cancelAnimationFrame(frame);
-          };
-        }
-        timer = setTimeout(function markReady() {
+      React.useEffect(function startThumbTransition() {
+        const store = getStore();
+        // A hint belongs to exactly one mount; clear it even when it is stale.
+        if (store.getSnapshot().thumbOrigin !== null) store.setPatch({ thumbOrigin: null });
+        if (initialThumb === null || initialThumb === active) {
           setReady(true);
-        }, 0);
-        return function cleanupTimer() {
-          if (timer !== null) clearTimeout(timer);
+          return function noopTransition() {};
+        }
+        let cancelMove = null;
+        const cancelEnable = nextFrame(function enableTransition() {
+          setReady(true);
+          cancelMove = nextFrame(function moveThumb() {
+            setThumbAt(active);
+          });
+        });
+        return function cancelThumbTransition() {
+          cancelEnable();
+          if (cancelMove !== null) cancelMove();
         };
       }, []);
 
@@ -748,6 +806,7 @@ window.__ModuleLoader__.load({
           role: 'group',
           'aria-label': t('mode.label'),
           'data-active': active,
+          'data-thumb': thumbAt,
           'data-ready': ready ? 'true' : 'false',
           'data-simplified': ui.simplifiedEffects ? 'true' : 'false',
           onKeyDown: onKeyDown,
@@ -900,7 +959,10 @@ window.__ModuleLoader__.load({
     function apply(ctx) {
       reportIssue = makeReporter(ctx);
       reportedCodes.clear();
-      uiStore = createUiStore(readPrefs(), reportIssue);
+      uiStore = createUiStore(
+        Object.assign({ introPlayed: false, thumbOrigin: null }, readPrefs()),
+        reportIssue
+      );
 
       ctx.effect(
         function registerDictionaries() {
@@ -939,35 +1001,29 @@ window.__ModuleLoader__.load({
         return {
           onSelectMode: function onSelectMode(mode) {
             const nextPanel = mode === 'video' ? PANEL_ID : null;
+            const leavingMode = mode === 'video' ? 'normal' : 'video';
             try {
               if (typeof ctx.layout.selectPanel !== 'function') {
                 throw new Error('layout.selectPanel is unavailable');
               }
+              // Presentation hint only; navigation itself never waits for motion.
+              if (motionAllowed()) getStore().setPatch({ thumbOrigin: leavingMode });
               ctx.layout.selectPanel(nextPanel);
             } catch (error) {
+              getStore().setPatch({ thumbOrigin: null });
               reportOnce('navigation-failed:' + String(mode), error);
             }
           },
         };
       }
 
-      let mainDispose = null;
-      let leadingDispose = null;
+      let mainController = null;
 
-      function disposeAll() {
+      function disposeMainController() {
         try {
-          if (leadingDispose !== null) {
-            const dispose = leadingDispose;
-            leadingDispose = null;
-            dispose();
-          }
-        } catch (error) {
-          reportOnce('leading-cleanup-failed', error);
-        }
-        try {
-          if (mainDispose !== null) {
-            const dispose = mainDispose;
-            mainDispose = null;
+          if (mainController !== null) {
+            const dispose = mainController;
+            mainController = null;
             dispose();
           }
         } catch (error) {
@@ -975,54 +1031,103 @@ window.__ModuleLoader__.load({
         }
       }
 
-      // 1. Refuse to mount over an existing `dsh-video` main panel. Without a
-      //    live occupant list we cannot prove that registering would not shadow
-      //    another entry, so mounting is refused as well.
-      const mainOccupants = findOccupants(ctx, 'main', 'key', PANEL_ID);
-      if (mainOccupants === null) {
-        reportIssue('main-entries-unavailable');
-        return;
-      }
-      if (mainOccupants.length > 0) {
-        reportIssue('main-key-conflict:' + String(mainOccupants.length));
-        return;
-      }
+      // 3. Bind both mount points to the main panel's declaration lifetime. Real
+      //    slots.inject waits (it does not throw) while a slot is undeclared, so
+      //    the normal-mode entry may only exist while a registered video main panel
+      //    does. Every (re)declaration re-checks live occupants before registering.
+      function registerMainAndEntry() {
+        const mainOccupants = findOccupants(ctx, 'main', 'key', PANEL_ID);
+        if (mainOccupants === null) {
+          reportIssue('main-entries-unavailable');
+          return function noopDispose() {};
+        }
+        if (mainOccupants.length > 0) {
+          reportIssue('main-key-conflict:' + String(mainOccupants.length));
+          return function noopDispose() {};
+        }
+        let mainEntryDispose = null;
+        try {
+          mainEntryDispose = ctx.slots.register(
+            { name: 'main', key: PANEL_ID, locale: NS, inject: navigation },
+            VideoWorkspace
+          );
+        } catch (error) {
+          reportIssue('main-register-failed', error);
+          return function noopDispose() {};
+        }
 
-      // 2. Refuse to mount when the additive header seat is already taken. The
-      //    seat is a single slot; its occupant is the only one that may render it.
-      const leadingOccupants = findOccupants(ctx, 'conversation.header.leading', null, null);
-      if (leadingOccupants === null) {
-        reportIssue('leading-entries-unavailable');
-        return;
-      }
-      if (leadingOccupants.length > 0) {
-        reportIssue('leading-seat-conflict:' + String(leadingOccupants.length));
-        return;
-      }
-
-      // 3. Register the main panel first: navigation must never expose a panel
-      //    that does not exist yet.
-      try {
-        mainDispose = ctx.slots.inject('main', function registerMainPanel() {
+        let leadingController = null;
+        let leadingRegistered = false;
+        let disposed = false;
+        function disposeEntry() {
+          if (disposed) return;
+          disposed = true;
           try {
-            return ctx.slots.register(
-              { name: 'main', key: PANEL_ID, locale: NS, inject: navigation },
-              VideoWorkspace
-            );
+            if (leadingController !== null) {
+              const dispose = leadingController;
+              leadingController = null;
+              dispose();
+            }
           } catch (error) {
-            reportIssue('main-register-failed', error);
-            // Do not keep a normal-mode capsule that could navigate nowhere.
-            // Disposal is deferred because this callback may run inside the
-            // declaration call itself; the microtask runs after it settles.
-            setTimeout(function deferredCleanup() {
-              disposeAll();
-            }, 0);
+            reportOnce('leading-cleanup-failed', error);
+          }
+          try {
+            if (mainEntryDispose !== null) {
+              const dispose = mainEntryDispose;
+              mainEntryDispose = null;
+              dispose();
+            }
+          } catch (error) {
+            reportOnce('main-cleanup-failed', error);
+          }
+        }
+
+        function registerLeadingSwitch() {
+          const leadingOccupants = findOccupants(ctx, 'conversation.header.leading', null, null);
+          if (leadingOccupants === null) {
+            reportIssue('leading-entries-unavailable');
             return function noopDispose() {};
           }
-        });
+          if (leadingOccupants.length > 0) {
+            reportIssue('leading-seat-conflict:' + String(leadingOccupants.length));
+            return function noopDispose() {};
+          }
+          try {
+            const dispose = ctx.slots.register(
+              { name: 'conversation.header.leading', locale: NS, inject: navigation },
+              LeadingModeSwitch
+            );
+            leadingRegistered = true;
+            return dispose;
+          } catch (error) {
+            reportIssue('leading-register-failed', error);
+            return function noopDispose() {};
+          }
+        }
+
+        try {
+          leadingController = ctx.slots.inject('conversation.header.leading', registerLeadingSwitch);
+        } catch (error) {
+          reportIssue('leading-inject-failed', error);
+          disposeEntry();
+          return function noopDispose() {};
+        }
+
+        if (isSlotDeclared(ctx, 'conversation.header.leading') !== false && leadingRegistered !== true) {
+          // The seat is currently declared but our entry could not be registered.
+          // Never expose the video panel without its normal-mode entry.
+          reportIssue('leading-entry-unavailable');
+          disposeEntry();
+          return function noopDispose() {};
+        }
+
+        return disposeEntry;
+      }
+
+      try {
+        mainController = ctx.slots.inject('main', registerMainAndEntry);
       } catch (error) {
         reportIssue('main-inject-failed', error);
-        disposeAll();
         return;
       }
 
@@ -1030,44 +1135,7 @@ window.__ModuleLoader__.load({
         const liveMain = findOccupants(ctx, 'main', 'key', PANEL_ID);
         if (liveMain !== null && liveMain.length === 0) {
           reportIssue('main-registration-missing');
-          disposeAll();
-          return;
-        }
-      }
-
-      // 4. Register the header seat. Re-check occupancy inside the declaration
-      //    callback because the slot may be declared after this plugin activates.
-      try {
-        leadingDispose = ctx.slots.inject('conversation.header.leading', function registerLeadingSwitch() {
-          try {
-            const existing = findOccupants(ctx, 'conversation.header.leading', null, null);
-            if (existing !== null && existing.length > 0) {
-              reportIssue('leading-seat-conflict:' + String(existing.length));
-              disposeAll();
-              return function noopDispose() {};
-            }
-            return ctx.slots.register(
-              { name: 'conversation.header.leading', locale: NS, inject: navigation },
-              LeadingModeSwitch
-            );
-          } catch (error) {
-            reportIssue('leading-register-failed', error);
-            // A video panel without its normal-mode entry would be a dead entry.
-            disposeAll();
-            return function noopDispose() {};
-          }
-        });
-      } catch (error) {
-        reportIssue('leading-inject-failed', error);
-        disposeAll();
-        return;
-      }
-
-      if (isSlotDeclared(ctx, 'conversation.header.leading') !== false) {
-        const liveLeading = findOccupants(ctx, 'conversation.header.leading', null, null);
-        if (liveLeading !== null && liveLeading.length === 0) {
-          reportIssue('leading-registration-missing');
-          disposeAll();
+          disposeMainController();
         }
       }
     }

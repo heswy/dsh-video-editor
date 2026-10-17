@@ -249,6 +249,63 @@ check('inline stylesheet is structurally sane', () => {
   return `${Math.round(css.length / 1024)} KiB CSS, balanced braces`;
 });
 
+check('R3: capsule text and space scale with the host content font size', () => {
+  assert(
+    /\.dv-mode\{[^}]*font-size:var\(--dsh-content-font-size/.test(clientSource),
+    '.dv-mode must derive its font size from --dsh-content-font-size'
+  );
+  assert(
+    /\.dv-mode-btn\{[^}]*font-size:\.93em/.test(clientSource),
+    '.dv-mode-btn must size text relative to the capsule (em), not a fixed px value'
+  );
+  assert(clientSource.includes('font-size:13px') === false, 'mode text must not be pinned to 13px');
+  assert(clientSource.includes('font-size:12.5px') === false, 'narrow layout must not shrink navigation text');
+  assert(
+    clientSource.includes('--dv-mode-width:clamp(176px, 13.5em, 248px)'),
+    'capsule width must scale with the host font size within clamps'
+  );
+  assert(
+    clientSource.includes('--dv-mode-height:clamp(40px, 2.86em, 56px)'),
+    'capsule height must scale with the host font size within clamps'
+  );
+  return 'host-font-derived text, em-based capsule, clamped bounds';
+});
+
+check('R2: slide motion is a consumable hint, not a second mode source', () => {
+  assert(clientSource.includes('thumbOrigin'), 'missing short-lived presentation hint');
+  assert(clientSource.includes("'data-thumb': thumbAt"), 'capsule must expose the visual thumb position separately');
+  assert(clientSource.includes('.dv-mode[data-thumb="video"] .dv-mode-thumb'), 'thumb transform must key on the visual position');
+  assert(clientSource.includes('motionAllowed()'), 'motion must be gated by simplified effects / reduced motion');
+  assert(clientSource.includes('animation:dv-fade-in 140ms') === false, 'repeat intro must not hard-code 140ms');
+  assert(
+    clientSource.includes('animation:dv-fade-in var(--dv-dur-med)') || clientSource.includes('animation:dv-fade-in var('),
+    'repeat intro must use the motion tokens'
+  );
+  assert(clientSource.includes('transition:color var(--dv-dur-fast)'), 'button transitions must use the motion tokens');
+  return 'consumable origin hint, token-based timing';
+});
+
+check('R1: entry availability is chained to the main declaration lifetime', () => {
+  const applyStart = clientSource.indexOf('function apply(ctx)');
+  const applyEnd = clientSource.indexOf('return { inject: inject, apply: apply }');
+  assert(applyStart >= 0 && applyEnd > applyStart, 'apply body not found');
+  const applyBody = clientSource.slice(applyStart, applyEnd);
+  assert(applyBody.includes("ctx.slots.inject('main'"), 'main registration not found');
+  const entryStart = applyBody.indexOf('function registerMainAndEntry()');
+  assert(entryStart >= 0, 'missing declaration-scoped registration entry point');
+  const entryEnd = applyBody.indexOf('mainController = ctx.slots.inject', entryStart);
+  assert(entryEnd > entryStart, 'main registration call site not found');
+  const entryBody = applyBody.slice(entryStart, entryEnd);
+  assert(
+    entryBody.includes("ctx.slots.inject('conversation.header.leading'"),
+    'leading registration must be chained inside the main registration path'
+  );
+  assert(entryBody.includes('ctx.slots.register('), 'main entry registration missing from the declaration path');
+  assert(applyBody.includes('leadingRegistered'), 'missing registration-success tracking for the entry');
+  assert(applyBody.includes('leading-entry-unavailable'), 'missing unreachable-panel guard');
+  return 'main -> leading chained per declaration';
+});
+
 check('mode wiring matches P0-002 contract', () => {
   assert(clientSource.includes("const PANEL_ID = 'dsh-video'"), 'main-panel key must be dsh-video');
   assert(clientSource.includes("'conversation.header.leading'"), 'normal-mode capsule must mount in conversation.header.leading');
