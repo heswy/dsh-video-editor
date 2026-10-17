@@ -19,10 +19,14 @@
 | [P0-002](tasks/P0-002-mode-shell-implementation.md) | DSH 实现 / Codex 评审 | 继续 dsh/p0-mode-shell 与原 worktree | 8ebf922 / a31ee51 主要修复复审通过；本地检查 44/44，固定包已产生；未安装 |
 | [P0-003](tasks/P0-003-install-validation.md) | 原 DSH 会话 | 原 P0 worktree | 0104e0e 真页面核心证据已审阅；已安装启用；P0 部分通过，引用/滚动等未完 |
 | [P0-004](tasks/P0-004-lifecycle-and-acceptance.md) | 原 DSH 会话 | 原 P0 worktree | ab4bc68 / 6f11ced 已复审；本地 50/50 与 0.1.1 包核对通过；新包未安装，补验使用 0.1.0 |
-| [P0-005](tasks/P0-005-sidebar-entry-and-restraint.md) | 原 DSH 会话 | 原 P0 worktree | 新入口与界面精简实现放行，先交包复审、不安装 |
+| [P0-005](tasks/P0-005-sidebar-entry-and-restraint.md) | 原 DSH 会话 | 原 P0 worktree | 09b2708/00d1809 已首审；独立 51/51 与固定包核对通过；R1 菜单焦点待补修，未安装 |
 | [前端设计规划](design/FRONTEND-DESIGN.md) | Codex | codex/project-foundation；主工作区 | v0.2 用户要求已收敛：侧栏入口、少文案、克制材质；待 P0-005 实现 |
 | [P1-001 引擎验证](tasks/P1-001-engine-spike.md) | Codex 引擎开发 / 主会话验收 | codex/p1-engine-spike-b4bf；~/.codex/worktrees/b4bf/dsh-video-editor | c779b94 / e88615f 单场景可行性通过，主会话独立复测 3+2 测试、哈希与 ffprobe |
 | [P1-002 worker](tasks/P1-002-engine-worker.md) | 原 Codex 引擎会话 | 自行管理原 worktree/分支 | 受控独立 worker 实现放行；不改 DSH 插件 |
+
+## 本轮复审交接
+
+执行 `docs/reviews/P0-005-review-01.md` 的 R1：补菜单焦点进入/退出回归，出 0.1.3 固定包再复审；保留 0.1.2，不安装/启停、不改 profile。引擎侧 P2-001 另有通信边界修复，与本任务无共享代码。以下旧下一动作以本段为准。
 
 ## 下一动作
 
