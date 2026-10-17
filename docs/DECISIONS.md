@@ -41,3 +41,5 @@
 2026-10-17 D020 / accepted：P3 多 Scene 采用 **B 结构**（单 HTML 文档 + Scene 区段 + 单一 master timeline），Scene 局部时间生成时换算全局时间；Scene 结构变化走受控整文件重写 + SDK 校验 + 原子写 + revision 重算；元素级人工/AI 修改走 stableId 三方合并，冲突显式返回（`BOTH_MODIFIED` 等），不静默覆盖。依据 [P3-001 复审](reviews/P3-001-review-01.md)。
 2026-10-17 D021 / accepted：revision 保持内容哈希定义；undo/redo 恢复旧内容时 revision 可回到旧值，历史以 `.dsh-video/history/` 的 entries/ops/snapshots + 单调 `historyCursor` 表示且不进 revision；不要求“撤销产生新 revision”。
 2026-10-17 D022 / accepted：工程创建采用 worker 管理 `projectsRoot` + 持久 registry + `project.create`（原子写、启动 reload、路径包含、单写者）；Host 不直接改 worker 文件，Host 重启 worker 为回退。v1 工程生成受模板约束（非任意 HTML/JS），任意 Agent 代码隔离另立任务。
+
+2026-10-17 D023 / accepted：编辑器画布 v1（sandbox iframe + 播放/暂停/seek + 画布点击选中 + 选中描边 + 右侧目标联动）排在 P3-004 之前；依赖 engine snapshot 与 Host 精确资产路由，P3-003 的合并 Phase B 可与画布并行。未接入实时画布前，PNG 画布不伪装可点选，右侧目标下拉是唯一选中入口。依据用户 2026-10-17 画布要求。
