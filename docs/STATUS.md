@@ -15,7 +15,8 @@
 | 任务 | 执行者 | 分支/worktree | 状态 |
 |---|---|---|---|
 | 项目准备与长期记忆 | Codex | codex/project-foundation；主工作区 | 已完成，本地提交交接；归档完整性及链接检查通过 |
-| [P0-001](tasks/P0-001-mode-shell.md) | 用户指定的 DSH Agent | dsh/p0-mode-shell；同级 dsh-video-editor-worktrees/p0-mode-shell | worktree 已由 Codex 建立，待用户在 DSH 打开 |
+| [P0-001](tasks/P0-001-mode-shell.md) | 用户指定的 DSH Agent | dsh/p0-mode-shell；同级 dsh-video-editor-worktrees/p0-mode-shell | 已检测到未提交调查文件；待 DSH 正式交付与评审，未修改其工作区 |
+| [前端设计规划](design/FRONTEND-DESIGN.md) | Codex | codex/project-foundation；主工作区 | v0.1 方向草案已整理；未实现/未真页面验证 |
 
 ## 下一动作
 
@@ -28,5 +29,7 @@
 无须现在补充产品细节。待 DSH 运行时调查才能确认顶部挂载点与会话/视图保持策略。没有宿主集成、UI、生成、编辑或导出通过验证。
 
 ## 最近交接
+
+2026-10-17 设计补充：用户明确要求优美、精致、优雅，考虑液态玻璃与丰富动效。已写设计规格，包含三层材质、工作区布局、明暗主题与动效谱；DSH 开发 worktree 仍保留原起点，不在其运行中自动切分支/同步文档。P0-A 完成评审后，由 Codex 协调引入设计提交再开始 P0-B。
 
 2026-10-17：用户要求开始整理长期项目、建立分支，并与 DSH 协作；Codex 负责建立分支、DSH tree 与目录；用户仅打开工作区并发送提示。初始资料进入 Git，开发规则集中于 DEVELOPMENT，首任务分为调查和实现两个阶段。

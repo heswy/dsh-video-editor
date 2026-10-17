@@ -10,5 +10,6 @@
 | D004 / 2026-10-17 | 原生 Slot 工作区，主题控件；不把整页编辑器做成独立 iframe 应用 | accepted；匹配宿主规范；视频画布隔离方式仍待验证 |
 | D005 / 2026-10-17 | 优先验证 HyperFrames；UI/Tool 共享 Host 写入入口，内容权威来源唯一 | proposed；通过 P1 编辑/持久化/渲染验证后冻结接口 |
 | D006 / 2026-10-17 | DSH 分支 dsh/p0-mode-shell；Codex 建立与维护同级独立 worktree；首轮不授权安装或 push | accepted；固定基线与职责，避免影响正在使用的 Desktop profile |
+| D007 / 2026-10-17 | 用户要求精致、优美、优雅及丰富动效，考虑液态玻璃 | accepted（偏好）；具体「玻璃上的剪辑台」设计和数值为 proposed，见 design/FRONTEND-DESIGN.md；不覆盖原生主题、可读性与精确编辑 |
 
 未决：顶部公共 Slot、视图保持机制、宿主依赖解析、自定义 Host 通信、HyperFrames 固定版本与预览隔离。答案先进入任务实测记录，再形成新决定。

@@ -9,6 +9,7 @@
 - [当前状态与下一步](docs/STATUS.md)
 - [开发与协作规则](docs/DEVELOPMENT.md)
 - [产品范围](docs/product/PRODUCT.md)
+- [前端设计规划](docs/design/FRONTEND-DESIGN.md)
 - [决策记录](docs/DECISIONS.md)
 - [阶段路线](docs/ROADMAP.md)
 - [DSH 首任务交接](docs/handoffs/DSH-START.md)
