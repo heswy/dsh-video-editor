@@ -30,6 +30,18 @@ function request(message) {
     reply(message.id, { fake: true });
     return;
   }
+  if (mode === "unicode" && message.method === "inspect") {
+    const bytes = Buffer.from(response(message.id, { text: "你好😀" }) + "\n");
+    const split = bytes.indexOf(Buffer.from("你")) + 1;
+    process.stdout.write(bytes.subarray(0, split));
+    setTimeout(() => process.stdout.write(bytes.subarray(split)), 20);
+    return;
+  }
+  if (["edit-exit", "edit-bad"].includes(mode) && message.method === "edit") {
+    if (mode === "edit-bad") process.stdout.write("{bad-frame}\n");
+    process.exit(7);
+    return;
+  }
   if (mode === "oversize") {
     process.stdout.write("x".repeat(2048) + "\n");
     return;

@@ -30,5 +30,6 @@ DSH 的 root Host 适配、connection.fetch/tools 与前端接入留后续任务
 
 - 基线：`3b5f6de`；协调来源 `codex/project-foundation@17cf95716975e1f2d4ab7fcc5f721303295db91f`，只导入本指南和 P1-002-review-02。
 - 实现：`packages/video-engine-client/**` 的纯 Node ESM `WorkerClient`/`WorkerClientError`，无 DSH 依赖或 import-time spawn。公共 API/最小 Host 示例见包 README。
-- 验证：真实 worker 流程和受控协议故障测试均在本包 `npm test` 执行；最终为 6/6（17.81 秒），限制见研究记录及交接。
+- 验证：真实 worker 流程和受控协议故障测试均在本包 `npm test` 执行；R1–R3 修复后最终为 9/9（7.83 秒），限制见研究记录及交接。
 - 限制：强制退出只针对本 client 的直接 worker，不能证明 detached Chrome/FFmpeg 已清理；DSH Host/UI/Tool 接线留后续任务。
+- R1–R3：按字节处理 UTF-8，未确认 edit 保留 `uncertain:true`、丢失 frame/render jobId 标记 `jobUnknown:true`，dispose 清理 exit wait timer；新增跨字节、写后退出/坏帧和独立父进程自然退出回归。

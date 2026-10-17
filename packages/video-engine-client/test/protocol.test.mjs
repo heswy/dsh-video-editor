@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
+import { spawn } from "node:child_process";
 import { WorkerClient } from "../src/index.mjs";
 
 const fakeWorker = resolve(import.meta.dirname, "fixtures/protocol-worker.mjs");
@@ -128,9 +129,72 @@ test("invalid executable returns a structured startup failure", async () => {
   const f = await fake("framing");
   f.client.options.nodeExecutable = "/definitely/not/a/node-executable";
   try {
-    await assert.rejects(f.client.start(), (error) => error.code === "E_STARTUP");
+    await assert.rejects(
+      f.client.start(),
+      (error) => error.code === "E_STARTUP",
+    );
   } finally {
     await f.client.dispose();
+    await f.cleanup();
+  }
+});
+
+test("byte-framed UTF-8 preserves split Chinese and emoji", async () => {
+  const f = await fake("unicode");
+  try {
+    await f.client.start();
+    assert.deepEqual(await f.client.inspect("demo"), { text: "你好😀" });
+  } finally {
+    await f.client.dispose();
+    await f.cleanup();
+  }
+});
+
+test("unanswered edits remain uncertain on exit and protocol failure", async () => {
+  for (const mode of ["edit-exit", "edit-bad"]) {
+    const f = await fake(mode);
+    try {
+      await f.client.start();
+      await assert.rejects(
+        f.client.edit({ projectId: "demo" }),
+        (error) =>
+          error.uncertain === true &&
+          ["E_PROCESS_EXIT", "E_PROTOCOL"].includes(error.code),
+      );
+      assert.equal(f.client.debug().pending, 0);
+    } finally {
+      await f.client.dispose();
+      await f.cleanup();
+    }
+  }
+});
+
+test("normal dispose lets an isolated parent exit before its shutdown deadline", async () => {
+  const f = await fake("framing");
+  const parent = resolve(import.meta.dirname, "fixtures/dispose-parent.mjs");
+  const started = performance.now();
+  try {
+    const child = spawn(process.execPath, [
+      parent,
+      fakeWorker,
+      f.client.options.registryPath,
+    ]);
+    const exited = await new Promise((resolve, reject) => {
+      const timer = setTimeout(
+        () => reject(new Error("parent did not exit")),
+        1000,
+      );
+      child.once("exit", (code) => {
+        clearTimeout(timer);
+        resolve(code);
+      });
+    });
+    assert.equal(exited, 0);
+    assert.ok(
+      performance.now() - started < 800,
+      "must not retain shutdown timer",
+    );
+  } finally {
     await f.cleanup();
   }
 });

@@ -2,12 +2,17 @@ import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 
 export class WorkerClientError extends Error {
-  constructor(code, message, { stage = "client", uncertain = false } = {}) {
+  constructor(
+    code,
+    message,
+    { stage = "client", uncertain = false, jobUnknown = false } = {},
+  ) {
     super(message);
     this.name = "WorkerClientError";
     this.code = code;
     this.stage = stage;
     this.uncertain = uncertain;
+    this.jobUnknown = jobUnknown;
   }
 }
 
@@ -37,8 +42,8 @@ export class WorkerClient {
     };
     this.state = "new";
     this.pending = new Map();
-    this.stdout = "";
-    this.stderr = "";
+    this.stdout = Buffer.alloc(0);
+    this.stderr = Buffer.alloc(0);
     this.stderrTruncated = false;
     this.expired = new Set();
     this.disposePromise = undefined;
@@ -47,7 +52,7 @@ export class WorkerClient {
     return {
       state: this.state,
       pending: this.pending.size,
-      stderrBytes: Buffer.byteLength(this.stderr),
+      stderrBytes: this.stderr.length,
       stderrTruncated: this.stderrTruncated,
     };
   }
@@ -90,10 +95,10 @@ export class WorkerClient {
     }
   }
   onStdout(chunk) {
-    this.stdout += chunk.toString("utf8");
+    this.stdout = Buffer.concat([this.stdout, chunk]);
     if (
-      Buffer.byteLength(this.stdout) > this.options.maxLineBytes &&
-      !this.stdout.includes("\n")
+      this.stdout.length > this.options.maxLineBytes &&
+      !this.stdout.includes(10)
     ) {
       this.protocolFailure(
         "Worker response exceeds line limit",
@@ -102,10 +107,10 @@ export class WorkerClient {
       return;
     }
     let end;
-    while ((end = this.stdout.indexOf("\n")) >= 0) {
-      const line = this.stdout.slice(0, end);
-      this.stdout = this.stdout.slice(end + 1);
-      if (Buffer.byteLength(line) > this.options.maxLineBytes) {
+    while ((end = this.stdout.indexOf(10)) >= 0) {
+      const line = this.stdout.subarray(0, end);
+      this.stdout = this.stdout.subarray(end + 1);
+      if (line.length > this.options.maxLineBytes) {
         this.protocolFailure(
           "Worker response exceeds line limit",
           "E_LINE_LIMIT",
@@ -114,7 +119,7 @@ export class WorkerClient {
       }
       let response;
       try {
-        response = JSON.parse(line);
+        response = JSON.parse(line.toString("utf8"));
       } catch {
         this.protocolFailure("Malformed worker response");
         return;
@@ -155,14 +160,10 @@ export class WorkerClient {
     }
   }
   onStderr(chunk) {
-    const incoming = chunk.toString("utf8");
-    const combined = this.stderr + incoming;
-    const bytes = Buffer.byteLength(combined);
-    if (bytes <= this.options.maxStderrBytes) this.stderr = combined;
+    const combined = Buffer.concat([this.stderr, chunk]);
+    if (combined.length <= this.options.maxStderrBytes) this.stderr = combined;
     else {
-      this.stderr = Buffer.from(combined)
-        .subarray(-this.options.maxStderrBytes)
-        .toString("utf8");
+      this.stderr = combined.subarray(-this.options.maxStderrBytes);
       this.stderrTruncated = true;
     }
   }
@@ -171,7 +172,13 @@ export class WorkerClient {
     this.state = "failed";
     for (const entry of this.pending.values()) {
       clearTimeout(entry.timer);
-      entry.reject(new WorkerClientError(code, message, { stage: "protocol" }));
+      entry.reject(
+        new WorkerClientError(code, message, {
+          stage: "protocol",
+          uncertain: entry.method === "edit",
+          jobUnknown: ["frame", "render"].includes(entry.method),
+        }),
+      );
     }
     this.pending.clear();
     this.child.kill("SIGTERM");
@@ -183,6 +190,8 @@ export class WorkerClient {
       entry.reject(
         new WorkerClientError("E_PROCESS_EXIT", "Worker exited", {
           stage: "process",
+          uncertain: entry.method === "edit",
+          jobUnknown: ["frame", "render"].includes(entry.method),
         }),
       );
     }
@@ -212,10 +221,11 @@ export class WorkerClient {
           new WorkerClientError("E_REQUEST_TIMEOUT", "Worker did not respond", {
             stage: "request",
             uncertain: method === "edit",
+            jobUnknown: ["frame", "render"].includes(method),
           }),
         );
       }, timeoutMs);
-      this.pending.set(id, { resolve, reject, timer });
+      this.pending.set(id, { resolve, reject, timer, method });
       this.child.stdin.write(
         JSON.stringify({ v: 1, id, method, params }) + "\n",
         (error) => {
@@ -226,7 +236,11 @@ export class WorkerClient {
             new WorkerClientError(
               "E_PROCESS_WRITE",
               "Worker stdin is unavailable",
-              { stage: "process", uncertain: method === "edit" },
+              {
+                stage: "process",
+                uncertain: method === "edit",
+                jobUnknown: ["frame", "render"].includes(method),
+              },
             ),
           );
         },
@@ -287,10 +301,13 @@ export class WorkerClient {
         }
       }
       const waitExit = (timeoutMs) =>
-        Promise.race([
-          this.exit,
-          new Promise((resolve) => setTimeout(resolve, timeoutMs, "timeout")),
-        ]);
+        new Promise((resolve) => {
+          const timer = setTimeout(resolve, timeoutMs, "timeout");
+          this.exit.then((value) => {
+            clearTimeout(timer);
+            resolve(value);
+          });
+        });
       if (
         (await waitExit(
           terminated
