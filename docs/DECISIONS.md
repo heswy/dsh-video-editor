@@ -17,4 +17,6 @@
 
 未决：顶部公共 Slot、视图保持机制、宿主依赖解析、自定义 Host 通信、HyperFrames 固定版本与预览隔离。答案先进入任务实测记录，再形成新决定。
 
+2026-10-17 引擎路线：[ADR-0001](adr/0001-independent-video-worker.md) 接受独立 Node worker + stdio 协议作为实施路线。P1 单 Scene 验证采用 HyperFrames 0.8.167，尚不承诺其他版本兼容；DSH 接入及任意代码执行隔离另行验证。
+
 2026-10-17 并行决定：用户已同意加速并行开发。DSH 拥有 P0 宿主/UI 文件；新 Codex 开发会话拥有 `spikes/hyperframes/**` 与 P1-001 记录；主会话继续架构、协调和验收。两边独立 worktree，无共享代码写入区域，接入契约由 P1 提议、主会话评审后冻结。

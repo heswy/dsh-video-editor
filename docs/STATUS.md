@@ -17,23 +17,27 @@
 | 项目准备与长期记忆 | Codex | codex/project-foundation；主工作区 | 已完成，本地提交交接；归档完整性及链接检查通过 |
 | [P0-001](tasks/P0-001-mode-shell.md) | DSH 调查 / Codex 评审 | dsh/p0-mode-shell；同级 dsh-video-editor-worktrees/p0-mode-shell | a85308a / dcc0ae4 已审阅，调查验收通过；未做插件 live 验证 |
 | [P0-002](tasks/P0-002-mode-shell-implementation.md) | DSH 实现 / Codex 评审 | 继续 dsh/p0-mode-shell 与原 worktree | 8ebf922 / a31ee51 主要修复复审通过；本地检查 44/44，固定包已产生；未安装 |
-| [P0-003](tasks/P0-003-install-validation.md) | 原 DSH 会话 | 原 P0 worktree | 安装/真页面验证准备好，待用户明确授权 |
+| [P0-003](tasks/P0-003-install-validation.md) | 原 DSH 会话 | 原 P0 worktree | 0104e0e 真页面核心证据已审阅；已安装启用；P0 部分通过，引用/滚动等未完 |
+| [P0-004](tasks/P0-004-lifecycle-and-acceptance.md) | 原 DSH 会话 | 原 P0 worktree | 修重挂缺陷并补验；实现放行，新包安装授权另行确认 |
 | [前端设计规划](design/FRONTEND-DESIGN.md) | Codex | codex/project-foundation；主工作区 | v0.1 方向草案已整理；未实现/未真页面验证 |
-| [P1-001 引擎验证](tasks/P1-001-engine-spike.md) | 用户新开的 Codex 开发会话 | codex/p1-engine-spike-b4bf；~/.codex/worktrees/b4bf/dsh-video-editor | 改用新会话自动 worktree，起点831a64d；已从 detached HEAD 建分支 |
+| [P1-001 引擎验证](tasks/P1-001-engine-spike.md) | Codex 引擎开发 / 主会话验收 | codex/p1-engine-spike-b4bf；~/.codex/worktrees/b4bf/dsh-video-editor | c779b94 / e88615f 单场景可行性通过，主会话独立复测 3+2 测试、哈希与 ffprobe |
+| [P1-002 worker](tasks/P1-002-engine-worker.md) | 原 Codex 引擎会话 | 自行管理原 worktree/分支 | 受控独立 worker 实现放行；不改 DSH 插件 |
 
 ## 下一动作
 
-并行线：用户在新 Codex 会话使用 `/Users/orange/.codex/worktrees/b4bf/dsh-video-editor`，按 P1-001 开始引擎验证。该会话只改 spike 与自身记录，不等 P0 修复，也不改 DSH Client 文件。
+并行线：原引擎会话开始 P1-002，只改独立 packages/video-engine-worker 与自身记录；自行管理工作树，不等 P0 收尾。
 
-1. Codex 将 [修复复审](reviews/P0-002-review-02.md) 与 P0-003 同步到干净的原 DSH worktree，不改其功能实现。
-2. 用户可在 DSH 明确授权安装/启用指定 tarball，随后执行 P0-003；新 Codex 引擎会话继续 P1-001，无需等待安装。
-3. DSH 返回真实页面与状态恢复证据，由主会话验收。当前未合并实现到协调分支或 main。
+1. Codex 将联合评审和 P0-004 同步到干净的 DSH tree，用户让其修重挂缺陷并补关键实测。
+2. 引擎会话从协调分支只读取 P1-002 / ADR 后自行开工，不由主会话改其 tree。
+3. 主会话按两边实际提交继续验收，随后定义 P2 Host 集成；当前未合并两条功能分支到 main。
 
 ## 阻塞与未验证
 
-用户已确认首版原生顶部靠左入口；无产品决策阻塞。普通输入附件/引用及回退清理仍需真机验证。没有宿主集成、UI、生成、编辑或导出通过验证。
+顶部靠左及核心 P0 UI 有真实证据；引用/普通文件/静态阅读位置等未完，重挂缺陷待修。单 Scene SDK 编辑与真实导出已在独立引擎通过；尚无 DSH 内引擎接入、不可信代码隔离或完整 AI 创作能力验收。
 
 ## 最近交接
+
+2026-10-17 联合评审：已审 P0 0104e0e 真实材料及 P1 c779b94/e88615f；主会话独立运行 SDK/合成进程 3 测试、真实渲染 cancel/timeout 2 测试通过，ffprobe 和 8 组 PNG/hash 核对一致。P1 单 Scene 通过；P0 部分通过。新增 ADR-0001、P0-004、P1-002，继续两线并行，见 reviews/P0-P1-2026-10-17-joint-review.md。
 
 2026-10-17 工作树管理范围：用户要求删除预建 p1-engine-spike tree，仅保留自动 b4bf 作为引擎开发工作树。移除前确认预建 tree 干净、无独有提交、无忽略文件。今后这里只管理 DSH tree，不操作其他 Codex 会话的 tree。
 
