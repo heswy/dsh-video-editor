@@ -25,7 +25,13 @@
 
 ## 真机验收发现的问题
 
-- **V1（视觉/对比度，2026-10-17）**：深色模式下主按钮「更新画面」白底白字，文字几乎不可见（功能正常，可点击）。原因：`client.js` `.dv-button-primary` 使用宿主不存在的 `--dsw-alias-label-on-brand`（fallback `#fff`），而深色主题 `--dsw-alias-brand-primary` 为近白色。已排入 [P2-005 R1](../tasks/P2-005-preview-time-and-player-spike.md)，随 0.2.1 修复并重装后复核浅色/深色、hover/focus/disabled。
+- **V1（视觉/对比度，2026-10-17，已在 0.2.1 修复）**：0.2.0 深色模式下主按钮「更新画面」白底白字。根因：`.dv-button-primary` 使用宿主不存在的 `--dsw-alias-label-on-brand`（fallback `#fff`），深色主题 `--dsw-alias-brand-primary` 为近白色。0.2.1 改用 `button-primary-fill/hover/dimmed` + `label-primary-foreground` 配对 token（R1 复审通过），用户 0.2.1 深色截图确认主按钮可读。待补：浅色实图、hover/focus-visible/disabled 视觉，及画面时间点输入是否可用的实际点击证据。
+- **播放能力缺失（未解决）**：0.2.0/0.2.1 仍只有单帧预览 + 导出 MP4，没有插件内播放按钮；A1（隔离 iframe + 快照 + 固定 runtime）已证明可行但未实现，待用户定优先级（完整编辑预览 vs 成品 MP4 播放）。
+
+## 0.2.1 安装记录
+
+- 2026-10-17 用户卸载 0.2.0 后以 link 安装 `staging-54f4671-bdcfd72/bundle`；profile 依赖指向该目录，`node_modules/dsh-video` 为符号链接；插件版本 `0.2.1`。
+- 用户截图确认：深色模式下主按钮「更新画面」可读；右侧新增「画面时间（秒）」输入（默认 2.50）；工程/画面/元信息正常。
 
 ## 待验清单（继续真机验收）
 

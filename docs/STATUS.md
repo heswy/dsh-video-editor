@@ -12,7 +12,7 @@
 - 用户最新确认改为左侧「上下文洞察」下、「工作区」上单入口 **Vedio Editor** + 细线条图标，替代顶部胶囊；UI 简洁克制。产品见 `product/PRODUCT.md`。
 - 已归档计划、截图与 DSH 开发包。上一轮已确认 kit 的 16 个 skill 文件与本机 app.asar 相同；README/AGENT-BRIEF 是整理材料。
 - 当前实际 Host 为 Desktop 0.2.1-rc.1（用户侧升级）；P0-006 已重新核对侧栏，P2-002-A 核实 Host API。0.2.0-rc.2 证据保留为历史，首轮 master 建议不直接沿用。
-- **2026-10-17 已安装 `dsh-video 0.2.0`**：用户授权后卸载 0.1.3，以 Plugin Manager link 方式指向 clean staging（root `fa7b0e2` + engine `54f4671`）。真实 Host 内 UI 与 `video_engine` Tool 初步验证通过（doctor/open/frame/status），真机验收进行中；0.1.3 回滚目录与固定包保留。见 [真机验收记录](research/P2-004-live-acceptance.md)。
+- **2026-10-17 已安装 `dsh-video 0.2.1`**：用户卸载 0.2.0 后以 Plugin Manager link 指向 `staging-54f4671-bdcfd72/bundle`（root `bdcfd72` + engine `54f4671`）。深色主按钮修复与「画面时间（秒）」预览已真机可见；插件内播放按钮仍不存在，待用户定优先级。0.1.3 回滚目录与固定包保留。见 [真机验收记录](research/P2-004-live-acceptance.md)。
 
 ## 远端与草稿 PR
 
@@ -51,7 +51,7 @@
 | [P2-003 启动/包入口](tasks/P2-003-engine-launch-packaging.md) | 程序员 1 | 原 b4bf worktree/分支 | 54f4671 已复审通过；Node22/24 各15通过+1跳过，Desktop24.21真实链通过；固定包见评审新摘要 |
 | [P2-002-B Host 接入](tasks/P2-002B-host-integration.md) | 程序员 2 | 原 P0 worktree | e595d4e 首审：83/83 与根包匹配；R1对象绑定/R2Tool截断/R3快照验证/R4版本门禁待修 |
 | [P2-004 R1–R4 修复](tasks/P2-004-host-bridge-fixes.md) | 程序员 2 | 原 P0 worktree/分支 | 已复审通过并安装 0.2.0（link clean staging）；真机验收中：UI 真实工程/画面、Tool doctor/open/frame/status 通过；编辑/导出/生命周期待验 |
-| [P2-005 预览时间点+播放 spike](tasks/P2-005-preview-time-and-player-spike.md) | 程序员 2 | 原 P0 worktree/分支 | R1 补丁复审通过：97/97、0.2.1 包 17/17 字节一致、staging 真实链；**0.2.1 为安装候选**，待用户重装复核深色按钮与时间点预览 |
+| [P2-005 预览时间点+播放 spike](tasks/P2-005-preview-time-and-player-spike.md) | 程序员 2 | 原 P0 worktree/分支 | R1 补丁复审通过；**0.2.1 已真机安装**：深色主按钮可读、画面时间输入可见；播放实现待用户定优先级 |
 | [P3-001 多 Scene/修订 spike](tasks/P3-001-engine-multiscene-spike.md) | 程序员 1 | 原 b4bf worktree/分支 | 已复审通过：独立复跑 12/12、MP4/ffprobe/证据核对一致；契约冻结 D020–D022；见 [复审](reviews/P3-001-review-01.md) |
 | [P3-003 多 Scene 引擎实现](tasks/P3-003-engine-multiscene-implementation.md) | 程序员 1 | 原 b4bf worktree/分支 | 已下发：工程创建/Scene 操作/inspect 扩展/素材/历史 + AI 候选合并；分 Phase A/B，可提前报 Phase A |
 
@@ -70,6 +70,8 @@
 0.1.3 核心侧栏/主面板和启停证据通过。main 内容缺少定向 AX 通道，返回按钮、菜单焦点、主题/字号/窄窗、草稿/引用/附件、静态阅读位置、冷启动等仍未测，采用人工清单，不重复不安全自动化。0.2.0 已真机安装，入口/真实工程/画面与 Tool doctor/open/frame/status 通过；**UI 编辑保存、导出/取消、冲突错误、生命周期与主题窄窗仍未验证**；尚无多 Scene、AI 创作、用户素材、不可信代码隔离。P2 client 的显式 Node22/24 测试仅代表本机小版本和受控 fixture。
 
 ## 最近交接
+
+2026-10-17 0.2.1 真机安装：用户卸载 0.2.0，link 安装 `staging-54f4671-bdcfd72/bundle`（profile 已指向该目录、版本 0.2.1）。深色模式主按钮「更新画面」可读（截图确认），右侧「画面时间（秒）」输入出现（默认 2.50）。播放按钮仍不存在：0.2.1 只做单帧 + 导出；A1 完整预览需 engine snapshot + Host 路由 + Client iframe，成品 MP4 内嵌播放只需 Client 小改。**待用户选择播放优先级后下发任务**。待补验：浅色/hover/focus/disabled、时间点抽帧实际点击、编辑保存/导出取消/生命周期。
 
 2026-10-17 P2-005 R1 补丁复审通过：`bdcfd72`/`123353c` 仅改主按钮 token 与静态断言；独立复跑 97/97；0.2.1 tarball 39,702 B、17/17 与提交字节一致；新 staging `staging-54f4671-bdcfd72`（INTEGRITY `b410ec2f…`、staged Host `07442c86…`）真实链通过、demo 干净。已核对宿主 app.asar 中 `button-primary-fill/hover/dimmed` 与 `label-primary-foreground` 真实存在、配对方向正确（深色 fill 实为 `#f9fafb`，报告笔误）。**0.2.1 可作安装候选**，待用户重装后做真实明暗/焦点/disabled 视觉复核。见 [R1 复审](reviews/P2-005-review-02.md)。
 
