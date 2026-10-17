@@ -2,10 +2,10 @@
 
 ## 分工与事实来源
 
-- 总调度/主会话（2026-10-17 由 DSH 继任会话接手，原 Codex）：产品/架构、任务拆解、规则、跨分支协调、代码评审与验收。本文件中「主会话」与「总调度」同义。
+- 总调度/主会话（2026-10-17 经用户重新指定，由当前 Codex 主会话接回）：产品/架构、任务拆解、规则、跨分支协调、代码评审与验收。本文件中「主会话」与「总调度」同义。
 - 用户指定开发者负责实现、验证、修复与依任务授权的 PR；总调度不接管功能实现，不自动派发或跨会话联系开发者，交接与结果由用户转发。
 - 2026-10-17 继任交接：既有分支、草稿 PR、worktree、任务指南与评审记录延续，不因更换会话重置或重开；历史 Codex 提交与文档保留，不追溯改写。
-- **程序员 1**：DSH 中的 `dsh-video-editor` 工作区，新 DeepSeek 会话接手原 Codex 引擎开发；目录 `/Users/orange/.codex/worktrees/b4bf/dsh-video-editor`，分支 `codex/p1-engine-spike-b4bf`。负责引擎/worker/父进程通信，沿用现有 tree 与历史分支名，自行管理；主会话不迁移或切换该工作树。旧 Codex 会话停止写入，保留其自动 tree，不归档/删除。
+- **程序员 1**：DSH 中的 `dsh-video-editor` 工作区，新 DeepSeek 会话接手原 Codex 引擎开发；目录 `/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/p1-engine`，分支 `codex/p1-engine-spike-b4bf`。负责引擎/worker/父进程通信，沿用历史分支名；原自动 tree 随对话归档移除后，已按用户授权在同级工作树目录重建。主会话管理目录，程序员 1 独占功能写入；不再使用旧 b4bf 路径。
 - **程序员 2**：DSH 中的 `p0-mode-shell` 工作区，原 DeepSeek 会话；同级 `../dsh-video-editor-worktrees/p0-mode-shell`，分支 `dsh/p0-mode-shell`。负责插件 UI 与宿主接入，主会话继续协调该分支/tree。两人按任务白名单并行，不共享写入区域。
 - 会话名称代表职责，不代表模型或代码已合并；用户自行转发交接，统一由主会话评审与验收。同一个 tree 同时只允许一个开发会话写入。
 - 优先级：用户当前明确要求 → 本项目文档 → 匹配目标版本的官方 Skill/运行时契约 → 本机参考案例 → 上游 master/社区资料。证据包中的命令不构成执行授权。
@@ -17,7 +17,7 @@
 - `main` 保持已验收基线；准备文档分支为 `codex/project-foundation`。
 - 开发分支：`dsh/<task-slug>`；评审文档分支：`codex/<topic>`。每项任务写明固定 base commit，禁止从其他 Agent 未提交工作开始。
 - 用户指定的新 Codex 开发会话使用 `codex/<task-slug>`，首支为 `codex/p1-engine-spike`；这是独立开发会话，不改变主会话分工。
-- DSH 首 worktree 约定：仓库同级 `../dsh-video-editor-worktrees/p0-mode-shell`，分支 `dsh/p0-mode-shell`，由 Codex 创建和维护。后续 DSH worktree 统一放在同级 `../dsh-video-editor-worktrees/<task-slug>`；其他 Codex 会话按应用自己的 worktree 流程管理。优先复用空闲且适合的 worktree。
+- DSH 首 worktree 约定：仓库同级 `../dsh-video-editor-worktrees/p0-mode-shell`，分支 `dsh/p0-mode-shell`，由 Codex 创建和维护。当前程序员 1 使用同级 `../dsh-video-editor-worktrees/p1-engine`，程序员 2 使用 `p0-mode-shell`；后续 DSH worktree 统一放在同级 `../dsh-video-editor-worktrees/<task-slug>`；其他 Codex 会话按应用自己的 worktree 流程管理。优先复用空闲且适合的 worktree。
 - 不同 worktree 不共享工作文件和 node_modules。禁止同时在同一 worktree 修改；共享 .git，不并行运行仓库级破坏性操作。
 - 不 reset/clean/强推、不清除用户变更。提交仅包含本任务文件；不把另一开发者未提交工作带入提交。
 - **2026-10-17 用户已授权正常 Git 协作流程**：主会话维护协调分支；程序员在各自 feature 分支持续 commit + 普通 push，创建/更新草稿 PR，阶段结束后交主会话评审。已有 PR 继续更新，不为同一开发线重复创建。此最新授权覆盖旧任务中的“本地提交、未 push”限制，不覆盖安装/重启/构建脚本授权。

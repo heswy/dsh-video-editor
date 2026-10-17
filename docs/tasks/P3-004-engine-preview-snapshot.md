@@ -2,7 +2,7 @@
 
 > 2026-10-17 总调度下发，依据 [P3-003 复审](../reviews/P3-003-review-01.md) R1 与编辑器画布前置需求（D023/D024）。小任务，引擎侧。用户已授权正常 feature push/草稿 PR（D016）；安装/启停/重启/merge 不授权。
 
-执行：**程序员 1**；工作树 `/Users/orange/.codex/worktrees/b4bf/dsh-video-editor`，分支 `codex/p1-engine-spike-b4bf`，开工 HEAD `aae05e9`。若已变化先报告实际 HEAD。
+执行：**程序员 1**；工作树 `/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/p1-engine`，分支 `codex/p1-engine-spike-b4bf`，开工 HEAD `aae05e9`。若已变化先报告实际 HEAD。
 
 ## 0. 开工顺序
 

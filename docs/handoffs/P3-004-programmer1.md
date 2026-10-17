@@ -2,11 +2,15 @@
 
 日期：2026-10-17。P3-003 复审通过后的引擎小任务。用户把下方提示粘贴给程序员 1 即可。
 
+## 工作树恢复说明（2026-10-17）
+
+原自动工作树随对话归档移除；归档 snapshot 与 `aae05e9` 一致，已按用户授权在下述新目录恢复原分支。worker/client 已分别按锁文件 `npm ci --ignore-scripts`；恢复基线测试 worker 17/17，client 16 pass + 1 opt-in skip，无失败。旧忽略产物未宣称恢复；两包测试已生成新的本地产物。新树内全局文档仍是开发分支历史版本，当前调度/路径规则请通过 `git show origin/codex/project-foundation:AGENTS.md`、`docs/STATUS.md`、`docs/DEVELOPMENT.md` 读取，不 merge 协调分支、不自行改全局规则。
+
 ## 给程序员 1 的提示
 
 > P3-003 复审通过：独立复跑 worker 17/17、real 9/9、client 16+1 skip；两包 0.2.0 与提交 `9df968c` 逐字节一致；15 秒 MP4/帧/证据核对通过。有两个收尾项已合成 **P3-004**（小任务，两包升 0.2.1）：
 >
-> 工作目录不变：`/Users/orange/.codex/worktrees/b4bf/dsh-video-editor`，分支 `codex/p1-engine-spike-b4bf`，开工 HEAD `aae05e9`。先读 AGENTS.md、docs/STATUS.md、docs/DEVELOPMENT.md、docs/reviews/P3-003-review-01.md，然后执行 P3-004。任务指南从协调分支取（先 `git fetch origin`，不切换分支）：
+> 恢复后的工作目录：`/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/p1-engine`，分支 `codex/p1-engine-spike-b4bf`，开工 HEAD `aae05e9`。先读 AGENTS.md、docs/STATUS.md、docs/DEVELOPMENT.md、docs/reviews/P3-003-review-01.md，然后执行 P3-004。任务指南从协调分支取（先 `git fetch origin`，不切换分支）：
 > ```
 > git show origin/codex/project-foundation:docs/tasks/P3-004-engine-preview-snapshot.md > docs/tasks/P3-004-engine-preview-snapshot.md
 > ```

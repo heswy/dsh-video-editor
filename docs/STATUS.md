@@ -1,10 +1,12 @@
 # 当前项目状态
 
-更新：2026-10-17。此文件由总调度维护（2026-10-17 由 DSH 继任会话接手；原 Codex 主会话）。
+更新：2026-10-17。此文件由总调度维护（2026-10-17 用户重新指定当前 Codex 主会话接回）。
 
 ## 当前事实
 
-- **核心目标（2026-10-17 用户重申）：AI 生成视频。** 判断进度以「用户用一句话让 AI 在 DSH 里建出可编辑的视频工程」为准；宿主接入、预览、播放都只是支撑能力，不得挤占 P3 主线。当前 AI 创作闭环仍是 0 起点，P3-001（引擎多 Scene/修订 spike）走在最前。
+- **最新调度与目录（2026-10-17）**：用户重新指定当前 Codex 主会话为总调度。程序员 1 原自动树因归档移除，归档 snapshot 与分支同为 `aae05e9`；已在 `/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/p1-engine` 重建，沿用 `codex/p1-engine-spike-b4bf`。历史记录中的 b4bf 路径仅作历史证据，当前任务指南/交接已改新路径。已提交源码完整；旧 node_modules、忽略产物不属于 Git 恢复范围。
+
+- **核心目标（2026-10-17 用户重申）：AI 生成视频。** 判断进度以「用户用一句话让 AI 在 DSH 里建出可编辑的视频工程」为准；宿主接入、预览、播放都只是支撑能力，不得挤占 P3 主线。当前 DSH 内 AI 创作闭环尚未完成；P3-003 多 Scene 引擎已在受控范围验收，当前引擎任务为 P3-004。
 
 - 仓库：`heswy/dsh-video-editor`。协调分支维护文档与证据；DSH 分支已有未验收的 P0 bundle 和本地检查，不能把协调分支的无代码状态当成全项目无实现。
 - 2026-10-17 总调度继任：原 Codex 主会话将产品/架构/协调/评审职责交给当前 DSH 会话；用户确认两个程序员会话仍在、交接由用户粘贴转发。既有分支、worktree、草稿 PR、任务与评审记录延续，不重置、不重开。
@@ -28,9 +30,9 @@
 
 ## 当前人员称呼
 
-- 程序员 1：`dsh-video-editor` 工作区，新 DeepSeek 接手 b4bf 引擎/通信代码；旧 Codex 会话不再同时写入。
+- 程序员 1：`dsh-video-editor` 工作区，DeepSeek 负责引擎/通信代码，当前目录 `../dsh-video-editor-worktrees/p1-engine`（原 b4bf 自动树已归档）；旧 Codex 会话不再同时写入。
 - 程序员 2：`p0-mode-shell` 工作区，原 DeepSeek 负责插件 UI/Host。
-- 总调度/主会话：架构、计划、协调、评审与验收；2026-10-17 由 DSH 继任会话接手，维护协调分支与 PR #1；目录/分支与管理规则见 DEVELOPMENT。
+- 总调度/主会话：架构、计划、协调、评审与验收；2026-10-17 经用户重新指定由当前 Codex 主会话接回，维护协调分支与 PR #1；目录/分支与管理规则见 DEVELOPMENT。
 
 ## 活动任务
 
@@ -52,17 +54,17 @@
 | [P2-002-B Host 接入](tasks/P2-002B-host-integration.md) | 程序员 2 | 原 P0 worktree | e595d4e 首审：83/83 与根包匹配；R1对象绑定/R2Tool截断/R3快照验证/R4版本门禁待修 |
 | [P2-004 R1–R4 修复](tasks/P2-004-host-bridge-fixes.md) | 程序员 2 | 原 P0 worktree/分支 | 已复审通过并安装 0.2.0（link clean staging）；真机验收中：UI 真实工程/画面、Tool doctor/open/frame/status 通过；编辑/导出/生命周期待验 |
 | [P2-005 预览时间点+播放 spike](tasks/P2-005-preview-time-and-player-spike.md) | 程序员 2 | 原 P0 worktree/分支 | R1 补丁复审通过；**0.2.1 已真机安装**：深色主按钮可读、画面时间输入可见；播放实现按已定优先级后置 |
-| [P2-006 取消/时序 UX 修复](tasks/P2-006-cancel-and-timing-ux-fixes.md) | 程序员 2 | 原 P0 worktree/分支 | 已下发：R2 取消不再误报「操作失败。」；R3 开始+时长越界本地校验与中文化；升 0.2.2，交付复审后重装 |
+| [P2-006 取消/时序 UX 修复](tasks/P2-006-cancel-and-timing-ux-fixes.md) | 程序员 2 | 原 P0 worktree/分支 | 已交付 `97c0609`/`16d60aa`；自述 103/103 与 staging 真实链通过，待独立复审；0.2.2 未安装 |
 | [P3-001 多 Scene/修订 spike](tasks/P3-001-engine-multiscene-spike.md) | 程序员 1 | 原 b4bf worktree/分支 | 已复审通过：独立复跑 12/12、MP4/ffprobe/证据核对一致；契约冻结 D020–D022；见 [复审](reviews/P3-001-review-01.md) |
 | [P3-003 多 Scene 引擎实现](tasks/P3-003-engine-multiscene-implementation.md) | 程序员 1 | 原 b4bf worktree/分支 | 复审通过（本机受控）：17/17、9/9、16+1 skip；两包 0.2.0 与 `9df968c` 字节一致；15s MP4/证据核对通过；附 R1 schema 待补 |
 | [P3-004 协议 schema+预览快照](tasks/P3-004-engine-preview-snapshot.md) | 程序员 1 | 原 b4bf worktree/分支 | 已下发：补 P3 方法 schema（R1）+ `preview.snapshot/release`（画布后端）+ 两包 0.2.1；小任务 |
 
 ## 下一动作
 
-并行线：程序员 1 做 P3-004（协议 schema + 预览快照）；程序员 2 的 P2-006 尚未开工/推送（分支仍 123353c）；总调度准备 P3-005 编辑器画布任务。播放/点选需求合并到实时预览画布。
+并行线：程序员 1 做 P3-004（协议 schema + 预览快照）；程序员 2 的 P2-006 已交付 `97c0609`/`16d60aa`，待独立复审（0.2.2 未安装）；总调度准备 P3-005 编辑器画布任务。播放/点选需求合并到实时预览画布。
 
 1. 程序员 1 按 [P3-004](tasks/P3-004-engine-preview-snapshot.md) 补 schema、`preview.snapshot/release`、修 registry 失败清理，出 0.2.1 包与真实证据；Phase 完成后 push 更新 PR #2。
-2. 程序员 2 仍待 P2-006 回交（0.2.2：取消不报错、时序中文提示）；之后按 P3-005 画布任务施工（依赖 P3-004 snapshot 契约）。
+2. 总调度复审程序员 2 的 P2-006 交付（0.2.2：取消不报错、时序中文提示）；之后按 P3-005 画布任务施工（依赖 P3-004 snapshot 契约）。
 3. 总调度复审 P3-004 后下发 [P3-005 编辑器画布](tasks/P3-005-editor-canvas.md)（Host 精确资产路由 + sandbox iframe + 播放/seek + 画布点选/描边/目标联动）。
 4. 画布通过后下发 P3-006（根插件创作流程/AI 上下文/冲突 UI），再接 P3-007 端到端 15 秒 AI 样例；P3-003 已完成。
 5. 真机验收剩余项（浅色/hover/focus、编辑保存、生命周期）随 0.2.2 重装补验。
@@ -73,6 +75,8 @@
 0.1.3 核心侧栏/主面板和启停证据通过。main 内容缺少定向 AX 通道，返回按钮、菜单焦点、主题/字号/窄窗、草稿/引用/附件、静态阅读位置、冷启动等仍未测，采用人工清单，不重复不安全自动化。0.2.0 已真机安装，入口/真实工程/画面与 Tool doctor/open/frame/status 通过；**UI 编辑保存、导出/取消、冲突错误、生命周期与主题窄窗仍未验证**；尚无多 Scene、AI 创作、用户素材、不可信代码隔离。P2 client 的显式 Node22/24 测试仅代表本机小版本和受控 fixture。
 
 ## 最近交接
+
+2026-10-17 Codex 总调度接回与程序员 1 恢复：按用户授权在 `../dsh-video-editor-worktrees/p1-engine` 重建原分支 `codex/p1-engine-spike-b4bf@aae05e9`；归档 snapshot 同提交、无额外跟踪文件差异。两包按锁文件安装（禁安装脚本），恢复基线 worker 17/17、client 16 pass + 1 opt-in skip；两开发树跟踪文件干净。P3-004 指南/交接改新路径；P2-006 最新交付同步为待复审。无功能修改、无安装、无 main 集成。
 
 2026-10-17 P3-003 复审通过：独立复跑 worker 17/17（11s）、real 9/9（155s，含 15s 渲染/取消）、client 16 pass + 1 opt-in skip（exit 0）；两包 0.2.0 与 `9df968c` 逐字节一致（client 3/3、worker 12/12）；`ai-project-15s.mp4` 264,650 B `87a3d418…`、ffprobe 450 帧/15.000s/1280×720/30fps、帧 `4728e847…`、4 Scene 工程快照与证据一致。契约差异（初始 1 Scene、fps=30、revise 冲突 written:false、asset 不进 undo）已冻结；**R1：protocol.schema.json 未含 P3 新方法**，必须在 P3-005 接线前补。已下发 [P3-004 引擎快照任务](tasks/P3-004-engine-preview-snapshot.md)（R1 + preview snapshot + registry 失败清理，两包升 0.2.1）；D024 记录画布 A1 架构与任务重编号。见 [P3-003 复审](reviews/P3-003-review-01.md)。
 
