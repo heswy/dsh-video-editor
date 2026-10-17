@@ -4,6 +4,8 @@
 
 ## 当前事实
 
+- **核心目标（2026-10-17 用户重申）：AI 生成视频。** 判断进度以「用户用一句话让 AI 在 DSH 里建出可编辑的视频工程」为准；宿主接入、预览、播放都只是支撑能力，不得挤占 P3 主线。当前 AI 创作闭环仍是 0 起点，P3-001（引擎多 Scene/修订 spike）走在最前。
+
 - 仓库：`heswy/dsh-video-editor`。协调分支维护文档与证据；DSH 分支已有未验收的 P0 bundle 和本地检查，不能把协调分支的无代码状态当成全项目无实现。
 - 2026-10-17 总调度继任：原 Codex 主会话将产品/架构/协调/评审职责交给当前 DSH 会话；用户确认两个程序员会话仍在、交接由用户粘贴转发。既有分支、worktree、草稿 PR、任务与评审记录延续，不重置、不重开。
 - `main` 起点：`9c826bd`；协调分支 `codex/project-foundation` 已推送并建草稿 PR #1，main 未合并。
@@ -50,7 +52,7 @@
 | [P2-002-B Host 接入](tasks/P2-002B-host-integration.md) | 程序员 2 | 原 P0 worktree | e595d4e 首审：83/83 与根包匹配；R1对象绑定/R2Tool截断/R3快照验证/R4版本门禁待修 |
 | [P2-004 R1–R4 修复](tasks/P2-004-host-bridge-fixes.md) | 程序员 2 | 原 P0 worktree/分支 | 已复审通过并安装 0.2.0（link clean staging）；真机验收中：UI 真实工程/画面、Tool doctor/open/frame/status 通过；编辑/导出/生命周期待验 |
 | [P2-005 预览时间点+播放 spike](tasks/P2-005-preview-time-and-player-spike.md) | 程序员 2 | 原 P0 worktree/分支 | 已下发：B 画面时间点抽帧预览（0.2.1，交付后复审再重装）+ A 隔离预览面播放可行性 spike |
-| [P3-001 多 Scene/修订 spike](tasks/P3-001-engine-multiscene-spike.md) | 程序员 1 | 原 b4bf worktree/分支 | 已下发：多 Scene 结构、Scene 操作、人工+AI 合并、撤销/重开、素材、工程创建；只出证据/提案 |
+| [P3-001 多 Scene/修订 spike](tasks/P3-001-engine-multiscene-spike.md) | 程序员 1 | 原 b4bf worktree/分支 | 进行中：已归档指南、建 `spikes/p3-multiscene`；尚无提交/证据 |
 
 ## 下一动作
 
@@ -61,7 +63,7 @@
 3. 程序员 1 按 [P3-001](tasks/P3-001-engine-multiscene-spike.md) 继续多 Scene/修订合并 spike；结果回来后总调度冻结 P3 契约。
 4. 总调度复审 P3-001 证据，把 [P3 创作闭环草案](research/P3-ai-creation-loop-plan.md) 冻结为 P3-003/P3-004 任务；P3 暂不开新树，若需端到端负责人先建整合分支。
 5. 总调度维护协调分支文档与 PR #1；保持 main 未合并；0.1.3 回滚可用（`…/p0-mode-shell/51c82a9/rollback-0.1.3/package` 与固定包）；用户已授权普通 feature push/草稿 PR，不自动 merge/发布。
-6. P2-005 已下发程序员 2：B 画面时间点抽帧预览（升 0.2.1，新固定包/staging 复审后由用户重新安装）+ A 隔离预览面真播放可行性 spike。真机验收剩余项继续由用户操作；若验收发现缺陷优先修，P2-005 让路。
+6. P2-005 已下发程序员 2：B 画面时间点抽帧预览（升 0.2.1，新固定包/staging 复审后由用户重新安装）+ A 隔离预览面真播放可行性 spike。**优先级：P3 主线高于预览/播放支撑项**；B 与 R1 尽快随 0.2.1 交付；A 的实现不排进本轮，等 P3 契约与首条 AI 样例之后再说。真机验收剩余项继续由用户操作；若验收发现缺陷优先修，P2-005 让路。
 
 ## 阻塞与未验证
 
