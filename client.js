@@ -429,10 +429,15 @@ window.__ModuleLoader__.load({
 .dv-button:disabled{opacity:.55;cursor:default;}
 .dv-button-primary{
   border-color:transparent;
-  background:var(--dsw-alias-brand-primary, #5b8cff);
-  color:var(--dsw-alias-label-on-brand, #fff);
+  background:var(--dsw-alias-button-primary-fill, var(--dsw-alias-brand-primary, #5b8cff));
+  color:var(--dsw-alias-label-primary-foreground, #fff);
 }
-.dv-button-primary:hover:not(:disabled){background:var(--dsw-alias-brand-primary, #5b8cff);filter:brightness(1.06);}
+.dv-button-primary:hover:not(:disabled){background:var(--dsw-alias-button-primary-hover, var(--dsw-alias-brand-primary, #5b8cff));}
+.dv-button-primary:disabled{
+  opacity:1;
+  background:var(--dsw-alias-button-primary-dimmed, var(--dsw-alias-interactive-bg-hover, rgba(127,127,140,.14)));
+  color:var(--dsw-alias-label-secondary, #a4a4ad);
+}
 .dv-button-quiet{color:var(--dsw-alias-label-secondary, #a4a4ad);}
 .dv-field{
   display:flex;

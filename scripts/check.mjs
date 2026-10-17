@@ -415,6 +415,19 @@ check('P2-002-B: Host modules do not import DSH-internal packages', () => {
   return 'node builtins + explicit engine package specifiers only';
 });
 
+check('P2-005 R1: primary button uses existing paired host tokens', () => {
+  assert(clientSource.includes('--dsw-alias-label-on-brand') === false, 'primary button still uses the nonexistent label-on-brand token');
+  const start = clientSource.indexOf('.dv-button-primary{');
+  const end = clientSource.indexOf('.dv-button-quiet', start);
+  assert(start >= 0 && end > start, 'primary button CSS block not found');
+  const block = clientSource.slice(start, end);
+  for (const token of ['--dsw-alias-button-primary-fill', '--dsw-alias-button-primary-hover', '--dsw-alias-button-primary-dimmed', '--dsw-alias-label-primary-foreground']) {
+    assert(block.includes(token), `primary button is missing paired host token ${token}`);
+  }
+  assert(/color:var\(--dsw-alias-label-primary-foreground/.test(block), 'primary button foreground is not the paired inverted/foreground token');
+  return 'button-primary-fill/hover/dimmed + label-primary-foreground';
+});
+
 check('P2-005: frame-time preview is real and bounded; no fake playback/timeline', () => {
   for (const needle of ['dsh-video-frame-time', 'video.frameTime', 'parseFrameTime', 'defaultFrameTime', 'frameTimeDraft']) {
     assert(clientSource.includes(needle), `client.js is missing frame-time preview wiring "${needle}"`);
