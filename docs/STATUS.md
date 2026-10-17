@@ -4,7 +4,7 @@
 
 ## 当前事实
 
-- **最新调度与目录（2026-10-17）**：用户重新指定当前 Codex 主会话为总调度。程序员 1 原自动树因归档移除，归档 snapshot 与分支同为 `aae05e9`；已在 `/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/p1-engine` 重建，沿用 `codex/p1-engine-spike-b4bf`。历史记录中的 b4bf 路径仅作历史证据，当前任务指南/交接已改新路径。已提交源码完整；旧 node_modules、忽略产物不属于 Git 恢复范围。
+- **最新调度与目录（2026-10-17）**：用户重新指定当前 Codex 主会话为总调度。p1-engine 原自动树因归档移除，归档 snapshot 与分支同为 `aae05e9`；已在 `/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/p1-engine` 重建，沿用 `codex/p1-engine-spike-b4bf`。历史记录中的 b4bf 路径仅作历史证据，当前任务指南/交接已改新路径。已提交源码完整；旧 node_modules、忽略产物不属于 Git 恢复范围。
 
 - **核心目标（2026-10-17 用户重申）：AI 生成视频。** 判断进度以「用户用一句话让 AI 在 DSH 里建出可编辑的视频工程」为准；宿主接入、预览、播放都只是支撑能力，不得挤占 P3 主线。当前 DSH 内 AI 创作闭环尚未完成；P3-003 多 Scene 引擎已在受控范围验收，当前引擎任务为 P3-004。
 
@@ -21,17 +21,18 @@
 2026-10-17 已首次推送三个已提交分支并建立草稿 PR（均以 main 为目标）：
 
 - 协调文档：codex/project-foundation → [PR #1](https://github.com/heswy/dsh-video-editor/pull/1)。
-- 程序员 1：codex/p1-engine-spike-b4bf → [PR #2](https://github.com/heswy/dsh-video-editor/pull/2)，引擎交付至 54f4671。
-- 程序员 2：dsh/p0-mode-shell → [PR #3](https://github.com/heswy/dsh-video-editor/pull/3)，PR 跟随其持续提交；后续 Host 接入提交由程序员 2 更新并另交评审，本轮不据远端前移推断其已通过。
+- p1-engine：codex/p1-engine-spike-b4bf → [PR #2](https://github.com/heswy/dsh-video-editor/pull/2)，引擎交付至 54f4671。
+- p0-mode-shell：dsh/p0-mode-shell → [PR #3](https://github.com/heswy/dsh-video-editor/pull/3)，PR 跟随其持续提交；后续 Host 接入提交由p0-mode-shell 更新并另交评审，本轮不据远端前移推断其已通过。
 
 后续继续推送原分支，更新原 PR，不重复开同一开发线 PR。尚未合并 main 或发布；因此仓库默认 main 页面暂仍是初始内容，完整进展在分支与 PR 中。并行分支包含共享基础文档，未来集成由主会话统一处理文档差异，不在开发者有未提交工作时擅自 rebase/覆盖。
 
-程序员 2 读取 P2-003-review-01 可固定引用 54f4671 的引擎包；复打包的新摘要与不可变目录见该评审。旧任务“不 push”限制被本轮用户明确授权覆盖，其它安装/重启边界不变。
+p0-mode-shell 读取 P2-003-review-01 可固定引用 54f4671 的引擎包；复打包的新摘要与不可变目录见该评审。旧任务“不 push”限制被本轮用户明确授权覆盖，其它安装/重启边界不变。
 
-## 当前人员称呼
+## 当前工作区称呼
 
-- 程序员 1：`dsh-video-editor` 工作区，DeepSeek 负责引擎/通信代码，当前目录 `../dsh-video-editor-worktrees/p1-engine`（原 b4bf 自动树已归档）；旧 Codex 会话不再同时写入。
-- 程序员 2：`p0-mode-shell` 工作区，原 DeepSeek 负责插件 UI/Host。
+- p1-engine：`dsh-video-editor` 工作区，DeepSeek 负责引擎/通信代码，当前目录 `../dsh-video-editor-worktrees/p1-engine`（原 b4bf 自动树已归档）；旧 Codex 会话不再同时写入。
+- p0-mode-shell：`p0-mode-shell` 工作区，原 DeepSeek 负责插件 UI/Host。
+- 后续开发会话直接按工作区名识别，不再使用人员编号；历史记录保留旧称。
 - 总调度/主会话：架构、计划、协调、评审与验收；2026-10-17 经用户重新指定由当前 Codex 主会话接回，维护协调分支与 PR #1；目录/分支与管理规则见 DEVELOPMENT。
 
 ## 活动任务
@@ -47,25 +48,25 @@
 | [前端设计规划](design/FRONTEND-DESIGN.md) | Codex | codex/project-foundation；主工作区 | v0.2 核心 live 证据通过：侧栏入口、单句空状态；编辑界面待接入 |
 | [P1-001 引擎验证](tasks/P1-001-engine-spike.md) | Codex 引擎开发 / 主会话验收 | codex/p1-engine-spike-b4bf；~/.codex/worktrees/b4bf/dsh-video-editor | c779b94 / e88615f 单场景可行性通过，主会话独立复测 3+2 测试、哈希与 ffprobe |
 | [P1-002 worker](tasks/P1-002-engine-worker.md) | 原 Codex 引擎会话 | 自行管理原 worktree/分支 | 3b5f6de R1 复审通过；本轮独立 7+1 测试通过，受控 worker 验收完成 |
-| [P2-001 通信包](tasks/P2-001-engine-client.md) | 程序员 1 | 自行管理 b4bf worktree/原分支 | 5b9032b 最终收口通过；独立 Node22/24 均10/10 |
+| [P2-001 通信包](tasks/P2-001-engine-client.md) | p1-engine | 自行管理 b4bf worktree/原分支 | 5b9032b 最终收口通过；独立 Node22/24 均10/10 |
 | [P0-006 真机验证](tasks/P0-006-sidebar-live-validation.md) | 原 DSH 会话 | 原 P0 worktree | 98e2571 记录/截图已审；0.2.1 上安装与核心入口/空页/启停通过，面板内交互等未测 |
-| [P2-002-A Host 契约](tasks/P2-002-host-bridge.md) | 程序员 2 | 原 P0 worktree | afcf57d 调查验收通过；ADR-0002 决策收敛 |
-| [P2-003 启动/包入口](tasks/P2-003-engine-launch-packaging.md) | 程序员 1 | 原 b4bf worktree/分支 | 54f4671 已复审通过；Node22/24 各15通过+1跳过，Desktop24.21真实链通过；固定包见评审新摘要 |
-| [P2-002-B Host 接入](tasks/P2-002B-host-integration.md) | 程序员 2 | 原 P0 worktree | e595d4e 首审：83/83 与根包匹配；R1对象绑定/R2Tool截断/R3快照验证/R4版本门禁待修 |
-| [P2-004 R1–R4 修复](tasks/P2-004-host-bridge-fixes.md) | 程序员 2 | 原 P0 worktree/分支 | 已复审通过并安装 0.2.0（link clean staging）；真机验收中：UI 真实工程/画面、Tool doctor/open/frame/status 通过；编辑/导出/生命周期待验 |
-| [P2-005 预览时间点+播放 spike](tasks/P2-005-preview-time-and-player-spike.md) | 程序员 2 | 原 P0 worktree/分支 | R1 补丁复审通过；**0.2.1 已真机安装**：深色主按钮可读、画面时间输入可见；播放实现按已定优先级后置 |
-| [P2-006 取消/时序 UX 修复](tasks/P2-006-cancel-and-timing-ux-fixes.md) | 程序员 2 | 原 P0 worktree/分支 | 已交付 `97c0609`/`16d60aa`；自述 103/103 与 staging 真实链通过，待独立复审；0.2.2 未安装 |
-| [P3-001 多 Scene/修订 spike](tasks/P3-001-engine-multiscene-spike.md) | 程序员 1 | 原 b4bf worktree/分支 | 已复审通过：独立复跑 12/12、MP4/ffprobe/证据核对一致；契约冻结 D020–D022；见 [复审](reviews/P3-001-review-01.md) |
-| [P3-003 多 Scene 引擎实现](tasks/P3-003-engine-multiscene-implementation.md) | 程序员 1 | 原 b4bf worktree/分支 | 复审通过（本机受控）：17/17、9/9、16+1 skip；两包 0.2.0 与 `9df968c` 字节一致；15s MP4/证据核对通过；附 R1 schema 待补 |
-| [P3-004 协议 schema+预览快照](tasks/P3-004-engine-preview-snapshot.md) | 程序员 1 | 原 b4bf worktree/分支 | 已下发：补 P3 方法 schema（R1）+ `preview.snapshot/release`（画布后端）+ 两包 0.2.1；小任务 |
+| [P2-002-A Host 契约](tasks/P2-002-host-bridge.md) | p0-mode-shell | 原 P0 worktree | afcf57d 调查验收通过；ADR-0002 决策收敛 |
+| [P2-003 启动/包入口](tasks/P2-003-engine-launch-packaging.md) | p1-engine | 原 b4bf worktree/分支 | 54f4671 已复审通过；Node22/24 各15通过+1跳过，Desktop24.21真实链通过；固定包见评审新摘要 |
+| [P2-002-B Host 接入](tasks/P2-002B-host-integration.md) | p0-mode-shell | 原 P0 worktree | e595d4e 首审：83/83 与根包匹配；R1对象绑定/R2Tool截断/R3快照验证/R4版本门禁待修 |
+| [P2-004 R1–R4 修复](tasks/P2-004-host-bridge-fixes.md) | p0-mode-shell | 原 P0 worktree/分支 | 已复审通过并安装 0.2.0（link clean staging）；真机验收中：UI 真实工程/画面、Tool doctor/open/frame/status 通过；编辑/导出/生命周期待验 |
+| [P2-005 预览时间点+播放 spike](tasks/P2-005-preview-time-and-player-spike.md) | p0-mode-shell | 原 P0 worktree/分支 | R1 补丁复审通过；**0.2.1 已真机安装**：深色主按钮可读、画面时间输入可见；播放实现按已定优先级后置 |
+| [P2-006 取消/时序 UX 修复](tasks/P2-006-cancel-and-timing-ux-fixes.md) | p0-mode-shell | 原 P0 worktree/分支 | 已交付 `97c0609`/`16d60aa`；自述 103/103 与 staging 真实链通过，待独立复审；0.2.2 未安装 |
+| [P3-001 多 Scene/修订 spike](tasks/P3-001-engine-multiscene-spike.md) | p1-engine | 原 b4bf worktree/分支 | 已复审通过：独立复跑 12/12、MP4/ffprobe/证据核对一致；契约冻结 D020–D022；见 [复审](reviews/P3-001-review-01.md) |
+| [P3-003 多 Scene 引擎实现](tasks/P3-003-engine-multiscene-implementation.md) | p1-engine | 原 b4bf worktree/分支 | 复审通过（本机受控）：17/17、9/9、16+1 skip；两包 0.2.0 与 `9df968c` 字节一致；15s MP4/证据核对通过；附 R1 schema 待补 |
+| [P3-004 协议 schema+预览快照](tasks/P3-004-engine-preview-snapshot.md) | p1-engine | 同级 p1-engine / 原引擎分支 | 已下发：补 P3 方法 schema（R1）+ `preview.snapshot/release`（画布后端）+ 两包 0.2.1；小任务 |
 
 ## 下一动作
 
-并行线：程序员 1 做 P3-004（协议 schema + 预览快照）；程序员 2 的 P2-006 已交付 `97c0609`/`16d60aa`，待独立复审（0.2.2 未安装）；总调度准备 P3-005 编辑器画布任务。播放/点选需求合并到实时预览画布。
+并行线：p1-engine 做 P3-004（协议 schema + 预览快照）；p0-mode-shell 的 P2-006 已交付 `97c0609`/`16d60aa`，待独立复审（0.2.2 未安装）；总调度准备 P3-005 编辑器画布任务。播放/点选需求合并到实时预览画布。
 
-1. 程序员 1 按 [P3-004](tasks/P3-004-engine-preview-snapshot.md) 补 schema、`preview.snapshot/release`、修 registry 失败清理，出 0.2.1 包与真实证据；Phase 完成后 push 更新 PR #2。
-2. 总调度复审程序员 2 的 P2-006 交付（0.2.2：取消不报错、时序中文提示）；之后按 P3-005 画布任务施工（依赖 P3-004 snapshot 契约）。
-3. 总调度复审 P3-004 后下发 [P3-005 编辑器画布](tasks/P3-005-editor-canvas.md)（Host 精确资产路由 + sandbox iframe + 播放/seek + 画布点选/描边/目标联动）。
+1. p1-engine 按 [P3-004](tasks/P3-004-engine-preview-snapshot.md) 补 schema、`preview.snapshot/release`、修 registry 失败清理，出 0.2.1 包与真实证据；Phase 完成后 push 更新 PR #2。
+2. 总调度复审p0-mode-shell 的 P2-006 交付（0.2.2：取消不报错、时序中文提示）；之后按 P3-005 画布任务施工（依赖 P3-004 snapshot 契约）。
+3. 总调度复审 P3-004 后编写并下发 P3-005 编辑器画布指南（尚未建立）（Host 精确资产路由 + sandbox iframe + 播放/seek + 画布点选/描边/目标联动）。
 4. 画布通过后下发 P3-006（根插件创作流程/AI 上下文/冲突 UI），再接 P3-007 端到端 15 秒 AI 样例；P3-003 已完成。
 5. 真机验收剩余项（浅色/hover/focus、编辑保存、生命周期）随 0.2.2 重装补验。
 6. 总调度维护协调分支文档与 PR #1；保持 main 未合并；不自动 merge/发布。

@@ -47,3 +47,5 @@
 2026-10-17 D024 / accepted：编辑器画布采用 A1 架构——worker 受控 `preview.snapshot`（entry+声明资产、只读、TTL、不进 revision）+ Host 精确资产路由（只认 snapshotId/声明路径，不接收任意 path/URL）+ Client sandbox iframe（播放/暂停/seek、画布点选、选中描边、目标联动）。任务编号相应调整为：P3-004 引擎预览快照、P3-005 编辑器画布、P3-006 插件创作流程/AI 上下文/冲突 UI、P3-007 端到端 15 秒样例验收；D023 中「P3-004」指插件创作 UI，按新编号为 P3-006。
 
 2026-10-17 D025 / accepted：用户重新指定当前 Codex 主会话为总调度，替代 D017 的当前人员安排，历史交接记录保留。用户授权恢复程序员 1 工作树到同级 `dsh-video-editor-worktrees/p1-engine`，与程序员 2 的 `p0-mode-shell` 并列；沿用 `codex/p1-engine-spike-b4bf` 与 `aae05e9`，不新开开发线、不改变任务与 PR #2。归档 snapshot 与该提交一致，无额外跟踪文件差异；依赖重新按锁文件安装且禁用安装脚本，旧忽略产物不宣称已恢复。
+
+2026-10-17 D026 / accepted：按用户要求取消“程序员 1/2”的当前称呼，开发会话直接以工作区名 `p1-engine`、`p0-mode-shell` 识别；未来新增工作树同样按树名识别。历史记录、分支与既有交接文件名保留，不因更名重开开发线。
