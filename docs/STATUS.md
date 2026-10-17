@@ -49,6 +49,7 @@
 | [P2-003 启动/包入口](tasks/P2-003-engine-launch-packaging.md) | 程序员 1 | 原 b4bf worktree/分支 | 54f4671 已复审通过；Node22/24 各15通过+1跳过，Desktop24.21真实链通过；固定包见评审新摘要 |
 | [P2-002-B Host 接入](tasks/P2-002B-host-integration.md) | 程序员 2 | 原 P0 worktree | e595d4e 首审：83/83 与根包匹配；R1对象绑定/R2Tool截断/R3快照验证/R4版本门禁待修 |
 | [P2-004 R1–R4 修复](tasks/P2-004-host-bridge-fixes.md) | 程序员 2 | 原 P0 worktree/分支 | 已复审通过并安装 0.2.0（link clean staging）；真机验收中：UI 真实工程/画面、Tool doctor/open/frame/status 通过；编辑/导出/生命周期待验 |
+| [P2-005 预览时间点+播放 spike](tasks/P2-005-preview-time-and-player-spike.md) | 程序员 2 | 原 P0 worktree/分支 | 已下发：B 画面时间点抽帧预览（0.2.1，交付后复审再重装）+ A 隔离预览面播放可行性 spike |
 | [P3-001 多 Scene/修订 spike](tasks/P3-001-engine-multiscene-spike.md) | 程序员 1 | 原 b4bf worktree/分支 | 已下发：多 Scene 结构、Scene 操作、人工+AI 合并、撤销/重开、素材、工程创建；只出证据/提案 |
 
 ## 下一动作
@@ -60,13 +61,15 @@
 3. 程序员 1 按 [P3-001](tasks/P3-001-engine-multiscene-spike.md) 继续多 Scene/修订合并 spike；结果回来后总调度冻结 P3 契约。
 4. 总调度复审 P3-001 证据，把 [P3 创作闭环草案](research/P3-ai-creation-loop-plan.md) 冻结为 P3-003/P3-004 任务；P3 暂不开新树，若需端到端负责人先建整合分支。
 5. 总调度维护协调分支文档与 PR #1；保持 main 未合并；0.1.3 回滚可用（`…/p0-mode-shell/51c82a9/rollback-0.1.3/package` 与固定包）；用户已授权普通 feature push/草稿 PR，不自动 merge/发布。
-6. 新需求（用户 2026-10-17）：插件内播放/seek 预览未接入（0.2.0 只有单帧 + 导出）。候选 A：隔离预览面嵌入 HyperFrames Player/Studio（需先验证隔离）；候选 B：抽帧/时间点预览（轻量非真播放）。待用户定优先级后排任务，不混入 P2-004 验收。
+6. P2-005 已下发程序员 2：B 画面时间点抽帧预览（升 0.2.1，新固定包/staging 复审后由用户重新安装）+ A 隔离预览面真播放可行性 spike。真机验收剩余项继续由用户操作；若验收发现缺陷优先修，P2-005 让路。
 
 ## 阻塞与未验证
 
 0.1.3 核心侧栏/主面板和启停证据通过。main 内容缺少定向 AX 通道，返回按钮、菜单焦点、主题/字号/窄窗、草稿/引用/附件、静态阅读位置、冷启动等仍未测，采用人工清单，不重复不安全自动化。0.2.0 已真机安装，入口/真实工程/画面与 Tool doctor/open/frame/status 通过；**UI 编辑保存、导出/取消、冲突错误、生命周期与主题窄窗仍未验证**；尚无多 Scene、AI 创作、用户素材、不可信代码隔离。P2 client 的显式 Node22/24 测试仅代表本机小版本和受控 fixture。
 
 ## 最近交接
+
+2026-10-17 播放需求排期：用户真机反馈「导出下载后可播放，但插件内没有播放器」。0.2.0 按范围只有固定 2.5s 单帧 + 导出；用户确认先做 B（画面时间点抽帧预览）并同时排 A（隔离预览面真播放 spike）。已发布 [P2-005](tasks/P2-005-preview-time-and-player-spike.md) 与交接，程序员 2 执行；已安装 0.2.0 与其 staging 不动，交付复审后再由用户重装 0.2.1。
 
 2026-10-17 真机安装与首轮验收：用户授权后卸载 0.1.3，以 Plugins link 安装 `dsh-video 0.2.0`（clean staging，root `fa7b0e2` + engine `54f4671`，INTEGRITY `cc4490da…`，staged Host `07442c86…`）。真实 Host 内：侧栏 Vedio Editor 选中、真实工程/画面/元信息/target 显示；`video_engine` Tool 注入本会话，doctor/open/frame(2.5s)/status 全部通过，PNG `efca9296…`/275,744 B/1280×720/`survivors:[]`（与 P1 受控帧一致）。待验：UI 编辑保存/导出取消/冲突/生命周期/明暗窄窗/artifact 字节。见 [真机验收记录](research/P2-004-live-acceptance.md)。
 
