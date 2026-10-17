@@ -10,6 +10,18 @@
 - 已归档计划、截图与 DSH 开发包。上一轮已确认 kit 的 16 个 skill 文件与本机 app.asar 相同；README/AGENT-BRIEF 是整理材料。
 - 当前实际 Host 为 Desktop 0.2.1-rc.1（用户侧升级）；P0-006 已重新核对侧栏，P2-002-A 核实 Host API。0.2.0-rc.2 证据保留为历史，首轮 master 建议不直接沿用。
 
+## 远端与草稿 PR
+
+2026-10-17 已首次推送三个已提交分支并建立草稿 PR（均以 main 为目标）：
+
+- 协调文档：codex/project-foundation → [PR #1](https://github.com/heswy/dsh-video-editor/pull/1)。
+- 程序员 1：codex/p1-engine-spike-b4bf → [PR #2](https://github.com/heswy/dsh-video-editor/pull/2)，引擎交付至 54f4671。
+- 程序员 2：dsh/p0-mode-shell → [PR #3](https://github.com/heswy/dsh-video-editor/pull/3)，首次远端快照 057f56c；正在进行的未提交 Host 接入不在该快照内。
+
+后续继续推送原分支，更新原 PR，不重复开同一开发线 PR。尚未合并 main 或发布；因此仓库默认 main 页面暂仍是初始内容，完整进展在分支与 PR 中。并行分支包含共享基础文档，未来集成由主会话统一处理文档差异，不在开发者有未提交工作时擅自 rebase/覆盖。
+
+程序员 2 读取 P2-003-review-01 可固定引用 54f4671 的引擎包；复打包的新摘要与不可变目录见该评审。旧任务“不 push”限制被本轮用户明确授权覆盖，其它安装/重启边界不变。
+
 ## 当前人员称呼
 
 - 程序员 1：`dsh-video-editor` 工作区，新 DeepSeek 接手 b4bf 引擎/通信代码；旧 Codex 会话不再同时写入。
@@ -49,7 +61,7 @@
 
 ## 最近交接
 
-2026-10-17 Git 工作流与 P2-003 验收：用户明确授权正常 feature push/草稿 PR，替代旧本地-only 限制。54f4671 已独立复测/验收；复打包源码匹配但摘要与原消息不同，独立固定到 artifacts/engine/54f4671，以 P2-003-review-01 为准。程序员2正在进行的根代码未提交，本轮不修改或纳入推送。主会话准备首次三个分支远端保存和草稿PR，结果随后登记。
+2026-10-17 Git 工作流与 P2-003 验收：用户明确授权正常 feature push/草稿 PR，替代旧本地-only 限制。54f4671 已独立复测/验收；复打包源码匹配但摘要与原消息不同，独立固定到 artifacts/engine/54f4671，以 P2-003-review-01 为准。程序员2正在进行的根代码未提交，本轮不修改或纳入推送。三个已提交分支已远端保存，草稿 PR #1/#2/#3 已建立，均未合并。
 
 2026-10-17 Host 契约验收与并行实施：afcf57d 调查通过；主会话独立核对 0.2.1 版本、asar 摘要与 bundled Node24.21。ADR-0002 选真实 Node 配置、显式净化环境、共用 Host dispatcher、fixture allowlist+job归属、真实字节产物与结构化 Tool；不加 Host 幂等缓存或附件。新增 P2-003 给程序员1、P2-002-B 给程序员2；两人本地实现，保持已安装 0.1.3。
 
