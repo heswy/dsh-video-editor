@@ -27,6 +27,18 @@ function request(message) {
       process.stdout.write("{not-json}\n");
       return;
     }
+    if (mode === "context") {
+      reply(message.id, {
+        cwd: process.cwd(),
+        mark: process.env.DSH_MARK ?? null,
+        parentOnly: Object.hasOwn(process.env, "DSH_PARENT_ONLY"),
+        home: Object.hasOwn(process.env, "HOME"),
+        hasPath: Object.hasOwn(process.env, "PATH"),
+        electron: Object.hasOwn(process.env, "ELECTRON_RUN_AS_NODE"),
+        hasMark: Object.hasOwn(process.env, "DSH_MARK"),
+      });
+      return;
+    }
     reply(message.id, { fake: true });
     return;
   }

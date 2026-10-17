@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { realpathSync } from "node:fs";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
@@ -133,6 +134,82 @@ test("invalid executable returns a structured startup failure", async () => {
       f.client.start(),
       (error) => error.code === "E_STARTUP",
     );
+  } finally {
+    await f.client.dispose();
+    await f.cleanup();
+  }
+});
+
+test("spawn uses an explicit complete env and cwd copied at construction", async () => {
+  const f = await fake("context");
+  const dir = await mkdtemp(resolve(tmpdir(), "dsh-engine-client-cwd-"));
+  // The complete env below must replace process.env, so this variable must not
+  // reach the child.
+  process.env.DSH_PARENT_ONLY = "parent-value";
+  const original = { PATH: process.env.PATH, DSH_MARK: "copied-value" };
+  const client = new WorkerClient({ ...f.client.options, env: original, cwd: dir });
+  original.DSH_MARK = "mutated-after-construction";
+  try {
+    const context = await client.start();
+    assert.equal(context.cwd, realpathSync(dir));
+    assert.equal(context.mark, "copied-value");
+    assert.equal(context.hasMark, true);
+    assert.equal(context.hasPath, true);
+    assert.equal(context.parentOnly, false);
+    // Only the explicit env and entries the platform injects itself may exist;
+    // nothing else from the parent environment is inherited.
+    assert.equal(context.home, false);
+    assert.equal(context.electron, false);
+  } finally {
+    delete process.env.DSH_PARENT_ONLY;
+    await client.dispose();
+    await f.cleanup();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("omitting env keeps the inherited standalone environment", async () => {
+  const f = await fake("context");
+  const client = new WorkerClient({ ...f.client.options });
+  process.env.DSH_MARK = "inherited-value";
+  try {
+    const context = await client.start();
+    assert.equal(context.mark, "inherited-value");
+    assert.equal(context.hasMark, true);
+    assert.equal(context.parentOnly, false);
+  } finally {
+    delete process.env.DSH_MARK;
+    await client.dispose();
+    await f.client.dispose();
+    await f.cleanup();
+  }
+});
+
+test("invalid env/cwd options fail before any worker process starts", async () => {
+  const f = await fake("framing");
+  const invalid = [
+    { env: null },
+    { env: "PATH=/bin" },
+    { env: [] },
+    { env: {} },
+    { env: { "": "value" } },
+    { env: { "NAME=with-equals": "value" } },
+    { env: { NAME: 1 } },
+    { env: { NAME: "has\0nul" } },
+    { env: { "NAME\0WITH-NUL": "value" } },
+    { cwd: "" },
+    { cwd: null },
+    { cwd: 42 },
+    { cwd: "relative/path" },
+    { cwd: "/tmp/has\0nul" },
+  ];
+  try {
+    for (const overrides of invalid)
+      assert.throws(
+        () => new WorkerClient({ ...f.client.options, ...overrides }),
+        TypeError,
+        JSON.stringify(overrides),
+      );
   } finally {
     await f.client.dispose();
     await f.cleanup();

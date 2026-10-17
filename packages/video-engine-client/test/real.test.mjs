@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { fixture } from "../../video-engine-worker/test/helpers.mjs";
 import { WorkerClient } from "../src/index.mjs";
 
@@ -20,6 +20,25 @@ function options(registry) {
     maxLineBytes: 65536,
     maxStderrBytes: 16384,
   };
+}
+
+// A Host is expected to pass the complete child environment it built itself,
+// without Electron/IPC/Node injection variables. These variables are enough for
+// the worker to find ffmpeg/ffprobe and run Chrome.
+function sanitizedEnv() {
+  const env = {};
+  for (const name of [
+    "PATH",
+    "HOME",
+    "TMPDIR",
+    "LANG",
+    "LC_ALL",
+    "USER",
+    "SHELL",
+    "TZ",
+  ])
+    if (process.env[name] !== undefined) env[name] = process.env[name];
+  return env;
 }
 
 test("real worker client starts only when asked and completes doctor/open/dispose", async () => {
@@ -109,3 +128,88 @@ test("real worker client preserves conflicts and manages async jobs without owni
     sentinel.kill();
   }
 });
+
+test("real worker runs with an explicit sanitized env and cwd", async () => {
+  const f = await fixture();
+  const client = new WorkerClient({
+    ...options(f.registry),
+    env: sanitizedEnv(),
+    cwd: f.dir,
+  });
+  try {
+    const doctor = await client.start();
+    assert.equal(doctor.node, process.version);
+    const opened = await client.open("demo");
+    assert.equal(opened.projectId, "demo");
+    const inspected = await client.inspect("demo");
+    assert.equal(inspected.revision, opened.revision);
+
+    const finished = await waitStatus(
+      client,
+      (
+        await client.frame({
+          projectId: "demo",
+          revision: inspected.revision,
+          time: 2.5,
+        })
+      ).jobId,
+    );
+    assert.equal(finished.state, "succeeded", JSON.stringify(finished));
+    assert.equal(finished.artifact.metadata.width, 1280);
+
+    const render = await client.render({
+      projectId: "demo",
+      revision: inspected.revision,
+    });
+    assert.equal((await client.cancel(render.jobId)).state, "cancelling");
+    assert.equal((await waitStatus(client, render.jobId)).state, "cancelled");
+    await client.dispose();
+    assert.equal(client.debug().pending, 0);
+  } finally {
+    await client.dispose();
+    await f.cleanup();
+  }
+});
+
+// Opt-in evidence for the Desktop primary-runtime Node. The path is only test
+// configuration: run with DSH_ENGINE_TEST_NODE=<absolute node executable>.
+const desktopRuntimeNode = process.env.DSH_ENGINE_TEST_NODE;
+test(
+  "real worker controlled chain runs on the configured Desktop runtime Node",
+  { skip: !desktopRuntimeNode },
+  async () => {
+    const f = await fixture();
+    const client = new WorkerClient({
+      ...options(f.registry),
+      nodeExecutable: desktopRuntimeNode,
+      env: sanitizedEnv(),
+      cwd: f.dir,
+    });
+    try {
+      const doctor = await client.start();
+      assert.equal(
+        doctor.node,
+        execFileSync(desktopRuntimeNode, ["--version"], {
+          encoding: "utf8",
+        }).trim(),
+      );
+      const opened = await client.open("demo");
+      const inspected = await client.inspect("demo");
+      assert.equal(inspected.revision, opened.revision);
+      const finished = await waitStatus(
+        client,
+        (
+          await client.frame({
+            projectId: "demo",
+            revision: inspected.revision,
+            time: 2.5,
+          })
+        ).jobId,
+      );
+      assert.equal(finished.state, "succeeded", JSON.stringify(finished));
+    } finally {
+      await client.dispose();
+      await f.cleanup();
+    }
+  },
+);

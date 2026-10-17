@@ -1,11 +1,20 @@
 {
   "name": "dsh-video-engine-worker",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "type": "module",
   "engines": {
     "node": ">=22"
   },
+  "exports": {
+    "./worker": "./src/worker.mjs",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src/",
+    "protocol.schema.json",
+    "README.md"
+  ],
   "scripts": {
     "prepare-fixture": "node scripts/prepare-fixture.mjs",
     "start": "node src/worker.mjs",

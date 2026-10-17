@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { isAbsolute } from "node:path";
 
 export class WorkerClientError extends Error {
   constructor(
@@ -26,6 +27,51 @@ function required(options, name, kind = "string") {
   return value;
 }
 
+// Optional launch context. `env` replaces the child environment instead of
+// merging with process.env. Copy it here so callers can keep mutating their
+// object without changing what a later start() uses.
+function optionalEnv(options) {
+  const env = options?.env;
+  if (env === undefined) return undefined;
+  if (env === null || typeof env !== "object" || Array.isArray(env))
+    throw new TypeError("Expected env to be a plain object of strings");
+  const prototype = Object.getPrototypeOf(env);
+  if (prototype !== Object.prototype && prototype !== null)
+    throw new TypeError("Expected env to be a plain object of strings");
+  const entries = Object.entries(env);
+  if (entries.length === 0)
+    throw new TypeError(
+      "Expected env to be the complete child environment, not an empty object",
+    );
+  // Use a null prototype so even unusual names (for example "__proto__") are
+  // copied as plain data instead of touching Object.prototype.
+  const copy = Object.create(null);
+  for (const [name, value] of entries) {
+    if (
+      !name ||
+      name.includes("=") ||
+      name.includes("\0") ||
+      typeof value !== "string" ||
+      value.includes("\0")
+    )
+      throw new TypeError(`Invalid env entry ${JSON.stringify(name)}`);
+    copy[name] = value;
+  }
+  return copy;
+}
+
+function optionalCwd(options) {
+  const cwd = options?.cwd;
+  if (cwd === undefined) return undefined;
+  if (typeof cwd !== "string" || !cwd)
+    throw new TypeError("Expected cwd to be a non-empty absolute path");
+  if (cwd.includes("\0"))
+    throw new TypeError("Expected cwd without NUL bytes");
+  if (!isAbsolute(cwd))
+    throw new TypeError("Expected cwd to be an absolute path");
+  return cwd;
+}
+
 export class WorkerClient {
   constructor(options) {
     this.options = {
@@ -39,6 +85,8 @@ export class WorkerClient {
       maxPending: required(options, "maxPending", "number"),
       maxLineBytes: required(options, "maxLineBytes", "number"),
       maxStderrBytes: required(options, "maxStderrBytes", "number"),
+      env: optionalEnv(options),
+      cwd: optionalCwd(options),
     };
     this.state = "new";
     this.pending = new Map();
@@ -64,10 +112,13 @@ export class WorkerClient {
         stage: "start",
       });
     this.state = "starting";
+    const spawnOptions = { shell: false, stdio: ["pipe", "pipe", "pipe"] };
+    if (this.options.env !== undefined) spawnOptions.env = this.options.env;
+    if (this.options.cwd !== undefined) spawnOptions.cwd = this.options.cwd;
     this.child = spawn(
       this.options.nodeExecutable,
       [this.options.workerEntry, "--registry", this.options.registryPath],
-      { shell: false, stdio: ["pipe", "pipe", "pipe"] },
+      spawnOptions,
     );
     this.exit = new Promise((resolve) => {
       this.resolveExit = resolve;
