@@ -4,7 +4,7 @@
 
 ## 当前事实
 
-- 仓库：`heswy/dsh-video-editor`。当前只有文档与原始证据，没有功能实现、包管理器或测试基础设施。
+- 仓库：`heswy/dsh-video-editor`。协调分支维护文档与证据；DSH 分支已有未验收的 P0 bundle 和本地检查，不能把协调分支的无代码状态当成全项目无实现。
 - `main` 起点：`9c826bd`；准备分支：`codex/project-foundation`。包含本文件的本地准备提交作为首开发任务基线，交接消息提供精确 SHA，DSH 开工将其记录到任务；未 push 或合并。
 - 用户已确认顶部「普通｜视频」入口。产品见 `product/PRODUCT.md`。
 - 已归档计划、截图与 DSH 开发包。上一轮已确认 kit 的 16 个 skill 文件与本机 app.asar 相同；README/AGENT-BRIEF 是整理材料。
@@ -18,8 +18,11 @@
 | [P0-001](tasks/P0-001-mode-shell.md) | DSH 调查 / Codex 评审 | dsh/p0-mode-shell；同级 dsh-video-editor-worktrees/p0-mode-shell | a85308a / dcc0ae4 已审阅，调查验收通过；未做插件 live 验证 |
 | [P0-002](tasks/P0-002-mode-shell-implementation.md) | DSH 实现 / Codex 评审 | 继续 dsh/p0-mode-shell 与原 worktree | 52a1d1c / f3ac0c0 已评审，请求修复 R1–R3；本地检查 32/32 通过，未安装 |
 | [前端设计规划](design/FRONTEND-DESIGN.md) | Codex | codex/project-foundation；主工作区 | v0.1 方向草案已整理；未实现/未真页面验证 |
+| [P1-001 引擎验证](tasks/P1-001-engine-spike.md) | 用户新开的 Codex 开发会话 | codex/p1-engine-spike；同级 p1-engine-spike | 并行任务与独立 worktree 已准备，待用户打开 |
 
 ## 下一动作
+
+并行线：用户在新 Codex 会话打开 `/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/p1-engine-spike`，按 P1-001 开始引擎验证。该会话只改 spike 与自身记录，不等 P0 修复，也不改 DSH Client 文件。
 
 1. Codex 将 [首轮评审](reviews/P0-002-review-01.md) 同步到干净的原 DSH worktree，不改其功能实现。
 2. 用户告诉 DSH 修复 R1–R3，更新任务记录并本地提交，不重新调查已确认项，不安装或改 profile。
@@ -30,6 +33,8 @@
 用户已确认首版原生顶部靠左入口；无产品决策阻塞。普通输入附件/引用及回退清理仍需真机验证。没有宿主集成、UI、生成、编辑或导出通过验证。
 
 ## 最近交接
+
+2026-10-17 并行分工：用户确认项目紧急，应并行。主会话准备 P1-001 worktree 和边界，建议用户新开 Codex 开发会话；DSH 修 P0，新会话验证 HyperFrames，主会话继续交叉评审与集成。P0 worktree 最新 HEAD 已变化，尚未在本轮复审，不以分支前移推断修复通过。
 
 2026-10-17 P0-B 首轮评审：重跑 17 项静态检查、15 项 VM smoke 及 9 文件 pack dry-run，全部通过；合约隔离复现发现 main 等待声明时出现死入口；另发现两处独立挂载使胶囊滑动无起终态、导航字号固定。详见 reviews/P0-002-review-01.md。要求 DSH 修复，不接管实现，不安装。
 
