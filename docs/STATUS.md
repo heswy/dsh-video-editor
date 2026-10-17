@@ -31,6 +31,8 @@
 | p1-engine | `codex/p1-engine-spike-b4bf` / [#2](https://github.com/heswy/dsh-video-editor/pull/2) | `aae05e9`（本轮后续仅同步 AGENTS 入口，不改变功能基线） | [P3-004](tasks/P3-004-engine-preview-snapshot.md) 已下发；尚无本任务功能交付。继续快照/schema/registry 清理，不受布局变化影响 |
 | p0-mode-shell | `dsh/p0-mode-shell` / [#3](https://github.com/heswy/dsh-video-editor/pull/3) | `16d60aa`（本轮后续仅同步 AGENTS 入口，不改变功能基线） | P2-006 已交回等待复审；新版任务未下发，不按旧右侧属性栏方案开工 |
 
+当前工作区 HEAD：`p1-engine@929ff37`、`p0-mode-shell@2c46daa`；相对上表功能交付均只增加 AGENTS 入口提交，两树干净并已普通 push。
+
 当前接手只使用 [p1-engine 交接](handoffs/p1-engine.md)、[p0-mode-shell 交接](handoffs/p0-mode-shell.md)。旧 programmer1/2 文件保留为历史，不重新执行已交付任务。
 
 ## 接下来按这个顺序
@@ -51,3 +53,5 @@
 ## Git 与授权
 
 `main` 仍为 `9c826bd`，三个开发/协调 PR 未合并。普通 feature commit/push 与更新现有草稿 PR 已获用户授权；推送不代表验收或发布。安装、启停、重启、合并与发布按具体授权执行，本轮均不执行。开发树只同步入口文档，不拷贝整个协调分支、不 rebase、不改功能代码。
+
+本轮整理证据见 [记忆与工作区核对记录](research/2026-10-17-memory-workspace-audit.md)。
