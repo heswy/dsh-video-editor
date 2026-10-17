@@ -1303,7 +1303,6 @@ window.__ModuleLoader__.load({
       const activeJob = job !== null && typeof job === 'object' ? job : null;
       const canCancel = activeJob !== null && typeof activeJob.jobId === 'string' && !isTerminalJob(activeJob) && busy !== 'cancel';
       const download = activeJob !== null && activeJob.state === 'succeeded' && activeJob.kind === 'render' ? artifactUrl(activeJob.jobId) : null;
-      const busyLabel = (key, idleKey) => (busy === key ? t(idleKey) : null);
 
       function errorNotice() {
         if (error === null) return null;
