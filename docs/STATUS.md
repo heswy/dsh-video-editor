@@ -22,14 +22,16 @@
 | [P0-005](tasks/P0-005-sidebar-entry-and-restraint.md) | 原 DSH 会话 | 原 P0 worktree | 新入口与界面精简实现放行，先交包复审、不安装 |
 | [前端设计规划](design/FRONTEND-DESIGN.md) | Codex | codex/project-foundation；主工作区 | v0.2 用户要求已收敛：侧栏入口、少文案、克制材质；待 P0-005 实现 |
 | [P1-001 引擎验证](tasks/P1-001-engine-spike.md) | Codex 引擎开发 / 主会话验收 | codex/p1-engine-spike-b4bf；~/.codex/worktrees/b4bf/dsh-video-editor | c779b94 / e88615f 单场景可行性通过，主会话独立复测 3+2 测试、哈希与 ffprobe |
-| [P1-002 worker](tasks/P1-002-engine-worker.md) | 原 Codex 引擎会话 | 自行管理原 worktree/分支 | b59dbbb 已审；独立 7+2 测试与媒体核对通过；R1 close 并发缺陷需修复再验收 |
+| [P1-002 worker](tasks/P1-002-engine-worker.md) | 原 Codex 引擎会话 | 自行管理原 worktree/分支 | 3b5f6de R1 复审通过；本轮独立 7+1 测试通过，受控 worker 验收完成 |
+
+| [P2-001 通信包](tasks/P2-001-engine-client.md) | 原 Codex 引擎会话 | 自行管理原 worktree/分支 | 指南已准备；独立父进程 API，不改 DSH 根插件 |
 
 ## 下一动作
 
-并行线：原引擎会话开始 P1-002，只改独立 packages/video-engine-worker 与自身记录；自行管理工作树，不等 P0 收尾。
+并行线：DSH 做 P0-005；引擎会话下一项 P2-001 独立通信包，自行管理工作树。
 
 1. DSH 读取 P0-005，改侧栏入口并精简空工作区；提交 0.1.2 代码和固定包复审，当前安装 0.1.0 保持原状。
-2. 引擎会话按 P1-002-review-01 修复 close 并发缺陷并补正式回归，自行管理其 tree；UI 改动不影响其范围。
+2. 引擎会话读取 P2-001 指南，继续父进程通信包；DSH Host 接线另行安排，避免和 P0 同改根插件。
 3. 主会话按提交验收，再安排新包受控真机验证与 P2 Host 集成；未合并功能分支到 main。
 
 ## 阻塞与未验证
@@ -37,6 +39,8 @@
 P0-004 重挂修复本地通过；引用/普通文件等补验来自旧 0.1.0，不能作为新包真机通过。静态阅读位置、系统 reduced-motion、冷启动、console 仍未完成。侧栏准确位置需 P0-005 核实。单 Scene 引擎通过，尚无 DSH 内引擎接入、不可信代码隔离或完整 AI 创作验收。跨应用误输入已报告，影响未确证，测试边界已收紧。
 
 ## 最近交接
+
+2026-10-17 P1-002 R1 复审：3b5f6de 关闭门禁与排空修复通过，独立 7 项协议/内容及 1 项新增真实回归通过；原两组真实作业先前已独立通过，本轮未重复。受控 worker 验收完成，新增 P2-001 父进程通信包指南，继续和 DSH UI 并行。
 
 2026-10-17 P1-002 首审：b59dbbb 的现有 7+2 测试独立通过，真实 MP4 摘要及元数据一致；额外复现 close 返回后并发新 render 仍 running 并 succeeded 发布。已记录 R1，要求原引擎会话修复工程关闭准入和排空边界，详见 reviews/P1-002-review-01.md；DSH P0-005 继续。
 
