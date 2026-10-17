@@ -57,7 +57,7 @@ base：Codex 同步本指南及设计文档后的 worktree HEAD；DSH 开工填�
 
 ## 交付记录（DSH 填写）
 
-- base / result commit：base `06dba3716c28b28c4183ea26769cdf218657568a`（Codex 同步 P0-002 与设计文档后的 worktree HEAD）；实现提交 `52a1d1c`（`feat: add native mode shell and empty video workspace bundle`，11 文件）。本交付记录随其后的 docs 提交进入 `dsh/p0-mode-shell`。
+- base / result commit：base `06dba3716c28b28c4183ea26769cdf218657568a`（Codex 同步 P0-002 与设计文档后的 worktree HEAD）；实现提交 `52a1d1c`（`feat: add native mode shell and empty video workspace bundle`，11 文件）；首轮评审修复提交 `8ebf922`（见下节）。本交付记录及其后的修复记录进入 `dsh/p0-mode-shell`。
 - 包名、插件行 id、绝对目录、构建/打包方式：包名 `dsh-video`；Loader 行 id `dsh-video`；Client 模块 id `dsh-video`；`main` key `dsh-video`；普通模式入口 `conversation.header.leading`。目录＝本 worktree 根目录 `/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/p0-mode-shell`。**零构建**：`client.js` 是手写浏览器产物（`window.__ModuleLoader__.load`，仅 require 宿主 React），`index.js` 为空 Host half；无依赖、无锁文件。`npm pack --dry-run --offline` 列出 9 个文件（`package.json`、`index.js`、`client.js`、`cordis.patch.yml`、`icon.svg`、`locale/en.json`、`locale/zh.json`、`README.md`，npm 自动附 `LICENSE`），`files` 白名单只含交付文件，`scripts/` 不打包。
 - 改动文件：新增 `package.json`、`cordis.patch.yml`、`index.js`、`client.js`、`icon.svg`、`locale/{en,zh}.json`、`scripts/check.mjs`、`scripts/smoke-client.mjs`、`docs/research/P0-002-runtime-api-excerpts.md`；更新根 `README.md`（安装/停用/回滚/范围/本地检查）。
 - 实现要点：同一玻璃胶囊组件挂两处（普通模式 `conversation.header.leading`；视频模式自有顶栏），选中态只读宿主 `usePanelInfo.activePanelId`，切换统一走 `ctx.layout.selectPanel('dsh-video' | null)`。空工作区只包含标题、无工程说明、可工作的返回普通入口与「简化界面效果」开关，不含创建/预览/时间线/AI/导出假控件。跨面板 UI 状态用插件级内存 store；只有 `dsh-video.ui.v1` 偏好（版本化、损坏/旧版本/读写异常回退）写浏览器存储，不存工程/媒体/草稿/activePanel。主面板先注册并校验成功后才挂普通入口；`main` key 或 `conversation.header.leading` 已被占用、或无法枚举占用者时拒绝挂载并输出诊断（不降 priority、不影子替换）。停用/卸载依赖宿主 `retainMainPanels`，并加了一个仅在宿主仍报告 `dsh-video` 时 `selectPanel(null)` 的卸载兜底。全部注册经 `ctx.slots.inject`/`ctx.effect` 拥有，disposer 可完整移除；主题只用 inspection 到的 `--dsw-alias-*` token，`data-window-drag` 交给宿主基础 CSS，控件 no-drag。
@@ -75,6 +75,43 @@ base：Codex 同步本指南及设计文档后的 worktree HEAD；DSH 开工填�
   - 已知限制：顶层槽位无「主列居中」；首版按用户确认靠左。视频主面板无 Session binding，视频状态为插件自持（P0-B 无工程内容）。普通模式文本选区/IME/光标瞬时态不承诺保留。
   - 安装验证所需动作（需用户明确授权）：Plugins → Add plugin 填本 worktree 绝对路径 → Install → Enable now；随后按本指南「安装后验收清单」逐项执行并记录真机截图/错误；验证停用/重新启用与回滚。
 - 最小 API 摘录：见 [P0-002 运行时 API 摘录](../research/P0-002-runtime-api-excerpts.md)（版本固定 0.2.0-rc.2，含 Slot/layout/locale/loader/theme token/拖拽规则与源文件位置）。
+
+## 评审修复记录（R1–R3，2026-10-17）
+
+首轮评审报告：`docs/reviews/P0-002-review-01.md`（评审提交 `43f8c19`，未改动报告原文）。修复提交：`8ebf922`（`fix: address P0-002 review R1-R3 (entry lifecycle, capsule motion, font scaling)`）。以下逐项回应。
+
+### R1 [P2] main 尚未就绪时仍暴露模式入口 —— 已修复
+
+- 改法：把两处挂载点的注册链绑定到 `main` 面板的真实声明生命周期。注册入口 `registerMainAndEntry` 在每次 `main`（重新）声明时先重查 live `main` key 占用，再注册视频面板；成功后才 `inject` `conversation.header.leading` 并注册胶囊；任一环节失败或清理时整条链撤回，`main` 折叠后胶囊一同消失，重新声明自动恢复并重新检查冲突。胶囊注册失败会撤回已注册的视频面板，避免「面板存在但无入口」或「入口存在但面板不存在」。测试桩不再把 `inject` 等待当错误。
+- 验证（smoke，24 例中 5 例针对 R1）：main 未声明→0 注册、声明后两处出现；折叠 main 撤回胶囊、重声明恢复；重声明遇到 key 冲突撤回并报 `main-key-conflict`；声明时 main 注册失败→0 入口；胶囊注册失败→撤回 main 并报 `leading-entry-unavailable`。
+- 未验证：真实 SlotRegistry 在宿主内的声明重建节奏与 UI 表现（安装后）。
+
+### R2 [P2] 220ms 胶囊滑动在实际切换中没有起点 —— 已修复
+
+- 改法：导航前向插件级 store 写入一次性呈现提示 `thumbOrigin`（离开的段，不延迟导航）；新挂载点首帧以该段为 `data-thumb` 起点、`data-ready=false` 禁用 transition，两帧后切到宿主 `activePanel` 对应位置并启用 220ms 过渡滑入。提示只被一个挂载点消费并立即清除；导航失败清除；快速反向只保留最新提示；首次加载无提示直接到正确位置。简化效果或宿主 `prefers-reduced-motion` 时不记录提示、直接到位。选中态仍唯一来自宿主 `activePanel`，不新增模式布尔值。repeat 入场与按钮过渡改用 motion token，简化/减少动效下不再硬编码 140ms。
+- 验证（smoke 6 例 + check 静态约束）：首次挂载无错误起点；导航立即生效且新挂载起点为离开段、aria 选中立即正确；提示只消费一次；快速反向以最新离开段为起点；简化/reduced-motion 直跳；导航失败不留下陈旧提示。**本地只验证呈现起终态/中断逻辑，不验证浏览器 CSS 动画真实播放**；真实页面短录屏留在安装后清单。
+- 未验证：真实动画观感、快速切换在真页面的表现、键盘切换后的焦点落点。
+
+### R3 [P2] 模式控件文字没有跟随宿主字号 —— 已修复
+
+- 改法：`.dv-mode` 自身 `font-size: var(--dsh-content-font-size, 14px)`（普通模式位于视频根之外也生效）；按钮文字 `0.93em`；胶囊宽高改为 `clamp(176px, 13.5em, 248px)` / `clamp(40px, 2.86em, 56px)` 随字号缩放并限幅；其余固定高度 chrome（视频顶栏、简化开关、返回按钮、状态栏）同样 clamp+em；窄容器只折叠品牌/简化文案/次要状态，不再缩小导航文字；按钮点击命中区仍 ≥44px，no-drag 保持。
+- 验证：check 静态约束（字号来源、em、无固定 13px/12.5px、clamp 宽高）；smoke 回归通过。
+- 未验证：真实宿主字号放大/窄窗口下的排版与命中区（安装后实测）。
+
+### 非阻塞观察处理
+
+- leading 单座冲突诊断：README 新增「诊断」小节，说明 `dsh-video:` 前缀日志、拒绝挂载原因，不通过 priority 抢占宿主座位。
+- 简化效果 repeat 140ms 与按钮固定过渡：已在 R2 中改为 motion token。
+- 键盘切换焦点落点：未改代码，列入安装后真机验证清单（README/本记录）。
+- 草稿/引用/待发送附件/滚动/停用回退：本次仍只有宿主源码推断，未真机验证。
+
+### 最新本地检查（未安装；替代上文首轮数字）
+
+- `node --check index.js`、`node --check client.js`、`node --check scripts/*.mjs`：通过。
+- `node scripts/check.mjs`：**20 passed, 0 failed**（新增 R1/R2/R3 静态约束）。
+- `node scripts/smoke-client.mjs`：**24 passed, 0 failed**（等待型 inject 桩 + 5 个 R1 + 6 个 R2 用例）。
+- `npm run check`：通过；`npm pack --dry-run --json --offline`：9 files；patch YAML 解析、`git diff --check` 通过。
+- 安装状态：仍未安装、未启用、未改 profile、未 push。
 
 ## 评审记录（Codex）
 
