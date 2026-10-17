@@ -47,24 +47,26 @@
 | [P2-002-A Host 契约](tasks/P2-002-host-bridge.md) | 程序员 2 | 原 P0 worktree | afcf57d 调查验收通过；ADR-0002 决策收敛 |
 | [P2-003 启动/包入口](tasks/P2-003-engine-launch-packaging.md) | 程序员 1 | 原 b4bf worktree/分支 | 54f4671 已复审通过；Node22/24 各15通过+1跳过，Desktop24.21真实链通过；固定包见评审新摘要 |
 | [P2-002-B Host 接入](tasks/P2-002B-host-integration.md) | 程序员 2 | 原 P0 worktree | e595d4e 首审：83/83 与根包匹配；R1对象绑定/R2Tool截断/R3快照验证/R4版本门禁待修 |
-| [P2-004 R1–R4 修复](tasks/P2-004-host-bridge-fixes.md) | 程序员 2 | 原 P0 worktree/分支 | 待执行：修 R1–R4、补回归、出新固定包并跑真实引擎链；指南已发布 |
+| [P2-004 R1–R4 修复](tasks/P2-004-host-bridge-fixes.md) | 程序员 2 | 原 P0 worktree/分支 | 已复审通过：独立 92/92；tarball 17 文件与 `fa7b0e2` 字节一致；staging 真实链独立复跑成功（H.264/取消/清理）；待安装授权 |
 | [P3-001 多 Scene/修订 spike](tasks/P3-001-engine-multiscene-spike.md) | 程序员 1 | 原 b4bf worktree/分支 | 已下发：多 Scene 结构、Scene 操作、人工+AI 合并、撤销/重开、素材、工程创建；只出证据/提案 |
 
 ## 下一动作
 
-并行线：程序员 2 修 R1–R4 并准备真实引擎链；程序员 1 执行 P3-001 多 Scene/修订 spike。ADR-0002 固定共同契约，文件边界不交叉。
+并行线：P2-004 已通过复审，等待用户安装授权与真机验收；程序员 1 继续 P3-001 spike。ADR-0002 固定共同契约，文件边界不交叉。
 
-1. 程序员 2 按 [P2-004](tasks/P2-004-host-bridge-fixes.md) 修 R1–R4、补针对性回归、出新固定根包；用修复提交 + `54f4671` 跑 stage-dev 与真实引擎链，提交并 push 更新 PR #3。
-2. 总调度复审代码、包摘要、staging 可复现性与真实引擎证据；通过后由用户单独授权安装，保持已装 0.1.3 直至授权。
-3. 程序员 1 按 [P3-001](tasks/P3-001-engine-multiscene-spike.md) 在现有 b4bf 树做多 Scene/修订合并引擎 spike；只新增 spike 与文档，不改已验收包，完成后 push 更新 PR #2。
-4. 总调度复审 P3-001 证据，把 [P3 创作闭环草案](research/P3-ai-creation-loop-plan.md) 冻结为可实现的 P3-003/P3-004 任务；P3 暂不开新树，若需端到端负责人先建整合分支。
-5. 总调度维护协调分支文档与 PR #1；用户已授权普通 feature push/草稿 PR，不自动 merge/发布，不改现有 profile。
+1. 等待用户单独授权安装 0.2.0。安装前由程序员 2 重建干净 staging（真实链复跑已把 demo 标题追加测试后缀）；安装后按 [P2-004 复审](reviews/P2-004-review-01.md) 清单做真机验收：入口、打开示例、target/编辑/帧/导出/取消、错误显示、明暗/窄窗、卸载重启、Tool、artifact 字节。
+2. 真机验收发现缺陷按线派任务：根插件归程序员 2，引擎包归程序员 1；不自行改 profile、不自动 merge/发布。
+3. 程序员 1 按 [P3-001](tasks/P3-001-engine-multiscene-spike.md) 继续多 Scene/修订合并 spike；结果回来后总调度冻结 P3 契约。
+4. 总调度复审 P3-001 证据，把 [P3 创作闭环草案](research/P3-ai-creation-loop-plan.md) 冻结为 P3-003/P3-004 任务；P3 暂不开新树，若需端到端负责人先建整合分支。
+5. 总调度维护协调分支文档与 PR #1；保持 main 未合并、0.1.3 可回滚；用户已授权普通 feature push/草稿 PR，不自动 merge/发布。
 
 ## 阻塞与未验证
 
-0.1.3 核心侧栏/主面板和启停证据通过。main 内容缺少定向 AX 通道，返回按钮、菜单焦点、主题/字号/窄窗、草稿/引用/附件、静态阅读位置、冷启动等仍未测，采用人工清单，不重复不安全自动化。尚无 DSH 内引擎接入、不可信代码隔离或完整 AI 创作验收。P2 client 的显式 Node22/24 测试已完成收口；仅代表本机小版本和受控 fixture。P2-004 修复回交前，R1–R4 与真实 Host/引擎端到端仍不可宣称通过。
+0.1.3 核心侧栏/主面板和启停证据通过。main 内容缺少定向 AX 通道，返回按钮、菜单焦点、主题/字号/窄窗、草稿/引用/附件、静态阅读位置、冷启动等仍未测，采用人工清单，不重复不安全自动化。P2-004 的 R1–R4 已在本地标签/staging 范围独立复核通过，但**真实 DSH 安装/激活/页面交互仍未验证**，安装授权未给；尚无 DSH 内引擎端到端、不可信代码隔离或完整 AI 创作验收。P2 client 的显式 Node22/24 测试仅代表本机小版本和受控 fixture。
 
 ## 最近交接
+
+2026-10-17 P2-004 复审通过：独立复跑 `npm run check` 92/92；tarball 17/17 文件与 `fa7b0e2` 字节一致、旧包未覆盖；staging INTEGRITY 与 staged Host 摘要核对一致；独立重跑真实链，执行 staging 内 Host，edit `hf-title`、revision 变化、PNG/MP4 独立 ffprobe 通过、cancel/close/dispose 正常。已装 0.1.3 未变。非阻塞观察 5 项已记录在 [review](reviews/P2-004-review-01.md)；下一步由用户授权安装并重建干净 staging，再做真机验收。
 
 2026-10-17 P3 预研启动：按用户确认，P2-004 期间由程序员 1 在现有 b4bf 树做多 Scene/修订合并引擎 spike（P3-001），不新开树、不锁契约；总调度发布 [P3 创作闭环草案](research/P3-ai-creation-loop-plan.md)（引擎方法/Host 契约/合并语义草案）并下发交接。仍不安装、不 merge。
 
