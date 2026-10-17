@@ -51,7 +51,7 @@
 | [P2-003 启动/包入口](tasks/P2-003-engine-launch-packaging.md) | 程序员 1 | 原 b4bf worktree/分支 | 54f4671 已复审通过；Node22/24 各15通过+1跳过，Desktop24.21真实链通过；固定包见评审新摘要 |
 | [P2-002-B Host 接入](tasks/P2-002B-host-integration.md) | 程序员 2 | 原 P0 worktree | e595d4e 首审：83/83 与根包匹配；R1对象绑定/R2Tool截断/R3快照验证/R4版本门禁待修 |
 | [P2-004 R1–R4 修复](tasks/P2-004-host-bridge-fixes.md) | 程序员 2 | 原 P0 worktree/分支 | 已复审通过并安装 0.2.0（link clean staging）；真机验收中：UI 真实工程/画面、Tool doctor/open/frame/status 通过；编辑/导出/生命周期待验 |
-| [P2-005 预览时间点+播放 spike](tasks/P2-005-preview-time-and-player-spike.md) | 程序员 2 | 原 P0 worktree/分支 | 已下发：B 画面时间点抽帧预览（0.2.1，交付后复审再重装）+ A 隔离预览面播放可行性 spike |
+| [P2-005 预览时间点+播放 spike](tasks/P2-005-preview-time-and-player-spike.md) | 程序员 2 | 原 P0 worktree/分支 | B/A 已复审：B 通过（96/96、0.2.1 包 17/17 字节一致、staging 真实链）；A spike 验收（A1 可行需 engine snapshot，A2 不推荐，实现暂缓）；**R1 深色对比未修，待补丁后重装** |
 | [P3-001 多 Scene/修订 spike](tasks/P3-001-engine-multiscene-spike.md) | 程序员 1 | 原 b4bf worktree/分支 | 进行中：已归档指南、建 `spikes/p3-multiscene`；尚无提交/证据 |
 
 ## 下一动作
@@ -70,6 +70,8 @@
 0.1.3 核心侧栏/主面板和启停证据通过。main 内容缺少定向 AX 通道，返回按钮、菜单焦点、主题/字号/窄窗、草稿/引用/附件、静态阅读位置、冷启动等仍未测，采用人工清单，不重复不安全自动化。0.2.0 已真机安装，入口/真实工程/画面与 Tool doctor/open/frame/status 通过；**UI 编辑保存、导出/取消、冲突错误、生命周期与主题窄窗仍未验证**；尚无多 Scene、AI 创作、用户素材、不可信代码隔离。P2 client 的显式 Node22/24 测试仅代表本机小版本和受控 fixture。
 
 ## 最近交接
+
+2026-10-17 P2-005 复审：B（画面时间点预览）通过独立复核（96/96、0.2.1 包 17/17 与 `da8a22b` 字节一致、staging 真实链通过）；A spike 验收——A1（sandbox iframe + 快照 + 固定 runtime）断网播放/seek 实测可行，但需 engine snapshot/Host 路由/Client iframe 三段生产化，A2 不推荐、A3 仅 fallback；实现暂缓，P3 优先。**R1 深色按钮对比修复未包含在本轮**（`client.js` 仍用不存在的 `--dsw-alias-label-on-brand`），已退回补丁，补后重出 0.2.1 包/staging 再重装。见 [P2-005 复审](reviews/P2-005-review-01.md)。
 
 2026-10-17 真机缺陷 V1：深色模式下主按钮「更新画面」白底白字看不清（功能正常）。已核源码根因——`.dv-button-primary` 引用宿主不存在的 `--dsw-alias-label-on-brand`（fallback #fff），深色主题 `--dsw-alias-brand-primary` 为近白色。已作为必修 R1 排入 [P2-005](tasks/P2-005-preview-time-and-player-spike.md)，随 0.2.1 交付、重装后复核浅色/深色与 hover/focus/disabled；其余真机验收项继续。
 
