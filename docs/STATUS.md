@@ -31,21 +31,25 @@
 | [P1-002 worker](tasks/P1-002-engine-worker.md) | 原 Codex 引擎会话 | 自行管理原 worktree/分支 | 3b5f6de R1 复审通过；本轮独立 7+1 测试通过，受控 worker 验收完成 |
 | [P2-001 通信包](tasks/P2-001-engine-client.md) | 程序员 1 | 自行管理 b4bf worktree/原分支 | 5b9032b 最终收口通过；独立 Node22/24 均10/10 |
 | [P0-006 真机验证](tasks/P0-006-sidebar-live-validation.md) | 原 DSH 会话 | 原 P0 worktree | 98e2571 记录/截图已审；0.2.1 上安装与核心入口/空页/启停通过，面板内交互等未测 |
-| [P2-002-A Host 契约](tasks/P2-002-host-bridge.md) | 程序员 2 | 原 P0 worktree | 只读调查与提案放行，不改代码/安装 |
+| [P2-002-A Host 契约](tasks/P2-002-host-bridge.md) | 程序员 2 | 原 P0 worktree | afcf57d 调查验收通过；ADR-0002 决策收敛 |
+| [P2-003 启动/包入口](tasks/P2-003-engine-launch-packaging.md) | 程序员 1 | 原 b4bf worktree/分支 | env/cwd + exports + 固定包本地实现放行 |
+| [P2-002-B Host 接入](tasks/P2-002B-host-integration.md) | 程序员 2 | 原 P0 worktree | Host/Client/Tool/staging 本地实现放行，最终依赖待 P2-003 复审；不安装 |
 
 ## 下一动作
 
-程序员 1 的 P2-001 已验收；程序员 2 继续当前宿主 Host 接入契约调查。主会话按契约安排下一步接线。
+并行线：程序员 1 补独立包启动/解析能力；程序员 2 接入根 Host 与简洁真实编辑视图。ADR-0002 固定共同契约，文件边界不交叉。
 
-1. 程序员 2 继续 P2-002-A，调查 0.2.1 的加载/生命周期/UI→Host/Tool 与受控产物访问契约；不改已安装 0.1.3。
-2. 程序员 1 保留已验收的 5b9032b，当前无待修通信问题；不自行改根插件或另开功能范围，后续按 Host 契约分工。
-3. Host 实现 P2-002-B 在契约评审后再放行；未 merge 功能分支到 main，未 push。
+1. 程序员 1 执行 P2-003：完整 env/cwd 透传、worker exports、0.1.1 固定包及部署 Node24.21 验证，原协议不变。
+2. 程序员 2 执行 P2-002-B：共用 VideoBridge、原生 Fetch/Tool、受控工程真实 PNG/编辑/MP4任务；本地开发与 staging 准备，不碰已安装 0.1.3。
+3. 两边可并行写各自文件；最终 staging 依赖固定到主会话接受的 P2-003 提交，整体评审后再安排安装授权。不 push/merge、不中途改变现有 profile。
 
 ## 阻塞与未验证
 
 0.1.3 核心侧栏/主面板和启停证据通过。main 内容缺少定向 AX 通道，返回按钮、菜单焦点、主题/字号/窄窗、草稿/引用/附件、静态阅读位置、冷启动等仍未测，采用人工清单，不重复不安全自动化。尚无 DSH 内引擎接入、不可信代码隔离或完整 AI 创作验收。P2 client 的显式 Node22/24 测试已完成收口；仅代表本机小版本和受控 fixture。
 
 ## 最近交接
+
+2026-10-17 Host 契约验收与并行实施：afcf57d 调查通过；主会话独立核对 0.2.1 版本、asar 摘要与 bundled Node24.21。ADR-0002 选真实 Node 配置、显式净化环境、共用 Host dispatcher、fixture allowlist+job归属、真实字节产物与结构化 Tool；不加 Host 幂等缓存或附件。新增 P2-003 给程序员1、P2-002-B 给程序员2；两人本地实现，保持已安装 0.1.3。
 
 2026-10-17 称呼与引擎收口：用户固定 dsh-video-editor 为程序员 1、p0-mode-shell 为程序员 2；程序员 1 已由 DeepSeek 接手 b4bf，职责/工作树边界写入 DEVELOPMENT。5b9032b 复审通过，Node22/24 独立完整包均10/10，R4-b 已关闭，P2-001 按受控范围验收。程序员 2 继续 P2-002-A。
 

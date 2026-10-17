@@ -28,3 +28,5 @@
 2026-10-17 D013 / accepted：用户侧已升级 Desktop 至 0.2.1-rc.1，P0-006 核心侧栏/主面板证据以此版本为准。后续 Host 接入基线改为当前实际版本；D003 的 0.2.0-rc.2 保留历史，不能据其旧归档直接断言新版本 Host API。升级非本轮 Agent 操作，P2-002-A 先核对变更。
 
 2026-10-17 D014 / accepted：用户固定称呼程序员 1（dsh-video-editor，DeepSeek 接手原 Codex 的 b4bf 引擎/通信线）与程序员 2（p0-mode-shell，原 DeepSeek 插件/Host 线）。工作树与历史分支沿用，原 Codex 不同时写入；主会话继续协调/评审，任务边界不因更换模型自动扩展。
+
+2026-10-17 D015 / accepted：采用 [ADR-0002](adr/0002-host-bridge-runtime-and-boundaries.md) 的真实 Node 配置与显式 env/cwd、单 VideoBridge/Fetch/Tool、受控 allowlist/job 归属和开发 staging 路线。程序员 1 做 P2-003 包能力，程序员 2 做 P2-002-B 根宿主接入；仅本地实现，安装授权仍单独决定。
