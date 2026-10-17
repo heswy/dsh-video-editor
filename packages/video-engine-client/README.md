@@ -31,7 +31,7 @@ const status = await client.status(job.jobId);
 await client.dispose();
 ```
 
-公共方法：`start`、`doctor`、`open`、`inspect`、`edit`、`frame`、`render`、`status`、`cancel`、`close`、`request`、`dispose`。成功时返回 worker 原始 result；worker 的结构化错误与本包错误均以 `WorkerClientError` reject，包含 `code`、`message`、`stage`。未收到可靠响应的 `edit`（超时、断管、坏帧、退出或 teardown）会带 `uncertain: true`：调用方必须重新 inspect/以 expectedRevision 协调，不能假定未写入。未收到 `frame`/`render` jobId 的传输失败带 `jobUnknown: true`，它不声称作业未开始，且客户端无 jobId 可恢复查询或取消。没有自动重试或重放。
+公共方法：`start`、`doctor`、`open`、`inspect`、`edit`、`frame`、`render`、`status`、`cancel`、`close`、`request`、`dispose`。成功时返回 worker 原始 result；worker 的结构化错误与本包错误均以 `WorkerClientError` reject，包含 `code`、`message`、`stage`。`stdin`/`stdout`/`stderr` 断管会停止该 client、以 `E_TRANSPORT` 结算全部 pending，并只终止其直接 worker。未收到可靠响应的 `edit`（超时、断管、坏帧、退出或 teardown）会带 `uncertain: true`：调用方必须重新 inspect/以 expectedRevision 协调，不能假定未写入。未收到 `frame`/`render` jobId 的传输失败带 `jobUnknown: true`，它不声称作业未开始，且客户端无 jobId 可恢复查询或取消。没有自动重试或重放。
 
 每个 client 自己生成 request id、按原始字节组行再 UTF-8 解码 stdout，严格验证 v1 envelope。分段、粘包、中文/emoji 跨字节和乱序响应按 id 匹配；坏 JSON、未知/重复 id、错误 envelope 和超长行会以协议错误终止该 client。stderr 也按原始字节截留尾部，`debug()` 可查看 `stderrBytes`/`stderrTruncated` 和 pending 数。
 

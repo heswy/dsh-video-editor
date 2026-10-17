@@ -198,3 +198,46 @@ test("normal dispose lets an isolated parent exit before its shutdown deadline",
     await f.cleanup();
   }
 });
+
+test("isolated parent handles a worker that closes stdin but remains alive", async () => {
+  const dir = await mkdtemp(resolve(tmpdir(), "dsh-engine-client-epipe-"));
+  const registry = resolve(dir, "registry.json");
+  const parent = resolve(import.meta.dirname, "fixtures/epipe-parent.mjs");
+  const worker = resolve(import.meta.dirname, "fixtures/stdin-close-worker.mjs");
+  await writeFile(registry, "{}");
+  const sentinel = spawn(process.execPath, ["-e", "setInterval(() => {}, 1_000)"]);
+  try {
+    const child = spawn(process.execPath, [parent, worker, registry], {
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk) => (stdout += chunk));
+    child.stderr.on("data", (chunk) => (stderr += chunk));
+    const code = await new Promise((resolveExit, reject) => {
+      const timer = setTimeout(
+        () => reject(new Error("isolated parent did not exit")),
+        2_000,
+      );
+      child.once("exit", (exitCode) => {
+        clearTimeout(timer);
+        resolveExit(exitCode);
+      });
+    });
+    assert.equal(code, 0, stderr);
+    assert.doesNotMatch(stderr, /Unhandled 'error' event/);
+    assert.deepEqual(JSON.parse(stdout), {
+      caught: ["E_TRANSPORT", "E_TRANSPORT", "E_TRANSPORT"],
+      state: {
+        state: "disposed",
+        pending: 0,
+        stderrBytes: 0,
+        stderrTruncated: false,
+      },
+    });
+    assert.doesNotThrow(() => process.kill(sentinel.pid, 0));
+  } finally {
+    sentinel.kill("SIGKILL");
+    await rm(dir, { recursive: true, force: true });
+  }
+});

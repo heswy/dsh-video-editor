@@ -47,6 +47,7 @@ export class WorkerClient {
     this.stderrTruncated = false;
     this.expired = new Set();
     this.disposePromise = undefined;
+    this.streamFailed = false;
   }
   debug() {
     return {
@@ -69,16 +70,27 @@ export class WorkerClient {
       { shell: false, stdio: ["pipe", "pipe", "pipe"] },
     );
     this.exit = new Promise((resolve) => {
-      this.child.once("exit", resolve);
-      this.child.once("error", resolve);
+      this.resolveExit = resolve;
     });
-    this.child.stdout.on("data", (chunk) => this.onStdout(chunk));
-    this.child.stderr.on("data", (chunk) => this.onStderr(chunk));
-    this.child.once("exit", () => this.onExit());
-    this.child.once("error", () => {
-      this.startFailure = true;
-      this.onExit();
-    });
+    this.listeners = {
+      stdoutData: (chunk) => this.onStdout(chunk),
+      stderrData: (chunk) => this.onStderr(chunk),
+      stdinError: (error) => this.streamFailure("stdin", error),
+      stdoutError: (error) => this.streamFailure("stdout", error),
+      stderrError: (error) => this.streamFailure("stderr", error),
+      exit: () => this.onExit(),
+      error: () => {
+        this.startFailure = true;
+        this.onExit();
+      },
+    };
+    this.child.stdout.on("data", this.listeners.stdoutData);
+    this.child.stderr.on("data", this.listeners.stderrData);
+    this.child.stdin.on("error", this.listeners.stdinError);
+    this.child.stdout.on("error", this.listeners.stdoutError);
+    this.child.stderr.on("error", this.listeners.stderrError);
+    this.child.once("exit", this.listeners.exit);
+    this.child.once("error", this.listeners.error);
     this.state = "running";
     try {
       return await this.request(
@@ -142,14 +154,12 @@ export class WorkerClient {
         this.protocolFailure("Invalid worker response envelope");
         return;
       }
-      const entry = this.pending.get(response.id);
+      const entry = this.takePending(response.id);
       if (!entry) {
         if (this.expired.delete(response.id)) continue;
         this.protocolFailure("Response id is not pending");
         return;
       }
-      this.pending.delete(response.id);
-      clearTimeout(entry.timer);
       if (response.ok) entry.resolve(response.result);
       else
         entry.reject(
@@ -170,32 +180,71 @@ export class WorkerClient {
   protocolFailure(message, code = "E_PROTOCOL") {
     if (["failed", "disposed"].includes(this.state)) return;
     this.state = "failed";
-    for (const entry of this.pending.values()) {
-      clearTimeout(entry.timer);
-      entry.reject(
-        new WorkerClientError(code, message, {
-          stage: "protocol",
+    this.rejectAll((entry) =>
+      new WorkerClientError(code, message, {
+        stage: "protocol",
+        uncertain: entry.method === "edit",
+        jobUnknown: ["frame", "render"].includes(entry.method),
+      }),
+    );
+    this.stopWorker("SIGTERM");
+  }
+  streamFailure(stream) {
+    if (this.streamFailed || this.state === "disposed") return;
+    this.streamFailed = true;
+    if (this.state !== "disposing") this.state = "failed";
+    this.rejectAll(
+      (entry) =>
+        new WorkerClientError("E_TRANSPORT", `Worker ${stream} is unavailable`, {
+          stage: "transport",
           uncertain: entry.method === "edit",
           jobUnknown: ["frame", "render"].includes(entry.method),
         }),
-      );
+    );
+    this.stopWorker("SIGTERM");
+    void this.dispose();
+  }
+  takePending(id) {
+    const entry = this.pending.get(id);
+    if (!entry) return undefined;
+    this.pending.delete(id);
+    clearTimeout(entry.timer);
+    return entry;
+  }
+  rejectAll(errorFor) {
+    for (const id of [...this.pending.keys()]) {
+      const entry = this.takePending(id);
+      entry.reject(errorFor(entry));
     }
-    this.pending.clear();
-    this.child.kill("SIGTERM");
+  }
+  stopWorker(signal) {
+    if (this.child?.exitCode === null && !this.child.killed)
+      this.child.kill(signal);
+  }
+  detachListeners() {
+    if (!this.listeners) return;
+    this.child.stdout.removeListener("data", this.listeners.stdoutData);
+    this.child.stderr.removeListener("data", this.listeners.stderrData);
+    this.child.stdin.removeListener("error", this.listeners.stdinError);
+    this.child.stdout.removeListener("error", this.listeners.stdoutError);
+    this.child.stderr.removeListener("error", this.listeners.stderrError);
+    this.child.removeListener("exit", this.listeners.exit);
+    this.child.removeListener("error", this.listeners.error);
+    this.listeners = undefined;
   }
   onExit() {
+    this.resolveExit?.("exit");
+    this.resolveExit = undefined;
     if (["starting", "running"].includes(this.state)) this.state = "failed";
-    for (const entry of this.pending.values()) {
-      clearTimeout(entry.timer);
-      entry.reject(
+    this.rejectAll(
+      (entry) =>
         new WorkerClientError("E_PROCESS_EXIT", "Worker exited", {
           stage: "process",
           uncertain: entry.method === "edit",
           jobUnknown: ["frame", "render"].includes(entry.method),
         }),
-      );
-    }
-    this.pending.clear();
+    );
+    this.detachListeners();
   }
   request(
     method,
@@ -213,11 +262,12 @@ export class WorkerClient {
     const id = randomUUID();
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
-        this.pending.delete(id);
+        const entry = this.takePending(id);
+        if (!entry) return;
         this.expired.add(id);
         if (this.expired.size > this.options.maxPending)
           this.expired.delete(this.expired.values().next().value);
-        reject(
+        entry.reject(
           new WorkerClientError("E_REQUEST_TIMEOUT", "Worker did not respond", {
             stage: "request",
             uncertain: method === "edit",
@@ -226,25 +276,17 @@ export class WorkerClient {
         );
       }, timeoutMs);
       this.pending.set(id, { resolve, reject, timer, method });
-      this.child.stdin.write(
-        JSON.stringify({ v: 1, id, method, params }) + "\n",
-        (error) => {
-          if (!error) return;
-          clearTimeout(timer);
-          this.pending.delete(id);
-          reject(
-            new WorkerClientError(
-              "E_PROCESS_WRITE",
-              "Worker stdin is unavailable",
-              {
-                stage: "process",
-                uncertain: method === "edit",
-                jobUnknown: ["frame", "render"].includes(method),
-              },
-            ),
-          );
-        },
-      );
+      try {
+        this.child.stdin.write(
+          JSON.stringify({ v: 1, id, method, params }) + "\n",
+          (error) => {
+            if (!error) return;
+            this.streamFailure("stdin");
+          },
+        );
+      } catch {
+        this.streamFailure("stdin");
+      }
     });
   }
   doctor() {

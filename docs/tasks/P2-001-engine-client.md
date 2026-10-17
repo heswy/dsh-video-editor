@@ -33,3 +33,4 @@ DSH 的 root Host 适配、connection.fetch/tools 与前端接入留后续任务
 - 验证：真实 worker 流程和受控协议故障测试均在本包 `npm test` 执行；R1–R3 修复后最终为 9/9（7.83 秒），限制见研究记录及交接。
 - 限制：强制退出只针对本 client 的直接 worker，不能证明 detached Chrome/FFmpeg 已清理；DSH Host/UI/Tool 接线留后续任务。
 - R1–R3：按字节处理 UTF-8，未确认 edit 保留 `uncertain:true`、丢失 frame/render jobId 标记 `jobUnknown:true`，dispose 清理 exit wait timer；新增跨字节、写后退出/坏帧和独立父进程自然退出回归。
+- R4：为直属 worker 的 stdin/stdout/stderr 建立有生命周期的错误处理。断管以 `E_TRANSPORT` 只结算一次全部 pending，并对 edit 保留 `uncertain:true`、对 frame/render 保留 `jobUnknown:true`；随后以有界 dispose 仅清理直属 worker。新增纯 Node 隔离父进程回归：worker 在 doctor 后只关闭 stdin 但继续存活，并发 edit/frame/render 均可捕获传输错误、pending 清零、父进程正常退出且无关 sentinel 存活。最终 `npm test --prefix packages/video-engine-client` 为 10/10（本机约 6.8 秒）。

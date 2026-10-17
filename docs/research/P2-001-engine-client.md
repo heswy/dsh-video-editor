@@ -17,3 +17,11 @@ dispose 立即阻止新请求，优先 shutdown；无响应时只终止本 clien
 每个 pending 保存 method。未收到可靠响应的 edit 在 worker exit、协议坏帧、超时和 stdin 写入失败均为 `uncertain:true`；frame/render 在相同传输失败中给出 `jobUnknown:true`，明确不代表作业没有启动也无法在没有 jobId 时恢复。新增“edit 后退出/坏帧”回归验证 pending 清零。
 
 dispose 的 exit wait 改为在 exit 先到时 clearTimeout。独立父进程回归将 shutdown deadline 设为 1500ms，正常 shutdown 在 800ms 内自然退出；无响应 worker 的 TERM/KILL 有界回归保留。最终 `npm test --prefix packages/video-engine-client` 为 9/9（7.83 秒）。
+
+## P2-001 第二轮 R4 回应
+
+评审 `667e86e` 发现 ChildProcess 的 error 监听不覆盖其 stdin Socket 的 error：写入回调和 Socket 的 `EPIPE` 事件会并发抵达，若后者没有生命周期监听，父进程会以未处理事件退出。客户端现在为其拥有的 stdin/stdout/stderr 都注册传播故障的监听，并以 `takePending` 统一删除、清理 timer 和结算 pending，所以响应、超时、写入回调、流 error 与进程退出之间的竞态只会结算一次。
+
+任何流故障都会停止接收请求，将现有 pending 以 `E_TRANSPORT`/`stage: "transport"` 结算：edit 保留 `uncertain:true`，未获得 jobId 的 frame/render 保留 `jobUnknown:true`，没有重试或重放。客户端发送 TERM 并启动既有的有界 dispose；它只作用于自己 spawn 的直接 worker。退出时会解除流与子进程监听。
+
+新增纯 Node worker fixture 在正常 doctor 应答后关闭 fd 0、保持存活一秒；隔离父进程等待断管后并发发出 edit/frame/render。回归验证三项均捕获 `E_TRANSPORT`、标记正确、pending 为零、dispose 后正常退出且 stderr 无未处理 error；外层 sentinel 仍存活。`npm test --prefix packages/video-engine-client` 最终 10/10（6.79 秒）。
