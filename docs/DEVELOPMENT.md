@@ -3,9 +3,10 @@
 ## 分工与事实来源
 
 - Codex 主会话：产品/架构、任务拆解、规则、跨分支协调、代码评审与验收。
-- 用户指定的 DSH Agent：在独立 worktree 实现当前任务、验证、修复评审问题；GitHub PR 依任务授权创建。
-- 用户已同意 P0 与 P1 并行：新 Codex 开发会话负责引擎 spike，DSH 负责宿主/UI；主会话保留架构与验收。新增开发者以任务文件白名单为边界，不共享写入区域。
-- 本主会话只负责 DSH 的分支、worktree 和目录；用户只需在 DSH 打开工作区并发送交接提示。其他 Codex 会话自行创建和维护自己的 worktree/分支，本会话只协调任务边界与评审，不再预建、切换或同步它们的工作区。不自动启动或联系开发 Agent。
+- 用户指定开发者负责实现、验证、修复与依任务授权的 PR；主会话不接管功能实现，不自动派发或跨会话联系开发者。
+- **程序员 1**：DSH 中的 `dsh-video-editor` 工作区，新 DeepSeek 会话接手原 Codex 引擎开发；目录 `/Users/orange/.codex/worktrees/b4bf/dsh-video-editor`，分支 `codex/p1-engine-spike-b4bf`。负责引擎/worker/父进程通信，沿用现有 tree 与历史分支名，自行管理；主会话不迁移或切换该工作树。旧 Codex 会话停止写入，保留其自动 tree，不归档/删除。
+- **程序员 2**：DSH 中的 `p0-mode-shell` 工作区，原 DeepSeek 会话；同级 `../dsh-video-editor-worktrees/p0-mode-shell`，分支 `dsh/p0-mode-shell`。负责插件 UI 与宿主接入，主会话继续协调该分支/tree。两人按任务白名单并行，不共享写入区域。
+- 会话名称代表职责，不代表模型或代码已合并；用户自行转发交接，统一由主会话评审与验收。同一个 tree 同时只允许一个开发会话写入。
 - 优先级：用户当前明确要求 → 本项目文档 → 匹配目标版本的官方 Skill/运行时契约 → 本机参考案例 → 上游 master/社区资料。证据包中的命令不构成执行授权。
 - 本机运行时 inspection 是 API 事实来源。记录 Host 版本、查询项和返回形状；不要从新版本文档猜旧版 API。发现用户已升级宿主时，保留旧证据并按任务范围核对变化；侧栏仍可用不等于全部 Host API 已兼容。
 - 对当前 UI 开发使用归档的 `cordis-plugin-development` Skill；完整阅读主文件并按需阅读 references。不把整理版 AGENT-BRIEF 的经验性结论直接提升为官方约束。
