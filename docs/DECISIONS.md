@@ -38,3 +38,6 @@
 2026-10-17 D018 / proposed：P3 首版由 DSH Agent 通过 Tool 驱动创作，插件不内置模型凭据；内容为受模板约束的 Code-as-Video（HTML + GSAP + 稳定 ID），任意 Agent 代码安全隔离后置；人工与 AI 共用 Host 写入入口，写入带 `expectedRevision` + `actor`，冲突显式返回不静默覆盖。待 P3-001 spike 与契约评审后确认。
 
 2026-10-17 D019 / accepted：用户授权并完成 `dsh-video 0.2.0` 真机安装——卸载 0.1.3 后以 Plugin Manager link 指向 clean staging（root `fa7b0e2` + engine `54f4671`）；回滚保留 0.1.3 固定包与解包目录，main 不合并。安装后真机验收按 [P2-004-live-acceptance](research/P2-004-live-acceptance.md) 清单继续，未通过前不宣称 P2 完成。
+2026-10-17 D020 / accepted：P3 多 Scene 采用 **B 结构**（单 HTML 文档 + Scene 区段 + 单一 master timeline），Scene 局部时间生成时换算全局时间；Scene 结构变化走受控整文件重写 + SDK 校验 + 原子写 + revision 重算；元素级人工/AI 修改走 stableId 三方合并，冲突显式返回（`BOTH_MODIFIED` 等），不静默覆盖。依据 [P3-001 复审](reviews/P3-001-review-01.md)。
+2026-10-17 D021 / accepted：revision 保持内容哈希定义；undo/redo 恢复旧内容时 revision 可回到旧值，历史以 `.dsh-video/history/` 的 entries/ops/snapshots + 单调 `historyCursor` 表示且不进 revision；不要求“撤销产生新 revision”。
+2026-10-17 D022 / accepted：工程创建采用 worker 管理 `projectsRoot` + 持久 registry + `project.create`（原子写、启动 reload、路径包含、单写者）；Host 不直接改 worker 文件，Host 重启 worker 为回退。v1 工程生成受模板约束（非任意 HTML/JS），任意 Agent 代码隔离另立任务。

@@ -124,3 +124,15 @@ Operation   { operationId, actor: 'human'|'ai', baseRevision, kind, targetScene?
 - 冲突/失败/取消均有真实状态与恢复路径；无假按钮、假进度、假成功。
 - 记录 Host 版本、commit、包摘要、命令、截图/录屏（真实页面）、未测项与回滚步骤。
 - 未达成的部分明确标「未验证」，不得用设计稿或本地 mock 替代。
+
+## 13. P3-001 回填（2026-10-17 复审后冻结）
+
+P3-001 spike 已验证、复审通过，本节覆盖前文草案中的开放项；实现契约以 [P3-001 复审](../reviews/P3-001-review-01.md) 与 [P3-003 任务](../tasks/P3-003-engine-multiscene-implementation.md) 为准。
+
+- **多 Scene 结构已定**：B——单 HTML + Scene 区段 + 单一 master timeline；A（嵌套）渲染可用但现有 SDK 无法从根文档编辑子 Scene，C 被官方 CLI 拒绝。Scene 局部时间在生成时换算全局时间。
+- **Scene 结构操作已定**：不能依赖 SDK 结构 API；走"Scene 模型 → 整文件重写（HTML + timeline）→ SDK 校验 → 原子写 → revision 重算"，失败不发布。
+- **合并已定**：stableId 三方合并；冲突码与结构见复审；v1 只合并受控模板元素，目标 Scene 外禁止 AI 改动。
+- **工程创建已定**：worker 管理 `projectsRoot` + 持久 registry + `project.create`；Host 不直接写 worker 文件。
+- **历史/修订已定**：revision 保持内容哈希；`.dsh-video/history/`（entries/ops/snapshots）+ 单调 `historyCursor`，不进 revision；撤销可回到旧内容哈希。
+- **素材已定**：PNG/JPEG、单文件 ≤8 MiB、≤16 资产、≤64 MiB 工程；asset 从只读 inbox 导入，不接受任意路径。
+- **仍后置**：插件内真播放（A1 需 engine snapshot + Host 路由 + Client iframe，独立任务）；任意 Agent HTML/JS 的隔离与安全；真实 Studio UI 连续播放；跨平台。

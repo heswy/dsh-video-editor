@@ -52,24 +52,26 @@
 | [P2-002-B Host 接入](tasks/P2-002B-host-integration.md) | 程序员 2 | 原 P0 worktree | e595d4e 首审：83/83 与根包匹配；R1对象绑定/R2Tool截断/R3快照验证/R4版本门禁待修 |
 | [P2-004 R1–R4 修复](tasks/P2-004-host-bridge-fixes.md) | 程序员 2 | 原 P0 worktree/分支 | 已复审通过并安装 0.2.0（link clean staging）；真机验收中：UI 真实工程/画面、Tool doctor/open/frame/status 通过；编辑/导出/生命周期待验 |
 | [P2-005 预览时间点+播放 spike](tasks/P2-005-preview-time-and-player-spike.md) | 程序员 2 | 原 P0 worktree/分支 | B/A 已复审：B 通过（96/96、0.2.1 包 17/17 字节一致、staging 真实链）；A spike 验收（A1 可行需 engine snapshot，A2 不推荐，实现暂缓）；**R1 深色对比未修，待补丁后重装** |
-| [P3-001 多 Scene/修订 spike](tasks/P3-001-engine-multiscene-spike.md) | 程序员 1 | 原 b4bf worktree/分支 | 进行中：已归档指南、建 `spikes/p3-multiscene`；尚无提交/证据 |
+| [P3-001 多 Scene/修订 spike](tasks/P3-001-engine-multiscene-spike.md) | 程序员 1 | 原 b4bf worktree/分支 | 已复审通过：独立复跑 12/12、MP4/ffprobe/证据核对一致；契约冻结 D020–D022；见 [复审](reviews/P3-001-review-01.md) |
+| [P3-003 多 Scene 引擎实现](tasks/P3-003-engine-multiscene-implementation.md) | 程序员 1 | 原 b4bf worktree/分支 | 已下发：工程创建/Scene 操作/inspect 扩展/素材/历史 + AI 候选合并；分 Phase A/B，可提前报 Phase A |
 
 ## 下一动作
 
-并行线：P2-004 已安装、真机验收进行中；程序员 1 继续 P3-001 spike。ADR-0002 固定共同契约，文件边界不交叉。
+并行线：P3 主线——程序员 1 实现 P3-003 引擎（多 Scene/创建/合并/历史）；程序员 2 补 P2-005 R1 后重装 0.2.1；总调度冻结 P3 契约并准备 P3-004。真播放等辅助能力暂缓。
 
-1. 真机验收进行中：已完成加载/侧栏入口、真实工程/画面、target 显示、Tool doctor/open/frame/status；剩余 UI 编辑→保存→更新画面、target 切眉题、导出/取消、冲突/错误显示、返回对话保持、明暗/窄窗、停用启用重启、artifact 字节。记录见 [真机验收记录](research/P2-004-live-acceptance.md)。
-2. 真机验收发现缺陷按线派任务：根插件归程序员 2，引擎包归程序员 1；不自行改 profile、不自动 merge/发布。
-3. 程序员 1 按 [P3-001](tasks/P3-001-engine-multiscene-spike.md) 继续多 Scene/修订合并 spike；结果回来后总调度冻结 P3 契约。
-4. 总调度复审 P3-001 证据，把 [P3 创作闭环草案](research/P3-ai-creation-loop-plan.md) 冻结为 P3-003/P3-004 任务；P3 暂不开新树，若需端到端负责人先建整合分支。
-5. 总调度维护协调分支文档与 PR #1；保持 main 未合并；0.1.3 回滚可用（`…/p0-mode-shell/51c82a9/rollback-0.1.3/package` 与固定包）；用户已授权普通 feature push/草稿 PR，不自动 merge/发布。
-6. P2-005 已下发程序员 2：B 画面时间点抽帧预览（升 0.2.1，新固定包/staging 复审后由用户重新安装）+ A 隔离预览面真播放可行性 spike。**优先级：P3 主线高于预览/播放支撑项**；B 与 R1 尽快随 0.2.1 交付；A 的实现不排进本轮，等 P3 契约与首条 AI 样例之后再说。真机验收剩余项继续由用户操作；若验收发现缺陷优先修，P2-005 让路。
+1. 程序员 1 按 [P3-003](tasks/P3-003-engine-multiscene-implementation.md) 实现引擎；Phase A 完成后可先 push 交审；完成后出 0.2.0 固定包与真实 15 秒证据。
+2. 程序员 2 完成 P2-005 R1（深色按钮 token 修复 + 静态断言）后重出 0.2.1 包/staging；复审通过后用户重装并复核深色/时间点预览。
+3. 总调度复审 P3-003；通过后下发 P3-004（根插件创作流程/AI 上下文/冲突 UI）给程序员 2，再接 P3-005 端到端 15 秒 AI 样例。
+4. 真机验收剩余项（编辑保存/导出取消/生命周期/主题窄窗）随 0.2.1 重装补验。
+5. 总调度维护协调分支文档与 PR #1；保持 main 未合并；不自动 merge/发布。
 
 ## 阻塞与未验证
 
 0.1.3 核心侧栏/主面板和启停证据通过。main 内容缺少定向 AX 通道，返回按钮、菜单焦点、主题/字号/窄窗、草稿/引用/附件、静态阅读位置、冷启动等仍未测，采用人工清单，不重复不安全自动化。0.2.0 已真机安装，入口/真实工程/画面与 Tool doctor/open/frame/status 通过；**UI 编辑保存、导出/取消、冲突错误、生命周期与主题窄窗仍未验证**；尚无多 Scene、AI 创作、用户素材、不可信代码隔离。P2 client 的显式 Node22/24 测试仅代表本机小版本和受控 fixture。
 
 ## 最近交接
+
+2026-10-17 P3-001 复审通过：独立复跑单元测试 12/12；B/A 15s MP4 哈希逐文件核对（B 与 worker 渲染字节完全一致）、ffprobe 450 帧/15.000s/1280×720；q1/q5/q6/q7/q8 证据一致。冻结 D020–D022：单 HTML + Scene 区段 + master timeline、受控整文件重写、stableId 三方合并；revision 保持内容哈希 + 单调 historyCursor；worker 管理 projectsRoot + project.create。已下发 [P3-003 引擎实现](tasks/P3-003-engine-multiscene-implementation.md) 给程序员 1（Phase A 可先交审）。
 
 2026-10-17 P2-005 复审：B（画面时间点预览）通过独立复核（96/96、0.2.1 包 17/17 与 `da8a22b` 字节一致、staging 真实链通过）；A spike 验收——A1（sandbox iframe + 快照 + 固定 runtime）断网播放/seek 实测可行，但需 engine snapshot/Host 路由/Client iframe 三段生产化，A2 不推荐、A3 仅 fallback；实现暂缓，P3 优先。**R1 深色按钮对比修复未包含在本轮**（`client.js` 仍用不存在的 `--dsw-alias-label-on-brand`），已退回补丁，补后重出 0.2.1 包/staging 再重装。见 [P2-005 复审](reviews/P2-005-review-01.md)。
 
