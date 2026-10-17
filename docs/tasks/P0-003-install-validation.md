@@ -1,6 +1,6 @@
 # P0-003：固定包安装与真实页面验证
 
-状态：准备完毕，等待用户在 DSH 会话明确授权安装/启用；本指南本身不是安装授权。
+状态：已执行（固定包安装启用 + 真实页面验证完成），等待主会话验收；本指南本身不是安装授权。
 执行：原 DSH 会话，原 `dsh/p0-mode-shell` worktree。主会话复核证据并决定 P0 验收。
 
 ## 固定对象
@@ -27,8 +27,8 @@
 
 - 用户授权与安装结果：用户在 DSH 会话明确授权通过受支持的插件管理方式安装/启用 review-02 指定的固定 tarball，并执行真实页面验证。已用 `plugin_manager install_bundle` 安装：`stage: "enable"`，`changed: true`，`application: "applied"`，`warnings: []`，无需重启；`list_plugins` 行 `include:dsh-video` `enabled: true` `fiberPhase: active`。Plugin Manager 写入 profile 依赖与 bundle 列表，未手改 profile。当前插件保持「已安装、已启用」。
 - Host / tarball hash：Host Desktop `0.2.0-rc.2`（PID 3630 启动于 12:31:26，安装约 13:27，未重启）。tarball `/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/artifacts/p0-mode-shell/a31ee51/dsh-video-0.1.0.tgz`，安装前 SHA-256 实算 `c0257548cad4f6f737d90eee3eb7b73ac823a946732d37710ff58cbb4490bbc4` 与 review-02 一致；tarball 解包 9 文件与 profile 安装目录逐字节一致。
-- 实测矩阵与真实产物：详见 `docs/research/P0-003-live-validation.md`。活体证据：Client Slots `main` occupant `dsh-video` active；`conversation.header.leading` occupant 仅在启用时出现（停用后为空），注册归属以启用/停用相关性判定；停用→重启用 3 轮均 `application: applied`、无重复、无 restart。**没有真实页面截图/录屏**：本会话无辅助访问（-1719）、无屏幕录制（screencapture 失败）、Web 端点 401 无 token，不能点击/输入/截图；交互、玻璃动效、字号、草稿/引用/附件保留、焦点与 vid 模式内停用均标记未测，已在记录中给出用户最短验证步骤。
-- 失败 / 未测 / 恢复状态：未触发安装失败；当前插件已安装并启用，未卸载、固定包未替换。按 review-02 要求的边界已本地复现：`leading` 晚到声明或独立重声明时被其它条目占用，会留下「main 已注册、胶囊缺席」的不可达视频面板（`/tmp/repro-late-leading.mjs`：`REPRO1/REPRO2 mainLive=true capsuleLive=false`），交主会话安排修复，本轮未改固定包/未改功能代码。未改主题/字号/窗口布局；未 push；未改仓库代码（本轮仅本地文档提交）。
+- 实测矩阵与真实产物：详见 `docs/research/P0-003-live-validation.md`。活体证据：Client Slots `main` occupant `dsh-video` active；`conversation.header.leading` occupant 仅在启用时出现（停用后为空），注册归属以启用/停用相关性判定；停用→重启用 3 轮均 `application: applied`、无重复、无 restart。用户在后续轮次授予**屏幕录制与辅助功能**权限后，本轮完成真实窗口交互验证：真实截图/短录屏、AX 读取与 CGEvent 点击键盘、plugin_manager 真实启停。**已 PASS**：普通模式胶囊真实渲染与位置（截图 `evidence/P0-003/01`）、普通↔视频往返与标题/控件探针（`02`）、220ms 底片滑动真实抽帧测量（录屏 `/tmp/anim-roundtrip.mov`、单帧 `06`）、快速反向连点、普通模式停用清理 ×3、**视频模式内停用自动回会话且草稿保留**（`07/08`）、重新启用恢复、多行中文+图片附件草稿往返逐字节一致保留、宿主字号 14→20 时胶囊 AX 尺寸 `89×31→119×46` 且不溢出（`04`）、深色主题（`03`）、1000×760 窄窗（`05`）、键盘聚焦+Space 激活。**未测/未确证**：引用 chip（自动化 Enter 误排队一次，已立即丢弃未发送）、阅读位置（本会话流式追加内容导致滚动锚点不可比）、减少动态效果、冷启动首帧、no-drag 拖动、浏览器 console。真实完整截图/录屏保存在 `/tmp`（含用户侧栏，不入库），入库的去标识证据在 `docs/research/evidence/P0-003/`。
+- 失败 / 未测 / 恢复状态：未触发安装失败；当前插件已安装并启用，未卸载、固定包未替换。按 review-02 要求的边界已本地复现：`leading` 晚到声明或独立重声明时被其它条目占用，会留下「main 已注册、胶囊缺席」的不可达视频面板（`/tmp/repro-late-leading.mjs`：`REPRO1/REPRO2 mainLive=true capsuleLive=false`），交主会话安排修复，本轮未改固定包/未改功能代码。用户主题/字号/窗口尺寸已恢复（字号 14、浅色、1470×862），剪贴板恢复，测试草稿清空未发送；未 push；未改仓库代码（本轮仅本地文档+去标识证据提交）。
 
 ## 验收记录（主会话）
 
