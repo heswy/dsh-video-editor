@@ -8,7 +8,7 @@
 - `main` 起点：`9c826bd`；准备分支：`codex/project-foundation`。包含本文件的本地准备提交作为首开发任务基线，交接消息提供精确 SHA，DSH 开工将其记录到任务；未 push 或合并。
 - 用户最新确认改为左侧「上下文洞察」下、「工作区」上单入口 **Vedio Editor** + 细线条图标，替代顶部胶囊；UI 简洁克制。产品见 `product/PRODUCT.md`。
 - 已归档计划、截图与 DSH 开发包。上一轮已确认 kit 的 16 个 skill 文件与本机 app.asar 相同；README/AGENT-BRIEF 是整理材料。
-- API 基线修正为 Desktop 0.2.0-rc.2；首轮 master 调研中的 Remote 等建议未被验证。
+- 当前实际 Host 为 Desktop 0.2.1-rc.1（用户侧升级）；P0-006 已重新核对侧栏，P2-002-A 核实 Host API。0.2.0-rc.2 证据保留为历史，首轮 master 建议不直接沿用。
 
 ## 活动任务
 
@@ -19,32 +19,38 @@
 | [P0-002](tasks/P0-002-mode-shell-implementation.md) | DSH 实现 / Codex 评审 | 继续 dsh/p0-mode-shell 与原 worktree | 8ebf922 / a31ee51 主要修复复审通过；本地检查 44/44，固定包已产生；未安装 |
 | [P0-003](tasks/P0-003-install-validation.md) | 原 DSH 会话 | 原 P0 worktree | 0104e0e 真页面核心证据已审阅；已安装启用；P0 部分通过，引用/滚动等未完 |
 | [P0-004](tasks/P0-004-lifecycle-and-acceptance.md) | 原 DSH 会话 | 原 P0 worktree | ab4bc68 / 6f11ced 已复审；本地 50/50 与 0.1.1 包核对通过；新包未安装，补验使用 0.1.0 |
-| [P0-005](tasks/P0-005-sidebar-entry-and-restraint.md) | 原 DSH 会话 | 原 P0 worktree | 09b2708/00d1809 已首审；独立 51/51 与固定包核对通过；R1 菜单焦点待补修，未安装 |
-| [前端设计规划](design/FRONTEND-DESIGN.md) | Codex | codex/project-foundation；主工作区 | v0.2 用户要求已收敛：侧栏入口、少文案、克制材质；待 P0-005 实现 |
+| [P0-005](tasks/P0-005-sidebar-entry-and-restraint.md) | 原 DSH 会话 | 原 P0 worktree | 51c82a9/f5eed41 复审通过；独立 57/57 与包核对通过；0.1.3 已安装启用 |
+| [前端设计规划](design/FRONTEND-DESIGN.md) | Codex | codex/project-foundation；主工作区 | v0.2 核心 live 证据通过：侧栏入口、单句空状态；编辑界面待接入 |
 | [P1-001 引擎验证](tasks/P1-001-engine-spike.md) | Codex 引擎开发 / 主会话验收 | codex/p1-engine-spike-b4bf；~/.codex/worktrees/b4bf/dsh-video-editor | c779b94 / e88615f 单场景可行性通过，主会话独立复测 3+2 测试、哈希与 ffprobe |
-| [P1-002 worker](tasks/P1-002-engine-worker.md) | 原 Codex 引擎会话 | 自行管理原 worktree/分支 | 受控独立 worker 实现放行；不改 DSH 插件 |
+| [P1-002 worker](tasks/P1-002-engine-worker.md) | 原 Codex 引擎会话 | 自行管理原 worktree/分支 | 3b5f6de R1 复审通过；本轮独立 7+1 测试通过，受控 worker 验收完成 |
+| [P2-001 通信包](tasks/P2-001-engine-client.md) | 原 Codex 引擎会话 | 自行管理原 worktree/分支 | 6c4b2e9 R4 生产修复通过；Node24 独立10/10；Node22 回归时序 R4-b 待收敛 |
+| [P0-006 真机验证](tasks/P0-006-sidebar-live-validation.md) | 原 DSH 会话 | 原 P0 worktree | 98e2571 记录/截图已审；0.2.1 上安装与核心入口/空页/启停通过，面板内交互等未测 |
 
-## 最新复审与授权状态
-
-51c82a9 / f5eed41 与固定包 0.1.3 已通过代码/包复审（57/57）。原 R1 已关闭，见 P0-005-review-02。下一任务 P0-006；**等待用户明确授权替换安装后执行**，当前不安装、不启停。下面之前的 R1 待修说明为历史记录。
-
-## 本轮复审交接
-
-执行 `docs/reviews/P0-005-review-01.md` 的 R1：补菜单焦点进入/退出回归，出 0.1.3 固定包再复审；保留 0.1.2，不安装/启停、不改 profile。引擎侧 P2-001 另有通信边界修复，与本任务无共享代码。以下旧下一动作以本段为准。
+| [P2-002-A Host 契约](tasks/P2-002-host-bridge.md) | 原 DSH 会话 | 原 P0 worktree | 只读调查与提案放行，不改代码/安装 |
 
 ## 下一动作
 
-并行线：原引擎会话开始 P1-002，只改独立 packages/video-engine-worker 与自身记录；自行管理工作树，不等 P0 收尾。
+并行线：DSH 做当前宿主 Host 接入契约调查；引擎会话收敛断管回归时序。主会话继续架构与验收。
 
-1. DSH 读取 P0-005，改侧栏入口并精简空工作区；提交 0.1.2 代码和固定包复审，当前安装 0.1.0 保持原状。
-2. 引擎会话继续 P1-002，自行管理其 tree；本轮 UI 改动不影响其范围。
-3. 主会话按提交验收，再安排新包受控真机验证与 P2 Host 集成；未合并功能分支到 main。
+1. DSH 读取 P2-002-A，调查 0.2.1 的加载/生命周期/UI→Host/Tool 与受控产物访问契约；不改已安装 0.1.3。
+2. 引擎会话按 P2-001-review-03 收敛 R4-b 测试，区分故障前已发送请求与故障后未准入请求，显式核对 Node22/24。生产 EPIPE 崩溃问题已修复，不为迁就断言改坏准入语义。
+3. Host 实现 P2-002-B 在契约评审后再放行；未 merge 功能分支到 main，未 push。
 
 ## 阻塞与未验证
 
-P0-004 重挂修复本地通过；引用/普通文件等补验来自旧 0.1.0，不能作为新包真机通过。静态阅读位置、系统 reduced-motion、冷启动、console 仍未完成。侧栏准确位置需 P0-005 核实。单 Scene 引擎通过，尚无 DSH 内引擎接入、不可信代码隔离或完整 AI 创作验收。跨应用误输入已报告，影响未确证，测试边界已收紧。
+0.1.3 核心侧栏/主面板和启停证据通过。main 内容缺少定向 AX 通道，返回按钮、菜单焦点、主题/字号/窄窗、草稿/引用/附件、静态阅读位置、冷启动等仍未测，采用人工清单，不重复不安全自动化。尚无 DSH 内引擎接入、不可信代码隔离或完整 AI 创作验收。P2 client 的 Node22 回归断言时序待收口，不能写成默认 npm test 全通过。
 
 ## 最近交接
+
+2026-10-17 中断后继续联合验收：98e2571 的报告及真实去标识截图已核对，0.1.3 核心安装/侧栏/空页面/启停通过，实际 Host 0.2.1-rc.1；未测项保持。6c4b2e9 的 R4 生产错误处理有效，显式 Node24 全套10/10，Node22 的断管回归因未准入请求被强制断言 E_TRANSPORT 而失败，新增 R4-b 测试收敛要求。新增 P2-002-A 允许 DSH 并行只读调查 Host 接入。
+
+2026-10-17 双线修复复审：DSH 51c82a9/f5eed41，57 项本地检查和 0.1.3 包独立核对通过，新增 P0-006 等待安装授权。客户端 51f562a 的 R1–R3 已关闭，9 项测试独立通过；补验输入管道关闭而 worker 存活时 write EPIPE 让隔离父进程异常退出，新增 R4 需修后接入。
+
+2026-10-17 双线首审：P0-005 51/51 及 0.1.2 包源码核对通过，补菜单焦点 R1 后再交包。P2-001 6/6 通过，但独立复现中文跨字节块损坏、退出后 edit uncertain=false、dispose 完成后 timer 驻留三个缺陷；分别交原会话修复。两条工作树跟踪文件未被主会话改动。
+
+2026-10-17 P1-002 R1 复审：3b5f6de 关闭门禁与排空修复通过，独立 7 项协议/内容及 1 项新增真实回归通过；原两组真实作业先前已独立通过，本轮未重复。受控 worker 验收完成，新增 P2-001 父进程通信包指南，继续和 DSH UI 并行。
+
+2026-10-17 P1-002 首审：b59dbbb 的现有 7+2 测试独立通过，真实 MP4 摘要及元数据一致；额外复现 close 返回后并发新 render 仍 running 并 succeeded 发布。已记录 R1，要求原引擎会话修复工程关闭准入和排空边界，详见 reviews/P1-002-review-01.md；DSH P0-005 继续。
 
 2026-10-17 P0-004 复审及用户设计变更：本地 50 项检查与 0.1.1 固定包独立核对通过；详见 reviews/P0-004-review-01.md。新增 P0-005 与设计 v0.2，替代两处顶部胶囊；0.1.1 归档，未替换当前 0.1.0。DEVELOPMENT 增加误投递事故后的定向测试规则。
 
