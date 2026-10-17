@@ -16,20 +16,22 @@
 |---|---|---|---|
 | 项目准备与长期记忆 | Codex | codex/project-foundation；主工作区 | 已完成，本地提交交接；归档完整性及链接检查通过 |
 | [P0-001](tasks/P0-001-mode-shell.md) | DSH 调查 / Codex 评审 | dsh/p0-mode-shell；同级 dsh-video-editor-worktrees/p0-mode-shell | a85308a / dcc0ae4 已审阅，调查验收通过；未做插件 live 验证 |
-| [P0-002](tasks/P0-002-mode-shell-implementation.md) | 用户指定的 DSH Agent | 继续 dsh/p0-mode-shell 与原 worktree | 已放行实现；本轮不安装/启用；待用户发送继续提示 |
+| [P0-002](tasks/P0-002-mode-shell-implementation.md) | DSH 实现 / Codex 评审 | 继续 dsh/p0-mode-shell 与原 worktree | 52a1d1c / f3ac0c0 已评审，请求修复 R1–R3；本地检查 32/32 通过，未安装 |
 | [前端设计规划](design/FRONTEND-DESIGN.md) | Codex | codex/project-foundation；主工作区 | v0.1 方向草案已整理；未实现/未真页面验证 |
 
 ## 下一动作
 
-1. Codex 在确认 DSH worktree 干净后，将已评审调查、设计规划和 P0-002 指南同步到原开发 worktree，保持同一分支。
-2. 用户告诉 DSH 继续读取 STATUS 与 P0-002，开始可安装 bundle 的实现；不重新调查已确认项，不安装或改 profile。
-3. DSH 本地提交并交回包、检查与未验证项；Codex 评审后再由用户确认具体安装验证。
+1. Codex 将 [首轮评审](reviews/P0-002-review-01.md) 同步到干净的原 DSH worktree，不改其功能实现。
+2. 用户告诉 DSH 修复 R1–R3，更新任务记录并本地提交，不重新调查已确认项，不安装或改 profile。
+3. Codex 复审通过后再整理具体包供用户确认安装验证；目前未合并实现到协调分支或 main。
 
 ## 阻塞与未验证
 
 用户已确认首版原生顶部靠左入口；无产品决策阻塞。普通输入附件/引用及回退清理仍需真机验证。没有宿主集成、UI、生成、编辑或导出通过验证。
 
 ## 最近交接
+
+2026-10-17 P0-B 首轮评审：重跑 17 项静态检查、15 项 VM smoke 及 9 文件 pack dry-run，全部通过；合约隔离复现发现 main 等待声明时出现死入口；另发现两处独立挂载使胶囊滑动无起终态、导航字号固定。详见 reviews/P0-002-review-01.md。要求 DSH 修复，不接管实现，不安装。
 
 2026-10-17 P0-A 评审：已整合调查提交，用户选择先用顶部靠左原生入口。D-A–D-D 已收敛并记录 D008–D010；已发出 P0-002 实现指南。只放行实现与本地检查，未放行安装/push。共享顶部 Slot 是 single，引用/附件状态与当前视频页停用回退纳入验收。
 
