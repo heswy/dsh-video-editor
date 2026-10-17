@@ -79,6 +79,14 @@ export async function digestTree(root, exclude) {
   return entries.sort((left, right) => left.path.localeCompare(right.path));
 }
 
+async function assertNoExtraFiles(base, entries, label, exclude) {
+  const expected = new Set(entries.map((entry) => entry.path));
+  const actual = await digestTree(base, exclude);
+  for (const entry of actual) {
+    if (expected.has(entry.path) === false) throw new Error(`staging ${label} contains an unrecorded source file: ${entry.path}`);
+  }
+}
+
 async function verifyEntries(stagingRoot, base, entries, label) {
   if (Array.isArray(entries) === false || entries.length === 0) throw new Error(`INTEGRITY.files.${label} is missing or empty`);
   const root = await realpath(base);
@@ -153,19 +161,24 @@ export async function loadStagedHost(staging) {
   }
 
   const bundleFiles = await verifyEntries(stagingRoot, bundleRoot, integrity.files?.bundle, 'bundle');
-  await verifyEntries(stagingRoot, engineClientRoot, integrity.files?.engineClient, 'engineClient');
-  await verifyEntries(stagingRoot, engineWorkerRoot, integrity.files?.engineWorker, 'engineWorker');
+  const clientFiles = await verifyEntries(stagingRoot, engineClientRoot, integrity.files?.engineClient, 'engineClient');
+  const workerFiles = await verifyEntries(stagingRoot, engineWorkerRoot, integrity.files?.engineWorker, 'engineWorker');
   if (bundleFiles.has('host/bridge.js') === false) throw new Error('INTEGRITY.files.bundle does not record host/bridge.js');
   if (bundleFiles.has('index.js') === false) throw new Error('INTEGRITY.files.bundle does not record index.js');
+  await assertNoExtraFiles(bundleRoot, integrity.files?.bundle, 'bundle', (rel) => rel.startsWith('node_modules/'));
+  await assertNoExtraFiles(engineClientRoot, integrity.files?.engineClient, 'engineClient', (rel) => rel.startsWith('node_modules/'));
+  await assertNoExtraFiles(engineWorkerRoot, integrity.files?.engineWorker, 'engineWorker', (rel) => rel.startsWith('node_modules/') || rel.startsWith('artifacts/') || rel.startsWith('cache/'));
 
+  const bundlePackageInfo = await readJson(join(bundleRoot, 'package.json'), 'bundle manifest');
   const clientPackageInfo = await readJson(join(engineClientRoot, 'package.json'), 'engine client manifest');
   const workerPackageInfo = await readJson(join(engineWorkerRoot, 'package.json'), 'engine worker manifest');
+  if (bundlePackageInfo.value.version !== integrity.versions.bundle) throw new Error('staging bundle version mismatch');
   for (const [label, manifest, expected] of [
     ['client', clientPackageInfo.value, integrity.versions.client],
     ['worker', workerPackageInfo.value, integrity.versions.worker],
   ]) {
-    if (manifest.version !== expected) throw new Error(`staging ${label} version mismatch: ${manifest.version} !== ${expected}`);
     if (expected === undefined || expected === null) throw new Error(`INTEGRITY.versions.${label} is missing`);
+    if (manifest.version !== expected) throw new Error(`staging ${label} version mismatch: ${manifest.version} !== ${expected}`);
   }
 
   const clientEntry = resolveEngine(bundleRoot, 'dsh-video-engine-client');

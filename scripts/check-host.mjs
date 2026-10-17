@@ -694,6 +694,10 @@ async function main() {
     assert(/config digest does not match/.test(error.message), `tampered config was not rejected: ${error.message}`);
 
     await writeFile(join(staging, 'config.json'), JSON.stringify(config, null, 2) + '\n');
+    await writeFile(join(bundle, 'host', 'extra.js'), '// unrecorded source\n');
+    error = await rejects(() => loadStagedHost(staging));
+    assert(/unrecorded source file: host\/extra\.js/.test(error.message), `unrecorded source was not rejected: ${error.message}`);
+    await rm(join(bundle, 'host', 'extra.js'));
     await writeFile(join(worker, 'src', 'worker.mjs'), '// tampered worker\n');
     error = await rejects(() => loadStagedHost(staging));
     assert(/src\/worker\.mjs/.test(error.message) && /mismatch/.test(error.message), `tampered engine source was not rejected: ${error.message}`);

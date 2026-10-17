@@ -4,7 +4,7 @@
 
 用户确定的入口（P0-005，延续到本阶段）：DSH 左侧原生导航中，在「上下文洞察」之后、「工作区」分组之前，单行 **Vedio Editor** + 细线条视频图标。原顶部「普通｜视频」胶囊已移除。入口是产品工作区导航，不改变 Agent preset、模型或权限。
 
-当前阶段：**P2-002-B** 已在本地实现 Host 桥（受控 Fetch 路由 + `video_engine` Tool）与最小真实编辑界面，并准备开发 staging 脚本；包版本目标 **0.2.0**。本机已安装并启用的是 **0.1.3**，本轮**未安装、未启停、未改 profile**；0.2.0 先交主会话复审，安装需另行授权。运行时基线为 DSH Desktop **0.2.1-rc.1**。
+当前阶段：**P2-004** 已修复复审 R1–R4（单一编辑目标、Tool UTF-8 字节预算、真实链执行固定 staging、严格 0.1.1 版本门禁）并扩展本地回归；包版本保持未发布的 **0.2.0**。本机已安装并启用的是 **0.1.3**，本轮**未安装、未启停、未改 profile**；安装需另行授权。运行时基线为 DSH Desktop **0.2.1-rc.1**。
 
 - [当前状态与下一步](docs/STATUS.md)
 - [开发与协作规则](docs/DEVELOPMENT.md)
@@ -54,14 +54,14 @@
 ### Host 请求与 Tool
 
 - 请求体为 JSON `{ "method": "...", "params": { ... } }`，正文默认上限 64 KiB；拒绝额外字段、未知方法、任意 path/URL。项目参数只能是配置 allowlist 的 id；`status`/`cancel`/`artifact` 还必须对应该 Host 实例已登记、由本实例启动的 job。
-- Tool 与路由调用同一个 dispatcher；错误统一为 `{ code, message, stage, uncertain?, jobUnknown? }`，保留 edit 的结果不确定性、frame/render 丢失 jobId 的不确定性；Host 不自动重试写/渲染，也不保存第二份 revision 或 operationId 结果。
+- Tool 与路由调用同一个 dispatcher；错误统一为 `{ code, message, stage, uncertain?, jobUnknown? }`，保留 edit 的结果不确定性、frame/render 丢失 jobId 的不确定性；Host 不自动重试写/渲染，也不保存第二份 revision 或 operationId 结果。Tool execute 与渲染共用 64 KiB 原始 UTF-8 字节预算；超限返回 `E_RESULT_LIMIT`，不截断后伪装成功。
 - 成功 frame/render 登记 `jobId → projectId/revision`；`GET/HEAD artifact` 会重新向 worker 取 succeeded 记录，再校验 UUID 文件名、realpath 在输出根、普通文件、大小上限与 SHA-256，才发布 PNG/MP4。只支持完整 GET/HEAD，不做 Range、目录列表或任意 URL 代理；不返回绝对路径、源码、stderr。
 - 无 per-session ACL、无多用户工程隔离；当前只允许受控 fixture。worker 路径校验不是安全沙箱。
 
 ### 最小真实界面
 
 - 无工程时保留一句「尚无工程」和一个可工作的「打开示例」动作；固定示例 id 为受控配置中的 `demo`，**不会自动伪造工程或进度**。
-- 打开后：显示来自真实 `inspect` 的标题（文本元素）、尺寸/时长；自动请求当前 revision 的真实 PNG；提供标题编辑、基础 start/duration 编辑、更新画面、导出 MP4、取消与真实作业状态。
+- 打开后：显示来自真实 `inspect` 的标题/尺寸/时长；自动请求当前 revision 的真实 PNG；提供一个显式 target 选择器，标题与 start/duration 只作用于同一个选中的 stableId（受控 fixture 默认契约 `hf-title`，不会把眉题当标题）；目标缺少 text/timing capability 时对应字段隐藏。提供更新画面、导出 MP4、取消与真实作业状态。
 - 编辑失败/修订冲突就近显示；编辑成功后重新 `inspect`，先清掉旧帧，再请求新 revision 画面，旧帧不会冒充新 revision。
 - 详细元数据（stableId/capabilities）放在按需展开的「属性」区；不常驻 revision 哈希、路径、版本或开发阶段说明。没有时间线、连续播放、AI 生成等未接入能力。
 
@@ -86,13 +86,13 @@ node scripts/stage-dev.mjs   --engine-commit <reviewed-P2-003-sha>   --node /abs
 
 - 相对 `file:` 依赖与链接只对这个开发快照有效，**不是可移植发行 tarball**；正式分发另行定义。staging 会在**快照副本**的 `cordis.patch.yml` 注入本次可信 config（根提交的 patch 仍是空 `config: {}`），因此 link 安装后无需手改 profile。
 - 缺 esbuild 二进制或 pendingBuilds 时记录为阻塞，不运行 postinstall/未知构建脚本、不升级依赖。
-- 真实受控引擎链（不改 DSH 安装）可在 staging 完成后运行：
+- staging 校验/真实受控引擎链（不改 DSH 安装）由 `scripts/lib/staged-host.mjs` 先核对 INTEGRITY 中的 Host/config/patch/engine 源文件摘要和包解析，再实际 import **staging 内的** Host，拒绝被改动或混入未记录源文件的快照：
 
 ```sh
 node scripts/test-host-engine.mjs --staging /absolute/staging-dir
 ```
 
-该脚本通过同一 `VideoBridge` 跑 doctor→open→inspect→text/timing edit→inspect→frame/status/PNG 字节→render/status/MP4 字节→取消→close→dispose，并把脱敏证据写入 staging 同级的 `evidence/`（不修改不可变快照）；它**不等于** DSH 真实激活或真页面验收。
+该脚本通过 staging 内的 `VideoBridge` 跑 doctor→open→inspect→title/timing edit→inspect→frame/status/PNG 字节→render/status/MP4 字节→取消→close→dispose，并把脱敏证据写入 staging 同级的 `evidence/`（不修改不可变快照）；它**不等于** DSH 真实激活或真页面验收。
 
 ## 安装（需用户明确授权；由 DSH 界面执行）
 
@@ -129,7 +129,7 @@ npm run check
 
 - 真实 DSH 激活后的路由鉴权、Tool 可见性/模型体验、真实安装/加载/卸载/重启、HMR 替换；
 - 真实页面视觉/键盘焦点/明暗/窄窗/草稿保持、真实 worker 启停与产物字节；
-- 真实引擎子进程链必须在复审通过的 P2-003 快照上运行（本轮若未取得该提交则未执行）；
+- 真实引擎子进程链只能在复审通过的固定 staging/引擎提交上运行，证据归属以 `INTEGRITY.json`/执行路径为准；
 - Windows/Linux、Chrome/FFmpeg 缺失、用户素材、多用户权限、OS 沙箱、Range/连续预览均未验证。
 
 仓库中的原始方案、开发包及截图用于追溯，采纳范围以产品文档、决策和当前任务为准。
