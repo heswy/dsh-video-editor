@@ -26,7 +26,10 @@
 ## 真机验收发现的问题
 
 - **V1（视觉/对比度，2026-10-17，已在 0.2.1 修复）**：0.2.0 深色模式下主按钮「更新画面」白底白字。根因：`.dv-button-primary` 使用宿主不存在的 `--dsw-alias-label-on-brand`（fallback `#fff`），深色主题 `--dsw-alias-brand-primary` 为近白色。0.2.1 改用 `button-primary-fill/hover/dimmed` + `label-primary-foreground` 配对 token（R1 复审通过），用户 0.2.1 深色截图确认主按钮可读。待补：浅色实图、hover/focus-visible/disabled 视觉，及画面时间点输入是否可用的实际点击证据。
-- **播放能力缺失（未解决）**：0.2.0/0.2.1 仍只有单帧预览 + 导出 MP4，没有插件内播放按钮；A1（隔离 iframe + 快照 + 固定 runtime）已证明可行但未实现，待用户定优先级（完整编辑预览 vs 成品 MP4 播放）。
+- **V2（取消导出显示错误，2026-10-17，0.2.1 实测，已排 P2-006 R2）**：导出进行中点「取消」后，job 终止 `cancelled`、状态显示「已取消」，但同时出现红色「操作失败。」。根因：`waitForJob` 终止态用 `state !== 'succeeded'` 设置错误，用户主动取消被误判为失败。应在 cancelled 时保持中性、不报错；failed/timed_out 才报本地化错误。
+- **V3（时序越界透出英文原文，2026-10-17，0.2.1 实测，已排 P2-006 R3）**：开始 `4` + 时长 `5`（工程 5s）被 worker 拒绝，UI 原样显示英文 `Timing extends beyond composition`。引擎拒绝正确，但客户端缺 `start + duration <= duration` 的本地校验与本地化提示。
+- **播放能力缺失（未解决）**：0.2.0/0.2.1 仍只有单帧预览 + 导出 MP4，没有插件内播放按钮；A1（隔离 iframe + 快照 + 固定 runtime）已证明可行但未实现，按已定优先级后置（P3 之后）。
+- **抽帧时间点已验证（2026-10-17）**：真实 Host Tool 独立抽帧 0.1s / 0.5s / 2.5s，hash 分别为 `949350af…`（frame 3）/`0240f557…`（frame 15）/`efca9296…`（frame 75），互不相同且各自成功；UI 画面时间输入工作正常。
 
 ## 0.2.1 安装记录
 

@@ -51,7 +51,8 @@
 | [P2-003 启动/包入口](tasks/P2-003-engine-launch-packaging.md) | 程序员 1 | 原 b4bf worktree/分支 | 54f4671 已复审通过；Node22/24 各15通过+1跳过，Desktop24.21真实链通过；固定包见评审新摘要 |
 | [P2-002-B Host 接入](tasks/P2-002B-host-integration.md) | 程序员 2 | 原 P0 worktree | e595d4e 首审：83/83 与根包匹配；R1对象绑定/R2Tool截断/R3快照验证/R4版本门禁待修 |
 | [P2-004 R1–R4 修复](tasks/P2-004-host-bridge-fixes.md) | 程序员 2 | 原 P0 worktree/分支 | 已复审通过并安装 0.2.0（link clean staging）；真机验收中：UI 真实工程/画面、Tool doctor/open/frame/status 通过；编辑/导出/生命周期待验 |
-| [P2-005 预览时间点+播放 spike](tasks/P2-005-preview-time-and-player-spike.md) | 程序员 2 | 原 P0 worktree/分支 | R1 补丁复审通过；**0.2.1 已真机安装**：深色主按钮可读、画面时间输入可见；播放实现待用户定优先级 |
+| [P2-005 预览时间点+播放 spike](tasks/P2-005-preview-time-and-player-spike.md) | 程序员 2 | 原 P0 worktree/分支 | R1 补丁复审通过；**0.2.1 已真机安装**：深色主按钮可读、画面时间输入可见；播放实现按已定优先级后置 |
+| [P2-006 取消/时序 UX 修复](tasks/P2-006-cancel-and-timing-ux-fixes.md) | 程序员 2 | 原 P0 worktree/分支 | 已下发：R2 取消不再误报「操作失败。」；R3 开始+时长越界本地校验与中文化；升 0.2.2，交付复审后重装 |
 | [P3-001 多 Scene/修订 spike](tasks/P3-001-engine-multiscene-spike.md) | 程序员 1 | 原 b4bf worktree/分支 | 已复审通过：独立复跑 12/12、MP4/ffprobe/证据核对一致；契约冻结 D020–D022；见 [复审](reviews/P3-001-review-01.md) |
 | [P3-003 多 Scene 引擎实现](tasks/P3-003-engine-multiscene-implementation.md) | 程序员 1 | 原 b4bf worktree/分支 | 已下发：工程创建/Scene 操作/inspect 扩展/素材/历史 + AI 候选合并；分 Phase A/B，可提前报 Phase A |
 
@@ -60,7 +61,7 @@
 并行线：P3 主线——程序员 1 实现 P3-003 引擎（多 Scene/创建/合并/历史）；程序员 2 补 P2-005 R1 后重装 0.2.1；总调度冻结 P3 契约并准备 P3-004。真播放等辅助能力暂缓。
 
 1. 程序员 1 按 [P3-003](tasks/P3-003-engine-multiscene-implementation.md) 实现引擎；Phase A 完成后可先 push 交审；完成后出 0.2.0 固定包与真实 15 秒证据。
-2. 程序员 2 的 P2-005 R1 补丁已复审通过（97/97、0.2.1 包/staging 核对一致）；等用户在 Plugins 卸载 0.2.0、安装 `staging-54f4671-bdcfd72/bundle`，重装后复核深色/浅色按钮、hover/focus/disabled、画面时间点预览与 P2-004 剩余真机验收项。
+2. 程序员 2 按 [P2-006](tasks/P2-006-cancel-and-timing-ux-fixes.md) 修 R2/R3（0.2.2 包/staging/真实链）；复审后用户重装复核取消与越界提示。等用户确认 0.2.1 剩余验收项（浅色/hover/focus/disabled、编辑保存、导出取消、生命周期）。
 3. 总调度复审 P3-003；通过后下发 P3-004（根插件创作流程/AI 上下文/冲突 UI）给程序员 2，再接 P3-005 端到端 15 秒 AI 样例。
 4. 真机验收剩余项（编辑保存/导出取消/生命周期/主题窄窗）随 0.2.1 重装补验。
 5. 总调度维护协调分支文档与 PR #1；保持 main 未合并；不自动 merge/发布。
@@ -71,7 +72,9 @@
 
 ## 最近交接
 
-2026-10-17 0.2.1 真机安装：用户卸载 0.2.0，link 安装 `staging-54f4671-bdcfd72/bundle`（profile 已指向该目录、版本 0.2.1）。深色模式主按钮「更新画面」可读（截图确认），右侧「画面时间（秒）」输入出现（默认 2.50）。播放按钮仍不存在：0.2.1 只做单帧 + 导出；A1 完整预览需 engine snapshot + Host 路由 + Client iframe，成品 MP4 内嵌播放只需 Client 小改。**待用户选择播放优先级后下发任务**。待补验：浅色/hover/focus/disabled、时间点抽帧实际点击、编辑保存/导出取消/生命周期。
+2026-10-17 0.2.1 真机验收第二轮（V2/V3）：抽帧时间点验证正常——Tool 独立抽 0.1s/0.5s/2.5s，hash `949350af…`/`0240f557…`/`efca9296…` 互不相同。发现两个客户端 UX 缺陷：**V2** 取消导出后误报红色「操作失败。」（`waitForJob` 把 `cancelled` 当失败）；**V3** 开始 4+时长 5 超出 5s 工程时透出引擎英文 `Timing extends beyond composition`（客户端缺本地校验/本地化）。已下发 [P2-006](tasks/P2-006-cancel-and-timing-ux-fixes.md) 给程序员 2（升 0.2.2，复审后重装）。
+
+2026-10-17 0.2.1 真机安装：用户卸载 0.2.0，link 安装 `staging-54f4671-bdcfd72/bundle`（profile 已指向该目录、版本 0.2.1）。深色模式主按钮「更新画面」可读（截图确认），右侧「画面时间（秒）」输入出现（默认 2.50）。播放按钮仍不存在：0.2.1 只做单帧 + 导出；A1 完整预览需 engine snapshot + Host 路由 + Client iframe，成品 MP4 内嵌播放只需 Client 小改。**按用户确认维持 P3 优先，播放后置**。待补验：浅色/hover/focus/disabled、编辑保存/导出取消/生命周期。
 
 2026-10-17 P2-005 R1 补丁复审通过：`bdcfd72`/`123353c` 仅改主按钮 token 与静态断言；独立复跑 97/97；0.2.1 tarball 39,702 B、17/17 与提交字节一致；新 staging `staging-54f4671-bdcfd72`（INTEGRITY `b410ec2f…`、staged Host `07442c86…`）真实链通过、demo 干净。已核对宿主 app.asar 中 `button-primary-fill/hover/dimmed` 与 `label-primary-foreground` 真实存在、配对方向正确（深色 fill 实为 `#f9fafb`，报告笔误）。**0.2.1 可作安装候选**，待用户重装后做真实明暗/焦点/disabled 视觉复核。见 [R1 复审](reviews/P2-005-review-02.md)。
 
