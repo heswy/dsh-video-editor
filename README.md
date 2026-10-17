@@ -1,19 +1,18 @@
 # DSH Video
 
-运行在 DeepSeek Harness 内的 AI 视频创作与编辑插件。目标是让 AI 创建可编辑的视频工程，用户直接修改后，AI 能继续编辑同一份工程并导出 MP4。
+运行在 DeepSeek Harness 内的 AI 视频创作与编辑插件。产品目标：左侧直接预览、播放和编辑作品，右侧持续和 AI 对话；支持历史会话、宿主模型选择和用户素材。画面下只保留轻量播放条，不做场景缩略卡片带。
 
-用户已确定入口：DSH 左侧导航「上下文洞察」之后、「工作区」之前的单入口 **Vedio Editor**（细线条视频图标）；视频模式进入插件工作区，普通模式保留 DSH 原有体验。这里的工作区视图切换，不是修改 Agent preset。早期顶部「普通｜视频」方案已被 D011 替代，仅保留历史证据。
+当前：多 Scene 引擎已在本机受控范围验收；最近确认安装为插件 0.2.1，插件 0.2.2 交付待复审。实时编辑画布与 AI 创作闭环尚未完成。具体提交、验证范围和下一步以 [当前状态](docs/STATUS.md) 为准，避免从此简介推断功能已上线。
 
-当前阶段：P0 侧栏入口与极简空状态已在真机验收；P1 引擎、P2 通信包与启动打包已受控验收；P2-004 复审通过并已在本机 **安装 `dsh-video 0.2.0`**（link clean staging，root `fa7b0e2` + engine `54f4671`），真机验收进行中（入口/真实工程/画面与 Tool doctor/open/frame 已通过，编辑/导出/生命周期待验）。协调分支只含文档，实现位于 `dsh/p0-mode-shell`、`codex/p1-engine-spike-b4bf` 分支及草稿 PR #2/#3。开发基线为本机 DSH Desktop **0.2.1-rc.1**。
+## 开工入口
 
-- [当前状态与下一步](docs/STATUS.md)
-- [开发与协作规则](docs/DEVELOPMENT.md)
-- [产品范围](docs/product/PRODUCT.md)
-- [前端设计规划](docs/design/FRONTEND-DESIGN.md)
-- [决策记录](docs/DECISIONS.md)
-- [阶段路线](docs/ROADMAP.md)
-- [当前任务 P2-004：P2-002-B 复审修复](docs/tasks/P2-004-host-bridge-fixes.md)
-- [首任务交接（历史）](docs/handoffs/DSH-START.md)
-- [原始调研](docs/research/2026-10-17-video-workflows-and-dsh-plugins.md)
+1. [当前状态与任务](docs/STATUS.md)
+2. [开发与协作规则](docs/DEVELOPMENT.md)
+3. [工作区接手入口](docs/handoffs/README.md)
+4. [产品约定](docs/product/PRODUCT.md)与[前端设计](docs/design/FRONTEND-DESIGN.md)
 
-仓库中的原始方案、开发包及截图用于追溯，采纳范围以产品文档、决策和当前任务为准。
+[文档索引](docs/README.md) · [阶段路线](docs/ROADMAP.md) · [决策记录](docs/DECISIONS.md) · [历史状态](docs/STATUS-HISTORY.md)
+
+协调分支 `codex/project-foundation` 维护当前文档；实现分别位于 `codex/p1-engine-spike-b4bf` 和 `dsh/p0-mode-shell`。main 暂为初始提交，开发进展见草稿 PR [#1](https://github.com/heswy/dsh-video-editor/pull/1)、[#2](https://github.com/heswy/dsh-video-editor/pull/2)、[#3](https://github.com/heswy/dsh-video-editor/pull/3)。工作区可长期复用，不因任务或会话更名重开分支。
+
+原始方案、开发包及截图为证据；采纳范围以最新产品文档、决策和当前任务为准。概念图是设计提案，不是真机功能截图。

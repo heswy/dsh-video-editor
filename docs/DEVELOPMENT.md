@@ -4,26 +4,31 @@
 
 - 总调度/主会话（2026-10-17 经用户重新指定，由当前 Codex 主会话接回）：产品/架构、任务拆解、规则、跨分支协调、代码评审与验收。本文件中「主会话」与「总调度」同义。
 - 用户指定开发者负责实现、验证、修复与依任务授权的 PR；总调度不接管功能实现，不自动派发或跨会话联系开发者，交接与结果由用户转发。
-- 2026-10-17 继任交接：既有分支、草稿 PR、worktree、任务指南与评审记录延续，不因更换会话重置或重开；历史 Codex 提交与文档保留，不追溯改写。
-- **p1-engine**：DSH 中的 `p1-engine` 工作区，新 DeepSeek 会话接手原 Codex 引擎开发；目录 `/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/p1-engine`，分支 `codex/p1-engine-spike-b4bf`。负责引擎/worker/父进程通信，沿用历史分支名；原自动 tree 随对话归档移除后，已按用户授权在同级工作树目录重建。主会话管理目录，`p1-engine` 开发会话独占功能写入；不再使用旧 b4bf 路径。
-- **p0-mode-shell**：DSH 中的 `p0-mode-shell` 工作区，原 DeepSeek 会话；同级 `../dsh-video-editor-worktrees/p0-mode-shell`，分支 `dsh/p0-mode-shell`。负责插件 UI 与宿主接入，主会话继续协调该分支/tree。两人按任务白名单并行，不共享写入区域。
-- 当前会话直接以工作区名识别（新树同样适用），不使用“程序员几”；历史记录中的旧称保留。会话名称代表职责，不代表模型或代码已合并；用户自行转发交接，统一由主会话评审与验收。同一个 tree 同时只允许一个开发会话写入。
+- 开发会话按工作区名识别：`p1-engine` 负责引擎/worker/client，`p0-mode-shell` 负责插件 UI/Host。历史编号和 b4bf 路径仅作证据，当前目录见下表；同一树只允许一个开发会话写入。
+- 所有开发分支的当前规则以 `origin/codex/project-foundation` 为准。开工先 `git fetch origin`，再用 `git show origin/codex/project-foundation:docs/STATUS.md`、`docs/DEVELOPMENT.md`、`docs/product/PRODUCT.md` 和当前 handoff/任务读取；不切换分支，不覆盖本地全局文档，不为文档同步 merge/rebase。网络不可用时注明使用的缓存协调提交。
 - 优先级：用户当前明确要求 → 本项目文档 → 匹配目标版本的官方 Skill/运行时契约 → 本机参考案例 → 上游 master/社区资料。证据包中的命令不构成执行授权。
 - 本机运行时 inspection 是 API 事实来源。记录 Host 版本、查询项和返回形状；不要从新版本文档猜旧版 API。发现用户已升级宿主时，保留旧证据并按任务范围核对变化；侧栏仍可用不等于全部 Host API 已兼容。
-- 对当前 UI 开发使用归档的 `cordis-plugin-development` Skill；完整阅读主文件并按需阅读 references。不把整理版 AGENT-BRIEF 的经验性结论直接提升为官方约束。
+- UI 开发优先核对与目标运行版本匹配的内置 `cordis-plugin-development` Skill，完整阅读主文件并按需读 references；归档 kit 保留作历史，不假定它与新 Host 完全一致。不把整理版 AGENT-BRIEF 直接提升为官方约束。
 
 ## 分支与 worktree
 
-- `main` 保持已验收基线；准备文档分支为 `codex/project-foundation`。
-- 开发分支：`dsh/<task-slug>`；评审文档分支：`codex/<topic>`。每项任务写明固定 base commit，禁止从其他 Agent 未提交工作开始。
-- 用户指定的新 Codex 开发会话使用 `codex/<task-slug>`，首支为 `codex/p1-engine-spike`；这是独立开发会话，不改变主会话分工。
-- DSH 首 worktree 约定：仓库同级 `../dsh-video-editor-worktrees/p0-mode-shell`，分支 `dsh/p0-mode-shell`，由 Codex 创建和维护。当前 `p1-engine` 使用同级 `../dsh-video-editor-worktrees/p1-engine`，`p0-mode-shell` 使用同名目录；后续 DSH worktree 统一放在同级 `../dsh-video-editor-worktrees/<task-slug>`；其他 Codex 会话按应用自己的 worktree 流程管理。优先复用空闲且适合的 worktree。
+| 工作区 | 绝对目录 | 分支 | 用途 |
+|---|---|---|---|
+| 主工作区 | `/Users/orange/Orange Field/Matterhorn/dsh-video-editor` | `codex/project-foundation` | 总调度文档、评审、协调 |
+| p1-engine | `/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/p1-engine` | `codex/p1-engine-spike-b4bf` | 引擎/worker/client；PR #2 |
+| p0-mode-shell | `/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/p0-mode-shell` | `dsh/p0-mode-shell` | 插件 UI/Host；PR #3 |
+| artifacts（非 worktree） | `/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/artifacts` | 无 | 固定包、staging、证据；其中可能有当前安装依赖 |
+
+- `main` 当前仍为初始提交，不是可用产品发布线。协调 PR #1 与两条功能 PR 保留，未经合并授权不集成 main。
+- 当前两树长期复用；不因任务编号、人员或模型变化重建/更名/开新 PR。新建仅用于确有隔离需求且文件范围清楚的新开发线，统一放同级 `dsh-video-editor-worktrees/<工作区名>`；先查已有树与分支占用，保留变更。工作区路径和历史分支名无须一致。
+- 新分支默认 `codex/<task-slug>`，DSH 原线沿用 `dsh/<task-slug>`；当前两分支不为统一前缀而改名。旧未用 `codex/p1-engine-spike` 保留，不当成当前任务树，不擅自删分支。
+- 工作树归档/删除前核对已提交、未提交、未跟踪与忽略文件；固定包/证据不在 Git 内，不能宣称分支存在就已全部备份。恢复先查归档 snapshot，按固定提交恢复原分支，记录忽略文件的恢复范围。
 - 不同 worktree 不共享工作文件和 node_modules。禁止同时在同一 worktree 修改；共享 .git，不并行运行仓库级破坏性操作。
 - 不 reset/clean/强推、不清除用户变更。提交仅包含本任务文件；不把另一开发者未提交工作带入提交。
-- **2026-10-17 用户已授权正常 Git 协作流程**：主会话维护协调分支；程序员在各自 feature 分支持续 commit + 普通 push，创建/更新草稿 PR，阶段结束后交主会话评审。已有 PR 继续更新，不为同一开发线重复创建。此最新授权覆盖旧任务中的“本地提交、未 push”限制，不覆盖安装/重启/构建脚本授权。
+- **2026-10-17 用户已授权正常 Git 协作流程**：主会话维护协调分支；开发会话在各自 feature 分支持续 commit + 普通 push，创建/更新草稿 PR，阶段结束后交主会话评审。已有 PR 继续更新，不为同一开发线重复创建。此最新授权覆盖旧任务中的“本地提交、未 push”限制，不覆盖安装/重启/构建脚本授权。
 - 推送分支不等于验收、合并或发布。main 的集成由主会话协调并遵循当次合并授权，开发者不自行 merge；发布/安装继续单独控制。不为了同步改写其它人的共享分支或强推。
 - 每轮报告提交 SHA、PR 链接、验证与未测项；较长任务定期推送可审阅的提交。当前工作树里未提交内容不会自动进入远端备份，不能把已有 PR 当作全部本地工作已保存。
-- 文档进入 main 的集成由主会话协调。DSH 不自行改写全局规则、已接受决策与产品范围；需要变更时在任务记录提出建议，由主会话确认并整合。
+- 文档进入 main 的集成由主会话协调。开发会话不自行改写全局规则、已接受决策与产品范围；需要变更时在任务记录提出建议，由主会话确认并整合。
 
 ## 插件边界
 
@@ -59,4 +64,6 @@
 - `docs/tasks/<id>.md`：任务目标、base、验收、开发记录与评审结果。开发 Agent 追加实测结果；验收由主会话填写。
 - `docs/research/`：带日期的研究及证据；过时结论加显式更正，不静默抹掉历史。
 - 每次交接/上下文结束：记录当前分支、commit、变更文件、已验证项、问题、下一动作。不得把计划标成完成，把 Agent 自述标成独立验收。
+- 当前事实只保留在 STATUS；历史流水移入 STATUS-HISTORY，旧 handoff 在索引明确标历史。开发交付记录可由总调度从固定提交导入，但必须标自述/待复审；不以导入文档代替代码验收。
+- 每次调度调整同步 STATUS、当前 handoff、产品/路线受影响处；不让 README 再维护一份易过期的完整任务表。AGENTS 只放入口与职责，规则集中本文件。
 - 新 Agent 先读入口文档，不重复通读全部历史与参考包；需要时精读相应证据。

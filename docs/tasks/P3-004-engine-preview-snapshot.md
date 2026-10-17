@@ -2,7 +2,9 @@
 
 > 2026-10-17 总调度下发，依据 [P3-003 复审](../reviews/P3-003-review-01.md) R1 与编辑器画布前置需求（D023/D024）。小任务，引擎侧。用户已授权正常 feature push/草稿 PR（D016）；安装/启停/重启/merge 不授权。
 
-执行：**程序员 1**；工作树 `/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/p1-engine`，分支 `codex/p1-engine-spike-b4bf`，开工 HEAD `aae05e9`。若已变化先报告实际 HEAD。
+执行：**p1-engine**；工作树 `/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/p1-engine`，分支 `codex/p1-engine-spike-b4bf`，功能基线 `aae05e9`。工作树整理的 AGENTS 文档提交可使 HEAD 前移，报告实际 HEAD 与功能差异；不 reset。
+
+> 产品同步：用户已确认 v0.3 左画布直接编辑、右 AI 常驻，移除底部场景卡片。本引擎任务范围不变；本文件是当前有效任务，旧人员编号交接仅作历史。
 
 ## 0. 开工顺序
 
@@ -58,6 +60,6 @@
 - 重点核：快照不可变、路径包含、TTL/release/shutdown 清理、revision 语义、与既有 P2/P3 方法无回归。
 - 通过后下发 P3-005 编辑器画布（Host 精确资产路由 + sandbox iframe + 播放/seek + 画布点选/描边）。
 
-## 开发记录（程序员 1）
+## 开发记录（p1-engine）
 
 （待填写：起始 HEAD、提交、schema 变更、快照 API、测试数字、包摘要、证据、未测项）
