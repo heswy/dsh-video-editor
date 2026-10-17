@@ -16,7 +16,7 @@
 
 - 协调文档：codex/project-foundation → [PR #1](https://github.com/heswy/dsh-video-editor/pull/1)。
 - 程序员 1：codex/p1-engine-spike-b4bf → [PR #2](https://github.com/heswy/dsh-video-editor/pull/2)，引擎交付至 54f4671。
-- 程序员 2：dsh/p0-mode-shell → [PR #3](https://github.com/heswy/dsh-video-editor/pull/3)，首次远端快照 057f56c；正在进行的未提交 Host 接入不在该快照内。
+- 程序员 2：dsh/p0-mode-shell → [PR #3](https://github.com/heswy/dsh-video-editor/pull/3)，PR 跟随其持续提交；后续 Host 接入提交由程序员 2 更新并另交评审，本轮不据远端前移推断其已通过。
 
 后续继续推送原分支，更新原 PR，不重复开同一开发线 PR。尚未合并 main 或发布；因此仓库默认 main 页面暂仍是初始内容，完整进展在分支与 PR 中。并行分支包含共享基础文档，未来集成由主会话统一处理文档差异，不在开发者有未提交工作时擅自 rebase/覆盖。
 
