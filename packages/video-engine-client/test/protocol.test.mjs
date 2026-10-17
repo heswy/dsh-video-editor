@@ -199,7 +199,7 @@ test("normal dispose lets an isolated parent exit before its shutdown deadline",
   }
 });
 
-test("isolated parent handles a worker that closes stdin but remains alive", async () => {
+test("isolated parent separates sent requests from refusals after a stdin failure", async () => {
   const dir = await mkdtemp(resolve(tmpdir(), "dsh-engine-client-epipe-"));
   const registry = resolve(dir, "registry.json");
   const parent = resolve(import.meta.dirname, "fixtures/epipe-parent.mjs");
@@ -226,15 +226,58 @@ test("isolated parent handles a worker that closes stdin but remains alive", asy
     });
     assert.equal(code, 0, stderr);
     assert.doesNotMatch(stderr, /Unhandled 'error' event/);
-    assert.deepEqual(JSON.parse(stdout), {
-      caught: ["E_TRANSPORT", "E_TRANSPORT", "E_TRANSPORT"],
-      state: {
-        state: "disposed",
-        pending: 0,
-        stderrBytes: 0,
-        stderrTruncated: false,
+    const parsed = JSON.parse(stdout);
+    assert.equal(parsed.held, 3);
+    assert.deepEqual(parsed.sent, [
+      {
+        method: "edit",
+        code: "E_TRANSPORT",
+        uncertain: true,
+        jobUnknown: false,
       },
+      {
+        method: "frame",
+        code: "E_TRANSPORT",
+        uncertain: false,
+        jobUnknown: true,
+      },
+      {
+        method: "render",
+        code: "E_TRANSPORT",
+        uncertain: false,
+        jobUnknown: true,
+      },
+      {
+        method: "inspect",
+        code: "E_TRANSPORT",
+        uncertain: false,
+        jobUnknown: false,
+      },
+    ]);
+    assert.deepEqual(parsed.refused, [
+      "E_CLIENT_STATE",
+      "E_CLIENT_STATE",
+      "E_CLIENT_STATE",
+      "E_CLIENT_STATE",
+    ]);
+    assert.ok(
+      ["failed", "disposed"].includes(parsed.failureState),
+      `unexpected post-failure state: ${parsed.failureState}`,
+    );
+    assert.deepEqual(parsed.state, {
+      state: "disposed",
+      pending: 0,
+      stderrBytes: 0,
+      stderrTruncated: false,
     });
+    assert.equal(parsed.workerExited, true);
+    assert.deepEqual(parsed.delivered, [
+      "doctor",
+      "edit",
+      "frame",
+      "render",
+      "sync",
+    ]);
     assert.doesNotThrow(() => process.kill(sentinel.pid, 0));
   } finally {
     sentinel.kill("SIGKILL");
