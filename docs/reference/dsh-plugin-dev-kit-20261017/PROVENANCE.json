@@ -1,0 +1,27 @@
+{
+  "capturedAt": "2026-10-17",
+  "zipSource": "/Users/orange/Desktop/dsh-plugin-dev-kit-20261017.zip",
+  "zipSha256": "84111b107251540913cb87927f911bea3a08a664e7b4369d479419404f40e2fa",
+  "targetHost": "DSH Desktop 0.2.0-rc.2",
+  "files": {
+    "AGENT-BRIEF.md": "292691c7d1dbbfbfb6dc53b0d1b6e50d053b16bd47582f2c45d872bf1ad5ad9f",
+    "README.md": "bd54e0c1ae7ad286666bac6b7263c5df3f1be9bb0bcff09472a636b23f135b04",
+    "VERSION.txt": "c192ab931148621ea902830d7b38aa5bcb2648487b306aaa1ee374826a75c0b5",
+    "skill/cordis-composition-reference/SKILL.md": "6583a81d9f4de07032ebdee0d5ea1a925067277805798936a5297cf2bac4f5e3",
+    "skill/cordis-composition-reference/references/packages.md": "20d4c693baaca4b9952e78815b1763eaa325ecf147cfffc2d1546291f19eb2c1",
+    "skill/cordis-plugin-development/SKILL.md": "9e25dc1e310a77ed3e59e80ddaa3ce275b0336da8c84ff9c560840fba2c62595",
+    "skill/cordis-plugin-development/references/host-plugin.md": "ccfc3e1c7a98023f391eb24ad2f1cee1bcb984a26e77bcd994090041049eaa4b",
+    "skill/cordis-plugin-development/references/mcp-bundle.md": "944b431411ba50582d690f03aa239044556d7a1395d50d3db69cff3920f61ff3",
+    "skill/cordis-plugin-development/references/practices.md": "e41e15e6062b6e382dd500f066bde5e458142d2ecccfb4655fdffbdc41c8f7ae",
+    "skill/cordis-plugin-development/references/ui-plugin.md": "830a1710af97e3930ba5f29062e46ff78f7be3337995fbb20e85867f80339e23",
+    "skill/cordis-plugin-development/references/user-actions.md": "ecc7f1226536584d781af8f1f9dee30d7262943dada67bfd997eb7902b34a9be",
+    "skill/cordis-plugin-development/references/verification.md": "25b24964778652c2ae675b496ead3025dd8246d50ff9f8b167aee0d053a99f68",
+    "skill/cordis-plugin-development/templates/decoration/client.js": "bb17be70ae65f05d2cb26dd18f54448d706a89a1ba4da7ee3fe46ed46ac89f69",
+    "skill/cordis-plugin-development/templates/decoration/cordis.patch.yml": "542639675b704bbdfa7c6694011c6e57d05c403e4499baa35731902a9063e7fc",
+    "skill/cordis-plugin-development/templates/decoration/index.js": "87edbe4014ee569545ade02f7aa1915f2d2135ffebad84016a247d4542d6f39a",
+    "skill/cordis-plugin-development/templates/decoration/package.json": "a5c7505401c3ff0d97ef8305853533810be9672cd2322c39c630e8a5c3cc1201",
+    "skill/cordis-plugin-development/templates/mcp/cordis.patch.yml": "9a828bb02bd1aa07a6f873d823b725e85279b7ddf4bebbba40aa391ac501e9b5",
+    "skill/cordis-plugin-development/templates/mcp/package.json": "7ca0d8b112887f2619f387054cf6f926079addf4fe59dd5a2bc36078c4a5352e",
+    "skill/editing-cordis-compositions/SKILL.md": "974cc1e115bf07a8de7229c20a7e7aa7fa5cc5bfe0fbc22f86b5bc776a7298e6"
+  }
+}

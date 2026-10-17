@@ -1,0 +1,14 @@
+# 项目决策
+
+状态：accepted 为已采纳，proposed 为待验证；变更通过新增替代记录保留原因。
+
+| ID / 日期 | 决定 | 状态与理由 |
+|---|---|---|
+| D001 / 2026-10-17 | Codex 管产品/架构/任务/评审，用户指定 DSH Agent 实现/验证/修复 | accepted；遵循用户个人开发工作流 |
+| D002 / 2026-10-17 | 顶部「普通｜视频」作为主入口，模式是工作区视图而非 Agent preset | accepted；来自用户截图与明确要求；具体 Slot 待核实 |
+| D003 / 2026-10-17 | 当前以本机 Desktop 0.2.0-rc.2 及其官方内置 Skill 为宿主基线 | accepted；先前 master 调研不作为当前 API 契约 |
+| D004 / 2026-10-17 | 原生 Slot 工作区，主题控件；不把整页编辑器做成独立 iframe 应用 | accepted；匹配宿主规范；视频画布隔离方式仍待验证 |
+| D005 / 2026-10-17 | 优先验证 HyperFrames；UI/Tool 共享 Host 写入入口，内容权威来源唯一 | proposed；通过 P1 编辑/持久化/渲染验证后冻结接口 |
+| D006 / 2026-10-17 | DSH 分支 dsh/p0-mode-shell；用户建立同级独立 worktree；首轮不授权安装或 push | accepted；固定基线与职责，避免影响正在使用的 Desktop profile |
+
+未决：顶部公共 Slot、视图保持机制、宿主依赖解析、自定义 Host 通信、HyperFrames 固定版本与预览隔离。答案先进入任务实测记录，再形成新决定。
