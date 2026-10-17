@@ -1,5 +1,7 @@
 # 当前项目状态
 
+最新交接（2026-10-17）：P0-003 核心路径真实证据已接受，P0 尚未最终验收；按 [联合评审](reviews/P0-P1-2026-10-17-joint-review.md) 与 [P0-004](tasks/P0-004-lifecycle-and-acceptance.md) 修重挂缺陷并补关键测试。先修复/打新包交回复审，新包替换另需用户授权。Codex 引擎会话已通过 P1-001 并行进入 worker，不由本 DSH 会话操作。
+
 更新：2026-10-17。此文件由 Codex 主会话维护。
 
 ## 当前事实
@@ -17,16 +19,14 @@
 | 项目准备与长期记忆 | Codex | codex/project-foundation；主工作区 | 已完成，本地提交交接；归档完整性及链接检查通过 |
 | [P0-001](tasks/P0-001-mode-shell.md) | DSH 调查 / Codex 评审 | dsh/p0-mode-shell；同级 dsh-video-editor-worktrees/p0-mode-shell | a85308a / dcc0ae4 已审阅，调查验收通过；未做插件 live 验证 |
 | [P0-002](tasks/P0-002-mode-shell-implementation.md) | DSH 实现 / Codex 评审 | 继续 dsh/p0-mode-shell 与原 worktree | 8ebf922 / a31ee51 主要修复复审通过；本地检查 44/44，固定包已产生；未安装 |
-| [P0-003](tasks/P0-003-install-validation.md) | 原 DSH 会话 | 原 P0 worktree | 安装/真页面验证准备好，待用户明确授权 |
+| [P0-003](tasks/P0-003-install-validation.md) | 原 DSH 会话 | 原 P0 worktree | 0104e0e 核心路径真实证据已接受，已安装启用；尚有缺陷与关键未测项 |
 | [前端设计规划](design/FRONTEND-DESIGN.md) | Codex | codex/project-foundation；主工作区 | v0.1 方向草案已整理；未实现/未真页面验证 |
 
 ## 下一动作
 
-并行线：用户在新 Codex 会话打开 `/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/p1-engine-spike`，按 P1-001 开始引擎验证。该会话只改 spike 与自身记录，不等 P0 修复，也不改 DSH Client 文件。
-
-1. Codex 将 [修复复审](reviews/P0-002-review-02.md) 与 P0-003 同步到干净的原 DSH worktree，不改其功能实现。
-2. 用户可在 DSH 明确授权安装/启用指定 tarball，随后执行 P0-003；新 Codex 引擎会话继续 P1-001，无需等待安装。
-3. DSH 返回真实页面与状态恢复证据，由主会话验收。当前未合并实现到协调分支或 main。
+1. DSH 执行 P0-004，复用当前目录/分支，不改引擎文件。
+2. 先提交缺陷修复、正式测试和新固定包，交主会话复审；未获更新包授权前保持已安装 0.1.0 不变。
+3. 后续补验专用静态测试会话中的引用/文件草稿、阅读位置及键盘/reduced-motion；不再用活跃会话试选。
 
 ## 阻塞与未验证
 
