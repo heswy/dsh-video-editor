@@ -4,7 +4,7 @@
 
 用户已确定入口：DSH 左侧导航「上下文洞察」之后、「工作区」之前的单入口 **Vedio Editor**（细线条视频图标）；视频模式进入插件工作区，普通模式保留 DSH 原有体验。这里的工作区视图切换，不是修改 Agent preset。早期顶部「普通｜视频」方案已被 D011 替代，仅保留历史证据。
 
-当前阶段：P0 侧栏入口与极简空状态已在真机安装的 0.1.3 上验收；P1 引擎、P2 通信包与启动打包已受控验收；P2 Host 接入在分支上待复审修复（R1–R4），尚未跑通真实宿主内的引擎链。协调分支只含文档，实现位于 `dsh/p0-mode-shell`、`codex/p1-engine-spike-b4bf` 分支及草稿 PR #2/#3。开发基线为本机 DSH Desktop **0.2.1-rc.1**。
+当前阶段：P0 侧栏入口与极简空状态已在真机验收；P1 引擎、P2 通信包与启动打包已受控验收；P2-004 复审通过并已在本机 **安装 `dsh-video 0.2.0`**（link clean staging，root `fa7b0e2` + engine `54f4671`），真机验收进行中（入口/真实工程/画面与 Tool doctor/open/frame 已通过，编辑/导出/生命周期待验）。协调分支只含文档，实现位于 `dsh/p0-mode-shell`、`codex/p1-engine-spike-b4bf` 分支及草稿 PR #2/#3。开发基线为本机 DSH Desktop **0.2.1-rc.1**。
 
 - [当前状态与下一步](docs/STATUS.md)
 - [开发与协作规则](docs/DEVELOPMENT.md)

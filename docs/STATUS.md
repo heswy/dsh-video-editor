@@ -10,6 +10,7 @@
 - 用户最新确认改为左侧「上下文洞察」下、「工作区」上单入口 **Vedio Editor** + 细线条图标，替代顶部胶囊；UI 简洁克制。产品见 `product/PRODUCT.md`。
 - 已归档计划、截图与 DSH 开发包。上一轮已确认 kit 的 16 个 skill 文件与本机 app.asar 相同；README/AGENT-BRIEF 是整理材料。
 - 当前实际 Host 为 Desktop 0.2.1-rc.1（用户侧升级）；P0-006 已重新核对侧栏，P2-002-A 核实 Host API。0.2.0-rc.2 证据保留为历史，首轮 master 建议不直接沿用。
+- **2026-10-17 已安装 `dsh-video 0.2.0`**：用户授权后卸载 0.1.3，以 Plugin Manager link 方式指向 clean staging（root `fa7b0e2` + engine `54f4671`）。真实 Host 内 UI 与 `video_engine` Tool 初步验证通过（doctor/open/frame/status），真机验收进行中；0.1.3 回滚目录与固定包保留。见 [真机验收记录](research/P2-004-live-acceptance.md)。
 
 ## 远端与草稿 PR
 
@@ -47,24 +48,26 @@
 | [P2-002-A Host 契约](tasks/P2-002-host-bridge.md) | 程序员 2 | 原 P0 worktree | afcf57d 调查验收通过；ADR-0002 决策收敛 |
 | [P2-003 启动/包入口](tasks/P2-003-engine-launch-packaging.md) | 程序员 1 | 原 b4bf worktree/分支 | 54f4671 已复审通过；Node22/24 各15通过+1跳过，Desktop24.21真实链通过；固定包见评审新摘要 |
 | [P2-002-B Host 接入](tasks/P2-002B-host-integration.md) | 程序员 2 | 原 P0 worktree | e595d4e 首审：83/83 与根包匹配；R1对象绑定/R2Tool截断/R3快照验证/R4版本门禁待修 |
-| [P2-004 R1–R4 修复](tasks/P2-004-host-bridge-fixes.md) | 程序员 2 | 原 P0 worktree/分支 | 已复审通过：独立 92/92；tarball 17 文件与 `fa7b0e2` 字节一致；staging 真实链独立复跑成功（H.264/取消/清理）；待安装授权 |
+| [P2-004 R1–R4 修复](tasks/P2-004-host-bridge-fixes.md) | 程序员 2 | 原 P0 worktree/分支 | 已复审通过并安装 0.2.0（link clean staging）；真机验收中：UI 真实工程/画面、Tool doctor/open/frame/status 通过；编辑/导出/生命周期待验 |
 | [P3-001 多 Scene/修订 spike](tasks/P3-001-engine-multiscene-spike.md) | 程序员 1 | 原 b4bf worktree/分支 | 已下发：多 Scene 结构、Scene 操作、人工+AI 合并、撤销/重开、素材、工程创建；只出证据/提案 |
 
 ## 下一动作
 
-并行线：P2-004 已通过复审，等待用户安装授权与真机验收；程序员 1 继续 P3-001 spike。ADR-0002 固定共同契约，文件边界不交叉。
+并行线：P2-004 已安装、真机验收进行中；程序员 1 继续 P3-001 spike。ADR-0002 固定共同契约，文件边界不交叉。
 
-1. 用户已授权安装 0.2.0（2026-10-17）。先由程序员 2 重建干净 staging（真实链复跑已把 demo 标题追加测试后缀）并出新鲜真实链证据；随后用户在 Plugins 页面安装启用，总调度按 [P2-004 复审](reviews/P2-004-review-01.md) 清单做真机验收：入口、打开示例、target/编辑/帧/导出/取消、错误显示、明暗/窄窗、卸载重启、Tool、artifact 字节。
+1. 真机验收进行中：已完成加载/侧栏入口、真实工程/画面、target 显示、Tool doctor/open/frame/status；剩余 UI 编辑→保存→更新画面、target 切眉题、导出/取消、冲突/错误显示、返回对话保持、明暗/窄窗、停用启用重启、artifact 字节。记录见 [真机验收记录](research/P2-004-live-acceptance.md)。
 2. 真机验收发现缺陷按线派任务：根插件归程序员 2，引擎包归程序员 1；不自行改 profile、不自动 merge/发布。
 3. 程序员 1 按 [P3-001](tasks/P3-001-engine-multiscene-spike.md) 继续多 Scene/修订合并 spike；结果回来后总调度冻结 P3 契约。
 4. 总调度复审 P3-001 证据，把 [P3 创作闭环草案](research/P3-ai-creation-loop-plan.md) 冻结为 P3-003/P3-004 任务；P3 暂不开新树，若需端到端负责人先建整合分支。
-5. 总调度维护协调分支文档与 PR #1；保持 main 未合并、0.1.3 可回滚；用户已授权普通 feature push/草稿 PR，不自动 merge/发布。
+5. 总调度维护协调分支文档与 PR #1；保持 main 未合并；0.1.3 回滚可用（`…/p0-mode-shell/51c82a9/rollback-0.1.3/package` 与固定包）；用户已授权普通 feature push/草稿 PR，不自动 merge/发布。
 
 ## 阻塞与未验证
 
-0.1.3 核心侧栏/主面板和启停证据通过。main 内容缺少定向 AX 通道，返回按钮、菜单焦点、主题/字号/窄窗、草稿/引用/附件、静态阅读位置、冷启动等仍未测，采用人工清单，不重复不安全自动化。P2-004 的 R1–R4 已在本地标签/staging 范围独立复核通过，但**真实 DSH 安装/激活/页面交互仍未验证**，安装授权未给；尚无 DSH 内引擎端到端、不可信代码隔离或完整 AI 创作验收。P2 client 的显式 Node22/24 测试仅代表本机小版本和受控 fixture。
+0.1.3 核心侧栏/主面板和启停证据通过。main 内容缺少定向 AX 通道，返回按钮、菜单焦点、主题/字号/窄窗、草稿/引用/附件、静态阅读位置、冷启动等仍未测，采用人工清单，不重复不安全自动化。0.2.0 已真机安装，入口/真实工程/画面与 Tool doctor/open/frame/status 通过；**UI 编辑保存、导出/取消、冲突错误、生命周期与主题窄窗仍未验证**；尚无多 Scene、AI 创作、用户素材、不可信代码隔离。P2 client 的显式 Node22/24 测试仅代表本机小版本和受控 fixture。
 
 ## 最近交接
+
+2026-10-17 真机安装与首轮验收：用户授权后卸载 0.1.3，以 Plugins link 安装 `dsh-video 0.2.0`（clean staging，root `fa7b0e2` + engine `54f4671`，INTEGRITY `cc4490da…`，staged Host `07442c86…`）。真实 Host 内：侧栏 Vedio Editor 选中、真实工程/画面/元信息/target 显示；`video_engine` Tool 注入本会话，doctor/open/frame(2.5s)/status 全部通过，PNG `efca9296…`/275,744 B/1280×720/`survivors:[]`（与 P1 受控帧一致）。待验：UI 编辑保存/导出取消/冲突/生命周期/明暗窄窗/artifact 字节。见 [真机验收记录](research/P2-004-live-acceptance.md)。
 
 2026-10-17 用户授权安装 0.2.0：先由程序员 2 重建干净 staging（复审真实链复跑把 demo 标题追加了测试后缀）并出新鲜证据；随后用户在 Plugins 页面安装启用，总调度做真机验收。0.1.3 回滚包保留，main 不合并。
 

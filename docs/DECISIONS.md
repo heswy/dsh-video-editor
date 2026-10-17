@@ -36,3 +36,5 @@
 2026-10-17 D017 / accepted：总调度由原 Codex 主会话交接给 DSH 继任会话；两个程序员会话、工作区、分支与草稿 PR 不变，交接由用户粘贴转发。既有分支/worktree/任务/评审记录延续，不重置、不重开；历史 Codex 提交与文档保留。
 
 2026-10-17 D018 / proposed：P3 首版由 DSH Agent 通过 Tool 驱动创作，插件不内置模型凭据；内容为受模板约束的 Code-as-Video（HTML + GSAP + 稳定 ID），任意 Agent 代码安全隔离后置；人工与 AI 共用 Host 写入入口，写入带 `expectedRevision` + `actor`，冲突显式返回不静默覆盖。待 P3-001 spike 与契约评审后确认。
+
+2026-10-17 D019 / accepted：用户授权并完成 `dsh-video 0.2.0` 真机安装——卸载 0.1.3 后以 Plugin Manager link 指向 clean staging（root `fa7b0e2` + engine `54f4671`）；回滚保留 0.1.3 固定包与解包目录，main 不合并。安装后真机验收按 [P2-004-live-acceptance](research/P2-004-live-acceptance.md) 清单继续，未通过前不宣称 P2 完成。

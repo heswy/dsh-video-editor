@@ -1,0 +1,41 @@
+# P2-004 真机安装与验收记录
+
+日期：2026-10-17。执行：用户（安装操作）+ 总调度（验收与记录）。范围：DSH Desktop `0.2.1-rc.1`、本机 profile。
+
+## 安装事实
+
+- 用户授权后，先在 Plugins 页面卸载已装 `dsh-video 0.1.3`（DSH 对第三方插件不支持原地升级），再以 **Add plugin → 本地目录 link** 方式安装 `0.2.0`。
+- 安装目标：`/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/artifacts/p2-b/staging-54f4671-fa7b0e2-clean/bundle`
+- profile 依赖：`"dsh-video": "link:/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/artifacts/p2-b/staging-54f4671-fa7b0e2-clean/bundle"`；`node_modules/dsh-video` 为指向该目录的符号链接。
+- staging 来源：代码 `fa7b0e2` + 已验收引擎 `54f4671`；`INTEGRITY.json` SHA-256 `cc4490da5285887b47868fe2e868560792e5cc690a9f8f037b6e1131c07a2f11`；staged Host `bundle/host/bridge.js` SHA-256 `07442c86a4c4bc072576719efe99be5615e7b55437d3e9183ec8ef0e5fde0fee`；源文件 bundle 16 / client 12 / worker 15；`rootDirty:false`。
+- 回滚保留：0.1.3 固定包 `…/artifacts/p0-mode-shell/51c82a9/dsh-video-0.1.3.tgz`（SHA-256 `82def6de6129333179e015b9e841d967517ccc0def92cc48f677f0082a77f897`）及解包目录 `…/51c82a9/rollback-0.1.3/package`，可经 Add plugin 直接装回。
+- 注意：staging 目录内含指向 engine-client/worker 的相对链接，**不可移动或删除**，否则插件失效。
+
+## 已真机验证（2026-10-17 约 17:20）
+
+事实来源：真实页面截图（用户提供，含私人侧栏信息，不直接入库）+ 本会话 Tool 实际返回。
+
+1. **加载与入口**：插件在 profile 中启用；左侧导航「上下文洞察」之下、「工作区」之上出现并选中 **Vedio Editor**（细线条视频图标），工作区渲染为真实编辑界面。
+2. **真实工程界面**：标题「让创意成为影像」；右上元信息 `1280×720 · 5.00s`；主画面显示真实渲染帧（深绿渐变、眉题、标题、副题、圆点、底部说明）；右侧「更新画面 / 导出 MP4 / 重新读取」、target 选择器 `hf-title · text, timing`、标题输入、开始/时长、保存修改、属性区。
+3. **Tool 注入**：`video_engine` 已作为本会话可用 Tool 出现。
+4. **Tool doctor**：Node `v24.21.0`、HyperFrames/SDK `0.8.167`、GSAP `3.15.0`、Chrome `155.0.8059.79`、FFmpeg/ffprobe `8.0.1`。
+5. **Tool open**：受控 `demo` revision `135a529…`、1280×720、5s；7 个元素含 `hf-eyebrow`（仅 text，位于前）与 `hf-title`（text+timing），与 R1 的眉题在前结构一致；资产清单含字体/GSAP/入口及 SHA。
+6. **Tool frame + status**：2.5 秒抽帧 job 成功，PNG 275,744 B、SHA-256 `efca929677830434624a262bc13b2f6e1dd39af70619e3455c6753ac079441db`、1280×720、frame 75、`survivors:[]`、`cleaned:true`；该 hash 与 P1 受控证据一致，说明真实链路确定性。
+7. **安装状态**：`node_modules/dsh-video/package.json` 为 `0.2.0`；0.1.3 已移除（回滚目录保留）。
+
+## 待验清单（继续真机验收）
+
+- UI 编辑闭环：改标题/时序 → 保存修改 → 更新画面 → 新 revision 的帧（旧帧不冒充）。
+- target 选择器切到 `hf-eyebrow`：仅显示 text、隐藏 timing；切回 `hf-title` 正常。
+- 导出 MP4：真实状态/进度、成功产物可播放、取消行为。
+- 修订冲突与错误就近显示（例如旧 revision 保存）。
+- 返回对话保留会话/草稿；再次进入保留工程与播放位置。
+- 明暗主题、窄窗、字号；插件停用/启用/重启、worker 启停与孤儿清理。
+- Tool 的 edit/close 路径与 UI 共用 dispatcher（可在验收中另测，避免与用户手动编辑冲突）。
+- artifact 路由浏览器字节读取（PNG/MP4）。
+
+## 当前限制
+
+- 真实链仍是受控 `demo` 工程，不含用户素材、多 Scene、AI 生成；P3 尚未开始。
+- staging 为开发 link 快照，非可移植发行包；移动/删除目录会使插件不可用。
+- 未做 OS 沙箱/多用户权限；不能宣称任意生成代码安全。
