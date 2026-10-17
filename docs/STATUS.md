@@ -35,7 +35,9 @@
 
 ## 最近交接
 
-2026-10-17 工作区更正：用户新会话自动创建 b4bf worktree，核对与预建 tree 同为 831a64d、两者均干净。采用自动 tree，分支 codex/p1-engine-spike-b4bf；原预建 tree 暂留未用，不并行写入同一引擎任务。不影响 DSH P0 tree。
+2026-10-17 工作树管理范围：用户要求删除预建 p1-engine-spike tree，仅保留自动 b4bf 作为引擎开发工作树。移除前确认预建 tree 干净、无独有提交、无忽略文件。今后这里只管理 DSH tree，不操作其他 Codex 会话的 tree。
+
+2026-10-17 工作区更正：用户新会话自动创建 b4bf worktree，核对与预建 tree 同为 831a64d、两者均干净。采用自动 tree，分支 codex/p1-engine-spike-b4bf；原预建 tree 随后已按用户要求移除，旧分支保留未用；主会话今后只管理 DSH worktree，其他 Codex 会话自行管理其工作树。不影响 DSH P0 tree。
 
 2026-10-17 P0-B 修复复审：实读 8ebf922/a31ee51，复跑 44 项检查通过，已产出并校验固定 tarball（来源与 SHA 见 review-02）；可进入受控安装验证，用户尚未授权执行安装。P0 与 P1 文件边界无冲突，P1 继续独立推进。晚到 leading 注册失败场景仍列为边界补验项。
 

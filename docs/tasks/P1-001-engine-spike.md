@@ -6,7 +6,7 @@
 worktree：`/Users/orange/.codex/worktrees/b4bf/dsh-video-editor`（用户新会话自动创建，现作为唯一活动引擎工作区）。
 base：`831a64df399215ca2074874a6ac904bdca587329`；自动 worktree 起点与原规划相同。Codex 已从 detached HEAD 建立上述分支并同步本路径更正；开工记录实际 HEAD。
 
-原预建目录 `/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/p1-engine-spike` 与分支 `codex/p1-engine-spike` 暂留未使用；不要在两个目录同时执行本任务。
+原预建目录 `/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/p1-engine-spike` 已按用户要求移除；旧分支 `codex/p1-engine-spike` 保留但未使用。后续由本开发会话自行管理其 worktree/分支，主会话不再操作这个工作区。
 
 ## 目标
 
