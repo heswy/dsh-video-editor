@@ -53,3 +53,7 @@ P1-001 已通过本机单 Scene 可行性验收。读原研究与 [ADR-0001](../
   `86a8ed261e76283da602de17e1e2aec8f61a7398d816c8bd160bef73d658a863`）和
   `worker.png`（`efca929677830434624a262bc13b2f6e1dd39af70619e3455c6753ac079441db`）。
   仅本机 POSIX 受控 fixture，非安全沙箱；DSH 生命周期集成留 P2。
+- R1 首审修复：在 projectId 关闭开始时同步建立 lifecycle gate；并发 open/inspect/edit/
+  frame/render 返回 `E_PROJECT_CLOSING`，重复 close 合并排空，close 完成后才可 reopen。新增真实
+  官方 CLI 回归覆盖运行中 render、两个 close、并发内容请求、产物保留、进程 sentinel 和 reopen；完整
+  结果为协议 7/7、真实作业 3/3（最终完整复跑分别为 7.35 秒、55.79 秒），细节见研究记录。

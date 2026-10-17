@@ -18,6 +18,7 @@ let store,
   closing = false,
   shutdownPromise,
   diagnosticBytes = 0;
+const projectClosures = new Map();
 function diagnostic(stage) {
   const line = `[worker] ${stage}\n`;
   if (diagnosticBytes + line.length <= 16384) {
@@ -50,6 +51,24 @@ async function shutdown() {
   })();
   return shutdownPromise;
 }
+function closeProject(projectId) {
+  const existing = projectClosures.get(projectId);
+  if (existing) return existing;
+  // This is intentionally synchronous before the first await. All subsequent
+  // stdin requests observe the lifecycle gate while the old jobs drain.
+  store.beginClose(projectId);
+  const closingProject = (async () => {
+    await jobs.drain(projectId);
+    await store.queue(projectId, () => store.completeClose(projectId));
+    return { projectId, closed: true };
+  })();
+  projectClosures.set(projectId, closingProject);
+  closingProject.then(
+    () => projectClosures.delete(projectId),
+    () => projectClosures.delete(projectId),
+  );
+  return closingProject;
+}
 async function method(name, p) {
   if (closing && name !== "shutdown")
     fail("E_SHUTDOWN", "Worker is shutting down");
@@ -60,11 +79,11 @@ async function method(name, p) {
     case "open":
       keys(p, ["projectId"], ["projectId"]);
       string(p.projectId);
-      return store.queue(p.projectId, () => store.open(p.projectId));
+      return store.requestOpen(p.projectId);
     case "inspect":
       keys(p, ["projectId"], ["projectId"]);
       string(p.projectId);
-      return store.queue(p.projectId, () => store.inspect(p.projectId));
+      return store.requestInspect(p.projectId);
     case "edit":
       validateEdit(p);
       return store.edit(p.projectId, p);
@@ -93,9 +112,7 @@ async function method(name, p) {
     case "close":
       keys(p, ["projectId"], ["projectId"]);
       string(p.projectId);
-      await jobs.drain(p.projectId);
-      await store.queue(p.projectId, () => store.handles.delete(p.projectId));
-      return { projectId: p.projectId, closed: true };
+      return closeProject(p.projectId);
     case "shutdown":
       keys(p, []);
       await shutdown();

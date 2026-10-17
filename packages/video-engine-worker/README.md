@@ -56,10 +56,12 @@ v1 固定 index.html、30fps、H.264；frame 精确时间 PNG。项目根、入�
 | render | projectId, revision, timeoutMs? | 立即返回异步 MP4 job，queued；不等待渲染完成 |
 | status | jobId | 当前状态、阶段、进度、projectId/revision/jobId、工具版本；成功时 artifact |
 | cancel | jobId | 非终态立即 ack cancelling；终态幂等返回；清理完成才 cancelled |
-| close | projectId | 取消/排空该工程任务和编辑，再释放 handle；保留本 worker 的幂等记录 |
+| close | projectId | 同步关闭该工程的准入门，再取消/排空旧生命周期任务和编辑，最后释放 handle；并发重复 close 共同等待同一排空，保留本 worker 的幂等记录 |
 | shutdown | {} | 取消/排空全部任务、写队列，响应后退出 |
 
 frame/render 后台通过同一工程队列取得快照。若源已变化，作业 failed + E_REVISION_CONFLICT，不能取最新文件冒充旧 revision。状态 queued→running→succeeded/failed/timed_out，或 queued/running→cancelling→cancelled。frame 超过实际场景末尾在快照阶段 failed + E_PARAMS；请求本身的负数、类型等立即返回错误。所有长作业有 100–120000ms deadline（默认120000）；范围检查、快照复制和文件哈希由受控大小限制，CLI deadline 从启动上游 CLI 开始。
+
+close 进入 worker 后、第一次等待排空前，立即把 projectId 标为 closing。这个状态拒绝新的 open、inspect、edit、frame 和 render，返回 E_PROJECT_CLOSING；status/cancel 仍可读取和管理旧 job。已经获准的编辑按工程队列完成，已经获准的 frame/render 由 close 取消并清理。重复 close 共同等待该次排空，close 成功后 projectId 变为 closed，新的 open 才能建立下一生命周期。这样 close 成功时旧生命周期没有活动作业或私有目录，也不会在关闭后发布产物。
 
 stdout 仅协议，CLI stdout/stderr 通过管道捕获，不转发。捕获尾部最多64KiB；worker stderr 总量最多16KiB，仅固定阶段说明，既不写源码也不写凭据或路径。每进程最多10000个请求id、2048个成功 operationId、256个作业（最多4个活动），达到上限拒绝；父进程负责持续消费 stdout。
 
@@ -79,7 +81,7 @@ operationId 以 projectId 为作用域：同一规范化请求（JSON 对象键�
 
 stdin EOF、shutdown、SIGINT/SIGTERM、未捕获异常路径均尝试排空并清理。EOF 和信号是真实行为测试；无法在 SIGKILL 或机器断电后执行用户态清理，P2 需父进程监督与重启恢复策略。采样式进程跟踪、路径 confinement 和独立进程均不是安全沙箱，不允许扩大到任意 Agent 生成代码。
 
-错误码：E_JSON/E_LINE_LIMIT/E_OUTPUT_LIMIT/E_VERSION/E_DUPLICATE_ID/E_METHOD/E_PARAMS/E_LIMIT、E_PROJECT_NOT_FOUND/E_PROJECT_NOT_OPEN/E_PROJECT/E_PATH/E_ASSET_MISSING、E_REVISION_CONFLICT/E_OPERATION_REUSED/E_UNSUPPORTED_EDIT/E_PERSIST、E_JOB_NOT_FOUND/E_SHUTDOWN/E_SNAPSHOT/E_RENDER/E_METADATA/E_CLEANUP/E_INTERNAL。状态 failed 的 error 有 stage；cancelled/timed_out 为明确终态。
+错误码：E_JSON/E_LINE_LIMIT/E_OUTPUT_LIMIT/E_VERSION/E_DUPLICATE_ID/E_METHOD/E_PARAMS/E_LIMIT、E_PROJECT_NOT_FOUND/E_PROJECT_NOT_OPEN/E_PROJECT_CLOSING/E_PROJECT/E_PATH/E_ASSET_MISSING、E_REVISION_CONFLICT/E_OPERATION_REUSED/E_UNSUPPORTED_EDIT/E_PERSIST、E_JOB_NOT_FOUND/E_SHUTDOWN/E_SNAPSHOT/E_RENDER/E_METADATA/E_CLEANUP/E_INTERNAL。状态 failed 的 error 有 stage；cancelled/timed_out 为明确终态。
 
 ## 测试与证据
 

@@ -48,6 +48,14 @@ H.264、1280×720、30/1、150 帧、5.000 秒。由 MP4 解码的 2.5 秒预览
 
 测试先红后绿：最初缺 worker 导致行为失败；后续专门复现非 index 采样分歧、组合 timing 越界、对象键序幂等失败，再修正。最新完整测试输出及真实作业 JSON 复制到包 evidence；不是仅用静态字符串或源码镜像测试通过。
 
+## R1 首审回应：关闭工程的准入与排空
+
+首审提交 `f7470b7` 的 R1 已在本工作树按其真实 worker 场景复现：此前 `close` 在首次等待 `jobs.drain()` 前没有工程关闭状态，新 render 可以在 handle 删除前进入 jobs map，进而在 close 返回后继续发布。根因是生命周期准入没有与 close 的同步前段绑定，而不是 CLI 或进程清理失败。
+
+修复新增每个 projectId 的 `open` / `closing` / `closed` 生命周期。`close` 在第一次 await 前同步设为 closing；新的 open、inspect、edit、frame、render 立即得到 `E_PROJECT_CLOSING`，status/cancel 仍能观察和管理旧 job。首次 close 创建本次排空承诺，重复 close 共用它；旧编辑按既有工程队列完成，旧 frame/render 由 drain 取消，随后才删除 handle 并置 closed。只有 close 成功后 open 才能开启新的生命周期。作业入口也再次检查工程状态，防止未来调用方绕过 worker 路由。
+
+正式真实回归 `close gates a project lifecycle before draining and permits reopen only after completion` 先在修复前稳定失败：第二个 render 返回 `ok:true` / `queued`。修复后完整复跑通过，测试先等待官方 CLI render 进入 running，再在同一 stdin turn 发 close、重复 close、render/frame/edit/open；四个新请求都为 `E_PROJECT_CLOSING`。close 返回后原 render 是 `cancelled`、`cleaned:true`、`survivors:[]`，输出目录仅保留 close 前成功的真实 PNG，无关 Node sentinel 仍存活；reopen 读取相同 revision 后可再次 close。最终格式化后完整复跑为协议 7/7（7.35 秒）与真实作业 3/3（55.79 秒）。
+
 ## 产物与复审
 
 根目录 `/Users/orange/.codex/worktrees/b4bf/dsh-video-editor/packages/video-engine-worker/artifacts/`：

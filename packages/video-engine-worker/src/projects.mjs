@@ -54,6 +54,7 @@ export class Projects {
     this.handles = new Map();
     this.queues = new Map();
     this.operations = new Map();
+    this.lifecycle = new Map();
   }
   queue(id, fn) {
     const next = (this.queues.get(id) || Promise.resolve()).then(fn);
@@ -63,8 +64,33 @@ export class Projects {
     );
     return next;
   }
+  assertNotClosing(id) {
+    if (this.lifecycle.get(id) === "closing")
+      fail("E_PROJECT_CLOSING", "Project is closing", "lifecycle");
+  }
+  assertActive(id) {
+    this.assertNotClosing(id);
+    if (!this.handles.has(id))
+      fail("E_PROJECT_NOT_OPEN", "Open project first", "project");
+  }
+  requestOpen(id) {
+    this.assertNotClosing(id);
+    return this.queue(id, () => this.open(id));
+  }
+  requestInspect(id) {
+    this.assertActive(id);
+    return this.queue(id, () => this.inspect(id));
+  }
+  beginClose(id) {
+    this.lifecycle.set(id, "closing");
+  }
+  completeClose(id) {
+    this.handles.delete(id);
+    this.lifecycle.set(id, "closed");
+  }
   async open(id) {
     string(id);
+    this.assertNotClosing(id);
     const registered = Object.hasOwn(this.config.projects, id)
       ? this.config.projects[id]
       : undefined;
@@ -79,11 +105,17 @@ export class Projects {
     }
     if (!inside(root, dir))
       fail("E_PATH", "Project escapes registered root", "open");
+    this.assertNotClosing(id);
     this.handles.set(id, dir);
+    this.lifecycle.set(id, "open");
     try {
-      return await this.inspect(id);
+      const result = await this.inspect(id);
+      this.assertNotClosing(id);
+      return result;
     } catch (e) {
       this.handles.delete(id);
+      if (this.lifecycle.get(id) !== "closing")
+        this.lifecycle.set(id, "closed");
       throw e;
     }
   }
@@ -148,6 +180,7 @@ export class Projects {
     };
   }
   async inspect(id) {
+    this.assertActive(id);
     const p = await this.read(id);
     const comp = await openComposition(
       p.files.get(p.manifest.entry).toString(),
@@ -180,6 +213,7 @@ export class Projects {
     }
   }
   async edit(id, p) {
+    this.assertActive(id);
     return this.queue(id, async () => {
       const signature = sha(
         JSON.stringify(p, (_key, value) =>

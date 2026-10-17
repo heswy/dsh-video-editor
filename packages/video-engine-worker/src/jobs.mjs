@@ -34,6 +34,7 @@ export class Jobs {
   }
   async start(kind, p) {
     if (this.closing) fail("E_SHUTDOWN", "Worker is shutting down", "job");
+    this.projects.assertActive(p.projectId);
     if (
       [...this.jobs.values()].filter((j) => !terminal.has(j.state)).length >=
         4 ||
@@ -314,10 +315,7 @@ export class Jobs {
             };
           }
         }
-        if (
-          job.controller.signal.aborted &&
-          job.error?.code !== "E_CLEANUP"
-        )
+        if (job.controller.signal.aborted && job.error?.code !== "E_CLEANUP")
           final = "cancelled";
       }
       job.state = final;

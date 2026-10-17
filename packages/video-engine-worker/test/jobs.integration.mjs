@@ -165,3 +165,70 @@ test("real rendering cancel, timeout, stdin EOF and shutdown clean owned process
     sentinel.kill();
   }
 });
+test("close gates a project lifecycle before draining and permits reopen only after completion", async () => {
+  const sentinel = spawn(process.execPath, ["-e", "setInterval(()=>{},1000)"]);
+  const f = await fixture(),
+    c = client(f.registry);
+  try {
+    const revision = await opened(c);
+    const retained = (
+      await c.call("frame", { projectId: "demo", revision, time: 2.5 })
+    ).result;
+    const retainedDone = await waitJob(c, retained.jobId);
+    assert.equal(retainedDone.state, "succeeded", JSON.stringify(retainedDone));
+
+    const running = (await c.call("render", { projectId: "demo", revision }))
+      .result;
+    await waitJob(c, running.jobId, (j) => j.state === "running");
+
+    // The requests are written after close in the same stdin turn. They must
+    // see the close gate, rather than relying on a short render timing window.
+    const closeOne = c.call("close", { projectId: "demo" });
+    const closeTwo = c.call("close", { projectId: "demo" });
+    const [lateRender, lateFrame, lateEdit, concurrentOpen] = await Promise.all(
+      [
+        c.call("render", { projectId: "demo", revision }),
+        c.call("frame", { projectId: "demo", revision, time: 2.5 }),
+        c.call("edit", {
+          projectId: "demo",
+          expectedRevision: revision,
+          operationId: "after-close",
+          ops: [{ type: "text", target: "hf-title", text: "must not save" }],
+        }),
+        c.call("open", { projectId: "demo" }),
+      ],
+    );
+    for (const response of [lateRender, lateFrame, lateEdit, concurrentOpen]) {
+      assert.equal(response.ok, false, JSON.stringify(response));
+      assert.equal(response.error.code, "E_PROJECT_CLOSING");
+    }
+
+    const [closedOne, closedTwo] = await Promise.all([closeOne, closeTwo]);
+    assert.deepEqual(closedOne.result, { projectId: "demo", closed: true });
+    assert.deepEqual(closedTwo.result, closedOne.result);
+    const stopped = (await c.call("status", { jobId: running.jobId })).result;
+    assert.equal(stopped.state, "cancelled", JSON.stringify(stopped));
+    assert.equal(stopped.cleaned, true);
+    assert.deepEqual(stopped.survivors, []);
+    assert.deepEqual((await readdir(f.config.outputRoot)).sort(), [
+      retainedDone.artifact.name,
+    ]);
+    assert.doesNotThrow(() => process.kill(sentinel.pid, 0));
+
+    const reopened = await c.call("open", { projectId: "demo" });
+    assert.equal(reopened.ok, true, JSON.stringify(reopened));
+    assert.equal(reopened.result.revision, revision);
+    const finalClose = await c.call("close", { projectId: "demo" });
+    assert.deepEqual(finalClose.result, { projectId: "demo", closed: true });
+    await evidence("close-gate", {
+      retained: retainedDone,
+      stopped,
+      closed: closedOne.result,
+      reopenRevision: reopened.result.revision,
+    });
+  } finally {
+    await c.stop();
+    await f.cleanup();
+    sentinel.kill();
+  }
+});
