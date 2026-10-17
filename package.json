@@ -1,8 +1,8 @@
 {
   "name": "dsh-video",
-  "version": "0.1.3",
+  "version": "0.2.0",
   "private": true,
-  "description": "Native sidebar entry and a restrained empty video workspace for DeepSeek Harness.",
+  "description": "Native sidebar entry, a restrained Host bridge and a real controlled-project video workspace for DeepSeek Harness.",
   "type": "module",
   "main": "index.js",
   "exports": {
@@ -13,6 +13,7 @@
   },
   "files": [
     "index.js",
+    "host/*.js",
     "client.js",
     "cordis.patch.yml",
     "icon.svg",
@@ -22,7 +23,8 @@
   "icon": "./icon.svg",
   "license": "MIT",
   "scripts": {
-    "check": "node scripts/check.mjs && node scripts/smoke-client.mjs"
+    "check": "node scripts/check.mjs && node scripts/smoke-client.mjs && node scripts/check-host.mjs",
+    "stage:dev": "node scripts/stage-dev.mjs"
   },
   "dsh": {
     "manifestVersion": 1,

@@ -106,10 +106,14 @@ check('client half avoids forbidden host surfaces', () => {
   return 'no document.body / host DOM reads / internal imports / session events';
 });
 
-check('host half exports a Cordis plugin body', () => {
+check('host half exports a Cordis plugin body and declares required services', () => {
   assert(/export\s+function\s+apply\s*\(/.test(hostSource), 'index.js must export function apply()');
+  assert(/export\s+const\s+inject\s*=\s*\[\s*'connection'\s*,\s*'tools'\s*,\s*'subprocess'\s*\]/.test(hostSource), 'index.js must declare connection/tools/subprocess injection');
   assert(/@deepseek-ai\//.test(hostSource) === false, 'index.js must not import @deepseek-ai/* (profile path packages cannot resolve them)');
-  return 'apply() present, node builtins only';
+  for (const module of ['host/bridge.js', 'host/routes.js', 'host/tool.js', 'host/config.js', 'host/env.js', 'host/errors.js', 'host/engine.js']) {
+    assert(exists(module), `missing Host module ${module}`);
+  }
+  return 'apply(), inject, seven Host modules';
 });
 
 check('bundle manifest declares patch and client', () => {
@@ -127,8 +131,8 @@ check('bundle manifest declares patch and client', () => {
   return `platform=web, inject=[${pkg.dsh.client.inject.join(', ')}]`;
 });
 
-check('package version advanced for the P0-005 R1 fixed package', () => {
-  assert(pkg.version === '0.1.3', `expected version 0.1.3, found "${pkg.version}"`);
+check('package version advanced for the P2-002-B fixed package', () => {
+  assert(pkg.version === '0.2.0', `expected version 0.2.0, found "${pkg.version}"`);
   return pkg.version;
 });
 
@@ -167,12 +171,12 @@ check('entrypoints and exports resolve to shipped files', () => {
 
 check('package files list covers every shipped artifact', () => {
   assert(Array.isArray(pkg.files) && pkg.files.length > 0, 'package.json needs a files list for a reproducible install');
-  const required = ['index.js', 'client.js', 'cordis.patch.yml', 'icon.svg', 'locale/en.json', 'locale/zh.json', 'README.md'];
+  const required = ['index.js', 'client.js', 'cordis.patch.yml', 'icon.svg', 'locale/en.json', 'locale/zh.json', 'README.md', 'host/bridge.js', 'host/routes.js', 'host/tool.js', 'host/config.js', 'host/env.js', 'host/errors.js', 'host/engine.js'];
   for (const artifact of required) {
     const covered = pkg.files.some((pattern) => listMatchingFiles(pattern).includes(artifact));
     assert(covered, `files list does not cover required artifact "${artifact}"`);
   }
-  const extra = ['scripts/check.mjs', 'scripts/smoke-client.mjs'];
+  const extra = ['scripts/check.mjs', 'scripts/smoke-client.mjs', 'scripts/check-host.mjs', 'scripts/stage-dev.mjs'];
   for (const tool of extra) {
     assert(exists(tool), `local check tool "${tool}" is missing from the workspace`);
     const packaged = pkg.files.some((pattern) => listMatchingFiles(pattern).includes(tool));
@@ -232,7 +236,10 @@ check('locale dictionaries and used keys agree', () => {
 
 check('component class names exist in the stylesheet', () => {
   const declared = new Set([...clientSource.matchAll(/\.(dv-[a-z0-9-]+)/g)].map((match) => match[1]));
-  const used = new Set([...clientSource.matchAll(/className:\s*'([^']+)'/g)].map((match) => match[1]));
+  const used = new Set();
+  for (const match of clientSource.matchAll(/className:\s*'([^']+)'/g)) {
+    for (const name of match[1].split(/\s+/)) if (name.length > 0) used.add(name);
+  }
   assert(used.size > 0, 'no className strings found');
   const missing = [...used].filter((name) => declared.has(name) === false);
   assert(missing.length === 0, `class names without CSS rules: ${missing.join(', ')}`);
@@ -297,7 +304,7 @@ check('P0-005: the video panel and sidebar entry form one atomic pair', () => {
 });
 
 check('P0-005: the old top capsule and its presentation machinery are gone', () => {
-  const removed = ['dv-mode', 'thumbOrigin', 'conversation.header.leading', 'LeadingModeSwitch', 'dv-simplify', 'dv-stage'];
+  const removed = ['dv-mode', 'thumbOrigin', 'conversation.header.leading', 'LeadingModeSwitch', 'dv-simplify'];
   for (const needle of removed) assert(clientSource.includes(needle) === false, `client.js still contains removed capsule code "${needle}"`);
   return 'no mode capsule / thumb origin / leading seat / stage framing code';
 });
@@ -353,10 +360,38 @@ check('P0-005: sidebar icon follows the host owner props and native stroke', () 
   return '16-viewBox currentColor line glyph sized by the host';
 });
 
-check('P0-005: no fake editor or project affordances are rendered', () => {
-  const forbidden = ['创建工程', '导出', '时间线', '预览'];
-  for (const needle of forbidden) assert(clientSource.includes(needle) === false, `client.js advertises unavailable capability "${needle}"`);
-  return 'no create/export/timeline/preview affordances';
+check('P2-002-B: committed runtime carries no development/deployment absolute paths', () => {
+  const runtime = ['index.js', 'client.js'];
+  for (const name of readdirSync(join(ROOT, 'host')).filter((entry) => entry.endsWith('.js'))) runtime.push('host/' + name);
+  for (const name of runtime) {
+    const source = read(name);
+    for (const forbidden of ['/Users/', '/Applications/', 'process.execPath']) {
+      assert(source.includes(forbidden) === false, `${name} hard-codes or adopts unsupported runtime detail "${forbidden}"`);
+    }
+  }
+  assert(pkg.dependencies === undefined, 'the committed root manifest must not carry engine/dev dependencies; staging adds them only to its snapshot');
+  return `${runtime.length} runtime files, no absolute dev/deployment paths`;
+});
+
+check('P2-002-B: Host modules do not import DSH-internal packages', () => {
+  for (const name of readdirSync(join(ROOT, 'host')).filter((entry) => entry.endsWith('.js'))) {
+    const source = read('host/' + name);
+    assert(source.includes('@deepseek-ai/') === false, `host/${name} imports a DSH-internal package`);
+  }
+  return 'node builtins + explicit engine package specifiers only';
+});
+
+check('P2-002-B: the editor exposes only the real controlled-project loop', () => {
+  for (const needle of ['video.open', 'openSample', 'hostRequest', 'REQUEST_ROUTE', 'E_CONFIGURATION', 'video.update', 'video.export', 'video.cancel', 'video.save']) {
+    assert(clientSource.includes(needle), `client.js is missing real editor wiring "${needle}"`);
+  }
+  const forbidden = ['创建工程', '时间线', '预览', 'AI 生成', '演示数据', '假进度', '自动生成'];
+  for (const needle of forbidden) assert(clientSource.includes(needle) === false, `client.js advertises unsupported or fake capability "${needle}"`);
+  assert(clientSource.includes("const DEMO_PROJECT_ID = 'demo'"), 'the controlled example id must be a fixed configured id, not a path');
+  assert(clientSource.includes("'video.empty': '尚无工程'"), 'the no-project state must stay a quiet real state');
+  const dictionaries = clientSource.slice(clientSource.indexOf('const ZH = {'), clientSource.indexOf('//#endregion', clientSource.indexOf('const EN = {')));
+  for (const forbiddenText of ['revision:', '路径', '版本号', '开发阶段']) assert(dictionaries.includes(forbiddenText) === false, `editor copy exposes internal detail "${forbiddenText}"`);
+  return 'real open/update/edit/export/cancel wiring; no fake or unsupported affordances';
 });
 
 check('P0-005: mode wiring is host-owned and has no local mode source', () => {

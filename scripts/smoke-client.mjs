@@ -39,18 +39,14 @@ const SIDEBAR_SLOT = 'sidebar.panellist';
 
 const passes = [];
 const failures = [];
+const tests = [];
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
 function test(name, fn) {
-  try {
-    fn();
-    passes.push(name);
-  } catch (error) {
-    failures.push([name, error instanceof Error ? error.message : String(error)]);
-  }
+  tests.push([name, fn]);
 }
 
 function translate(key) {
@@ -482,6 +478,7 @@ function loadClient(options) {
       },
     },
     localStorage: config.storage,
+    fetch: typeof config.fetch === 'function' ? config.fetch : undefined,
     console: { log() {}, warn() {}, error() {} },
     setTimeout,
     clearTimeout,
@@ -614,6 +611,73 @@ function panelButton(tree, className) {
 
 function panelMenuItem(tree) {
   return findNode(tree, (node) => node.type === 'button' && node.props && node.props.role === 'menuitemcheckbox');
+}
+
+function panelButtonByText(tree, label) {
+  return findNode(tree, (node) => node.type === 'button' && textOf(node) === label);
+}
+
+function elementById(tree, id) {
+  return findNode(tree, (node) => node.props && node.props.id === id);
+}
+
+function buttonByText(tree, label) {
+  return findNode(tree, (node) => node.type === 'button' && textOf(node) === label);
+}
+
+function makeHostFetch(handler) {
+  const calls = [];
+  async function hostFetch(url, init) {
+    const request = {
+      url,
+      method: init && init.method,
+      headers: init && init.headers,
+      body: init && typeof init.body === 'string' ? JSON.parse(init.body) : null,
+    };
+    calls.push(request);
+    const result = await handler(request);
+    if (result instanceof Error) throw result;
+    return new Response(JSON.stringify(result), { status: 200, headers: { 'content-type': 'application/json' } });
+  }
+  hostFetch.calls = calls;
+  return hostFetch;
+}
+
+async function settle(rounds) {
+  for (let index = 0; index < (rounds || 8); index += 1) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+}
+
+function sampleInspect(overrides) {
+  const base = {
+    projectId: 'demo',
+    revision: 'a'.repeat(64),
+    width: 1280,
+    height: 720,
+    duration: 5,
+    elements: [
+      {
+        stableId: 'hf-title',
+        text: '初稿标题',
+        timing: { start: 0, duration: 5 },
+        capabilities: ['text', 'timing'],
+      },
+    ],
+  };
+  return Object.assign(base, overrides || {});
+}
+
+function sampleJob(jobId) {
+  return {
+    jobId,
+    projectId: 'demo',
+    revision: 'a'.repeat(64),
+    kind: 'frame',
+    state: 'queued',
+    stage: 'snapshot',
+    progress: 0,
+  };
 }
 //#endregion
 
@@ -1096,9 +1160,260 @@ test('unloading while another panel is selected does not steal it', () => {
   assert(liveRegistrations(env).length === 0, 'registrations left live after unload');
   assert(env.events.panelCalls.length === 0, 'unload disturbed another selected panel');
 });
+
+//#region P2-002-B: real controlled-project editor flow
+function mountEditor(hostFetch) {
+  const loaded = loadClient({ fetch: hostFetch });
+  const env = createFakeEnvironment();
+  loaded.exports.apply(env.ctx);
+  const interactive = mountInteractivePanel(loaded, env);
+  let tree = interactive.render();
+  return {
+    loaded,
+    env,
+    interactive,
+    tree() {
+      return tree;
+    },
+    rerender() {
+      tree = interactive.rerender();
+      return tree;
+    },
+  };
+}
+
+test('P2-002-B: no project keeps the quiet empty state and fetches nothing until 打开示例', () => {
+  const hostFetch = makeHostFetch(() => ({ ok: true, result: {} }));
+  const editor = mountEditor(hostFetch);
+  const tree = editor.tree();
+  assert(textOf(findNode(tree, (node) => node.props && node.props.className === 'dv-empty')) === '尚无工程', 'quiet empty state missing');
+  assert(buttonByText(tree, '打开示例') !== null, 'open-example action missing');
+  assert(hostFetch.calls.length === 0, 'empty panel made a business request before the explicit action');
+  assert(findNode(tree, (node) => node.props && node.props.className === 'dv-project-title') === null, 'empty panel invented a project title');
+});
+
+test('P2-002-B: 打开示例 uses only the configured id and renders inspected title/frame', async () => {
+  const frameJob = '11111111-2222-4333-8444-555555555555';
+  const hostFetch = makeHostFetch((request) => {
+    const method = request.body.method;
+    if (method === 'open') return { ok: true, result: { projectId: 'demo', revision: 'a'.repeat(64) } };
+    if (method === 'inspect') return { ok: true, result: sampleInspect() };
+    if (method === 'frame') return { ok: true, result: Object.assign(sampleJob(frameJob), { kind: 'frame' }) };
+    if (method === 'status') return { ok: true, result: Object.assign(sampleJob(frameJob), { kind: 'frame', state: 'succeeded', artifact: { name: frameJob + '.png' } }) };
+    return { ok: false, error: { code: 'E_METHOD', message: 'unexpected ' + method } };
+  });
+  const editor = mountEditor(hostFetch);
+  const open = buttonByText(editor.tree(), '打开示例');
+  await open.props.onClick();
+  await settle();
+  const tree = editor.rerender();
+  assert(textOf(findNode(tree, (node) => node.props && node.props.className === 'dv-project-title')) === '初稿标题', 'inspected title was not rendered');
+  assert(findNode(tree, (node) => node.props && node.props.className === 'dv-project-meta') !== null, 'inspected dimensions/duration missing');
+  const image = findNode(tree, (node) => node.props && node.props.className === 'dv-frame');
+  assert(image !== null, 'real frame image missing');
+  assert(image.props.src === 'api/dsh-video/artifact?jobId=' + frameJob, `frame source was ${image.props.src}`);
+  assert(hostFetch.calls.every((call) => call.url === 'api/dsh-video/request'), 'a non-request URL was used');
+  const openCall = hostFetch.calls.find((call) => call.body.method === 'open');
+  assert(openCall.body.params.projectId === 'demo', 'open used a different project id');
+  const frameCall = hostFetch.calls.find((call) => call.body.method === 'frame');
+  assert(frameCall.body.params.revision === 'a'.repeat(64), 'frame did not use the inspected revision');
+  assert(frameCall.body.params.time <= 2.5 && frameCall.body.params.time >= 0, 'frame time was not bounded from real duration');
+});
+
+test('P2-002-B: save edits with expectedRevision/operationId and refresh from the new inspect', async () => {
+  const revisionA = 'a'.repeat(64);
+  const revisionB = 'b'.repeat(64);
+  let editedTitle = '初稿标题';
+  let inspectRevision = revisionA;
+  let frameIndex = 0;
+  const hostFetch = makeHostFetch((request) => {
+    const method = request.body.method;
+    if (method === 'open') return { ok: true, result: { projectId: 'demo', revision: revisionA } };
+    if (method === 'inspect') return { ok: true, result: sampleInspect({ revision: inspectRevision, elements: [{ stableId: 'hf-title', text: editedTitle, timing: { start: 0, duration: 5 }, capabilities: ['text', 'timing'] }] }) };
+    if (method === 'edit') {
+      if (request.body.params.expectedRevision !== revisionA) return { ok: false, error: { code: 'E_REVISION_CONFLICT', message: 'Project changed' } };
+      editedTitle = request.body.params.ops[0].text;
+      inspectRevision = revisionB;
+      return { ok: true, result: { projectId: 'demo', revision: revisionB, operationId: request.body.params.operationId } };
+    }
+    if (method === 'frame') {
+      frameIndex += 1;
+      return { ok: true, result: Object.assign(sampleJob('22222222-2222-4333-8444-55555555555' + frameIndex), { revision: inspectRevision, kind: 'frame' }) };
+    }
+    if (method === 'status') return { ok: true, result: Object.assign(sampleJob('22222222-2222-4333-8444-55555555555' + frameIndex), { revision: inspectRevision, kind: 'frame', state: 'succeeded', artifact: { name: 'frame.png' } }) };
+    return { ok: false, error: { code: 'E_METHOD', message: 'unexpected' } };
+  });
+  const editor = mountEditor(hostFetch);
+  await buttonByText(editor.tree(), '打开示例').props.onClick();
+  await settle();
+  let tree = editor.rerender();
+  const input = elementById(tree, 'dsh-video-title');
+  input.props.onChange({ target: { value: '新标题' } });
+  tree = editor.rerender();
+  await buttonByText(tree, '保存修改').props.onClick();
+  await settle();
+  tree = editor.rerender();
+  assert(textOf(findNode(tree, (node) => node.props && node.props.className === 'dv-project-title')) === '新标题', 'saved title was not refreshed from inspect');
+  const editCall = hostFetch.calls.find((call) => call.body.method === 'edit');
+  assert(editCall !== undefined, 'edit was not sent');
+  assert(editCall.body.params.expectedRevision === revisionA, 'edit lost expectedRevision');
+  assert(typeof editCall.body.params.operationId === 'string' && editCall.body.params.operationId.length > 0, 'edit lost operationId');
+  assert(editCall.body.params.ops[0].type === 'text' && editCall.body.params.ops[0].target === 'hf-title', 'edit ops were not typed');
+  assert(hostFetch.calls.some((call) => call.body.method === 'frame' && call.body.params.revision === revisionB), 'frame was not refreshed for the new revision');
+});
+
+test('P2-002-B: a revision conflict is shown in place and does not overwrite the title', async () => {
+  const revisionA = 'a'.repeat(64);
+  const hostFetch = makeHostFetch((request) => {
+    const method = request.body.method;
+    if (method === 'open') return { ok: true, result: { projectId: 'demo', revision: revisionA } };
+    if (method === 'inspect') return { ok: true, result: sampleInspect() };
+    if (method === 'edit') return { ok: false, error: { code: 'E_REVISION_CONFLICT', message: 'Project changed before edit' } };
+    if (method === 'frame') return { ok: true, result: sampleJob('33333333-2222-4333-8444-555555555555') };
+    if (method === 'status') return { ok: true, result: Object.assign(sampleJob('33333333-2222-4333-8444-555555555555'), { state: 'succeeded', artifact: { name: 'frame.png' } }) };
+    return { ok: false, error: { code: 'E_METHOD', message: 'unexpected' } };
+  });
+  const editor = mountEditor(hostFetch);
+  await buttonByText(editor.tree(), '打开示例').props.onClick();
+  await settle();
+  let tree = editor.rerender();
+  elementById(tree, 'dsh-video-title').props.onChange({ target: { value: '被拒绝的标题' } });
+  tree = editor.rerender();
+  await buttonByText(tree, '保存修改').props.onClick();
+  await settle();
+  tree = editor.rerender();
+  const alert = findNode(tree, (node) => node.props && node.props.role === 'alert');
+  assert(alert !== null, 'conflict was not surfaced in place');
+  assert(textOf(alert).includes('工程已更新'), `conflict text was ${textOf(alert)}`);
+  assert(textOf(findNode(tree, (node) => node.props && node.props.className === 'dv-project-title')) === '初稿标题', 'conflict overwrote the saved title');
+});
+
+test('P2-002-B: an update clears the old frame until the new revision frame succeeds', async () => {
+  let resolveFrame;
+  const framePromise = new Promise((resolve) => {
+    resolveFrame = resolve;
+  });
+  const jobId = '44444444-2222-4333-8444-555555555555';
+  const hostFetch = makeHostFetch(async (request) => {
+    const method = request.body.method;
+    if (method === 'open') return { ok: true, result: { projectId: 'demo', revision: 'a'.repeat(64) } };
+    if (method === 'inspect') return { ok: true, result: sampleInspect() };
+    if (method === 'frame') {
+      if (hostFetch.calls.filter((call) => call.body.method === 'frame').length > 1) return framePromise;
+      return { ok: true, result: sampleJob(jobId) };
+    }
+    if (method === 'status') return { ok: true, result: Object.assign(sampleJob(jobId), { state: 'succeeded', artifact: { name: jobId + '.png' } }) };
+    return { ok: false, error: { code: 'E_METHOD', message: 'unexpected' } };
+  });
+  const editor = mountEditor(hostFetch);
+  await buttonByText(editor.tree(), '打开示例').props.onClick();
+  await settle();
+  let tree = editor.rerender();
+  assert(findNode(tree, (node) => node.props && node.props.className === 'dv-frame') !== null, 'initial frame missing');
+  const update = buttonByText(tree, '更新画面');
+  update.props.onClick();
+  tree = editor.rerender();
+  assert(findNode(tree, (node) => node.props && node.props.className === 'dv-frame') === null, 'old frame remained while the new frame was pending');
+  resolveFrame({ ok: true, result: sampleJob(jobId) });
+  await settle();
+  tree = editor.rerender();
+  assert(findNode(tree, (node) => node.props && node.props.className === 'dv-frame') !== null, 'new frame did not appear after resolution');
+});
+
+test('P2-002-B: export starts a real job, exposes cancel and keeps the structured state', async () => {
+  const jobId = '55555555-2222-4333-8444-555555555555';
+  let cancelled = false;
+  const hostFetch = makeHostFetch((request) => {
+    const method = request.body.method;
+    if (method === 'open') return { ok: true, result: { projectId: 'demo', revision: 'a'.repeat(64) } };
+    if (method === 'inspect') return { ok: true, result: sampleInspect() };
+    if (method === 'frame') return { ok: true, result: sampleJob('66666666-2222-4333-8444-555555555555') };
+    if (method === 'status') {
+      const frame = request.body.params.jobId === '66666666-2222-4333-8444-555555555555';
+      if (frame) return { ok: true, result: Object.assign(sampleJob('66666666-2222-4333-8444-555555555555'), { state: 'succeeded', kind: 'frame', artifact: { name: 'frame.png' } }) };
+      return { ok: true, result: Object.assign(sampleJob(jobId), { state: cancelled ? 'cancelled' : 'running', kind: 'render' }) };
+    }
+    if (method === 'render') return { ok: true, result: Object.assign(sampleJob(jobId), { kind: 'render' }) };
+    if (method === 'cancel') {
+      cancelled = true;
+      return { ok: true, result: Object.assign(sampleJob(jobId), { kind: 'render', state: 'cancelling' }) };
+    }
+    return { ok: false, error: { code: 'E_METHOD', message: 'unexpected' } };
+  });
+  const editor = mountEditor(hostFetch);
+  await buttonByText(editor.tree(), '打开示例').props.onClick();
+  await settle();
+  let tree = editor.rerender();
+  buttonByText(tree, '导出 MP4').props.onClick();
+  await settle();
+  tree = editor.rerender();
+  const cancel = buttonByText(tree, '取消');
+  assert(cancel !== null, 'cancel action missing for a running export');
+  await cancel.props.onClick();
+  await settle();
+  await new Promise((resolve) => setTimeout(resolve, 850));
+  await settle();
+  assert(cancelled === true, 'cancel request was not sent');
+  tree = editor.rerender();
+  assert(textOf(tree).includes('正在取消') || textOf(tree).includes('已取消'), 'cancel state was not shown');
+  const renderCall = hostFetch.calls.find((call) => call.body.method === 'render');
+  assert(renderCall !== undefined && typeof renderCall.body.params.revision === 'string', 'render did not use the current revision');
+});
+
+test('P2-002-B: returning to the panel restores the visible project without a second open request', async () => {
+  const hostFetch = makeHostFetch((request) => {
+    const method = request.body.method;
+    if (method === 'open') return { ok: true, result: { projectId: 'demo', revision: 'a'.repeat(64) } };
+    if (method === 'inspect') return { ok: true, result: sampleInspect() };
+    if (method === 'frame') return { ok: true, result: sampleJob('77777777-2222-4333-8444-555555555555') };
+    if (method === 'status') return { ok: true, result: Object.assign(sampleJob('77777777-2222-4333-8444-555555555555'), { state: 'succeeded', artifact: { name: 'frame.png' } }) };
+    return { ok: false, error: { code: 'E_METHOD', message: 'unexpected' } };
+  });
+  const editor = mountEditor(hostFetch);
+  await buttonByText(editor.tree(), '打开示例').props.onClick();
+  await settle();
+  editor.rerender();
+  const requestCount = hostFetch.calls.length;
+  const remounted = mountInteractivePanel(editor.loaded, editor.env);
+  const tree = remounted.render();
+  assert(textOf(findNode(tree, (node) => node.props && node.props.className === 'dv-project-title')) === '初稿标题', 'remount lost the visible project');
+  assert(hostFetch.calls.length === requestCount, 'remount issued a new business request instead of restoring the view');
+});
+
+test('P2-002-B: configuration errors are shown without breaking the shell', async () => {
+  const hostFetch = makeHostFetch((request) => {
+    if (request.body.method === 'open') return { ok: false, error: { code: 'E_CONFIGURATION', message: 'Host bridge configuration is missing' } };
+    return { ok: false, error: { code: 'E_METHOD', message: 'unexpected' } };
+  });
+  const editor = mountEditor(hostFetch);
+  await buttonByText(editor.tree(), '打开示例').props.onClick();
+  await settle();
+  const tree = editor.rerender();
+  const alert = findNode(tree, (node) => node.props && node.props.role === 'alert');
+  assert(alert !== null, 'configuration error was not surfaced');
+  assert(textOf(alert).includes('视频服务尚未配置'), `configuration error text was ${textOf(alert)}`);
+  assert(buttonByText(tree, '打开示例') !== null, 'shell no longer offers the explicit action after a configuration error');
+});
 //#endregion
 
-for (const name of passes) console.log(`PASS  ${name}`);
-for (const [name, message] of failures) console.error(`FAIL  ${name}: ${message}`);
-console.log(`\n${passes.length} passed, ${failures.length} failed`);
-if (failures.length > 0) process.exitCode = 1;
+//#endregion
+
+async function runTests() {
+  for (const [name, fn] of tests) {
+    try {
+      await fn();
+      passes.push(name);
+      console.log(`PASS  ${name}`);
+    } catch (error) {
+      failures.push([name, error instanceof Error ? error.message : String(error)]);
+      console.error(`FAIL  ${name}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  console.log(`\n${passes.length} passed, ${failures.length} failed`);
+  if (failures.length > 0) process.exitCode = 1;
+}
+
+runTests().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});

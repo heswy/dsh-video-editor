@@ -14,7 +14,9 @@
  *   - the selected state is read by the host from its own layout store; the
  *     plugin keeps no second mode boolean and never registers a second nav row;
  *   - no overlay, no host-header replacement, no DOM geometry reads, no sidebar
- *     replacement, no Remote, no session events, no project/media persistence;
+ *     replacement, no Remote, no session events, no local project content store;
+ *     project/revision/job authority stays in the Host worker, while this Client
+ *     keeps only bounded view memory across a panel switch;
  *   - the main panel and the sidebar entry are one atomic pair: the panel is
  *     registered first, the entry only after it; any failure, conflict or loss
  *     releases both, and a later declaration retries. The panel can never stay
@@ -23,8 +25,8 @@
  *     / `ctx.effect`, so disabling the plugin removes it and the host's
  *     `retainMainPanels` mechanism can return the UI to the conversation.
  *
- * Optional browser persistence is limited to the reduced-effects preference,
- * versioned and corruption-safe. Project content is not stored here.
+ * Browser persistence is limited to the reduced-effects preference, versioned and
+ * corruption-safe. Project content is not stored here.
  */
 window.__ModuleLoader__.load({
   id: 'dsh-video',
@@ -57,18 +59,92 @@ window.__ModuleLoader__.load({
       'nav.label': 'Vedio Editor',
       'video.back': '返回对话',
       'video.empty': '尚无工程',
+      'video.open': '打开示例',
+      'video.opening': '正在打开…',
       'video.display.label': '显示选项',
       'video.display.simplified': '简化界面效果',
+      'video.title': '标题',
+      'video.timing': '时间',
+      'video.start': '开始（秒）',
+      'video.duration': '时长（秒）',
+      'video.update': '更新画面',
+      'video.updating': '正在生成画面…',
+      'video.save': '保存修改',
+      'video.saving': '正在保存…',
+      'video.export': '导出 MP4',
+      'video.exporting': '正在导出…',
+      'video.cancel': '取消',
+      'video.cancelling': '正在取消…',
+      'video.download': '下载 MP4',
+      'video.refresh': '重新读取',
+      'video.refreshing': '正在读取…',
+      'video.frame.empty': '画面尚未生成',
+      'video.frame.failed': '画面加载失败，请重新更新。',
+      'video.noText': '此工程没有可编辑文本。',
+      'video.details': '属性',
+      'video.target': '目标',
+      'video.capabilities': '能力',
+      'video.edit.empty': '没有需要保存的修改。',
+      'video.edit.invalidTiming': '请输入有效的开始时间和时长。',
       'video.error.back': '返回对话失败，请重试。',
+      'video.error.configuration': '视频服务尚未配置，请检查 Host 配置。',
+      'video.error.network': '无法连接到视频服务。',
+      'video.error.worker': '视频引擎暂时不可用。',
+      'video.error.conflict': '工程已更新，请重新读取后再修改。',
+      'video.error.generic': '操作失败。',
+      'video.state.queued': '等待中',
+      'video.state.running': '处理中',
+      'video.state.cancelling': '正在取消',
+      'video.state.succeeded': '已完成',
+      'video.state.failed': '失败',
+      'video.state.cancelled': '已取消',
+      'video.state.timed_out': '超时',
     };
 
     const EN = {
       'nav.label': 'Vedio Editor',
       'video.back': 'Back to conversation',
       'video.empty': 'No project yet',
+      'video.open': 'Open example',
+      'video.opening': 'Opening…',
       'video.display.label': 'Display options',
       'video.display.simplified': 'Reduce UI effects',
+      'video.title': 'Title',
+      'video.timing': 'Timing',
+      'video.start': 'Start (s)',
+      'video.duration': 'Duration (s)',
+      'video.update': 'Update frame',
+      'video.updating': 'Rendering frame…',
+      'video.save': 'Save changes',
+      'video.saving': 'Saving…',
+      'video.export': 'Export MP4',
+      'video.exporting': 'Exporting…',
+      'video.cancel': 'Cancel',
+      'video.cancelling': 'Cancelling…',
+      'video.download': 'Download MP4',
+      'video.refresh': 'Reload project',
+      'video.refreshing': 'Reloading…',
+      'video.frame.empty': 'No frame yet',
+      'video.frame.failed': 'The frame could not be loaded. Update it again.',
+      'video.noText': 'This project has no editable text.',
+      'video.details': 'Properties',
+      'video.target': 'Target',
+      'video.capabilities': 'Capabilities',
+      'video.edit.empty': 'There is nothing to save.',
+      'video.edit.invalidTiming': 'Enter a valid start time and duration.',
       'video.error.back': 'Could not return to the conversation. Try again.',
+      'video.error.configuration': 'The video service is not configured. Check the Host configuration.',
+      'video.error.network': 'Could not reach the video service.',
+      'video.error.worker': 'The video engine is temporarily unavailable.',
+      'video.error.conflict': 'The project changed. Reload it before editing again.',
+      'video.error.generic': 'The operation failed.',
+      'video.state.queued': 'Queued',
+      'video.state.running': 'Running',
+      'video.state.cancelling': 'Cancelling',
+      'video.state.succeeded': 'Done',
+      'video.state.failed': 'Failed',
+      'video.state.cancelled': 'Cancelled',
+      'video.state.timed_out': 'Timed out',
     };
     //#endregion
 
@@ -220,13 +296,21 @@ window.__ModuleLoader__.load({
   display:flex;
   flex:1;
   flex-direction:column;
+  min-width:0;
+  min-height:0;
+  padding:0;
+  overflow:hidden;
+}
+.dv-emptywrap{
+  display:flex;
+  flex:1;
+  flex-direction:column;
   align-items:center;
   justify-content:center;
-  gap:12px;
+  gap:14px;
   min-width:0;
   min-height:0;
   padding:24px;
-  overflow:auto;
 }
 .dv-empty{
   margin:0;
@@ -240,12 +324,210 @@ window.__ModuleLoader__.load({
   font-size:.86em;
   text-align:center;
 }
+.dv-editor{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) 288px;
+  flex:1;
+  min-width:0;
+  min-height:0;
+}
+.dv-stage{
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+  min-width:0;
+  min-height:0;
+  padding:16px;
+}
+.dv-stagebar{
+  display:flex;
+  align-items:baseline;
+  justify-content:space-between;
+  gap:12px;
+  min-height:28px;
+}
+.dv-project-title{
+  min-width:0;
+  overflow:hidden;
+  color:var(--dsw-alias-label-primary, #f2f2f5);
+  font-size:1.08em;
+  font-weight:600;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.dv-project-meta{
+  flex:none;
+  color:var(--dsw-alias-label-secondary, #a4a4ad);
+  font-size:.8em;
+  font-variant-numeric:tabular-nums;
+  white-space:nowrap;
+}
+.dv-canvas{
+  position:relative;
+  display:flex;
+  flex:1;
+  align-items:center;
+  justify-content:center;
+  min-height:200px;
+  overflow:hidden;
+  border:1px solid color-mix(in srgb, var(--dsw-alias-border-l1, rgba(127,127,140,.28)) 70%, transparent);
+  border-radius:10px;
+  background:var(--dsw-alias-bg-layer-1, #232327);
+}
+.dv-frame{
+  display:block;
+  max-width:100%;
+  max-height:100%;
+  object-fit:contain;
+}
+.dv-canvas-note{
+  margin:0;
+  max-width:32em;
+  padding:16px;
+  color:var(--dsw-alias-label-secondary, #a4a4ad);
+  font-size:.86em;
+  text-align:center;
+}
+.dv-side{
+  display:flex;
+  flex-direction:column;
+  gap:14px;
+  min-height:0;
+  overflow:auto;
+  padding:16px;
+  border-left:1px solid color-mix(in srgb, var(--dsw-alias-border-l1, rgba(127,127,140,.28)) 62%, transparent);
+}
+.dv-actions{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+}
+.dv-button{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-height:32px;
+  padding:0 12px;
+  border:1px solid color-mix(in srgb, var(--dsw-alias-border-l1, rgba(127,127,140,.28)) 86%, transparent);
+  border-radius:8px;
+  background:transparent;
+  color:var(--dsw-alias-label-primary, #f2f2f5);
+  font:inherit;
+  font-size:.86em;
+  cursor:pointer;
+  transition:background var(--dv-dur-fast) var(--dv-ease), border-color var(--dv-dur-fast) var(--dv-ease), opacity var(--dv-dur-fast) var(--dv-ease);
+}
+.dv-button:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover, rgba(127,127,140,.14));}
+.dv-button:focus-visible{
+  outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-brand-primary, #5b8cff));
+  outline-offset:2px;
+}
+.dv-button:disabled{opacity:.55;cursor:default;}
+.dv-button-primary{
+  border-color:transparent;
+  background:var(--dsw-alias-brand-primary, #5b8cff);
+  color:var(--dsw-alias-label-on-brand, #fff);
+}
+.dv-button-primary:hover:not(:disabled){background:var(--dsw-alias-brand-primary, #5b8cff);filter:brightness(1.06);}
+.dv-button-quiet{color:var(--dsw-alias-label-secondary, #a4a4ad);}
+.dv-field{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+}
+.dv-field-row{
+  display:flex;
+  gap:8px;
+}
+.dv-field-row .dv-field{flex:1;min-width:0;}
+.dv-label{
+  color:var(--dsw-alias-label-secondary, #a4a4ad);
+  font-size:.8em;
+}
+.dv-input{
+  width:100%;
+  min-width:0;
+  height:32px;
+  padding:0 9px;
+  border:1px solid color-mix(in srgb, var(--dsw-alias-border-l1, rgba(127,127,140,.28)) 86%, transparent);
+  border-radius:8px;
+  background:var(--dsw-alias-bg-base, #1a1a1c);
+  color:var(--dsw-alias-label-primary, #f2f2f5);
+  font:inherit;
+  font-size:.86em;
+}
+.dv-input:focus-visible{
+  outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-brand-primary, #5b8cff));
+  outline-offset:1px;
+}
+.dv-note{
+  margin:0;
+  color:var(--dsw-alias-label-secondary, #a4a4ad);
+  font-size:.8em;
+}
+.dv-job{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:8px;
+  color:var(--dsw-alias-label-secondary, #a4a4ad);
+  font-size:.8em;
+}
+.dv-job-state{
+  color:var(--dsw-alias-label-primary, #f2f2f5);
+}
+.dv-download{
+  color:var(--dsw-alias-brand-primary, #5b8cff);
+  font-size:.86em;
+  text-decoration:none;
+}
+.dv-download:hover{text-decoration:underline;}
+.dv-download:focus-visible{
+  outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-brand-primary, #5b8cff));
+  outline-offset:2px;
+}
+.dv-details{
+  padding-top:10px;
+  border-top:1px solid color-mix(in srgb, var(--dsw-alias-border-l1, rgba(127,127,140,.28)) 62%, transparent);
+  color:var(--dsw-alias-label-secondary, #a4a4ad);
+  font-size:.8em;
+}
+.dv-details summary{cursor:pointer;color:var(--dsw-alias-label-primary, #f2f2f5);}
+.dv-meta-list{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  margin:8px 0 0;
+  padding:0;
+  list-style:none;
+}
+.dv-meta-item{
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.dv-side .dv-error{
+  max-width:none;
+  text-align:left;
+}
 @media (prefers-reduced-motion: reduce){
   .dv-root{animation:none;}
+}
+@container dsh-video (max-width: 820px){
+  .dv-editor{grid-template-columns:minmax(0,1fr);}
+  .dv-stage{padding-bottom:8px;}
+  .dv-side{
+    max-height:46%;
+    border-top:1px solid color-mix(in srgb, var(--dsw-alias-border-l1, rgba(127,127,140,.28)) 62%, transparent);
+    border-left:0;
+  }
 }
 @container dsh-video (max-width: 520px){
   .dv-topbar{padding-left:12px;padding-right:12px;}
   .dv-back{padding:0 8px;}
+  .dv-stage{padding:10px;}
+  .dv-side{padding:10px;}
 }
 `;
     //#endregion
@@ -377,6 +659,8 @@ window.__ModuleLoader__.load({
 
     /** Plugin-scope store shared by the panel and its display menu. */
     let uiStore = null;
+    /** Bounded panel-scope memory: a mode switch must not rewrite worker state. */
+    let editorMemory = null;
 
     function getStore() {
       if (uiStore === null) {
@@ -526,6 +810,127 @@ window.__ModuleLoader__.load({
     }
     //#endregion
 
+    //#region host bridge helpers
+    // The Host-configured controlled fixture id. A request can only reference a
+    // project id from the trusted allowlist; this UI never sends a path or URL.
+    const DEMO_PROJECT_ID = 'demo';
+    const REQUEST_ROUTE = 'api/dsh-video/request';
+    const ARTIFACT_ROUTE = 'api/dsh-video/artifact';
+    const TERMINAL_JOB_STATES = ['succeeded', 'failed', 'cancelled', 'timed_out'];
+
+    function operationId() {
+      try {
+        if (typeof crypto !== 'undefined' && crypto && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+      } catch (_error) {
+        /* fall through to the bounded local form */
+      }
+      return 'ui-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+    }
+
+    function artifactUrl(jobId) {
+      return ARTIFACT_ROUTE + '?jobId=' + encodeURIComponent(String(jobId));
+    }
+
+    function capabilityList(element) {
+      return element && Array.isArray(element.capabilities) ? element.capabilities : [];
+    }
+
+    function textElement(elements) {
+      for (let index = 0; index < elements.length; index += 1) {
+        if (capabilityList(elements[index]).indexOf('text') !== -1) return elements[index];
+      }
+      return null;
+    }
+
+    function timingElement(elements) {
+      for (let index = 0; index < elements.length; index += 1) {
+        if (capabilityList(elements[index]).indexOf('timing') !== -1) return elements[index];
+      }
+      return null;
+    }
+
+    function elementsOf(project) {
+      return project && Array.isArray(project.elements) ? project.elements : [];
+    }
+
+    function frameTime(project) {
+      const duration = Number(project && project.duration);
+      if (Number.isFinite(duration) === false || duration <= 0) return 0;
+      return Math.min(2.5, Math.max(0, duration - 1 / 30));
+    }
+
+    function formatSeconds(value) {
+      return Number.isFinite(Number(value)) ? Number(value).toFixed(2) : '';
+    }
+
+    function isTerminalJob(job) {
+      return job !== null && typeof job === 'object' && TERMINAL_JOB_STATES.indexOf(job.state) !== -1;
+    }
+
+    function hostError(error) {
+      if (error !== null && typeof error === 'object' && typeof error.code === 'string') {
+        return {
+          code: error.code,
+          message: typeof error.message === 'string' && error.message.length > 0 ? error.message : 'Request failed',
+          uncertain: error.uncertain === true,
+          jobUnknown: error.jobUnknown === true,
+        };
+      }
+      return { code: 'E_NETWORK', message: 'Request failed', uncertain: false, jobUnknown: false };
+    }
+
+    async function hostRequest(method, params) {
+      if (typeof fetch !== 'function') throw { code: 'E_NETWORK', message: 'fetch is unavailable' };
+      let response;
+      try {
+        response = await fetch(REQUEST_ROUTE, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({ method: method, params: params || {} }),
+        });
+      } catch (_error) {
+        throw { code: 'E_NETWORK', message: 'Could not reach the video service' };
+      }
+      let body = null;
+      try {
+        body = await response.json();
+      } catch (_error) {
+        body = null;
+      }
+      if (body === null || typeof body !== 'object') {
+        throw { code: 'E_NETWORK', message: 'The video service returned an invalid response' };
+      }
+      if (body.ok === true) return body.result;
+      const error = body.error !== null && typeof body.error === 'object' ? body.error : {};
+      throw hostError({
+        code: typeof error.code === 'string' ? error.code : 'E_INTERNAL',
+        message: typeof error.message === 'string' ? error.message : 'The video service rejected the request',
+        uncertain: error.uncertain === true,
+        jobUnknown: error.jobUnknown === true,
+      });
+    }
+
+    function errorText(error, t) {
+      const code = error && error.code;
+      let friendly = null;
+      if (code === 'E_CONFIGURATION') friendly = t('video.error.configuration');
+      else if (code === 'E_NETWORK') friendly = t('video.error.network');
+      else if (code === 'E_REVISION_CONFLICT' || code === 'E_OPERATION_REUSED' || code === 'E_PROJECT_CLOSING' || code === 'E_PROJECT_NOT_OPEN') friendly = t('video.error.conflict');
+      else if (code === 'E_WORKER_START' || code === 'E_WORKER_EXITED' || code === 'E_WORKER_DISPOSED' || code === 'E_TRANSPORT' || code === 'E_STARTUP') friendly = t('video.error.worker');
+      else if (code === 'E_ARTIFACT_INTEGRITY' || code === 'E_ARTIFACT_NOT_READY') friendly = t('video.frame.failed');
+      const detail = error && typeof error.message === 'string' ? error.message : '';
+      if (friendly !== null) {
+        return detail.length > 0 ? friendly + ' ' + detail : friendly;
+      }
+      return detail.length > 0 ? detail : t('video.error.generic');
+    }
+
+    function stateText(state, t) {
+      return typeof state === 'string' && state.length > 0 ? t('video.state.' + state) : '';
+    }
+    //#endregion
+
     //#region components
     function StyleTag() {
       return h('style', {
@@ -534,11 +939,6 @@ window.__ModuleLoader__.load({
       });
     }
 
-    /**
-     * Occupant of the `dsh-video` key in the host `main` slot. The host owns
-     * navigation selection; this panel only renders the restrained empty state,
-     * one lightweight return action and one accessible display-options menu.
-     */
     function VideoWorkspace(props) {
       const t = props.t;
       const onBack = props.onBack;
@@ -546,6 +946,61 @@ window.__ModuleLoader__.load({
       const [menuOpen, setMenuOpen] = React.useState(false);
       const triggerRef = React.useRef(null);
       const itemRef = React.useRef(null);
+
+      const remembered = editorMemory === null ? {} : editorMemory;
+      const [project, setProject] = React.useState(remembered.project || null);
+      const [frame, setFrame] = React.useState(remembered.frame || null);
+      const [job, setJob] = React.useState(remembered.job || null);
+      const [busy, setBusy] = React.useState(null);
+      const [error, setError] = React.useState(remembered.error || null);
+      const [titleDraft, setTitleDraft] = React.useState(typeof remembered.titleDraft === 'string' ? remembered.titleDraft : '');
+      const [startDraft, setStartDraft] = React.useState(typeof remembered.startDraft === 'string' ? remembered.startDraft : '');
+      const [durationDraft, setDurationDraft] = React.useState(typeof remembered.durationDraft === 'string' ? remembered.durationDraft : '');
+      const aliveRef = React.useRef(true);
+      const jobTokenRef = React.useRef(0);
+      const resumedRef = React.useRef(false);
+
+      React.useEffect(
+        function keepAlive() {
+          aliveRef.current = true;
+          return function cleanupWorkspace() {
+            aliveRef.current = false;
+          };
+        },
+        []
+      );
+
+      // A panel switch is a view switch: the worker keeps the project and jobs,
+      // and this memory keeps the visible project/frame/draft/job in the plugin
+      // scope so returning restores them instead of silently clearing progress.
+      React.useEffect(function rememberVisibleState() {
+        editorMemory = {
+          project: project,
+          frame: frame,
+          job: job,
+          error: error,
+          titleDraft: titleDraft,
+          startDraft: startDraft,
+          durationDraft: durationDraft,
+        };
+      });
+
+      // Resume observation of a job that was already running when the panel was
+      // left. A terminal job needs no polling; the restored state is enough.
+      React.useEffect(
+        function resumeRunningJob() {
+          if (resumedRef.current) return;
+          resumedRef.current = true;
+          if (project === null || job === null || isTerminalJob(job)) return;
+          const kind = job.kind === 'frame' ? 'frame' : 'render';
+          const token = ++jobTokenRef.current;
+          setBusy(kind === 'frame' ? 'frame' : 'export');
+          void waitForJob(job, kind, project, token).finally(function finishResume() {
+            if (aliveRef.current && token === jobTokenRef.current) setBusy(null);
+          });
+        },
+        []
+      );
 
       // Focus management for the single-item display menu. The trigger opens the
       // menu; the open menu moves focus onto its item; Escape and Tab close it and
@@ -609,9 +1064,6 @@ window.__ModuleLoader__.load({
           event.preventDefault();
           closeMenu();
         } else if (event.key === 'Tab') {
-          // Close first and restore focus to the trigger. The event is prevented
-          // only for this step so focus cannot remain inside the unmounting menu;
-          // the user's next Tab continues from the trigger normally.
           event.preventDefault();
           closeMenu();
         }
@@ -619,6 +1071,373 @@ window.__ModuleLoader__.load({
 
       function onToggleSimplified() {
         setSimplifiedEffects(!ui.simplifiedEffects);
+      }
+
+      function applyInspected(inspected) {
+        const elements = elementsOf(inspected);
+        const titleTarget = textElement(elements);
+        const timingTarget = timingElement(elements);
+        setProject(inspected);
+        setTitleDraft(titleTarget !== null && typeof titleTarget.text === 'string' ? titleTarget.text : '');
+        setStartDraft(timingTarget !== null && timingTarget.timing ? formatSeconds(timingTarget.timing.start) : '');
+        setDurationDraft(timingTarget !== null && timingTarget.timing ? formatSeconds(timingTarget.timing.duration) : '');
+      }
+
+      function clearEditor() {
+        jobTokenRef.current += 1;
+        setProject(null);
+        setFrame(null);
+        setJob(null);
+        setBusy(null);
+        setTitleDraft('');
+        setStartDraft('');
+        setDurationDraft('');
+      }
+
+      function sleep(milliseconds) {
+        return new Promise(function wait(resolve) {
+          setTimeout(resolve, milliseconds);
+        });
+      }
+
+      async function waitForJob(initialJob, kind, targetProject, token) {
+        if (!aliveRef.current || token !== jobTokenRef.current) return null;
+        setJob(initialJob);
+        const deadline = Date.now() + 125000;
+        for (;;) {
+          if (!aliveRef.current || token !== jobTokenRef.current) return null;
+          let current;
+          try {
+            current = await hostRequest('status', { jobId: initialJob.jobId });
+          } catch (requestError) {
+            if (aliveRef.current && token === jobTokenRef.current) setError(hostError(requestError));
+            return null;
+          }
+          if (!aliveRef.current || token !== jobTokenRef.current) return null;
+          setJob(current);
+          if (isTerminalJob(current)) {
+            if (kind === 'frame') {
+              if (current.state === 'succeeded') {
+                setFrame({
+                  url: artifactUrl(initialJob.jobId),
+                  revision: targetProject.revision,
+                  jobId: initialJob.jobId,
+                });
+              } else {
+                setError(hostError(current.error || { code: 'E_FRAME_FAILED', message: t('video.error.generic') }));
+              }
+            } else if (current.state !== 'succeeded') {
+              setError(hostError(current.error || { code: 'E_RENDER_FAILED', message: t('video.error.generic') }));
+            }
+            return current;
+          }
+          if (Date.now() > deadline) {
+            setError({ code: 'E_TIMEOUT', message: t('video.error.generic') });
+            return null;
+          }
+          await sleep(700);
+        }
+      }
+
+      async function requestFrame(targetProject) {
+        if (targetProject === null) return;
+        const token = ++jobTokenRef.current;
+        setBusy('frame');
+        setError(null);
+        setFrame(null);
+        setJob(null);
+        try {
+          const initial = await hostRequest('frame', {
+            projectId: targetProject.projectId,
+            revision: targetProject.revision,
+            time: frameTime(targetProject),
+          });
+          await waitForJob(initial, 'frame', targetProject, token);
+        } catch (requestError) {
+          if (aliveRef.current && token === jobTokenRef.current) setError(hostError(requestError));
+        } finally {
+          if (aliveRef.current && token === jobTokenRef.current) setBusy(null);
+        }
+      }
+
+      async function openSample() {
+        if (busy !== null) return;
+        jobTokenRef.current += 1;
+        clearEditor();
+        setBusy('open');
+        setError(null);
+        let inspected = null;
+        try {
+          const opened = await hostRequest('open', { projectId: DEMO_PROJECT_ID });
+          inspected = await hostRequest('inspect', { projectId: opened.projectId });
+          if (aliveRef.current) applyInspected(inspected);
+        } catch (requestError) {
+          if (aliveRef.current) setError(hostError(requestError));
+        } finally {
+          if (aliveRef.current) setBusy(null);
+        }
+        if (inspected !== null && aliveRef.current) void requestFrame(inspected);
+      }
+
+      async function refreshProject() {
+        if (project === null || busy !== null) return;
+        const token = ++jobTokenRef.current;
+        setBusy('refresh');
+        setError(null);
+        let inspected = null;
+        try {
+          inspected = await hostRequest('inspect', { projectId: project.projectId });
+          if (aliveRef.current && token === jobTokenRef.current) applyInspected(inspected);
+        } catch (requestError) {
+          if (aliveRef.current && token === jobTokenRef.current) setError(hostError(requestError));
+        } finally {
+          if (aliveRef.current && token === jobTokenRef.current) setBusy(null);
+        }
+        if (inspected !== null && inspected.revision !== project.revision && aliveRef.current) {
+          setFrame(null);
+          setJob(null);
+          void requestFrame(inspected);
+        }
+      }
+
+      async function saveEdit() {
+        if (project === null || busy !== null) return;
+        const elements = elementsOf(project);
+        const titleTarget = textElement(elements);
+        const timingTarget = timingElement(elements);
+        const ops = [];
+        let nextStart = null;
+        let nextDuration = null;
+
+        if (titleTarget !== null && titleDraft !== titleTarget.text) {
+          ops.push({ type: 'text', target: titleTarget.stableId, text: titleDraft });
+        }
+        if (timingTarget !== null) {
+          nextStart = Number(startDraft);
+          nextDuration = Number(durationDraft);
+          if (Number.isFinite(nextStart) === false || Number.isFinite(nextDuration) === false || nextStart < 0 || nextStart > 3600 || nextDuration < 1 / 240 || nextDuration > 3600) {
+            setError({ code: 'E_PARAMS', message: t('video.edit.invalidTiming') });
+            return;
+          }
+          if (timingTarget.timing && (nextStart !== Number(timingTarget.timing.start) || nextDuration !== Number(timingTarget.timing.duration))) {
+            ops.push({ type: 'timing', target: timingTarget.stableId, start: nextStart, duration: nextDuration });
+          }
+        }
+        if (ops.length === 0) {
+          setError({ code: 'E_PARAMS', message: t('video.edit.empty') });
+          return;
+        }
+
+        const token = ++jobTokenRef.current;
+        setBusy('edit');
+        setError(null);
+        let inspected = null;
+        try {
+          await hostRequest('edit', {
+            projectId: project.projectId,
+            expectedRevision: project.revision,
+            operationId: operationId(),
+            ops: ops,
+          });
+          inspected = await hostRequest('inspect', { projectId: project.projectId });
+          if (aliveRef.current && token === jobTokenRef.current) applyInspected(inspected);
+        } catch (requestError) {
+          if (aliveRef.current && token === jobTokenRef.current) setError(hostError(requestError));
+        } finally {
+          if (aliveRef.current && token === jobTokenRef.current) setBusy(null);
+        }
+        if (inspected !== null && aliveRef.current) {
+          setFrame(null);
+          setJob(null);
+          void requestFrame(inspected);
+        }
+      }
+
+      async function exportVideo() {
+        if (project === null || busy !== null) return;
+        const token = ++jobTokenRef.current;
+        setBusy('export');
+        setError(null);
+        setJob(null);
+        try {
+          const initial = await hostRequest('render', {
+            projectId: project.projectId,
+            revision: project.revision,
+          });
+          await waitForJob(initial, 'render', project, token);
+        } catch (requestError) {
+          if (aliveRef.current && token === jobTokenRef.current) setError(hostError(requestError));
+        } finally {
+          if (aliveRef.current && token === jobTokenRef.current) setBusy(null);
+        }
+      }
+
+      async function cancelCurrentJob() {
+        if (job === null || typeof job.jobId !== 'string' || isTerminalJob(job) || busy === 'cancel') return;
+        setBusy('cancel');
+        try {
+          const updated = await hostRequest('cancel', { jobId: job.jobId });
+          if (aliveRef.current) setJob(updated);
+        } catch (requestError) {
+          if (aliveRef.current) setError(hostError(requestError));
+        } finally {
+          if (aliveRef.current) setBusy(null);
+        }
+      }
+
+      const elements = elementsOf(project);
+      const titleTarget = textElement(elements);
+      const timingTarget = timingElement(elements);
+      const savedTitle = titleTarget !== null && typeof titleTarget.text === 'string' ? titleTarget.text : '';
+      const titleChanged = titleTarget !== null && titleDraft !== savedTitle;
+      const timingChanged =
+        timingTarget !== null &&
+        timingTarget.timing &&
+        (Number(startDraft) !== Number(timingTarget.timing.start) || Number(durationDraft) !== Number(timingTarget.timing.duration));
+      const canSave = project !== null && busy === null && (titleChanged || timingChanged);
+      const projectTitle = project !== null ? savedTitle || project.projectId : '';
+      const projectMeta =
+        project !== null && Number.isFinite(Number(project.width)) && Number.isFinite(Number(project.height))
+          ? Math.round(Number(project.width)) + '×' + Math.round(Number(project.height)) + ' · ' + formatSeconds(project.duration) + 's'
+          : '';
+      const activeJob = job !== null && typeof job === 'object' ? job : null;
+      const canCancel = activeJob !== null && typeof activeJob.jobId === 'string' && !isTerminalJob(activeJob) && busy !== 'cancel';
+      const download = activeJob !== null && activeJob.state === 'succeeded' && activeJob.kind === 'render' ? artifactUrl(activeJob.jobId) : null;
+      const busyLabel = (key, idleKey) => (busy === key ? t(idleKey) : null);
+
+      function errorNotice() {
+        if (error === null) return null;
+        return h('p', { className: 'dv-error', role: 'alert', key: 'error' }, errorText(error, t));
+      }
+
+      function navigationNotice() {
+        if (ui.navigationError === null) return null;
+        return h('p', { className: 'dv-error', role: 'alert', key: 'navigation-error' }, t('video.error.back'));
+      }
+
+      function stageContent() {
+        if (project === null) {
+          return h(
+            'div',
+            { className: 'dv-emptywrap', key: 'empty' },
+            navigationNotice(),
+            errorNotice(),
+            h('p', { className: 'dv-empty' }, t('video.empty')),
+            h(
+              'button',
+              {
+                type: 'button',
+                className: 'dv-button dv-button-primary',
+                disabled: busy !== null,
+                onClick: openSample,
+              },
+              busy === 'open' ? t('video.opening') : t('video.open')
+            )
+          );
+        }
+        return h(
+          'div',
+          { className: 'dv-editor', key: 'editor' },
+          h(
+            'section',
+            { className: 'dv-stage', 'aria-label': projectTitle },
+            h(
+              'header',
+              { className: 'dv-stagebar' },
+              h('div', { className: 'dv-project-title' }, projectTitle),
+              projectMeta === '' ? null : h('div', { className: 'dv-project-meta' }, projectMeta)
+            ),
+            h(
+              'div',
+              { className: 'dv-canvas' },
+              frame !== null
+                ? h('img', {
+                    className: 'dv-frame',
+                    src: frame.url,
+                    alt: projectTitle,
+                    onError: function frameFailed() {
+                      if (!aliveRef.current) return;
+                      setFrame(null);
+                      setError({ code: 'E_ARTIFACT_INTEGRITY', message: t('video.frame.failed') });
+                    },
+                  })
+                : h('p', { className: 'dv-canvas-note' }, busy === 'frame' ? t('video.updating') : t('video.frame.empty'))
+            )
+          ),
+          h(
+            'aside',
+            { className: 'dv-side', 'aria-label': t('video.details') },
+            h(
+              'div',
+              { className: 'dv-actions' },
+              h(
+                'button',
+                { type: 'button', className: 'dv-button dv-button-primary', disabled: busy !== null, onClick: function update() { void requestFrame(project); } },
+                busy === 'frame' ? t('video.updating') : t('video.update')
+              ),
+              h(
+                'button',
+                { type: 'button', className: 'dv-button', disabled: busy !== null, onClick: function render() { void exportVideo(); } },
+                busy === 'export' ? t('video.exporting') : t('video.export')
+              ),
+              h(
+                'button',
+                { type: 'button', className: 'dv-button dv-button-quiet', disabled: busy !== null, onClick: function refresh() { void refreshProject(); } },
+                busy === 'refresh' ? t('video.refreshing') : t('video.refresh')
+              )
+            ),
+            navigationNotice(),
+            errorNotice(),
+            project === null ? null : h('div', { className: 'dv-field' },
+              h('label', { className: 'dv-label', htmlFor: 'dsh-video-title' }, t('video.title')),
+              h('input', {
+                id: 'dsh-video-title',
+                className: 'dv-input',
+                type: 'text',
+                value: titleDraft,
+                disabled: busy !== null || titleTarget === null,
+                onChange: function updateTitle(event) { setTitleDraft(event.target.value); },
+              })
+            ),
+            project === null || timingTarget === null ? null : h('div', null,
+              h('div', { className: 'dv-label' }, t('video.timing')),
+              h('div', { className: 'dv-field-row' },
+                h('div', { className: 'dv-field' },
+                  h('label', { className: 'dv-label', htmlFor: 'dsh-video-start' }, t('video.start')),
+                  h('input', { id: 'dsh-video-start', className: 'dv-input', type: 'number', step: '0.05', min: '0', max: '3600', value: startDraft, disabled: busy !== null, onChange: function updateStart(event) { setStartDraft(event.target.value); } })
+                ),
+                h('div', { className: 'dv-field' },
+                  h('label', { className: 'dv-label', htmlFor: 'dsh-video-duration' }, t('video.duration')),
+                  h('input', { id: 'dsh-video-duration', className: 'dv-input', type: 'number', step: '0.05', min: '0.01', max: '3600', value: durationDraft, disabled: busy !== null, onChange: function updateDuration(event) { setDurationDraft(event.target.value); } })
+                )
+              )
+            ),
+            titleTarget === null && timingTarget === null ? h('p', { className: 'dv-note' }, t('video.noText')) : null,
+            h('button', {
+              type: 'button',
+              className: 'dv-button',
+              disabled: !canSave,
+              onClick: function save() { void saveEdit(); },
+            }, busy === 'edit' ? t('video.saving') : t('video.save')),
+            activeJob === null ? null : h('div', { className: 'dv-job' },
+              h('span', { className: 'dv-job-state' }, stateText(activeJob.state, t)),
+              Number.isFinite(Number(activeJob.progress)) && activeJob.progress > 0 ? h('span', null, Math.round(Number(activeJob.progress) * 100) + '%') : null,
+              canCancel ? h('button', { type: 'button', className: 'dv-button dv-button-quiet', disabled: busy === 'cancel', onClick: function cancel() { void cancelCurrentJob(); } }, busy === 'cancel' ? t('video.cancelling') : t('video.cancel')) : null,
+              download === null ? null : h('a', { className: 'dv-download', href: download, download: 'dsh-video-' + activeJob.jobId + '.mp4' }, t('video.download'))
+            ),
+            h('details', { className: 'dv-details' },
+              h('summary', null, t('video.details')),
+              h('ul', { className: 'dv-meta-list' },
+                elements.map(function elementRow(element, index) {
+                  const capabilities = capabilityList(element);
+                  const summary = (typeof element.stableId === 'string' && element.stableId.length > 0 ? element.stableId : '#' + (index + 1)) + (capabilities.length > 0 ? ' · ' + capabilities.join(', ') : '');
+                  return h('li', { className: 'dv-meta-item', key: (element.stableId || index) + '' }, summary);
+                })
+              ),
+              titleTarget === null && timingTarget === null ? null : h('p', { className: 'dv-note' }, (titleTarget !== null ? t('video.title') + ': ' + titleTarget.stableId : '') + (timingTarget !== null && timingTarget !== titleTarget ? (titleTarget !== null ? ' · ' : '') + t('video.timing') + ': ' + timingTarget.stableId : ''))
+            )
+          )
+        );
       }
 
       return h(
@@ -700,14 +1519,7 @@ window.__ModuleLoader__.load({
               : null
           )
         ),
-        h(
-          'main',
-          { className: 'dv-main', key: 'main' },
-          ui.navigationError === null
-            ? null
-            : h('p', { className: 'dv-error', role: 'alert', key: 'error' }, t('video.error.back')),
-          h('p', { className: 'dv-empty', key: 'empty' }, t('video.empty'))
-        )
+        h('main', { className: 'dv-main', key: 'main' }, stageContent())
       );
     }
     //#endregion
