@@ -136,9 +136,9 @@ smoke 覆盖（真实声明生命周期语义的 fake runtime，未通过改桩�
 
 ## 6. 固定包与状态
 
-- 修复/实现提交：`PENDING_COMMIT`（见随后提交）。
-- 包版本：`0.1.2`；tarball：`PENDING_TARBALL`；SHA-256：`PENDING_SHA`；大小/文件数：`PENDING_SIZE`。
-- 保留历史固定包 `0.1.0`、`0.1.1` 归档；当前 profile 安装依赖仍指向 `a31ee51/dsh-video-0.1.0.tgz`，本轮未安装/替换/启停/重启，未改 profile，未 push。
+- 实现/测试/文档提交：`09b2708`（`feat: move video workspace entry to native sidebar and trim empty state`）；本记录与包摘要随后为本地文档提交（未 push）。
+- 包版本：`0.1.2`；tarball：`/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/artifacts/p0-mode-shell/09b2708/dsh-video-0.1.2.tgz`；SHA-256：`f33804af5c3baa850dce99b6ffdecfbedda1fd24f82b845d18563bbf39d6952b`；大小 14,359 bytes；9 files；解包后 9/9 文件与 `09b2708` 工作树逐字节一致（含 `client.js`、`package.json`、locale、README、LICENSE）。
+- 保留历史固定包 `a31ee51/dsh-video-0.1.0.tgz`、`ab4bc68/dsh-video-0.1.1.tgz` 与旧目录归档；当前 profile 安装依赖仍指向 `a31ee51/dsh-video-0.1.0.tgz`；本轮未安装/替换/启停/重启、未改 profile、未 push。
 - 引擎线（P1-002）独立并行，本轮未触碰其文件或 worktree。
 
 ## 7. 未测 / 后续（需另行授权安装新包后）
