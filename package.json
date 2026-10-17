@@ -1,6 +1,6 @@
 {
   "name": "dsh-video",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "private": true,
   "description": "Native sidebar entry and a restrained empty video workspace for DeepSeek Harness.",
   "type": "module",

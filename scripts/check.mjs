@@ -127,8 +127,8 @@ check('bundle manifest declares patch and client', () => {
   return `platform=web, inject=[${pkg.dsh.client.inject.join(', ')}]`;
 });
 
-check('package version advanced for the P0-005 fixed package', () => {
-  assert(pkg.version === '0.1.2', `expected version 0.1.2, found "${pkg.version}"`);
+check('package version advanced for the P0-005 R1 fixed package', () => {
+  assert(pkg.version === '0.1.3', `expected version 0.1.3, found "${pkg.version}"`);
   return pkg.version;
 });
 
@@ -326,6 +326,22 @@ check('P0-005: the display preference lives in one accessible menu', () => {
   assert(clientSource.includes("'aria-checked': ui.simplifiedEffects ? 'true' : 'false'"), 'display option must expose its checked state');
   assert(clientSource.includes("t('video.display.label')"), 'display menu needs an accessible name from locale');
   return 'single labelled display-options menu with checkbox semantics';
+});
+
+check('R1: the display menu moves focus in and returns it on close', () => {
+  assert(clientSource.includes('React.useRef('), 'menu needs trigger/item refs for focus management');
+  assert(clientSource.includes('triggerRef') && clientSource.includes('itemRef'), 'menu refs missing');
+  assert(clientSource.includes('focusOpenItem'), 'opening the menu must move focus onto the item');
+  assert(clientSource.includes("event.key === 'ArrowDown'"), 'ArrowDown opening is not handled');
+  assert(clientSource.includes("event.key === 'Escape'"), 'Escape close is not handled in the menu');
+  assert(clientSource.includes("event.key === 'Tab'"), 'Tab close must be handled so focus cannot stay on the removed item');
+  assert(clientSource.includes('focusTrigger'), 'closing must restore focus to the trigger');
+  assert(clientSource.includes('tabIndex: -1'), 'menu items should be programmatically focused, not tab stops');
+  assert(
+    clientSource.includes('document.addEventListener') === false && clientSource.includes('window.addEventListener') === false,
+    'the menu must not install global listeners (nothing may leak on unmount)'
+  );
+  return 'open focuses item; Escape/Tab close and refocus trigger; no global listeners';
 });
 
 check('P0-005: sidebar icon follows the host owner props and native stroke', () => {

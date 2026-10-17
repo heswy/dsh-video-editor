@@ -85,7 +85,16 @@ function createReact() {
       for (const effect of scope.effects) context.effects.push(effect);
       return renderNode(rendered, context);
     }
-    return { type, props: props || {}, children: renderNode((props || {}).children, context) };
+    const domNode = { type, props: props || {}, children: renderNode((props || {}).children, context) };
+    const forwardedRef = domNode.props.ref;
+    if (forwardedRef !== undefined && forwardedRef !== null) {
+      domNode.focus = function focus() {
+        context.activeElement = domNode;
+      };
+      if (typeof forwardedRef === 'function') forwardedRef(domNode);
+      else if (typeof forwardedRef === 'object') forwardedRef.current = domNode;
+    }
+    return domNode;
   }
 
   const react = {
@@ -130,8 +139,16 @@ function createReact() {
     },
     renderInteractive(component, props) {
       const scope = { hooks: {}, hookIndex: 0, effects: [] };
+      const context = { effects: [], cleanups: [], activeElement: null };
       let currentTree = null;
       function renderOnce() {
+        for (const cleanup of context.cleanups.splice(0).reverse()) {
+          try {
+            cleanup();
+          } catch (_error) {
+            /* cleanup is best effort in the shim */
+          }
+        }
         scope.hookIndex = 0;
         scope.effects = [];
         const previous = currentRuntime;
@@ -142,10 +159,26 @@ function createReact() {
         } finally {
           currentRuntime = previous;
         }
-        currentTree = renderNode(rendered, { effects: [], cleanups: [] });
+        context.effects = [];
+        for (const effect of scope.effects.splice(0)) context.effects.push(effect);
+        currentTree = renderNode(rendered, context);
+        for (const effect of context.effects.splice(0)) {
+          let cleanup;
+          try {
+            cleanup = effect();
+          } catch (_error) {
+            /* effects are best effort in the shim */
+          }
+          if (typeof cleanup === 'function') context.cleanups.push(cleanup);
+        }
         return currentTree;
       }
-      return { render: renderOnce, rerender: renderOnce, tree: () => currentTree };
+      return {
+        render: renderOnce,
+        rerender: renderOnce,
+        tree: () => currentTree,
+        activeElement: () => context.activeElement,
+      };
     },
     render(element) {
       const context = { effects: [], cleanups: [] };
@@ -726,10 +759,101 @@ test('display options menu toggles and persists the reduced-effects preference',
   const parsed = JSON.parse(stored);
   assert(parsed.version === 1 && parsed.simplifiedEffects === true, 'stored preference payload is wrong');
   // Escape closes the menu again without leaving the panel.
-  const panelRoot = findNode(tree, (node) => node.props && node.props.className === 'dv-root');
-  panelRoot.props.onKeyDown({ key: 'Escape', preventDefault() {} });
+  const menu = findNode(tree, (node) => node.props && node.props.className === 'dv-menu');
+  menu.props.onKeyDown({ key: 'Escape', preventDefault() {} });
   tree = interactive.rerender();
   assert(panelMenuItem(tree) === null, 'Escape did not close the display menu');
+});
+
+test('R1: opening the display menu moves focus onto its item', () => {
+  const loaded = loadClient();
+  const env = createFakeEnvironment();
+  loaded.exports.apply(env.ctx);
+  const interactive = mountInteractivePanel(loaded, env);
+  let tree = interactive.render();
+  const trigger = findNode(tree, (node) => node.type === 'button' && node.props.className === 'dv-icon-button');
+  trigger.props.onClick();
+  tree = interactive.rerender();
+  const item = panelMenuItem(tree);
+  assert(item !== null, 'display menu did not open');
+  const active = interactive.activeElement();
+  assert(active !== null, 'opening the menu did not move focus');
+  assert(active.props && active.props.role === 'menuitemcheckbox', 'focus did not move onto the menu item');
+});
+
+test('R1: ArrowDown on the trigger opens and focuses the menu item', () => {
+  const loaded = loadClient();
+  const env = createFakeEnvironment();
+  loaded.exports.apply(env.ctx);
+  const interactive = mountInteractivePanel(loaded, env);
+  let tree = interactive.render();
+  const trigger = findNode(tree, (node) => node.type === 'button' && node.props.className === 'dv-icon-button');
+  let prevented = false;
+  trigger.props.onKeyDown({ key: 'ArrowDown', preventDefault() { prevented = true; } });
+  assert(prevented === true, 'ArrowDown must be handled');
+  tree = interactive.rerender();
+  const item = panelMenuItem(tree);
+  assert(item !== null, 'ArrowDown did not open the menu');
+  const active = interactive.activeElement();
+  assert(active !== null && active.props && active.props.role === 'menuitemcheckbox', 'ArrowDown did not focus the item');
+});
+
+test('R1: Escape closes the menu and returns focus to the trigger', () => {
+  const loaded = loadClient();
+  const env = createFakeEnvironment();
+  loaded.exports.apply(env.ctx);
+  const interactive = mountInteractivePanel(loaded, env);
+  let tree = interactive.render();
+  findNode(tree, (node) => node.type === 'button' && node.props.className === 'dv-icon-button').props.onClick();
+  tree = interactive.rerender();
+  const menu = findNode(tree, (node) => node.props && node.props.className === 'dv-menu');
+  let prevented = false;
+  menu.props.onKeyDown({ key: 'Escape', preventDefault() { prevented = true; } });
+  tree = interactive.rerender();
+  assert(prevented === true, 'Escape must be handled');
+  assert(panelMenuItem(tree) === null, 'Escape did not close the menu');
+  const active = interactive.activeElement();
+  assert(active !== null && active.props && active.props.className === 'dv-icon-button', 'Escape did not return focus to the trigger');
+});
+
+test('R1: Tab closes the menu and returns focus without keeping it inside the removed menu', () => {
+  const loaded = loadClient();
+  const env = createFakeEnvironment();
+  loaded.exports.apply(env.ctx);
+  const interactive = mountInteractivePanel(loaded, env);
+  let tree = interactive.render();
+  const trigger = findNode(tree, (node) => node.type === 'button' && node.props.className === 'dv-icon-button');
+  trigger.props.onKeyDown({ key: 'ArrowDown', preventDefault() {} });
+  tree = interactive.rerender();
+  assert(panelMenuItem(tree) !== null, 'menu did not open for the Tab check');
+  const activeBefore = interactive.activeElement();
+  assert(activeBefore !== null && activeBefore.props.role === 'menuitemcheckbox', 'focus was not inside the menu before Tab');
+  const menu = findNode(tree, (node) => node.props && node.props.className === 'dv-menu');
+  let prevented = false;
+  menu.props.onKeyDown({ key: 'Tab', preventDefault() { prevented = true; } });
+  tree = interactive.rerender();
+  assert(prevented === true, 'Tab must be handled so focus cannot stay on the removed node');
+  assert(panelMenuItem(tree) === null, 'Tab did not close the menu');
+  const activeAfter = interactive.activeElement();
+  assert(activeAfter !== null && activeAfter.props && activeAfter.props.className === 'dv-icon-button', 'Tab did not return focus to the trigger');
+});
+
+test('R1: pressing the trigger again closes the menu and keeps focus on the trigger', () => {
+  const loaded = loadClient();
+  const env = createFakeEnvironment();
+  loaded.exports.apply(env.ctx);
+  const interactive = mountInteractivePanel(loaded, env);
+  let tree = interactive.render();
+  let trigger = findNode(tree, (node) => node.type === 'button' && node.props.className === 'dv-icon-button');
+  trigger.props.onClick();
+  tree = interactive.rerender();
+  assert(panelMenuItem(tree) !== null, 'menu did not open');
+  trigger = findNode(tree, (node) => node.type === 'button' && node.props.className === 'dv-icon-button');
+  trigger.props.onClick();
+  tree = interactive.rerender();
+  assert(panelMenuItem(tree) === null, 'second trigger press did not close the menu');
+  const active = interactive.activeElement();
+  assert(active !== null && active.props && active.props.className === 'dv-icon-button', 'closing did not keep focus on the trigger');
 });
 
 test('preferences are restored on a fresh module load', () => {

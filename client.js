@@ -544,16 +544,77 @@ window.__ModuleLoader__.load({
       const onBack = props.onBack;
       const ui = usePluginState();
       const [menuOpen, setMenuOpen] = React.useState(false);
+      const triggerRef = React.useRef(null);
+      const itemRef = React.useRef(null);
 
-      function onKeyDown(event) {
-        if (event && event.key === 'Escape' && menuOpen) {
-          event.preventDefault();
-          setMenuOpen(false);
+      // Focus management for the single-item display menu. The trigger opens the
+      // menu; the open menu moves focus onto its item; Escape and Tab close it and
+      // return focus to the trigger (Tab is not prevented from leaving afterwards,
+      // and focus never stays on the removed node). No document/window listeners
+      // are installed, so unmount cannot leak a global handler.
+      React.useEffect(
+        function focusOpenItem() {
+          if (!menuOpen || itemRef.current === null || typeof itemRef.current.focus !== 'function') return;
+          try {
+            itemRef.current.focus();
+          } catch (_error) {
+            /* focus is best-effort; the menu stays usable */
+          }
+        },
+        [menuOpen]
+      );
+
+      function focusTrigger() {
+        try {
+          if (triggerRef.current !== null && typeof triggerRef.current.focus === 'function') {
+            triggerRef.current.focus();
+          }
+        } catch (_error) {
+          /* focus is best-effort; the menu is already closed */
         }
       }
 
-      function onToggleMenu() {
-        setMenuOpen(!menuOpen);
+      function openMenu() {
+        setMenuOpen(true);
+      }
+
+      function closeMenu() {
+        setMenuOpen(false);
+        focusTrigger();
+      }
+
+      function onTriggerClick() {
+        if (menuOpen) closeMenu();
+        else openMenu();
+      }
+
+      function onTriggerKeyDown(event) {
+        if (!event) return;
+        if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+          event.preventDefault();
+          if (menuOpen) {
+            if (itemRef.current !== null && typeof itemRef.current.focus === 'function') itemRef.current.focus();
+          } else {
+            openMenu();
+          }
+        } else if (event.key === 'Escape' && menuOpen) {
+          event.preventDefault();
+          closeMenu();
+        }
+      }
+
+      function onMenuKeyDown(event) {
+        if (!event) return;
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          closeMenu();
+        } else if (event.key === 'Tab') {
+          // Close first and restore focus to the trigger. The event is prevented
+          // only for this step so focus cannot remain inside the unmounting menu;
+          // the user's next Tab continues from the trigger normally.
+          event.preventDefault();
+          closeMenu();
+        }
       }
 
       function onToggleSimplified() {
@@ -566,7 +627,6 @@ window.__ModuleLoader__.load({
           className: 'dv-root',
           'data-simplified': ui.simplifiedEffects ? 'true' : 'false',
           'data-panel': PANEL_ID,
-          onKeyDown: onKeyDown,
         },
         h(StyleTag, { key: 'style' }),
         h(
@@ -593,13 +653,16 @@ window.__ModuleLoader__.load({
               'button',
               {
                 type: 'button',
+                key: 'trigger',
+                ref: triggerRef,
                 className: 'dv-icon-button',
                 'aria-haspopup': 'menu',
                 'aria-expanded': menuOpen ? 'true' : 'false',
                 'aria-controls': 'dsh-video-display-menu',
                 'aria-label': t('video.display.label'),
                 title: t('video.display.label'),
-                onClick: onToggleMenu,
+                onClick: onTriggerClick,
+                onKeyDown: onTriggerKeyDown,
               },
               h(DisplayOptionsIcon)
             ),
@@ -612,13 +675,17 @@ window.__ModuleLoader__.load({
                     role: 'menu',
                     'aria-label': t('video.display.label'),
                     key: 'menu',
+                    onKeyDown: onMenuKeyDown,
                   },
                   h(
                     'button',
                     {
                       type: 'button',
+                      key: 'item',
+                      ref: itemRef,
                       className: 'dv-menu-item',
                       role: 'menuitemcheckbox',
+                      tabIndex: -1,
                       'aria-checked': ui.simplifiedEffects ? 'true' : 'false',
                       onClick: onToggleSimplified,
                     },
