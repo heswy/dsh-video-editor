@@ -23,6 +23,10 @@
 6. **Tool frame + status**：2.5 秒抽帧 job 成功，PNG 275,744 B、SHA-256 `efca929677830434624a262bc13b2f6e1dd39af70619e3455c6753ac079441db`、1280×720、frame 75、`survivors:[]`、`cleaned:true`；该 hash 与 P1 受控证据一致，说明真实链路确定性。
 7. **安装状态**：`node_modules/dsh-video/package.json` 为 `0.2.0`；0.1.3 已移除（回滚目录保留）。
 
+## 真机验收发现的问题
+
+- **V1（视觉/对比度，2026-10-17）**：深色模式下主按钮「更新画面」白底白字，文字几乎不可见（功能正常，可点击）。原因：`client.js` `.dv-button-primary` 使用宿主不存在的 `--dsw-alias-label-on-brand`（fallback `#fff`），而深色主题 `--dsw-alias-brand-primary` 为近白色。已排入 [P2-005 R1](../tasks/P2-005-preview-time-and-player-spike.md)，随 0.2.1 修复并重装后复核浅色/深色、hover/focus/disabled。
+
 ## 待验清单（继续真机验收）
 
 - UI 编辑闭环：改标题/时序 → 保存修改 → 更新画面 → 新 revision 的帧（旧帧不冒充）。

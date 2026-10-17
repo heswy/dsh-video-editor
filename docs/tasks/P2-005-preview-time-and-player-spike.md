@@ -46,7 +46,24 @@
 
 证据要求：可用 dev-only 原型（`experiments/preview/**`，可安装固定版本 hyperframes 0.8.167 到该目录，`--ignore-scripts`，锁文件入库、node_modules 不入库），在真实 Chrome 本地打开、断网运行，截取 0.5s/2.5s/4.5s 画面或日志；证明 seek/播放与无网络。若 A1/A2 不可行，也必须有失败证据并给 A3 或替代建议。
 
-## 4. 交付与验收
+## 4. 真机验收缺陷 R1（必须修，随 B/0.2.1 一起交付）
+
+2026-10-17 真机深色模式下：主按钮 **「更新画面」**（`.dv-button-primary`）显示为白底、文字几乎不可见的白字（功能正常、可点击，是看不清不是不可用）。
+
+主调度已核对源码与宿主 token：
+
+- `client.js` 约 430–436 行：`background:var(--dsw-alias-brand-primary, #5b8cff); color:var(--dsw-alias-label-on-brand, #fff);`
+- 宿主（Desktop 0.2.1-rc.1）**不存在** `--dsw-alias-label-on-brand`，因此前景始终落到 fallback `#fff`；而深色主题的 `--dsw-alias-brand-primary` 解析为近白色（neutral-bluish-50），造成白底白字。浅色主题正常只是巧合。
+- 宿主实际存在的候选 token：`--dsw-alias-label-primary-inverted`（浅色 #fff / 深色 #353638 一类的反转前景）、`--dsw-alias-brand-primary-invert`、`--dsw-alias-brand-text`、`--dsw-alias-label-primary-foreground`。
+
+要求：
+
+- 用宿主真实存在的 token 或显式正确配对，保证主按钮前景/背景对比：浅色、深色、hover、focus-visible、disabled 都可读；不允许再引用不存在的 token 靠 fallback 蒙对。
+- 检查其它同类 token 用法（`--dsw-alias-label-on-brand` 等不存在变量）与空状态、错误文本、禁用态对比，不扩大成重设计。
+- 验证分层：本地静态断言 + 真实安装后浅色/深色截图对照（0.2.1 重装后由用户看、总调度记录）；无真实主题证据不算修好。
+- 记录在开发记录里：根因、修改的 token、两种主题验证结果、未验证项。
+
+## 5. 交付与验收
 
 1. B 先完成：commit、`npm run check` 结果、0.2.1 固定包摘要、新 staging、真实链证据；交回后总调度复审，用户再重装验收。
 2. A 再完成：`docs/research/P2-005-preview-spike.md`（结论先行、已验证/提案分开）、原型证据路径、推荐拆分。

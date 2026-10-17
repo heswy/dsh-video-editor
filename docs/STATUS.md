@@ -69,6 +69,8 @@
 
 ## 最近交接
 
+2026-10-17 真机缺陷 V1：深色模式下主按钮「更新画面」白底白字看不清（功能正常）。已核源码根因——`.dv-button-primary` 引用宿主不存在的 `--dsw-alias-label-on-brand`（fallback #fff），深色主题 `--dsw-alias-brand-primary` 为近白色。已作为必修 R1 排入 [P2-005](tasks/P2-005-preview-time-and-player-spike.md)，随 0.2.1 交付、重装后复核浅色/深色与 hover/focus/disabled；其余真机验收项继续。
+
 2026-10-17 播放需求排期：用户真机反馈「导出下载后可播放，但插件内没有播放器」。0.2.0 按范围只有固定 2.5s 单帧 + 导出；用户确认先做 B（画面时间点抽帧预览）并同时排 A（隔离预览面真播放 spike）。已发布 [P2-005](tasks/P2-005-preview-time-and-player-spike.md) 与交接，程序员 2 执行；已安装 0.2.0 与其 staging 不动，交付复审后再由用户重装 0.2.1。
 
 2026-10-17 真机安装与首轮验收：用户授权后卸载 0.1.3，以 Plugins link 安装 `dsh-video 0.2.0`（clean staging，root `fa7b0e2` + engine `54f4671`，INTEGRITY `cc4490da…`，staged Host `07442c86…`）。真实 Host 内：侧栏 Vedio Editor 选中、真实工程/画面/元信息/target 显示；`video_engine` Tool 注入本会话，doctor/open/frame(2.5s)/status 全部通过，PNG `efca9296…`/275,744 B/1280×720/`survivors:[]`（与 P1 受控帧一致）。待验：UI 编辑保存/导出取消/冲突/生命周期/明暗窄窗/artifact 字节。见 [真机验收记录](research/P2-004-live-acceptance.md)。
