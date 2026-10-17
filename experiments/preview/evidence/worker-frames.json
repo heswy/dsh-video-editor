@@ -1,0 +1,186 @@
+{
+  "kind": "p2-005-frame-consistency",
+  "staging": "/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/artifacts/p2-b/staging-54f4671-da8a22b",
+  "executedHost": {
+    "staging": "/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/artifacts/p2-b/staging-54f4671-da8a22b",
+    "hostModule": "/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/artifacts/p2-b/staging-54f4671-da8a22b/bundle/host/bridge.js",
+    "hostModuleSha256": "07442c86a4c4bc072576719efe99be5615e7b55437d3e9183ec8ef0e5fde0fee",
+    "bundleIndex": "/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/artifacts/p2-b/staging-54f4671-da8a22b/bundle/index.js",
+    "rootCommit": "da8a22b07fde0f20d3d3fcacad4992161e5a444f",
+    "engineCommit": "54f467147ae2f61e118099c4947f55e8da877500",
+    "stagedPatchSha256": "5754edd8f8a6684eff819b717214084fe9f73872ecfd8a60038a7ebee63db294",
+    "configSha256": "856ea63abfd9d50be994e1133eedff25d4428d8bf68164f3d85d81f157edb310",
+    "versions": {
+      "bundle": "0.2.1",
+      "client": "0.1.1",
+      "worker": "0.1.1"
+    },
+    "resolved": {
+      "clientEntry": "/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/artifacts/p2-b/staging-54f4671-da8a22b/engine-client/src/index.mjs",
+      "workerEntry": "/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/artifacts/p2-b/staging-54f4671-da8a22b/engine-worker/src/worker.mjs",
+      "workerManifest": "/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/artifacts/p2-b/staging-54f4671-da8a22b/engine-worker/package.json"
+    },
+    "integrityVerified": true
+  },
+  "times": [
+    0.5,
+    2.5,
+    4.5
+  ],
+  "frames": [
+    {
+      "time": 0.5,
+      "elapsedMs": 5537,
+      "file": "/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/p0-mode-shell/experiments/preview/evidence/worker-0_5.png",
+      "mediaType": "image/png",
+      "size": 274142,
+      "sha256": "0240f557b51119728388140e61836b1b913b26b37d05d0ec8b5540fd3d8dfcc0",
+      "artifactHash": "0240f557b51119728388140e61836b1b913b26b37d05d0ec8b5540fd3d8dfcc0",
+      "metadata": {
+        "width": 1280,
+        "height": 720,
+        "time": 0.5,
+        "frame": 15
+      }
+    },
+    {
+      "time": 2.5,
+      "elapsedMs": 5108,
+      "file": "/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/p0-mode-shell/experiments/preview/evidence/worker-2_5.png",
+      "mediaType": "image/png",
+      "size": 275744,
+      "sha256": "efca929677830434624a262bc13b2f6e1dd39af70619e3455c6753ac079441db",
+      "artifactHash": "efca929677830434624a262bc13b2f6e1dd39af70619e3455c6753ac079441db",
+      "metadata": {
+        "width": 1280,
+        "height": 720,
+        "time": 2.5,
+        "frame": 75
+      }
+    },
+    {
+      "time": 4.5,
+      "elapsedMs": 4951,
+      "file": "/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/p0-mode-shell/experiments/preview/evidence/worker-4_5.png",
+      "mediaType": "image/png",
+      "size": 276488,
+      "sha256": "e08dd62b75750e7a8051e999b892cb792e97599cf8a594dbb72c5b4ee22ebfc8",
+      "artifactHash": "e08dd62b75750e7a8051e999b892cb792e97599cf8a594dbb72c5b4ee22ebfc8",
+      "metadata": {
+        "width": 1280,
+        "height": 720,
+        "time": 4.5,
+        "frame": 135
+      }
+    }
+  ],
+  "open": {
+    "projectId": "demo",
+    "revision": "135a529ff2e222fcbee246b6703ba64d85b537908433818d2c4f3697f6294c85",
+    "width": 1280,
+    "height": 720,
+    "duration": 5,
+    "elements": [
+      {
+        "stableId": "hf-scene",
+        "text": null,
+        "timing": {
+          "start": 0,
+          "duration": 5
+        },
+        "capabilities": []
+      },
+      {
+        "stableId": "hf-eyebrow",
+        "text": "DSH VIDEO / ENGINE STUDY",
+        "timing": {
+          "start": null,
+          "duration": null
+        },
+        "capabilities": [
+          "text"
+        ]
+      },
+      {
+        "stableId": "hf-title",
+        "text": "让创意成为影像",
+        "timing": {
+          "start": 0,
+          "duration": 5
+        },
+        "capabilities": [
+          "text",
+          "timing"
+        ]
+      },
+      {
+        "stableId": "hf-subtitle",
+        "text": "原生工程 · 确定性时间 · 自由修改",
+        "timing": {
+          "start": null,
+          "duration": null
+        },
+        "capabilities": [
+          "text"
+        ]
+      },
+      {
+        "stableId": "hf-orb",
+        "text": null,
+        "timing": {
+          "start": null,
+          "duration": null
+        },
+        "capabilities": [
+          "text"
+        ]
+      },
+      {
+        "stableId": "hf-rule",
+        "text": null,
+        "timing": {
+          "start": null,
+          "duration": null
+        },
+        "capabilities": [
+          "text"
+        ]
+      },
+      {
+        "stableId": "hf-caption",
+        "text": "P1—001 / 1280 × 720 / 30 FPS / 5 SEC",
+        "timing": {
+          "start": null,
+          "duration": null
+        },
+        "capabilities": [
+          "text"
+        ]
+      }
+    ],
+    "files": [
+      {
+        "path": "assets/Heiti.ttc",
+        "bytes": 55754164,
+        "sha256": "f8fa4a63e2cf500e98e64d4c73260daaba049306cf85dec9e3729bc285b7d645"
+      },
+      {
+        "path": "assets/MotionPathPlugin.min.js",
+        "bytes": 22002,
+        "sha256": "ace44a07c6c179f5347d9b46a152d468e4c9f272ee0d68bf0354e00d60000693"
+      },
+      {
+        "path": "assets/gsap.min.js",
+        "bytes": 72927,
+        "sha256": "92bb9a96476f983d212a2bc4f54c889039c1696dd4461d40a736860938570fbb"
+      },
+      {
+        "path": "index.html",
+        "bytes": 2443,
+        "sha256": "8080d8b0070bf9fcfba875c3ef44cbf05edaa839217a40ec2f12140d748233fe"
+      }
+    ]
+  },
+  "revision": "135a529ff2e222fcbee246b6703ba64d85b537908433818d2c4f3697f6294c85",
+  "ok": true
+}
