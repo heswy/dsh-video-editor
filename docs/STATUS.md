@@ -19,19 +19,21 @@
 | [P0-002](tasks/P0-002-mode-shell-implementation.md) | DSH 实现 / Codex 评审 | 继续 dsh/p0-mode-shell 与原 worktree | 8ebf922 / a31ee51 主要修复复审通过；本地检查 44/44，固定包已产生；未安装 |
 | [P0-003](tasks/P0-003-install-validation.md) | 原 DSH 会话 | 原 P0 worktree | 0104e0e 真页面核心证据已审阅；已安装启用；P0 部分通过，引用/滚动等未完 |
 | [P0-004](tasks/P0-004-lifecycle-and-acceptance.md) | 原 DSH 会话 | 原 P0 worktree | ab4bc68 / 6f11ced 已复审；本地 50/50 与 0.1.1 包核对通过；新包未安装，补验使用 0.1.0 |
-| [P0-005](tasks/P0-005-sidebar-entry-and-restraint.md) | 原 DSH 会话 | 原 P0 worktree | 09b2708/00d1809 已首审；独立 51/51 与固定包核对通过；R1 菜单焦点需补修，未安装 |
+| [P0-005](tasks/P0-005-sidebar-entry-and-restraint.md) | 原 DSH 会话 | 原 P0 worktree | 51c82a9/f5eed41 复审通过；独立 57/57 与 0.1.3 包核对通过；未安装 |
 | [前端设计规划](design/FRONTEND-DESIGN.md) | Codex | codex/project-foundation；主工作区 | v0.2 用户要求已收敛：侧栏入口、少文案、克制材质；待 P0-005 实现 |
 | [P1-001 引擎验证](tasks/P1-001-engine-spike.md) | Codex 引擎开发 / 主会话验收 | codex/p1-engine-spike-b4bf；~/.codex/worktrees/b4bf/dsh-video-editor | c779b94 / e88615f 单场景可行性通过，主会话独立复测 3+2 测试、哈希与 ffprobe |
 | [P1-002 worker](tasks/P1-002-engine-worker.md) | 原 Codex 引擎会话 | 自行管理原 worktree/分支 | 3b5f6de R1 复审通过；本轮独立 7+1 测试通过，受控 worker 验收完成 |
 
-| [P2-001 通信包](tasks/P2-001-engine-client.md) | 原 Codex 引擎会话 | 自行管理原 worktree/分支 | 1f45f15 已首审；独立 6/6；R1 UTF-8/R2 不确定性/R3 定时器需修复 |
+| [P2-001 通信包](tasks/P2-001-engine-client.md) | 原 Codex 引擎会话 | 自行管理原 worktree/分支 | 51f562a 原 R1–R3 关闭，独立 9/9；新增 R4 stdin EPIPE 导致父进程退出，待修 |
+
+| [P0-006 真机验证](tasks/P0-006-sidebar-live-validation.md) | 原 DSH 会话 | 原 P0 worktree | 指南已准备；等待用户授权替换安装 0.1.3 |
 
 ## 下一动作
 
 并行线：DSH 做 P0-005；引擎会话下一项 P2-001 独立通信包，自行管理工作树。
 
-1. DSH 按 P0-005-review-01 修菜单焦点并出 0.1.3 新固定包复审；当前安装 0.1.0 保持原状。
-2. 引擎会话按 P2-001-review-01 修复 UTF-8、传输失败结果不确定性与 dispose 定时器；DSH Host 接线待复审通过。
+1. DSH 的 0.1.3 已通过代码/包复审；等待用户授权按 P0-006 替换 0.1.0 并定向真机验证，授权前保持原安装。
+2. 引擎会话按 P2-001-review-02 修 R4 真实断管的流 error 处理；原 R1–R3 通过，DSH Host 接线继续等待复审。
 3. 主会话按提交验收，再安排新包受控真机验证与 P2 Host 集成；未合并功能分支到 main。
 
 ## 阻塞与未验证
@@ -39,6 +41,8 @@
 P0-004 重挂修复本地通过；引用/普通文件等补验来自旧 0.1.0，不能作为新包真机通过。静态阅读位置、系统 reduced-motion、冷启动、console 仍未完成。侧栏准确位置需 P0-005 核实。单 Scene 引擎通过，尚无 DSH 内引擎接入、不可信代码隔离或完整 AI 创作验收。跨应用误输入已报告，影响未确证，测试边界已收紧。
 
 ## 最近交接
+
+2026-10-17 双线修复复审：DSH 51c82a9/f5eed41，57 项本地检查和 0.1.3 包独立核对通过，新增 P0-006 等待安装授权。客户端 51f562a 的 R1–R3 已关闭，9 项测试独立通过；补验输入管道关闭而 worker 存活时 write EPIPE 让隔离父进程异常退出，新增 R4 需修后接入。
 
 2026-10-17 双线首审：P0-005 51/51 及 0.1.2 包源码核对通过，补菜单焦点 R1 后再交包。P2-001 6/6 通过，但独立复现中文跨字节块损坏、退出后 edit uncertain=false、dispose 完成后 timer 驻留三个缺陷；分别交原会话修复。两条工作树跟踪文件未被主会话改动。
 
