@@ -285,12 +285,12 @@ check('R2: slide motion is a consumable hint, not a second mode source', () => {
   return 'consumable origin hint, token-based timing';
 });
 
-check('R1: entry availability is chained to the main declaration lifetime', () => {
+check('R1: the video panel and the normal-mode entry are one atomic pair', () => {
   const applyStart = clientSource.indexOf('function apply(ctx)');
   const applyEnd = clientSource.indexOf('return { inject: inject, apply: apply }');
   assert(applyStart >= 0 && applyEnd > applyStart, 'apply body not found');
   const applyBody = clientSource.slice(applyStart, applyEnd);
-  assert(applyBody.includes("ctx.slots.inject('main'"), 'main registration not found');
+  assert(applyBody.includes("ctx.slots.inject('main'"), 'main declaration hook not found');
   const entryStart = applyBody.indexOf('function registerMainAndEntry()');
   assert(entryStart >= 0, 'missing declaration-scoped registration entry point');
   const entryEnd = applyBody.indexOf('mainController = ctx.slots.inject', entryStart);
@@ -298,12 +298,19 @@ check('R1: entry availability is chained to the main declaration lifetime', () =
   const entryBody = applyBody.slice(entryStart, entryEnd);
   assert(
     entryBody.includes("ctx.slots.inject('conversation.header.leading'"),
-    'leading registration must be chained inside the main registration path'
+    'leading registration must be chained inside the main declaration path'
   );
-  assert(entryBody.includes('ctx.slots.register('), 'main entry registration missing from the declaration path');
-  assert(applyBody.includes('leadingRegistered'), 'missing registration-success tracking for the entry');
-  assert(applyBody.includes('leading-entry-unavailable'), 'missing unreachable-panel guard');
-  return 'main -> leading chained per declaration';
+  assert(entryBody.includes('ctx.slots.register('), 'entry registration missing from the declaration path');
+  const capsuleIndex = entryBody.indexOf("name: 'conversation.header.leading'");
+  const panelIndex = entryBody.indexOf('key: PANEL_ID, locale: NS, inject: navigation');
+  assert(capsuleIndex >= 0, 'capsule registration is not in the declaration path');
+  assert(panelIndex > capsuleIndex, 'the video panel must only be registered after the capsule');
+  assert(entryBody.includes('leadingRegistered'), 'missing registration-success tracking for the entry');
+  assert(entryBody.includes('leading-entry-unavailable'), 'missing unreachable-panel guard');
+  assert(entryBody.includes('releaseCycle'), 'missing atomic pair release path');
+  assert(entryBody.includes('settleSelection'), 'missing conversation fallback when the entry is lost');
+  assert(applyBody.includes('leading-inject-failed'), 'missing leading injection failure containment');
+  return 'capsule -> panel pair per declaration, released together and retried';
 });
 
 check('mode wiring matches P0-002 contract', () => {

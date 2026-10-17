@@ -19,6 +19,10 @@
  *   - every registration is owned by the caller fiber through `ctx.slots.inject`
  *     / `ctx.effect`, so disabling the plugin removes it and the host's
  *     `retainMainPanels` mechanism can return the UI to the conversation;
+ *   - the video panel and the normal-mode capsule are acquired and released as
+ *     one atomic pair. A late, re-declared, refused or lost leading seat releases
+ *     the pair (or keeps it unregistered), so the video panel can never exist
+ *     without a reachable normal-mode entry; a later seat declaration retries;
  *   - if the leading seat or the main key is already occupied, the plugin refuses
  *     to mount (diagnostic error) instead of shadowing another occupant.
  *
@@ -1019,49 +1023,140 @@ window.__ModuleLoader__.load({
 
       let mainController = null;
 
-      function disposeMainController() {
+      /** Ask the host to leave our panel when its entry disappears mid-selection. */
+      function settleSelection() {
         try {
-          if (mainController !== null) {
-            const dispose = mainController;
-            mainController = null;
-            dispose();
-          }
+          const panelInfo = ctx.layout && ctx.layout.panelInfo;
+          if (!panelInfo || typeof panelInfo.getSnapshot !== 'function') return;
+          const snapshot = panelInfo.getSnapshot();
+          if (snapshot && snapshot.activePanelId === PANEL_ID) ctx.layout.selectPanel(null);
         } catch (error) {
-          reportOnce('main-cleanup-failed', error);
+          reportOnce('fallback-return-failed', error);
         }
       }
 
-      // 3. Bind both mount points to the main panel's declaration lifetime. Real
-      //    slots.inject waits (it does not throw) while a slot is undeclared, so
-      //    the normal-mode entry may only exist while a registered video main panel
-      //    does. Every (re)declaration re-checks live occupants before registering.
+      // 3. The video panel and the normal-mode capsule are one atomic pair. The
+      //    chain lives for one `main` declaration lifetime; inside it, every
+      //    `conversation.header.leading` declaration lifetime re-acquires the
+      //    pair (capsule first, then panel). A late, refused or lost seat releases
+      //    whatever was already acquired, so the video panel can never exist
+      //    without its normal-mode entry. A later declaration retries the pair;
+      //    each acquisition is released exactly once through its own flag, so no
+      //    recursive dispose or duplicate registration is possible.
       function registerMainAndEntry() {
-        const mainOccupants = findOccupants(ctx, 'main', 'key', PANEL_ID);
-        if (mainOccupants === null) {
+        const initialMainOccupants = findOccupants(ctx, 'main', 'key', PANEL_ID);
+        if (initialMainOccupants === null) {
           reportIssue('main-entries-unavailable');
           return function noopDispose() {};
         }
-        if (mainOccupants.length > 0) {
-          reportIssue('main-key-conflict:' + String(mainOccupants.length));
-          return function noopDispose() {};
-        }
-        let mainEntryDispose = null;
-        try {
-          mainEntryDispose = ctx.slots.register(
-            { name: 'main', key: PANEL_ID, locale: NS, inject: navigation },
-            VideoWorkspace
-          );
-        } catch (error) {
-          reportIssue('main-register-failed', error);
+        if (initialMainOccupants.length > 0) {
+          reportIssue('main-key-conflict:' + String(initialMainOccupants.length));
           return function noopDispose() {};
         }
 
-        let leadingController = null;
+        let closed = false;
         let leadingRegistered = false;
-        let disposed = false;
-        function disposeEntry() {
-          if (disposed) return;
-          disposed = true;
+        let leadingController = null;
+        let cycle = null;
+
+        function releaseCycle(target) {
+          if (target === null || target.disposed === true) return;
+          target.disposed = true;
+          if (cycle === target) cycle = null;
+          leadingRegistered = false;
+          // Release the panel first so the host can fall back to the conversation
+          // before the entry disappears, never the other way around.
+          try {
+            if (target.mainDispose !== null) {
+              const dispose = target.mainDispose;
+              target.mainDispose = null;
+              dispose();
+            }
+          } catch (error) {
+            reportOnce('main-cleanup-failed', error);
+          }
+          try {
+            if (target.capsuleDispose !== null) {
+              const dispose = target.capsuleDispose;
+              target.capsuleDispose = null;
+              dispose();
+            }
+          } catch (error) {
+            reportOnce('leading-cleanup-failed', error);
+          }
+          settleSelection();
+        }
+
+        function acquirePair() {
+          if (closed) return function noopDispose() {};
+          if (cycle !== null) releaseCycle(cycle);
+
+          const leadingOccupants = findOccupants(ctx, 'conversation.header.leading', null, null);
+          if (leadingOccupants === null) {
+            reportIssue('leading-entries-unavailable');
+            reportIssue('leading-entry-unavailable');
+            return function noopDispose() {};
+          }
+          if (leadingOccupants.length > 0) {
+            reportIssue('leading-seat-conflict:' + String(leadingOccupants.length));
+            return function noopDispose() {};
+          }
+          // Re-check the main key right before committing the pair: a competitor
+          // may have registered while this declaration was running.
+          const mainOccupants = findOccupants(ctx, 'main', 'key', PANEL_ID);
+          if (mainOccupants === null) {
+            reportIssue('main-entries-unavailable');
+            return function noopDispose() {};
+          }
+          if (mainOccupants.length > 0) {
+            reportIssue('main-key-conflict:' + String(mainOccupants.length));
+            return function noopDispose() {};
+          }
+
+          let capsuleDispose = null;
+          let mainDispose = null;
+          try {
+            capsuleDispose = ctx.slots.register(
+              { name: 'conversation.header.leading', locale: NS, inject: navigation },
+              LeadingModeSwitch
+            );
+          } catch (error) {
+            reportIssue('leading-register-failed', error);
+            reportIssue('leading-entry-unavailable');
+            return function noopDispose() {};
+          }
+          try {
+            mainDispose = ctx.slots.register(
+              { name: 'main', key: PANEL_ID, locale: NS, inject: navigation },
+              VideoWorkspace
+            );
+          } catch (error) {
+            reportIssue('main-register-failed', error);
+            try {
+              capsuleDispose();
+            } catch (cleanupError) {
+              reportOnce('leading-cleanup-failed', cleanupError);
+            }
+            return function noopDispose() {};
+          }
+
+          leadingRegistered = true;
+          const acquired = {
+            disposed: false,
+            capsuleDispose: capsuleDispose,
+            mainDispose: mainDispose,
+            inner: null,
+          };
+          acquired.inner = function releaseLeadingDeclaration() {
+            releaseCycle(acquired);
+          };
+          cycle = acquired;
+          return acquired.inner;
+        }
+
+        function closeChain() {
+          if (closed) return;
+          closed = true;
           try {
             if (leadingController !== null) {
               const dispose = leadingController;
@@ -1071,57 +1166,25 @@ window.__ModuleLoader__.load({
           } catch (error) {
             reportOnce('leading-cleanup-failed', error);
           }
-          try {
-            if (mainEntryDispose !== null) {
-              const dispose = mainEntryDispose;
-              mainEntryDispose = null;
-              dispose();
-            }
-          } catch (error) {
-            reportOnce('main-cleanup-failed', error);
-          }
-        }
-
-        function registerLeadingSwitch() {
-          const leadingOccupants = findOccupants(ctx, 'conversation.header.leading', null, null);
-          if (leadingOccupants === null) {
-            reportIssue('leading-entries-unavailable');
-            return function noopDispose() {};
-          }
-          if (leadingOccupants.length > 0) {
-            reportIssue('leading-seat-conflict:' + String(leadingOccupants.length));
-            return function noopDispose() {};
-          }
-          try {
-            const dispose = ctx.slots.register(
-              { name: 'conversation.header.leading', locale: NS, inject: navigation },
-              LeadingModeSwitch
-            );
-            leadingRegistered = true;
-            return dispose;
-          } catch (error) {
-            reportIssue('leading-register-failed', error);
-            return function noopDispose() {};
-          }
+          releaseCycle(cycle);
         }
 
         try {
-          leadingController = ctx.slots.inject('conversation.header.leading', registerLeadingSwitch);
+          leadingController = ctx.slots.inject('conversation.header.leading', acquirePair);
         } catch (error) {
           reportIssue('leading-inject-failed', error);
-          disposeEntry();
+          closeChain();
           return function noopDispose() {};
         }
 
-        if (isSlotDeclared(ctx, 'conversation.header.leading') !== false && leadingRegistered !== true) {
-          // The seat is currently declared but our entry could not be registered.
-          // Never expose the video panel without its normal-mode entry.
+        if (isSlotDeclared(ctx, 'conversation.header.leading') !== false && leadingRegistered !== true && cycle === null) {
+          // The seat exists but our pair was refused. No video panel was
+          // registered in this order, so there is nothing left to retract; a
+          // later seat declaration retries the acquisition.
           reportIssue('leading-entry-unavailable');
-          disposeEntry();
-          return function noopDispose() {};
         }
 
-        return disposeEntry;
+        return closeChain;
       }
 
       try {
@@ -1129,14 +1192,6 @@ window.__ModuleLoader__.load({
       } catch (error) {
         reportIssue('main-inject-failed', error);
         return;
-      }
-
-      if (isSlotDeclared(ctx, 'main') !== false) {
-        const liveMain = findOccupants(ctx, 'main', 'key', PANEL_ID);
-        if (liveMain !== null && liveMain.length === 0) {
-          reportIssue('main-registration-missing');
-          disposeMainController();
-        }
       }
     }
 

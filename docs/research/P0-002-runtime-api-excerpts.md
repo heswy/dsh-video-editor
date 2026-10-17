@@ -132,7 +132,7 @@ inject(key, callback)
     wait and removes any active contribution.
 ```
 
-因此 `inject` 对「尚未声明」是**等待**而不是错误。实现把普通模式入口的注册链在 `main` 声明回调内部：每次 `main`（重新）声明都先重查 live `main` key 占用、注册视频面板，再 `inject` leading 并注册胶囊；`main` 声明折叠时整条链（含胶囊）随之撤回，重新声明后自动恢复。`Slots.entries(key)`（SlotRegistry 方法，见 `dsh-client-ui-renderer/lib/client.js`）仍是每次声明时的占用检查来源，不做低 priority 影子替换。
+因此 `inject` 对「尚未声明」是**等待**而不是错误。P0-004 起，实现把视频面板与普通模式胶囊作为**一个原子对**，链仍挂在 `main` 声明回调内部，但注册顺序改为：先 `inject` leading，并在每个 leading 声明生命周期内先注册胶囊、再注册视频面板；任一环节失败/冲突/枚举不可用则整对不注册或撤回，leading 声明折叠时同步撤回已注册的一对（`main` 面板先撤、胶囊后撤，并在宿主仍报告视频面板时兜底 `selectPanel(null)`）。`main` 声明折叠时关闭整条链，重新声明后重建；leading 的后续声明会重试整对，因此晚到/独立重声明失败不会留下不可达面板。`Slots.entries(key)`（SlotRegistry 方法，见 `dsh-client-ui-renderer/lib/client.js`）仍是每次声明时的占用检查来源，不做低 priority 影子替换。
 
 ### R2：跨挂载点的呈现连续性没有宿主 API
 
@@ -142,7 +142,21 @@ inject(key, callback)
 
 胶囊在 `.dv-root` 之外（普通模式会话头），因此不能依赖视频根字号；实现让 `.dv-mode` 自身 `font-size: var(--dsh-content-font-size, 14px)`，按钮文字用 `0.93em`，胶囊宽高用 `em` + `clamp()` 随字号增长并设上限；窄窗口只折叠品牌/简化开关文案等次要 chrome，不缩小导航文字。`--dsh-content-font-size` 由 `ui-layout` 的 ThemePresenter 写在 body 上（见 §4）。
 
+### P0-004：入口与面板的原子对生命周期（修复 D-P0-003-1）
+
+`conversation.header.leading` 是 single 座位，`main` 是 keyed 座位，两者声明生命周期独立；旧实现 main 先注册、再等待/注册 leading，当 leading 晚到或被占用时就会留下「main 已注册、胶囊缺席」的不可达视频面板。P0-004 的契约：
+
+- `main` 声明回调只建立链，不直接注册面板；链内对每个 leading 声明生命周期执行一次获取：
+  1. 检查 leading 占用；冲突/枚举不可用 → 报价诊断并放弃本次获取（不注册任何一侧）；
+  2. 注册 leading 胶囊；失败 → 报告 `leading-register-failed` / `leading-entry-unavailable`，不注册面板；
+  3. 再检查 main key（防竞争），注册视频面板；失败 → 立即 dispose 已注册的胶囊，不留下半对；
+  4. 一对都成功后记录 disposal 句柄；该 leading 声明折叠时，先撤面板再撤胶囊，并检查 `panelInfo.activePanelId`，若仍是 `dsh-video` 则兜底 `selectPanel(null)`。
+- leading 声明再次出现时（座位重新可用）重试整对；main 声明折叠时关闭链（dispose leading inject 句柄 + 当前对），main 重新声明后重建。
+- 每个对只释放一次（`disposed` 标志）；不递归 dispose、不重复注册、每个失败都带 `dsh-video:` 诊断。
+- 合约测试（`scripts/smoke-client.mjs`，30 条）覆盖：晚到 leading 且无占用（仅在声明时成对挂载，胶囊先于面板）、晚到 leading 且有竞争（零注册、冲突诊断、清除竞争并重声明后成对恢复）、已有的对因独立重声明失败而整体撤回并可在清除竞争后恢复、连续 3 轮 leading 折叠/重声明无重复注册/无 cleanup 错误、main 折叠时在视频模式下的安全回落、未成对/被拒状态下卸载零残留。
+
 ## 7. 明确未使用 / 未验证
 
 - 未使用：`sidebar.panellist`、`shell.overlay`、`shell.leading`、替换宿主 header、自定义 Remote、`defineStore` 宿主存储、任何业务 HTTP 路由。
-- 未验证（需安装后真机执行 P0-002 验收清单）：真实 Slot 渲染与尺寸、拖拽带内控件点击、`selectPanel` 在插件上下文的真实调用、R2 动画在真实页面的播放（本地只验证起终态/中断逻辑）、宿主字号放大后的真实排版、键盘切换后的焦点落点、切换前后草稿/引用/附件与滚动、停用/重新启用清理、明暗主题与窄窗口。
+- P0-003 已在本机真实页面覆盖：Slot 渲染与尺寸、胶囊位置、R2 动画真实播放、模式往返/快速反向、停用与重启用、视频模式内停用回退、草稿文字+图片附件、宿主字号、深色主题、1000×760 窄窗；证据见 `P0-003-live-validation.md` 与 `evidence/P0-003/`。
+- 仍未验证：冷启动/首次加载、no-drag 拖动、浏览器 console、reduced-motion、引用 chip、普通文件附件、静态阅读位置、键盘 Tab/焦点环；以及 0.1.1 修复包在真实宿主上的替换验证（需用户另行授权，先不替换已安装 0.1.0）。

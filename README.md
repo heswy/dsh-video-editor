@@ -4,7 +4,7 @@
 
 用户已确定入口：主内容区域顶部的「普通｜视频」切换。普通模式保留 DSH 原有体验，视频模式进入插件工作区。这里的模式是产品工作区视图，不是修改 Agent preset。
 
-当前阶段：P0-B 已实现可安装 bundle（原生顶部模式切换 + 诚实的视频空工作区），**尚未安装/启用，也尚未通过真机验收**。开发基线为本机 DSH Desktop **0.2.0-rc.2**。
+当前阶段：P0-B 已实现可安装 bundle（原生顶部模式切换 + 诚实的视频空工作区）；`0.1.0` 已在真实 DSH 桌面端安装并完成核心路径真机验证，`0.1.1` 修复 leading 晚到/重声明时可能留下不可达视频面板的生命周期缺陷（P0-004），**待主会话复审、由用户授权后替换安装**。开发基线为本机 DSH Desktop **0.2.0-rc.2**。
 
 - [当前状态与下一步](docs/STATUS.md)
 - [开发与协作规则](docs/DEVELOPMENT.md)
@@ -15,6 +15,7 @@
 - [DSH 首任务交接](docs/handoffs/DSH-START.md)
 - [原始调研](docs/research/2026-10-17-video-workflows-and-dsh-plugins.md)
 - [P0-002 运行时 API 摘录](docs/research/P0-002-runtime-api-excerpts.md)
+- [P0-004 生命周期修复与补验](docs/tasks/P0-004-lifecycle-and-acceptance.md)
 
 仓库中的原始方案、开发包及截图用于追溯，采纳范围以产品文档、决策和当前任务为准。
 
@@ -24,7 +25,7 @@
 
 | 项 | 值 |
 |---|---|
-| 包名 / Loader 行 id | `dsh-video` |
+| 包名 / Loader 行 id | `dsh-video`（当前包版本 `0.1.1`） |
 | Client 模块 id | `dsh-video`（与包名一致） |
 | 全局面板 key | `main` keyed slot 中的 `dsh-video` |
 | 普通模式入口 | `conversation.header.leading`（single，additive） |
@@ -37,7 +38,7 @@
 - 正常模式：会话头行（`conversation.header.leading`）中的玻璃胶囊「普通｜视频」，空闲/blank/已有会话均可用，选中态读取宿主 `usePanelInfo.activePanelId`。
 - 视频模式：全局面板「视频」，渲染同一胶囊 + 诚实的空工作区（无工程时如实说明）、可工作的「返回普通模式」入口、以及「简化界面效果」开关。
 - 切换使用 `ctx.layout.selectPanel('dsh-video' | null)`，不改变当前 Session、模型、权限或 preset，不写 session 事件。选中态只来自宿主 `usePanelInfo.activePanelId`，插件不保存第二份模式布尔值。
-- **入口可用性跟随视频面板的声明生命周期**：视频面板尚不可用、或头部署名座位/主面板 key 被其他条目占用时，不显示可操作的死入口；面板重新可用后自动恢复。占用冲突会拒绝挂载并输出 `dsh-video:` 前缀的诊断日志，不做影子替换。
+- **视频面板与普通模式入口是一个原子对**（0.1.1）：只在 `conversation.header.leading` 座位可用且无冲突时，先注册胶囊、再注册视频面板；座位晚到、独立重声明失败、被占用或中途消失时整对撤回/不注册，不会留下无法返回的孤立视频面板。座位重新可用且无冲突后自动恢复；任何失败都会输出 `dsh-video:` 前缀诊断，不做影子替换、不递归 dispose、不重复注册。
 - **模式切换动效**：普通/视频是两处独立挂载点，宿主不提供跨挂载视觉状态。实现用一次性「离开段」呈现提示让新挂载点的玻璃底片从上一段滑入（导航立即生效，不等动画）；首次加载不会从错误选中态闪过，快速反向切换只服从最新选择。简化效果或系统 reduce-motion 下直接到位。
 - **字号**：模式胶囊文字与所需空间跟随宿主的正文字号变量缩放；窄窗口优先折叠品牌/次要控件文案，不缩小导航文字。
 - 「简化界面效果」偏好保存在浏览器 `localStorage` 键 `dsh-video.ui.v1`（版本化；损坏/旧版本/读写异常回退默认值，不影响使用）。

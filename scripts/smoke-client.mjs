@@ -692,7 +692,134 @@ test('slot enumeration unavailable refuses to mount without shadowing (reported,
 });
 //#endregion
 
+test('R1/D-P0-003-1: a late free leading declaration mounts the pair only then', () => {
+  const loaded = loadClient();
+  const env = createFakeEnvironment({ declaredSlots: { [LEADING_SLOT]: false } });
+  loaded.exports.apply(env.ctx);
+  assert(liveRegistrations(env).length === 0, 'video panel must not exist before its leading entry does');
+  assert(registrationOf(env, 'main') === undefined, 'main panel was registered before the leading seat existed');
+  env.declareSlot(LEADING_SLOT, 'single');
+  const live = liveRegistrations(env);
+  assert(live.length === 2, `late free declaration did not mount the pair (got ${live.length})`);
+  assert(
+    JSON.stringify(live.map((entry) => entry.options.name)) === JSON.stringify([LEADING_SLOT, 'main']),
+    `capsule must be registered before the panel: ${JSON.stringify(live.map((entry) => entry.options.name))}`
+  );
+  const nav = navigationOf(env);
+  nav.onSelectMode('video');
+  assert(env.events.panelCalls[env.events.panelCalls.length - 1] === PANEL_ID, 'navigation unavailable after late mount');
+});
+
+test('R1/D-P0-003-1: a late leading declaration with a competitor leaves no panel and recovers later', () => {
+  const loaded = loadClient();
+  const env = createFakeEnvironment({ declaredSlots: { [LEADING_SLOT]: false } });
+  loaded.exports.apply(env.ctx);
+  assert(liveRegistrations(env).length === 0, 'video panel registered before its entry existed');
+  // Competitor claims the seat while it is being declared, before our callback registers.
+  env.entriesBySlot[LEADING_SLOT].push({ options: { priority: 0 } });
+  env.declareSlot(LEADING_SLOT, 'single');
+  assert(liveRegistrations(env).length === 0, `late conflicting declaration left ${liveRegistrations(env).length} registration(s)`);
+  assert(
+    activationErrors(env).some((message) => message.includes('leading-seat-conflict')),
+    'late conflicting declaration was not reported'
+  );
+  assert(registrationOf(env, 'main') === undefined, 'a refused late entry still registered the video panel');
+  // The competitor leaves and the seat is re-declared: the pair must recover together.
+  env.entriesBySlot[LEADING_SLOT].length = 0;
+  env.collapseSlot(LEADING_SLOT);
+  env.declareSlot(LEADING_SLOT, 'single');
+  const live = liveRegistrations(env);
+  assert(live.length === 2, `recovered declaration did not mount the pair (got ${live.length})`);
+  assert(live.filter((entry) => entry.options.name === 'main').length === 1, 'expected exactly one main registration');
+  assert(live.filter((entry) => entry.options.name === LEADING_SLOT).length === 1, 'expected exactly one capsule registration');
+});
+
+test('R1/D-P0-003-1: a failed independent re-declaration releases the mounted pair', () => {
+  const loaded = loadClient();
+  const env = createFakeEnvironment();
+  loaded.exports.apply(env.ctx);
+  env.setActivePanel(PANEL_ID);
+  assert(liveRegistrations(env).length === 2, 'baseline pair missing');
+  env.collapseSlot(LEADING_SLOT);
+  assert(liveRegistrations(env).length === 0, `a lost leading seat left ${liveRegistrations(env).length} registration(s)`);
+  assert(
+    env.events.panelCalls[env.events.panelCalls.length - 1] === null,
+    'losing the entry while video was selected did not return the UI to the conversation'
+  );
+  // Competitor claims the re-declared seat: the panel must stay absent.
+  env.entriesBySlot[LEADING_SLOT].push({ options: { priority: 0 } });
+  env.declareSlot(LEADING_SLOT, 'single');
+  assert(liveRegistrations(env).length === 0, 'refused re-declaration left a registration behind');
+  assert(
+    activationErrors(env).some((message) => message.includes('leading-seat-conflict')),
+    'refused re-declaration was not reported'
+  );
+  // Seat becomes available again: re-declaration restores exactly one pair.
+  env.entriesBySlot[LEADING_SLOT].length = 0;
+  env.collapseSlot(LEADING_SLOT);
+  env.declareSlot(LEADING_SLOT, 'single');
+  const live = liveRegistrations(env);
+  assert(live.length === 2, `re-declaration after conflict did not restore the pair (got ${live.length})`);
+  const nav = navigationOf(env);
+  nav.onSelectMode('video');
+  assert(env.events.panelCalls[env.events.panelCalls.length - 1] === PANEL_ID, 'navigation unavailable after recovery');
+});
+
+test('R1: repeated leading re-declarations keep one pair live and clean up exactly once', () => {
+  const loaded = loadClient();
+  const env = createFakeEnvironment();
+  loaded.exports.apply(env.ctx);
+  for (let round = 0; round < 3; round += 1) {
+    env.collapseSlot(LEADING_SLOT);
+    assert(liveRegistrations(env).length === 0, `round ${round}: lost seat left live registrations`);
+    env.declareSlot(LEADING_SLOT, 'single');
+    const live = liveRegistrations(env);
+    assert(live.length === 2, `round ${round}: expected exactly two live registrations, got ${live.length}`);
+    assert(live.filter((entry) => entry.options.name === 'main').length === 1, `round ${round}: duplicate main registration`);
+    assert(live.filter((entry) => entry.options.name === LEADING_SLOT).length === 1, `round ${round}: duplicate capsule registration`);
+  }
+  const cleanupErrors = activationErrors(env).filter((message) => message.includes('cleanup-failed'));
+  assert(cleanupErrors.length === 0, `repeated lifecycle produced cleanup errors: ${cleanupErrors.join('; ')}`);
+});
+
+test('R1: collapsing main while video mode is selected releases the pair and returns to conversation', () => {
+  const loaded = loadClient();
+  const env = createFakeEnvironment();
+  loaded.exports.apply(env.ctx);
+  env.setActivePanel(PANEL_ID);
+  assert(liveRegistrations(env).length === 2, 'baseline pair missing');
+  env.collapseSlot('main');
+  assert(liveRegistrations(env).length === 0, `main collapse left ${liveRegistrations(env).length} live registration(s)`);
+  assert(
+    env.events.panelCalls[env.events.panelCalls.length - 1] === null,
+    'main collapse while video was selected did not return the UI to the conversation'
+  );
+  env.declareSlot('main', 'keyed');
+  assert(liveRegistrations(env).length === 2, 'main re-declaration did not restore the pair');
+});
+
+test('R1: unloading while the pair is pending or refused leaves nothing live', () => {
+  const pending = loadClient();
+  const pendingEnv = createFakeEnvironment({ declaredSlots: { [LEADING_SLOT]: false } });
+  pending.exports.apply(pendingEnv.ctx);
+  assert(liveRegistrations(pendingEnv).length === 0, 'pending state unexpectedly registered something');
+  pendingEnv.disposeAllInjections();
+  pendingEnv.disposeAllEffects();
+  assert(liveRegistrations(pendingEnv).length === 0, 'disposing a pending chain left registrations behind');
+
+  const refused = loadClient();
+  const refusedEnv = createFakeEnvironment();
+  refusedEnv.entriesBySlot[LEADING_SLOT].push({ options: { priority: 0 } });
+  refused.exports.apply(refusedEnv.ctx);
+  assert(liveRegistrations(refusedEnv).length === 0, 'refused activation registered something');
+  refusedEnv.disposeAllInjections();
+  refusedEnv.disposeAllEffects();
+  assert(liveRegistrations(refusedEnv).length === 0, 'disposing a refused chain left registrations behind');
+});
+
 //#region tests: R2 presentation continuity logic
+
+
 test('R2: first mount starts at the authoritative active segment (no flash)', () => {
   const loaded = loadClient({ queueFrames: true });
   const env = createFakeEnvironment();
