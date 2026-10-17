@@ -658,10 +658,20 @@ function sampleInspect(overrides) {
     duration: 5,
     elements: [
       {
+        stableId: 'hf-eyebrow',
+        text: 'DSH VIDEO / ENGINE STUDY',
+        capabilities: ['text'],
+      },
+      {
         stableId: 'hf-title',
-        text: '初稿标题',
+        text: '让创意成为影像',
         timing: { start: 0, duration: 5 },
         capabilities: ['text', 'timing'],
+      },
+      {
+        stableId: 'hf-subtitle',
+        text: '原生工程 · 确定性时间 · 自由修改',
+        capabilities: ['text'],
       },
     ],
   };
@@ -1207,7 +1217,7 @@ test('P2-002-B: 打开示例 uses only the configured id and renders inspected t
   await open.props.onClick();
   await settle();
   const tree = editor.rerender();
-  assert(textOf(findNode(tree, (node) => node.props && node.props.className === 'dv-project-title')) === '初稿标题', 'inspected title was not rendered');
+  assert(textOf(findNode(tree, (node) => node.props && node.props.className === 'dv-project-title')) === '让创意成为影像', 'inspected title was not rendered');
   assert(findNode(tree, (node) => node.props && node.props.className === 'dv-project-meta') !== null, 'inspected dimensions/duration missing');
   const image = findNode(tree, (node) => node.props && node.props.className === 'dv-frame');
   assert(image !== null, 'real frame image missing');
@@ -1220,16 +1230,73 @@ test('P2-002-B: 打开示例 uses only the configured id and renders inspected t
   assert(frameCall.body.params.time <= 2.5 && frameCall.body.params.time >= 0, 'frame time was not bounded from real duration');
 });
 
+test('R1: eyebrow-first inspect selects hf-title and binds title/timing to one stableId', async () => {
+  const revisionA = 'a'.repeat(64);
+  const revisionB = 'b'.repeat(64);
+  let titleText = '让创意成为影像';
+  let titleStart = 0;
+  let inspectRevision = revisionA;
+  const hostFetch = makeHostFetch((request) => {
+    const method = request.body.method;
+    if (method === 'open') return { ok: true, result: { projectId: 'demo', revision: revisionA } };
+    if (method === 'inspect') {
+      return {
+        ok: true,
+        result: sampleInspect({
+          revision: inspectRevision,
+          elements: [
+            { stableId: 'hf-eyebrow', text: 'DSH VIDEO / ENGINE STUDY', capabilities: ['text'] },
+            { stableId: 'hf-title', text: titleText, timing: { start: titleStart, duration: 5 }, capabilities: ['text', 'timing'] },
+            { stableId: 'hf-subtitle', text: '原生工程 · 确定性时间 · 自由修改', capabilities: ['text'] },
+          ],
+        }),
+      };
+    }
+    if (method === 'edit') {
+      const textOp = request.body.params.ops.find((op) => op.type === 'text');
+      const timingOp = request.body.params.ops.find((op) => op.type === 'timing');
+      if (textOp) titleText = textOp.text;
+      if (timingOp) titleStart = timingOp.start;
+      inspectRevision = revisionB;
+      return { ok: true, result: { projectId: 'demo', revision: revisionB, operationId: request.body.params.operationId } };
+    }
+    if (method === 'frame') return { ok: true, result: sampleJob('88888888-2222-4333-8444-555555555555') };
+    if (method === 'status') return { ok: true, result: Object.assign(sampleJob('88888888-2222-4333-8444-555555555555'), { state: 'succeeded', artifact: { name: 'frame.png' } }) };
+    return { ok: false, error: { code: 'E_METHOD', message: 'unexpected' } };
+  });
+  const editor = mountEditor(hostFetch);
+  await buttonByText(editor.tree(), '打开示例').props.onClick();
+  await settle();
+  let tree = editor.rerender();
+  assert(textOf(findNode(tree, (node) => node.props && node.props.className === 'dv-project-title')) === '让创意成为影像', 'title display came from the eyebrow');
+  const titleInput = elementById(tree, 'dsh-video-title');
+  assert(titleInput !== null && titleInput.props.value === '让创意成为影像', 'title field was not initialized from hf-title');
+  const targetSelect = elementById(tree, 'dsh-video-target');
+  assert(targetSelect !== null && targetSelect.props.value === 'hf-title', 'default target was not the explicit fixture title');
+  titleInput.props.onChange({ target: { value: '新的标题' } });
+  tree = editor.rerender();
+  elementById(tree, 'dsh-video-start').props.onChange({ target: { value: '1.00' } });
+  tree = editor.rerender();
+  await buttonByText(tree, '保存修改').props.onClick();
+  await settle();
+  const editCall = hostFetch.calls.find((call) => call.body.method === 'edit');
+  assert(editCall !== undefined, 'edit was not sent');
+  assert(editCall.body.params.ops.length === 2, `expected text+timing ops, got ${editCall.body.params.ops.length}`);
+  for (const op of editCall.body.params.ops) assert(op.target === 'hf-title', `edit targeted ${op.target} instead of hf-title`);
+  tree = editor.rerender();
+  assert(textOf(findNode(tree, (node) => node.props && node.props.className === 'dv-project-title')) === '新的标题', 'refreshed title was not the edited hf-title');
+});
+
 test('P2-002-B: save edits with expectedRevision/operationId and refresh from the new inspect', async () => {
   const revisionA = 'a'.repeat(64);
   const revisionB = 'b'.repeat(64);
-  let editedTitle = '初稿标题';
+  let editedTitle = '让创意成为影像';
   let inspectRevision = revisionA;
   let frameIndex = 0;
   const hostFetch = makeHostFetch((request) => {
     const method = request.body.method;
     if (method === 'open') return { ok: true, result: { projectId: 'demo', revision: revisionA } };
-    if (method === 'inspect') return { ok: true, result: sampleInspect({ revision: inspectRevision, elements: [{ stableId: 'hf-title', text: editedTitle, timing: { start: 0, duration: 5 }, capabilities: ['text', 'timing'] }] }) };
+    if (method === 'inspect') return { ok: true, result: sampleInspect({ revision: inspectRevision, elements: [{ stableId: 'hf-eyebrow', text: 'DSH VIDEO / ENGINE STUDY', capabilities: ['text'] }, { stableId: 'hf-title', text: editedTitle, timing: { start: 0, duration: 5 }, capabilities: ['text', 'timing'] }] }) };
     if (method === 'edit') {
       if (request.body.params.expectedRevision !== revisionA) return { ok: false, error: { code: 'E_REVISION_CONFLICT', message: 'Project changed' } };
       editedTitle = request.body.params.ops[0].text;
@@ -1250,6 +1317,8 @@ test('P2-002-B: save edits with expectedRevision/operationId and refresh from th
   const input = elementById(tree, 'dsh-video-title');
   input.props.onChange({ target: { value: '新标题' } });
   tree = editor.rerender();
+  elementById(tree, 'dsh-video-start').props.onChange({ target: { value: '1.00' } });
+  tree = editor.rerender();
   await buttonByText(tree, '保存修改').props.onClick();
   await settle();
   tree = editor.rerender();
@@ -1258,7 +1327,9 @@ test('P2-002-B: save edits with expectedRevision/operationId and refresh from th
   assert(editCall !== undefined, 'edit was not sent');
   assert(editCall.body.params.expectedRevision === revisionA, 'edit lost expectedRevision');
   assert(typeof editCall.body.params.operationId === 'string' && editCall.body.params.operationId.length > 0, 'edit lost operationId');
-  assert(editCall.body.params.ops[0].type === 'text' && editCall.body.params.ops[0].target === 'hf-title', 'edit ops were not typed');
+  assert(editCall.body.params.ops[0].type === 'text' && editCall.body.params.ops[0].target === 'hf-title', 'text edit was not bound to hf-title');
+  const timingOp = editCall.body.params.ops.find((op) => op.type === 'timing');
+  assert(timingOp !== undefined && timingOp.target === 'hf-title', 'timing edit was not bound to the same hf-title target');
   assert(hostFetch.calls.some((call) => call.body.method === 'frame' && call.body.params.revision === revisionB), 'frame was not refreshed for the new revision');
 });
 
@@ -1285,7 +1356,7 @@ test('P2-002-B: a revision conflict is shown in place and does not overwrite the
   const alert = findNode(tree, (node) => node.props && node.props.role === 'alert');
   assert(alert !== null, 'conflict was not surfaced in place');
   assert(textOf(alert).includes('工程已更新'), `conflict text was ${textOf(alert)}`);
-  assert(textOf(findNode(tree, (node) => node.props && node.props.className === 'dv-project-title')) === '初稿标题', 'conflict overwrote the saved title');
+  assert(textOf(findNode(tree, (node) => node.props && node.props.className === 'dv-project-title')) === '让创意成为影像', 'conflict overwrote the saved title');
 });
 
 test('P2-002-B: an update clears the old frame until the new revision frame succeeds', async () => {
@@ -1376,7 +1447,7 @@ test('P2-002-B: returning to the panel restores the visible project without a se
   const requestCount = hostFetch.calls.length;
   const remounted = mountInteractivePanel(editor.loaded, editor.env);
   const tree = remounted.render();
-  assert(textOf(findNode(tree, (node) => node.props && node.props.className === 'dv-project-title')) === '初稿标题', 'remount lost the visible project');
+  assert(textOf(findNode(tree, (node) => node.props && node.props.className === 'dv-project-title')) === '让创意成为影像', 'remount lost the visible project');
   assert(hostFetch.calls.length === requestCount, 'remount issued a new business request instead of restoring the view');
 });
 

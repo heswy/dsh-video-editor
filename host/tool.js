@@ -9,10 +9,9 @@
  */
 
 import { BridgeError, toPublicError } from './errors.js';
+import { TOOL_RESULT_BYTES } from './limits.js';
 
 export const TOOL_NAME = 'video_engine';
-
-const TEXT_LIMIT = 8000;
 
 const ACTIONS = Object.freeze([
   'doctor',
@@ -112,15 +111,22 @@ function projectParams(action, args) {
   return params;
 }
 
-function renderText(value) {
+/** Serialize once and enforce the shared raw UTF-8 budget; never truncate. */
+function boundedToolValue(value) {
   let text;
   try {
     text = JSON.stringify(value);
   } catch (_error) {
-    text = '{"error":"unprintable result"}';
+    throw new BridgeError('E_RESULT_LIMIT', 'The tool result is not bounded JSON', { stage: 'result' });
   }
-  if (typeof text !== 'string') text = '{}';
-  return text.length <= TEXT_LIMIT ? text : `${text.slice(0, TEXT_LIMIT)}…`;
+  if (typeof text !== 'string') {
+    throw new BridgeError('E_RESULT_LIMIT', 'The tool result is not bounded JSON', { stage: 'result' });
+  }
+  const bytes = Buffer.byteLength(text, 'utf8');
+  if (bytes > TOOL_RESULT_BYTES) {
+    throw new BridgeError('E_RESULT_LIMIT', `The tool result exceeds ${TOOL_RESULT_BYTES} UTF-8 bytes`, { stage: 'result' });
+  }
+  return text;
 }
 
 /** Create the Tool definition; the Tool calls exactly the same bridge dispatcher. */
@@ -133,7 +139,7 @@ export function createVideoTool(bridge) {
     output: {
       schema: { type: 'object', additionalProperties: true },
       render(_args, value) {
-        return [{ type: 'text', text: renderText(value) }];
+        return [{ type: 'text', text: boundedToolValue(value) }];
       },
     },
     async execute(args, _exec) {
@@ -146,7 +152,11 @@ export function createVideoTool(bridge) {
       }
       try {
         const result = await bridge.invoke(action, params, { source: 'tool' });
-        return { action, result };
+        const value = { action, result };
+        // Validate the complete wrapper, not just the inner result: execute must
+        // fail loudly before a later renderer could silently shorten it.
+        boundedToolValue(value);
+        return value;
       } catch (error) {
         throw new Error(formatError(error));
       }

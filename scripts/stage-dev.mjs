@@ -42,6 +42,7 @@ const RUNTIME_PATHS = [
   'host/engine.js',
   'host/env.js',
   'host/errors.js',
+  'host/limits.js',
   'host/routes.js',
   'host/tool.js',
   'README.md',

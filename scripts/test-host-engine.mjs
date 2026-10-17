@@ -15,12 +15,11 @@
  * Usage: node scripts/test-host-engine.mjs --staging <dir>
  */
 
-import { createHash } from 'node:crypto';
-import { access, mkdir, readFile, realpath, stat, writeFile } from 'node:fs/promises';
-import { constants, existsSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { access, mkdir, realpath, writeFile } from 'node:fs/promises';
+import { constants } from 'node:fs';
 import { delimiter, dirname, isAbsolute, join, resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
-import { VideoBridge } from '../host/bridge.js';
+import { loadStagedHost, sha256 } from './lib/staged-host.mjs';
 
 const TERMINAL = new Set(['succeeded', 'failed', 'cancelled', 'timed_out']);
 
@@ -44,10 +43,6 @@ function parseArgs(argv) {
 
 function sleep(milliseconds) {
   return new Promise((resolveSleep) => setTimeout(resolveSleep, milliseconds));
-}
-
-function sha256(bytes) {
-  return createHash('sha256').update(bytes).digest('hex');
 }
 
 function assert(condition, message) {
@@ -127,20 +122,18 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   const staging = resolve(args.staging);
   const evidenceDirectory = join(dirname(staging), 'evidence');
-  const configPath = join(staging, 'config.json');
-  const integrityPath = join(staging, 'INTEGRITY.json');
-  assert(existsSync(configPath), `missing staging config: ${configPath}`);
-  assert(existsSync(integrityPath), `missing staging integrity record: ${integrityPath}`);
-  const config = JSON.parse(await readFile(configPath, 'utf8'));
-  const integrity = JSON.parse(await readFile(integrityPath, 'utf8'));
-  const bundleIndex = join(staging, 'bundle', 'index.js');
-  assert(existsSync(bundleIndex), `missing staged bundle: ${bundleIndex}`);
+  // R3: execute the staged Host implementation, after reproducing the recorded
+  // snapshot digests. The development worktree Host is never imported here.
+  const staged = await loadStagedHost(staging);
+  const config = staged.config;
+  const integrity = staged.integrity;
+  const worktreeHead = spawnSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).stdout.trim();
+  const worktreeStatus = spawnSync('git', ['status', '--porcelain'], { encoding: 'utf8' }).stdout.trim();
 
   const host = fakeCtx();
-  const bridge = new VideoBridge({
+  const bridge = new staged.VideoBridge({
     ctx: host.ctx,
     rawConfig: config,
-    baseUrl: pathToFileURL(bundleIndex).href,
   });
   const evidence = {
     kind: 'host-bridge-real-engine-run',
@@ -150,14 +143,17 @@ async function main() {
     engineCommit: integrity.engineCommit,
     versions: integrity.versions,
     node: integrity.node,
+    executedHost: staged.evidence,
+    worktree: { head: worktreeHead, dirty: worktreeStatus.length > 0, note: 'recorded only; the run imports the staged Host bytes above' },
     hostWarnings: host.warnings,
   };
 
-  let textTarget;
-  let timingTarget;
   try {
     const doctor = await bridge.invoke('doctor', {});
     evidence.doctor = doctor;
+    evidence.resolvedEngine = bridge.runtime === null
+      ? null
+      : { clientVersion: bridge.runtime.clientVersion, workerVersion: bridge.runtime.workerVersion, workerEntry: bridge.runtime.workerEntry };
     assert(doctor && doctor.node, 'doctor did not return a Node version');
     assert(doctor.ffmpeg && doctor.ffmpeg !== 'unavailable', 'ffmpeg is unavailable');
     assert(doctor.browser && doctor.browser !== 'unavailable', 'Chrome is unavailable; stage with --browser (registry.browserPath)');
@@ -167,17 +163,27 @@ async function main() {
     const inspected = await bridge.invoke('inspect', { projectId: 'demo' });
     evidence.inspect = inspected;
     const elements = Array.isArray(inspected.elements) ? inspected.elements : [];
-    const text = elements.find((element) => Array.isArray(element.capabilities) && element.capabilities.includes('text'));
-    const timing = elements.find((element) => Array.isArray(element.capabilities) && element.capabilities.includes('timing'));
-    assert(text !== undefined, 'controlled fixture has no text target');
-    assert(timing !== undefined, 'controlled fixture has no timing target');
-    textTarget = text;
-    timingTarget = timing;
+    const capabilities = (element) => (Array.isArray(element.capabilities) ? element.capabilities : []);
+    // The controlled fixture's explicit title contract. The real fixture has a
+    // text-only eyebrow before the title, so never select the two fields with
+    // independent first-capability scans. Fall back only to an element that
+    // supports both operations.
+    const title =
+      elements.find((element) => element.stableId === 'hf-title' && capabilities(element).includes('text') && capabilities(element).includes('timing')) ||
+      elements.find((element) => capabilities(element).includes('text') && capabilities(element).includes('timing'));
+    assert(title !== undefined, 'controlled fixture has no text+timing title target');
+    assert(title.stableId !== 'hf-eyebrow', 'controlled fixture title selection picked the eyebrow');
+    evidence.editTarget = {
+      stableId: title.stableId,
+      text: title.text,
+      timing: title.timing,
+      capabilities: capabilities(title),
+    };
 
-    const editedText = typeof text.text === 'string' && text.text.length > 0 ? `${text.text} · Host` : 'Host 编辑';
+    const editedText = typeof title.text === 'string' && title.text.length > 0 ? `${title.text} · Host` : 'Host 编辑';
     const duration = Number(inspected.duration);
-    const start = timing.timing ? Number(timing.timing.start) : 0;
-    const oldDuration = timing.timing ? Number(timing.timing.duration) : duration;
+    const start = title.timing ? Number(title.timing.start) : 0;
+    const oldDuration = title.timing ? Number(title.timing.duration) : duration;
     const nextStart = Number.isFinite(start) ? start : 0;
     const nextDuration = Math.max(1 / 240, Math.min(oldDuration > 0 ? oldDuration : duration, Math.max(1 / 240, duration - nextStart)));
     const edit = await bridge.invoke('edit', {
@@ -185,8 +191,8 @@ async function main() {
       expectedRevision: inspected.revision,
       operationId: 'host-engine-' + Date.now(),
       ops: [
-        { type: 'text', target: text.stableId, text: editedText },
-        { type: 'timing', target: timing.stableId, start: nextStart, duration: nextDuration },
+        { type: 'text', target: title.stableId, text: editedText },
+        { type: 'timing', target: title.stableId, start: nextStart, duration: nextDuration },
       ],
     });
     evidence.edit = edit;
@@ -194,6 +200,9 @@ async function main() {
     const inspectedAfter = await bridge.invoke('inspect', { projectId: 'demo' });
     evidence.inspectAfter = inspectedAfter;
     assert(inspectedAfter.revision !== inspected.revision, 'edit did not change the revision');
+    const editedTarget = (Array.isArray(inspectedAfter.elements) ? inspectedAfter.elements : []).find((element) => element.stableId === title.stableId);
+    assert(editedTarget !== undefined, 'edited title target disappeared after inspect');
+    assert(editedTarget.text === editedText, 'text edit did not apply to the selected title target');
 
     const frameJob = await bridge.invoke('frame', {
       projectId: 'demo',

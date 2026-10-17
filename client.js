@@ -80,7 +80,7 @@ window.__ModuleLoader__.load({
       'video.refreshing': '正在读取…',
       'video.frame.empty': '画面尚未生成',
       'video.frame.failed': '画面加载失败，请重新更新。',
-      'video.noText': '此工程没有可编辑文本。',
+      'video.noText': '此工程没有可编辑元素。',
       'video.details': '属性',
       'video.target': '目标',
       'video.capabilities': '能力',
@@ -126,7 +126,7 @@ window.__ModuleLoader__.load({
       'video.refreshing': 'Reloading…',
       'video.frame.empty': 'No frame yet',
       'video.frame.failed': 'The frame could not be loaded. Update it again.',
-      'video.noText': 'This project has no editable text.',
+      'video.noText': 'This project has no editable elements.',
       'video.details': 'Properties',
       'video.target': 'Target',
       'video.capabilities': 'Capabilities',
@@ -835,22 +835,42 @@ window.__ModuleLoader__.load({
       return element && Array.isArray(element.capabilities) ? element.capabilities : [];
     }
 
-    function textElement(elements) {
-      for (let index = 0; index < elements.length; index += 1) {
-        if (capabilityList(elements[index]).indexOf('text') !== -1) return elements[index];
-      }
-      return null;
-    }
-
-    function timingElement(elements) {
-      for (let index = 0; index < elements.length; index += 1) {
-        if (capabilityList(elements[index]).indexOf('timing') !== -1) return elements[index];
-      }
-      return null;
-    }
+    // The controlled fixture's title contract. Real fixtures may place a
+    // text-only eyebrow before the title, so title/timing must never be found by
+    // two independent "first capability" scans. A single target is selected and
+    // both fields operate on that exact stableId; the target can be switched in
+    // the properties panel.
+    const FIXTURE_TITLE_ID = 'hf-title';
 
     function elementsOf(project) {
       return project && Array.isArray(project.elements) ? project.elements : [];
+    }
+
+    function hasCapability(element, capability) {
+      return capabilityList(element).indexOf(capability) !== -1;
+    }
+
+    function editableElements(elements) {
+      return elements.filter(function editable(element) {
+        return hasCapability(element, 'text') || hasCapability(element, 'timing');
+      });
+    }
+
+    function targetFor(elements, preferredId) {
+      const preferred = typeof preferredId === 'string' && preferredId.length > 0
+        ? elements.find(function byId(element) { return element && element.stableId === preferredId; })
+        : null;
+      if (preferred !== undefined && preferred !== null && (hasCapability(preferred, 'text') || hasCapability(preferred, 'timing'))) return preferred;
+      const contractTitle = elements.find(function fixtureTitle(element) {
+        return element && element.stableId === FIXTURE_TITLE_ID && hasCapability(element, 'text') && hasCapability(element, 'timing');
+      });
+      if (contractTitle !== undefined) return contractTitle;
+      const combined = elements.find(function both(element) {
+        return hasCapability(element, 'text') && hasCapability(element, 'timing');
+      });
+      if (combined !== undefined) return combined;
+      const candidates = editableElements(elements);
+      return candidates.length > 0 ? candidates[0] : null;
     }
 
     function frameTime(project) {
@@ -953,6 +973,7 @@ window.__ModuleLoader__.load({
       const [job, setJob] = React.useState(remembered.job || null);
       const [busy, setBusy] = React.useState(null);
       const [error, setError] = React.useState(remembered.error || null);
+      const [targetId, setTargetId] = React.useState(typeof remembered.targetId === 'string' ? remembered.targetId : null);
       const [titleDraft, setTitleDraft] = React.useState(typeof remembered.titleDraft === 'string' ? remembered.titleDraft : '');
       const [startDraft, setStartDraft] = React.useState(typeof remembered.startDraft === 'string' ? remembered.startDraft : '');
       const [durationDraft, setDurationDraft] = React.useState(typeof remembered.durationDraft === 'string' ? remembered.durationDraft : '');
@@ -979,6 +1000,7 @@ window.__ModuleLoader__.load({
           frame: frame,
           job: job,
           error: error,
+          targetId: targetId,
           titleDraft: titleDraft,
           startDraft: startDraft,
           durationDraft: durationDraft,
@@ -1073,14 +1095,24 @@ window.__ModuleLoader__.load({
         setSimplifiedEffects(!ui.simplifiedEffects);
       }
 
-      function applyInspected(inspected) {
+      function applyInspected(inspected, preferredId) {
         const elements = elementsOf(inspected);
-        const titleTarget = textElement(elements);
-        const timingTarget = timingElement(elements);
+        const target = targetFor(elements, preferredId);
         setProject(inspected);
-        setTitleDraft(titleTarget !== null && typeof titleTarget.text === 'string' ? titleTarget.text : '');
-        setStartDraft(timingTarget !== null && timingTarget.timing ? formatSeconds(timingTarget.timing.start) : '');
-        setDurationDraft(timingTarget !== null && timingTarget.timing ? formatSeconds(timingTarget.timing.duration) : '');
+        setTargetId(target !== null ? target.stableId : null);
+        setTitleDraft(target !== null && hasCapability(target, 'text') && typeof target.text === 'string' ? target.text : '');
+        setStartDraft(target !== null && hasCapability(target, 'timing') && target.timing ? formatSeconds(target.timing.start) : '');
+        setDurationDraft(target !== null && hasCapability(target, 'timing') && target.timing ? formatSeconds(target.timing.duration) : '');
+      }
+
+      function selectTarget(nextId) {
+        if (project === null || busy !== null) return;
+        const target = targetFor(elementsOf(project), nextId);
+        setTargetId(target !== null ? target.stableId : null);
+        setTitleDraft(target !== null && hasCapability(target, 'text') && typeof target.text === 'string' ? target.text : '');
+        setStartDraft(target !== null && hasCapability(target, 'timing') && target.timing ? formatSeconds(target.timing.start) : '');
+        setDurationDraft(target !== null && hasCapability(target, 'timing') && target.timing ? formatSeconds(target.timing.duration) : '');
+        setError(null);
       }
 
       function clearEditor() {
@@ -1089,6 +1121,7 @@ window.__ModuleLoader__.load({
         setFrame(null);
         setJob(null);
         setBusy(null);
+        setTargetId(null);
         setTitleDraft('');
         setStartDraft('');
         setDurationDraft('');
@@ -1170,7 +1203,7 @@ window.__ModuleLoader__.load({
         try {
           const opened = await hostRequest('open', { projectId: DEMO_PROJECT_ID });
           inspected = await hostRequest('inspect', { projectId: opened.projectId });
-          if (aliveRef.current) applyInspected(inspected);
+          if (aliveRef.current) applyInspected(inspected, null);
         } catch (requestError) {
           if (aliveRef.current) setError(hostError(requestError));
         } finally {
@@ -1187,7 +1220,7 @@ window.__ModuleLoader__.load({
         let inspected = null;
         try {
           inspected = await hostRequest('inspect', { projectId: project.projectId });
-          if (aliveRef.current && token === jobTokenRef.current) applyInspected(inspected);
+          if (aliveRef.current && token === jobTokenRef.current) applyInspected(inspected, targetId);
         } catch (requestError) {
           if (aliveRef.current && token === jobTokenRef.current) setError(hostError(requestError));
         } finally {
@@ -1202,25 +1235,27 @@ window.__ModuleLoader__.load({
 
       async function saveEdit() {
         if (project === null || busy !== null) return;
-        const elements = elementsOf(project);
-        const titleTarget = textElement(elements);
-        const timingTarget = timingElement(elements);
+        const target = targetFor(elementsOf(project), targetId);
+        if (target === null) {
+          setError({ code: 'E_PARAMS', message: t('video.noText') });
+          return;
+        }
         const ops = [];
         let nextStart = null;
         let nextDuration = null;
 
-        if (titleTarget !== null && titleDraft !== titleTarget.text) {
-          ops.push({ type: 'text', target: titleTarget.stableId, text: titleDraft });
+        if (hasCapability(target, 'text') && typeof target.text === 'string' && titleDraft !== target.text) {
+          ops.push({ type: 'text', target: target.stableId, text: titleDraft });
         }
-        if (timingTarget !== null) {
+        if (hasCapability(target, 'timing') && target.timing) {
           nextStart = Number(startDraft);
           nextDuration = Number(durationDraft);
           if (Number.isFinite(nextStart) === false || Number.isFinite(nextDuration) === false || nextStart < 0 || nextStart > 3600 || nextDuration < 1 / 240 || nextDuration > 3600) {
             setError({ code: 'E_PARAMS', message: t('video.edit.invalidTiming') });
             return;
           }
-          if (timingTarget.timing && (nextStart !== Number(timingTarget.timing.start) || nextDuration !== Number(timingTarget.timing.duration))) {
-            ops.push({ type: 'timing', target: timingTarget.stableId, start: nextStart, duration: nextDuration });
+          if (nextStart !== Number(target.timing.start) || nextDuration !== Number(target.timing.duration)) {
+            ops.push({ type: 'timing', target: target.stableId, start: nextStart, duration: nextDuration });
           }
         }
         if (ops.length === 0) {
@@ -1240,7 +1275,7 @@ window.__ModuleLoader__.load({
             ops: ops,
           });
           inspected = await hostRequest('inspect', { projectId: project.projectId });
-          if (aliveRef.current && token === jobTokenRef.current) applyInspected(inspected);
+          if (aliveRef.current && token === jobTokenRef.current) applyInspected(inspected, targetId);
         } catch (requestError) {
           if (aliveRef.current && token === jobTokenRef.current) setError(hostError(requestError));
         } finally {
@@ -1286,15 +1321,17 @@ window.__ModuleLoader__.load({
       }
 
       const elements = elementsOf(project);
-      const titleTarget = textElement(elements);
-      const timingTarget = timingElement(elements);
-      const savedTitle = titleTarget !== null && typeof titleTarget.text === 'string' ? titleTarget.text : '';
-      const titleChanged = titleTarget !== null && titleDraft !== savedTitle;
+      const editable = editableElements(elements);
+      const target = targetFor(elements, targetId);
+      const targetHasText = target !== null && hasCapability(target, 'text');
+      const targetHasTiming = target !== null && hasCapability(target, 'timing');
+      const savedTitle = targetHasText && typeof target.text === 'string' ? target.text : '';
+      const titleChanged = targetHasText && titleDraft !== savedTitle;
       const timingChanged =
-        timingTarget !== null &&
-        timingTarget.timing &&
-        (Number(startDraft) !== Number(timingTarget.timing.start) || Number(durationDraft) !== Number(timingTarget.timing.duration));
-      const canSave = project !== null && busy === null && (titleChanged || timingChanged);
+        targetHasTiming &&
+        target.timing &&
+        (Number(startDraft) !== Number(target.timing.start) || Number(durationDraft) !== Number(target.timing.duration));
+      const canSave = project !== null && busy === null && target !== null && (titleChanged || timingChanged);
       const projectTitle = project !== null ? savedTitle || project.projectId : '';
       const projectMeta =
         project !== null && Number.isFinite(Number(project.width)) && Number.isFinite(Number(project.height))
@@ -1387,18 +1424,34 @@ window.__ModuleLoader__.load({
             ),
             navigationNotice(),
             errorNotice(),
-            project === null ? null : h('div', { className: 'dv-field' },
+            project === null || editable.length === 0
+              ? (project === null ? null : h('p', { className: 'dv-note' }, t('video.noText')))
+              : h('div', { className: 'dv-field' },
+                  h('label', { className: 'dv-label', htmlFor: 'dsh-video-target' }, t('video.target')),
+                  h('select', {
+                    id: 'dsh-video-target',
+                    className: 'dv-input',
+                    value: target !== null ? target.stableId : '',
+                    disabled: busy !== null,
+                    onChange: function chooseTarget(event) { selectTarget(event.target.value); },
+                  }, editable.map(function targetOption(element) {
+                    const capabilities = capabilityList(element);
+                    const label = (typeof element.stableId === 'string' ? element.stableId : '') + (capabilities.length > 0 ? ' · ' + capabilities.join(', ') : '');
+                    return h('option', { key: element.stableId, value: element.stableId }, label);
+                  }))
+                ),
+            project === null || targetHasText === false ? null : h('div', { className: 'dv-field' },
               h('label', { className: 'dv-label', htmlFor: 'dsh-video-title' }, t('video.title')),
               h('input', {
                 id: 'dsh-video-title',
                 className: 'dv-input',
                 type: 'text',
                 value: titleDraft,
-                disabled: busy !== null || titleTarget === null,
+                disabled: busy !== null,
                 onChange: function updateTitle(event) { setTitleDraft(event.target.value); },
               })
             ),
-            project === null || timingTarget === null ? null : h('div', null,
+            project === null || targetHasTiming === false ? null : h('div', null,
               h('div', { className: 'dv-label' }, t('video.timing')),
               h('div', { className: 'dv-field-row' },
                 h('div', { className: 'dv-field' },
@@ -1411,7 +1464,6 @@ window.__ModuleLoader__.load({
                 )
               )
             ),
-            titleTarget === null && timingTarget === null ? h('p', { className: 'dv-note' }, t('video.noText')) : null,
             h('button', {
               type: 'button',
               className: 'dv-button',
@@ -1433,7 +1485,7 @@ window.__ModuleLoader__.load({
                   return h('li', { className: 'dv-meta-item', key: (element.stableId || index) + '' }, summary);
                 })
               ),
-              titleTarget === null && timingTarget === null ? null : h('p', { className: 'dv-note' }, (titleTarget !== null ? t('video.title') + ': ' + titleTarget.stableId : '') + (timingTarget !== null && timingTarget !== titleTarget ? (titleTarget !== null ? ' · ' : '') + t('video.timing') + ': ' + timingTarget.stableId : ''))
+              target === null ? null : h('p', { className: 'dv-note' }, t('video.target') + ': ' + target.stableId + (targetHasText ? ' · ' + t('video.title') : '') + (targetHasTiming ? ' · ' + t('video.timing') : ''))
             )
           )
         );

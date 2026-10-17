@@ -26,7 +26,9 @@ import { buildWorkerEnv } from '../host/env.js';
 import { createRequestRoute, createArtifactRoute, statusForError } from '../host/routes.js';
 import { createVideoTool, TOOL_NAME } from '../host/tool.js';
 import { BridgeError } from '../host/errors.js';
+import { TOOL_RESULT_BYTES } from '../host/limits.js';
 import { loadEngine } from '../host/engine.js';
+import { digestTree, loadStagedHost, sha256 } from './lib/staged-host.mjs';
 import { apply } from '../index.js';
 
 const PROJECT = 'demo';
@@ -146,6 +148,23 @@ function fakeEngine(workspace, behavior) {
       workerEntry: workspace.workerEntry,
       workerVersion: '0.1.1',
       clientVersion: '0.1.1',
+    }),
+  };
+}
+
+function engineWithVersion(workspace, version) {
+  const instances = [];
+  return {
+    instances,
+    engineLoader: async () => ({
+      WorkerClient: class extends FakeClient {
+        constructor(options) {
+          super(options, { instances });
+        }
+      },
+      workerEntry: workspace.workerEntry,
+      workerVersion: '0.1.1',
+      clientVersion: version,
     }),
   };
 }
@@ -564,6 +583,120 @@ async function main() {
     assert(typeof engine.WorkerClient === 'function', 'loader did not load WorkerClient');
     assert(engine.workerVersion === '0.1.1' && engine.clientVersion === '0.1.1', 'loader lost package versions');
     assert(engine.workerEntry.endsWith(join('src', 'worker.mjs')), `loader returned worker entry ${engine.workerEntry}`);
+    await rm(root, { recursive: true, force: true });
+  });
+
+  await run('R4: strict client version gate rejects 0.1.0/invalid and accepts 0.1.1', async () => {
+    const workspace = await makeWorkspace();
+    for (const version of ['0.1.0', '0.1', '0.1.1.0', 'unknown', undefined, null]) {
+      const engine = engineWithVersion(workspace, version);
+      const bridge = new VideoBridge({ ctx: makeCtx(workspace).ctx, rawConfig: workspace.config, engineLoader: engine.engineLoader });
+      const error = await rejects(() => bridge.invoke('doctor', {}));
+      assert(error instanceof BridgeError && error.code === 'E_CONFIGURATION', `version ${String(version)} was not rejected with E_CONFIGURATION: ${error && error.code}`);
+      assert(engine.instances.length === 0 || engine.instances[0].startCount === 0, `version ${String(version)} started the worker before rejection`);
+    }
+    const acceptedEngine = engineWithVersion(workspace, '0.1.1');
+    const accepted = new VideoBridge({ ctx: makeCtx(workspace).ctx, rawConfig: workspace.config, engineLoader: acceptedEngine.engineLoader });
+    await accepted.invoke('doctor', {});
+    assert(acceptedEngine.instances.length === 1 && acceptedEngine.instances[0].startCount === 1, '0.1.1 was not accepted');
+    const newerEngine = engineWithVersion(workspace, '0.2.0');
+    const newer = new VideoBridge({ ctx: makeCtx(workspace).ctx, rawConfig: workspace.config, engineLoader: newerEngine.engineLoader });
+    await newer.invoke('doctor', {});
+    assert(newerEngine.instances.length === 1, 'later valid versions were not accepted');
+  });
+
+  await run('R2: Tool execute and render share one raw UTF-8 byte budget without truncation', async () => {
+    const fakeBridge = { invoke: async () => ({ text: 'x'.repeat(9000) }) };
+    const tool = createVideoTool(fakeBridge);
+    const value = await tool.execute({ action: 'open', projectId: PROJECT }, {});
+    const rendered = tool.output.render({}, value);
+    assert(Array.isArray(rendered) && rendered.length === 1 && rendered[0].type === 'text', 'render output shape changed');
+    const parsed = JSON.parse(rendered[0].text);
+    assert(parsed.result.text.length === 9000, `render truncated to ${parsed.result.text.length} chars`);
+    assert(rendered[0].text.length > 9000, 'render lost the complete result');
+    const bytes = Buffer.byteLength(rendered[0].text, 'utf8');
+    assert(bytes <= TOOL_RESULT_BYTES, `rendered text exceeds budget: ${bytes}`);
+
+    const multilingual = { invoke: async () => ({ text: '中😀'.repeat(3000) }) };
+    const multilingualTool = createVideoTool(multilingual);
+    const multilingualValue = await multilingualTool.execute({ action: 'open', projectId: PROJECT }, {});
+    const multilingualText = multilingualTool.output.render({}, multilingualValue)[0].text;
+    const multilingualParsed = JSON.parse(multilingualText);
+    assert(multilingualParsed.result.text === '中😀'.repeat(3000), 'multibyte result was altered');
+    assert(Buffer.byteLength(multilingualText, 'utf8') <= TOOL_RESULT_BYTES, 'multibyte result exceeds budget');
+
+    const over = { invoke: async () => ({ text: 'x'.repeat(TOOL_RESULT_BYTES + 100) }) };
+    const overTool = createVideoTool(over);
+    const error = await rejects(() => overTool.execute({ action: 'open', projectId: PROJECT }, {}));
+    assert(error.message.includes('E_RESULT_LIMIT'), `over-limit execute was not explicit: ${error.message}`);
+  });
+
+  await run('R2: Bridge rejects an over-budget Tool result before a wrapper can shorten it', async () => {
+    const workspace = await makeWorkspace();
+    const { bridge } = makeBridge(workspace, {
+      handler: (method) => (method === 'open' ? { text: 'x'.repeat(70000) } : {}),
+    });
+    const error = await rejects(() => bridge.invoke('open', { projectId: PROJECT }, { source: 'tool' }));
+    assert(error.code === 'E_RESULT_LIMIT', `unexpected bridge limit error ${error.code}`);
+  });
+
+  await run('R3: verifier executes the staged Host bytes and rejects tampered snapshots', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'dsh-video-staged-'));
+    const staging = join(root, 'staging');
+    const bundle = join(staging, 'bundle');
+    const client = join(staging, 'engine-client');
+    const worker = join(staging, 'engine-worker');
+    await mkdir(join(bundle, 'host'), { recursive: true });
+    await mkdir(join(bundle, 'node_modules'), { recursive: true });
+    await mkdir(client, { recursive: true });
+    await mkdir(join(worker, 'src'), { recursive: true });
+    const bridgeSource = 'export class VideoBridge { constructor(options) { this.options = options; } static stagedMarker = "staged"; }\n';
+    await writeFile(join(bundle, 'host', 'bridge.js'), bridgeSource);
+    await writeFile(join(bundle, 'index.js'), 'export {};\n');
+    await writeFile(join(bundle, 'package.json'), JSON.stringify({ name: 'dsh-video', version: '0.2.0', private: true, type: 'module' }));
+    await writeFile(join(bundle, 'cordis.patch.yml'), '- insert:\n    - id: dsh-video\n      name: dsh-video\n      config: {}\n');
+    await writeFile(join(client, 'package.json'), JSON.stringify({ name: 'dsh-video-engine-client', version: '0.1.1', private: true, type: 'module', exports: { '.': './index.js', './package.json': './package.json' } }));
+    await writeFile(join(client, 'index.js'), 'export class WorkerClient {}\n');
+    await writeFile(join(worker, 'package.json'), JSON.stringify({ name: 'dsh-video-engine-worker', version: '0.1.1', private: true, type: 'module', exports: { './worker': './src/worker.mjs', './package.json': './package.json' } }));
+    await writeFile(join(worker, 'src', 'worker.mjs'), '// fake staged worker\n');
+    await symlink(join('..', '..', 'engine-client'), join(bundle, 'node_modules', 'dsh-video-engine-client'), 'dir');
+    await symlink(join('..', '..', 'engine-worker'), join(bundle, 'node_modules', 'dsh-video-engine-worker'), 'dir');
+    const config = { workerNode: process.execPath, workerCwd: worker, registryPath: join(staging, 'registry.json'), artifactRoot: join(staging, 'output'), allowedProjects: ['demo'] };
+    await writeFile(join(staging, 'config.json'), JSON.stringify(config, null, 2) + '\n');
+    const configSha = sha256(await (await import('node:fs/promises')).readFile(join(staging, 'config.json')));
+    const patchSha = sha256(await (await import('node:fs/promises')).readFile(join(bundle, 'cordis.patch.yml')));
+    const bundleFiles = await digestTree(bundle, (rel) => rel.startsWith('node_modules/'));
+    const clientFiles = await digestTree(client);
+    const workerFiles = await digestTree(worker);
+    await writeFile(join(staging, 'INTEGRITY.json'), JSON.stringify({
+      rootCommit: 'a'.repeat(40),
+      engineCommit: 'b'.repeat(40),
+      versions: { bundle: '0.2.0', client: '0.1.1', worker: '0.1.1' },
+      config: { path: join(staging, 'config.json'), sha256: configSha },
+      stagedBundlePatch: { path: join(bundle, 'cordis.patch.yml'), sha256: patchSha },
+      files: { bundle: bundleFiles, engineClient: clientFiles, engineWorker: workerFiles },
+    }, null, 2) + '\n');
+
+    const staged = await loadStagedHost(staging);
+    assert(staged.VideoBridge.stagedMarker === 'staged', 'loaded an implementation other than the staged Host bytes');
+    assert(staged.evidence.integrityVerified === true, 'integrity was not marked verified');
+    assert(staged.evidence.hostModule.includes(staging), `executed Host path is outside the snapshot: ${staged.evidence.hostModule}`);
+
+    const originalBridge = bridgeSource;
+    await writeFile(join(bundle, 'host', 'bridge.js'), originalBridge + '// tampered\n');
+    let error = await rejects(() => loadStagedHost(staging));
+    assert(/host\/bridge\.js/.test(error.message) && /mismatch/.test(error.message), `tampered Host was not rejected: ${error.message}`);
+
+    await writeFile(join(bundle, 'host', 'bridge.js'), originalBridge);
+    const tamperedConfig = Object.assign({}, config, { allowedProjects: ['other'] });
+    await writeFile(join(staging, 'config.json'), JSON.stringify(tamperedConfig, null, 2) + '\n');
+    error = await rejects(() => loadStagedHost(staging));
+    assert(/config digest does not match/.test(error.message), `tampered config was not rejected: ${error.message}`);
+
+    await writeFile(join(staging, 'config.json'), JSON.stringify(config, null, 2) + '\n');
+    await writeFile(join(worker, 'src', 'worker.mjs'), '// tampered worker\n');
+    error = await rejects(() => loadStagedHost(staging));
+    assert(/src\/worker\.mjs/.test(error.message) && /mismatch/.test(error.message), `tampered engine source was not rejected: ${error.message}`);
     await rm(root, { recursive: true, force: true });
   });
 

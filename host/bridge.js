@@ -16,6 +16,7 @@ import { BridgeError, configurationError, logSummary, toPublicError } from './er
 import { allowsProject, tryNormalizeConfig } from './config.js';
 import { buildWorkerEnv } from './env.js';
 import { loadEngine } from './engine.js';
+import { TOOL_RESULT_BYTES } from './limits.js';
 
 export const REQUEST_METHODS = Object.freeze([
   'doctor',
@@ -47,7 +48,6 @@ const ARTIFACT_NAME = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f
 const OPERATION_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const PROJECT_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const MEDIA = Object.freeze({ png: 'image/png', mp4: 'video/mp4' });
-const TOOL_RESULT_LIMIT = 64 * 1024;
 const MAX_REGISTRY_BYTES = 1024 * 1024;
 
 function isPlainObject(value) {
@@ -244,20 +244,36 @@ function parseRegistry(textValue) {
   return registry;
 }
 
+const MIN_EXPLICIT_SPAWN_CLIENT = Object.freeze([0, 1, 1]);
+const SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
+
+/** Strict full semantic version core; invalid/unknown input is never coerced to 0. */
 function parseVersion(value) {
-  return String(value)
-    .split(/[.-]/)
-    .slice(0, 2)
-    .map((part) => Number(part) || 0);
+  if (typeof value !== 'string') return null;
+  const match = value.match(SEMVER);
+  if (match === null) return null;
+  return [Number(match[1]), Number(match[2]), Number(match[3])];
 }
 
+function compareVersion(left, right) {
+  for (let index = 0; index < 3; index += 1) {
+    if (left[index] !== right[index]) return left[index] < right[index] ? -1 : 1;
+  }
+  return 0;
+}
+
+/**
+ * Explicit env/cwd exists from client 0.1.1. The old 0.1.0 client ignores both
+ * options, so it must be rejected; malformed/unknown versions are rejected
+ * rather than parsed into a permissive 0.0.0.
+ */
 function supportsExplicitSpawn(version) {
   const parsed = parseVersion(version);
-  return parsed[0] > 0 || (parsed[0] === 0 && parsed[1] >= 1);
+  return parsed !== null && compareVersion(parsed, MIN_EXPLICIT_SPAWN_CLIENT) >= 0;
 }
 
 function publicResult(limit, result, source) {
-  const effectiveLimit = source === 'tool' ? Math.min(limit, TOOL_RESULT_LIMIT) : limit;
+  const effectiveLimit = source === 'tool' ? Math.min(limit, TOOL_RESULT_BYTES) : limit;
   let serialized;
   try {
     serialized = JSON.stringify(result);
@@ -385,7 +401,7 @@ export class VideoBridge {
       throw configurationError('The installed engine client does not export WorkerClient');
     }
     if (typeof engine === 'object' && engine !== null && supportsExplicitSpawn(engine.clientVersion) === false) {
-      throw configurationError('The installed engine client is too old for explicit worker environment/cwd');
+      throw configurationError(`The installed engine client version ${JSON.stringify(engine.clientVersion)} does not support explicit worker environment/cwd (requires >= 0.1.1)`);
     }
     const workerEntry = engine.workerEntry;
     if (typeof workerEntry !== 'string' || isAbsolute(workerEntry) === false) {

@@ -110,7 +110,7 @@ check('host half exports a Cordis plugin body and declares required services', (
   assert(/export\s+function\s+apply\s*\(/.test(hostSource), 'index.js must export function apply()');
   assert(/export\s+const\s+inject\s*=\s*\[\s*'connection'\s*,\s*'tools'\s*,\s*'subprocess'\s*\]/.test(hostSource), 'index.js must declare connection/tools/subprocess injection');
   assert(/@deepseek-ai\//.test(hostSource) === false, 'index.js must not import @deepseek-ai/* (profile path packages cannot resolve them)');
-  for (const module of ['host/bridge.js', 'host/routes.js', 'host/tool.js', 'host/config.js', 'host/env.js', 'host/errors.js', 'host/engine.js']) {
+  for (const module of ['host/bridge.js', 'host/routes.js', 'host/tool.js', 'host/config.js', 'host/env.js', 'host/errors.js', 'host/engine.js', 'host/limits.js']) {
     assert(exists(module), `missing Host module ${module}`);
   }
   return 'apply(), inject, seven Host modules';
@@ -171,12 +171,12 @@ check('entrypoints and exports resolve to shipped files', () => {
 
 check('package files list covers every shipped artifact', () => {
   assert(Array.isArray(pkg.files) && pkg.files.length > 0, 'package.json needs a files list for a reproducible install');
-  const required = ['index.js', 'client.js', 'cordis.patch.yml', 'icon.svg', 'locale/en.json', 'locale/zh.json', 'README.md', 'host/bridge.js', 'host/routes.js', 'host/tool.js', 'host/config.js', 'host/env.js', 'host/errors.js', 'host/engine.js'];
+  const required = ['index.js', 'client.js', 'cordis.patch.yml', 'icon.svg', 'locale/en.json', 'locale/zh.json', 'README.md', 'host/bridge.js', 'host/routes.js', 'host/tool.js', 'host/config.js', 'host/env.js', 'host/errors.js', 'host/engine.js', 'host/limits.js'];
   for (const artifact of required) {
     const covered = pkg.files.some((pattern) => listMatchingFiles(pattern).includes(artifact));
     assert(covered, `files list does not cover required artifact "${artifact}"`);
   }
-  const extra = ['scripts/check.mjs', 'scripts/smoke-client.mjs', 'scripts/check-host.mjs', 'scripts/stage-dev.mjs'];
+  const extra = ['scripts/check.mjs', 'scripts/smoke-client.mjs', 'scripts/check-host.mjs', 'scripts/stage-dev.mjs', 'scripts/test-host-engine.mjs', 'scripts/lib/staged-host.mjs'];
   for (const tool of extra) {
     assert(exists(tool), `local check tool "${tool}" is missing from the workspace`);
     const packaged = pkg.files.some((pattern) => listMatchingFiles(pattern).includes(tool));
@@ -371,6 +371,40 @@ check('P2-002-B: committed runtime carries no development/deployment absolute pa
   }
   assert(pkg.dependencies === undefined, 'the committed root manifest must not carry engine/dev dependencies; staging adds them only to its snapshot');
   return `${runtime.length} runtime files, no absolute dev/deployment paths`;
+});
+
+check('P2-004 R1: title and timing bind one explicit target, not two first-capability scans', () => {
+  assert(clientSource.includes('function textElement(') === false, 'textElement first-capability scan is still present');
+  assert(clientSource.includes('function timingElement(') === false, 'timingElement first-capability scan is still present');
+  assert(clientSource.includes('function targetFor('), 'single targetFor selector missing');
+  assert(clientSource.includes('const FIXTURE_TITLE_ID = \'hf-title\''), 'controlled fixture title contract missing');
+  assert(clientSource.includes('dsh-video-target'), 'explicit target selector missing');
+  return 'one selected stableId for title/timing; fixture contract hf-title';
+});
+
+check('P2-004 R2: Tool result budget is one raw UTF-8 byte constant without truncation', () => {
+  const tool = read('host/tool.js');
+  assert(read('host/limits.js').includes('TOOL_RESULT_BYTES = 64 * 1024'), 'shared UTF-8 byte budget missing');
+  assert(tool.includes('TOOL_RESULT_BYTES'), 'Tool does not use the shared byte budget');
+  assert(tool.includes('slice(0, 8000)') === false && tool.includes('TEXT_LIMIT') === false, 'Tool still truncates at an 8000-character limit');
+  assert(tool.includes('E_RESULT_LIMIT'), 'over-budget Tool result lacks E_RESULT_LIMIT');
+  return 'shared 64KiB UTF-8 budget; explicit E_RESULT_LIMIT';
+});
+
+check('P2-004 R3: real-engine runner imports staged Host and verifies integrity', () => {
+  const runner = read('scripts/test-host-engine.mjs');
+  assert(runner.includes("from '../host/bridge.js'") === false, 'real-engine runner still imports the development worktree Host');
+  assert(runner.includes('loadStagedHost('), 'real-engine runner does not use the staged Host loader');
+  assert(read('scripts/lib/staged-host.mjs').includes('hostModuleSha256'), 'staged Host verifier does not record the executed Host digest');
+  return 'staged host module + INTEGRITY digest verification';
+});
+
+check('P2-004 R4: client version gate is a strict complete semver comparison', () => {
+  const bridge = read('host/bridge.js');
+  assert(bridge.includes('MIN_EXPLICIT_SPAWN_CLIENT'), 'minimum explicit-spawn client version missing');
+  assert(bridge.includes('compareVersion(parsed, MIN_EXPLICIT_SPAWN_CLIENT)'), 'semantic version comparison missing');
+  assert(bridge.includes('Number(part) || 0') === false, 'version parsing still coerces invalid parts to 0');
+  return '>=0.1.1 complete semver; no coercion';
 });
 
 check('P2-002-B: Host modules do not import DSH-internal packages', () => {
