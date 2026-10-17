@@ -68,12 +68,12 @@
 
 - 工作树：`/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/p1-engine`，分支 `codex/p1-engine-spike-b4bf`（PR #2）。
 - 功能基线 `aae05e9`；开工 HEAD **`929ff37`**（相对功能基线只多一个 AGENTS 入口文档提交，未 reset）。
-- 实现提交：**`5cc3ad8b400862be58b0e95b0a9c30c1533fd170`**（`feat(engine): complete protocol schema and add preview snapshots`）。本记录与研究记录另行提交。
+- 实现提交：**`5cc3ad8b400862be58b0e95b0a9c30c1533fd170`**（`feat(engine): complete protocol schema and add preview snapshots`），独立复核后补强 **`df4b74f7b2410c37898f33d8c2d8c90f3505411e`**（`fix(engine): harden preview privacy and schema path rules`）。固定包/证据按 `df4b74f`；本记录与研究记录另行提交。
 - 改动范围：只改 `packages/video-engine-worker/**`、`packages/video-engine-client/**` 及测试/README/`protocol.schema.json`、本任务与研究记录；未改根插件、`spikes/**`、全局规则/STATUS/决策；未改 profile、未安装/启停/重启、未 merge；HyperFrames 固定 0.8.167，依赖/锁文件未变。
 
 ### R1：协议 schema 补齐
 
-- `protocol.schema.json` 由 P2 的 9 方法扩为 **22 方法 / 85 个 `$defs`**：doctor、open、inspect、edit、frame、render、status、cancel、close、shutdown、project.create、asset.import、scene.create/update/remove/reorder、project.revise、history、undo、redo、preview.snapshot/release。
+- `protocol.schema.json` 由 P2 的 10 方法扩为 **22 方法 / 85 个 `$defs`**：doctor、open、inspect、edit、frame、render、status、cancel、close、shutdown、project.create、asset.import、scene.create/update/remove/reorder、project.revise、history、undo、redo、preview.snapshot/release。
 - 每个方法有严格 params（`additionalProperties:false`、required、类型/长度/范围/pattern、scene template 模型、`order` 唯一、revision 64-hex、snapshotId 32-hex）与独立 result 定义；draft 2020-12、`$id` 保持 `urn:dsh-video-engine-worker:v1`。响应帧不带 method，顶层 `x-methods` 提供 method → request/result 指针，供测试与消费方定位。
 - 新增 `test/schema.test.mjs` + 最小 draft 2020-12 子集校验器：强制 schema 方法集 == `src/worker.mjs` switch 方法集、README 方法表同步、全部 `$ref` 可解析；对 22 个方法各做“缺必填字段/多传未知字段”双向探针，并校验真实成功/失败响应（含 merge 冲突 `written:false` 与 job 失败态结果）。
 - 对齐校验时消除三处隐藏漂移：`project.create.templateId` 必填且仅受控模板（`E_TEMPLATE`）；`width`/`height` 必须整数；`scene.update`/`project.revise` 嵌套 template 不再静默接受 `sceneId`（返回 `E_PARAMS`）。README 已同步。
@@ -82,8 +82,9 @@
 
 - 新增 `src/previews.mjs` 与 worker/client 方法：`preview.snapshot {projectId, revision, ttlMs?}` → `{snapshotId, projectId, revision, entry, files:[{path,bytes,sha256}], expiresAt, maxBytes}`；`preview.release {snapshotId}` → `{snapshotId, projectId, revision, released:true}`。
 - 仅 open 工程；revision 必须等于当前（过期/竞争 `E_REVISION_CONFLICT`）；worker 复制到私有 `outputRoot/previews/<snapshotId>/`（32-hex 随机 id），复制后重读磁盘核对字节/`sha256`/原始字节与 `read()` 清单，一致才发布；只返回相对路径。
-- 限额：文件数沿用 manifest 上限（65）、总字节 ≤128 MiB，超限 `E_LIMIT`；TTL 默认 600000 ms、上限 1800000 ms、最小 100 ms；`close`/`shutdown`/EOF/SIGINT/SIGTERM/未捕获异常与启动 sweep 清理；未知/过期/重复 release 返回 `E_SNAPSHOT_NOT_FOUND`；目录懒创建，未使用预览时不改变 `outputRoot` 既有内容。快照只读、不进 revision/history、不可 edit/revise；同 revision 复用为未实现的可选项。
+- 限额：文件数沿用 manifest 上限（65）、总字节 ≤128 MiB，超限 `E_LIMIT`；TTL 默认 600000 ms、上限 1800000 ms、最小 100 ms；`close`/`shutdown`/EOF/SIGINT/SIGTERM/未捕获异常与启动 sweep 清理；未知/过期/重复 release 返回 `E_SNAPSHOT_NOT_FOUND`；`previews/` 目录懒创建（从未请求快照的 worker 不会新建它），但启动 sweep 会删除上一进程可能遗留的该目录。快照只读、不进 revision/history、不可 edit/revise；同 revision 复用为未实现的可选项。
 - client 新增 `previewSnapshot`/`previewRelease`（`src/index.mjs`），只做请求转发，不读工程、不缓存 revision。
+- 独立复核后补强：私有预览目录/快照目录以 `0700` 创建（纵深防御）；schema 纳入路径/名称形态（inbox 文件名、ASCII 图片资产名、相对路径）并加对应负向探针；修正文档中旧 schema 方法数与“无语义变化”的过度声明。
 
 ### 顺手修复（复审观察 1）
 
@@ -93,21 +94,21 @@
 
 | 项 | 命令 | 结果 |
 |---|---|---|
-| worker 单元/契约 | `npm test --prefix packages/video-engine-worker` | **29/29**（原 17 + schema 2 + 预览 7 + 创建恢复 3），约 15.4s |
-| worker 真实链 | `npm run test:real --prefix packages/video-engine-worker` | **10/10**（原 9 + 预览真实链 1），约 121.2s |
-| client | `npm test --prefix packages/video-engine-client` | **19 项：18 pass + 1 opt-in skip**（原 17 + 预览 2），约 28.3s |
-| 预览真实链证据 | `artifacts/engine/5cc3ad8/evidence/preview-chain.txt` | manifest 相对路径、磁盘字节/hash 全匹配、旧快照不可变、过期/释放/close/重启 sweep 全通过 |
+| worker 单元/契约 | `npm test --prefix packages/video-engine-worker` | **29/29**（原 17 + schema 2 + 预览 7 + 创建恢复 3），约 10.8s |
+| worker 真实链 | `npm run test:real --prefix packages/video-engine-worker` | **10/10**（原 9 + 预览真实链 1），约 102.7s |
+| client | `npm test --prefix packages/video-engine-client` | **19 项：18 pass + 1 opt-in skip**（原 17 + 预览 2），约 49.2s（早前 28.3s，负载差异） |
+| 预览真实链证据 | `artifacts/engine/df4b74f/evidence/preview-chain.txt` | manifest 相对路径、磁盘字节/hash 全匹配、旧快照不可变、过期/释放/close/重启 sweep 全通过 |
 
 现有 P2/P3-003 方法与测试无回归；新增测试覆盖 schema 一致性、快照 manifest/hash/相对路径、过期/TTL/release/close/shutdown/重启清理、revision 过期拒绝、路径/符号链接越界、限额与清理失败重试。
 
-### 固定包（`artifacts/engine/5cc3ad8/`，ignored）
+### 固定包（`artifacts/engine/df4b74f/`，ignored）
 
 | 包 | 文件数 | bytes | SHA-256 |
 |---|---|---|---|
 | dsh-video-engine-client-0.2.1.tgz | 3 | 7297 | `59e31cf9ba503a515d89712758b713054487ad2a131412db8908409ab6545fee` |
-| dsh-video-engine-worker-0.2.1.tgz | 13 | 43332 | `710c5e7b616c796d811dff13f45d94e0330792daf753f7375be416b6429cde60` |
+| dsh-video-engine-worker-0.2.1.tgz | 13 | 43930 | `ea7374d4555e70264c9c40d710ef9a331ff4e0311e840d1359615356b081c775` |
 
-`package-verify.json`：两包逐文件与 `5cc3ad8` 字节一致、重复 pack 字节一致；未安装、未发布。
+`package-verify.json`：两包逐文件与 `df4b74f` 字节一致、重复 pack 字节一致；未安装、未发布。
 
 ### 未测项与风险（交回复审用）
 
