@@ -19,11 +19,11 @@
 | [P0-002](tasks/P0-002-mode-shell-implementation.md) | DSH 实现 / Codex 评审 | 继续 dsh/p0-mode-shell 与原 worktree | 8ebf922 / a31ee51 主要修复复审通过；本地检查 44/44，固定包已产生；未安装 |
 | [P0-003](tasks/P0-003-install-validation.md) | 原 DSH 会话 | 原 P0 worktree | 安装/真页面验证准备好，待用户明确授权 |
 | [前端设计规划](design/FRONTEND-DESIGN.md) | Codex | codex/project-foundation；主工作区 | v0.1 方向草案已整理；未实现/未真页面验证 |
-| [P1-001 引擎验证](tasks/P1-001-engine-spike.md) | 用户新开的 Codex 开发会话 | codex/p1-engine-spike；同级 p1-engine-spike | 并行任务与独立 worktree 已准备，待用户打开 |
+| [P1-001 引擎验证](tasks/P1-001-engine-spike.md) | 用户新开的 Codex 开发会话 | codex/p1-engine-spike-b4bf；~/.codex/worktrees/b4bf/dsh-video-editor | 改用新会话自动 worktree，起点831a64d；已从 detached HEAD 建分支 |
 
 ## 下一动作
 
-并行线：用户在新 Codex 会话打开 `/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/p1-engine-spike`，按 P1-001 开始引擎验证。该会话只改 spike 与自身记录，不等 P0 修复，也不改 DSH Client 文件。
+并行线：用户在新 Codex 会话使用 `/Users/orange/.codex/worktrees/b4bf/dsh-video-editor`，按 P1-001 开始引擎验证。该会话只改 spike 与自身记录，不等 P0 修复，也不改 DSH Client 文件。
 
 1. Codex 将 [修复复审](reviews/P0-002-review-02.md) 与 P0-003 同步到干净的原 DSH worktree，不改其功能实现。
 2. 用户可在 DSH 明确授权安装/启用指定 tarball，随后执行 P0-003；新 Codex 引擎会话继续 P1-001，无需等待安装。
@@ -34,6 +34,8 @@
 用户已确认首版原生顶部靠左入口；无产品决策阻塞。普通输入附件/引用及回退清理仍需真机验证。没有宿主集成、UI、生成、编辑或导出通过验证。
 
 ## 最近交接
+
+2026-10-17 工作区更正：用户新会话自动创建 b4bf worktree，核对与预建 tree 同为 831a64d、两者均干净。采用自动 tree，分支 codex/p1-engine-spike-b4bf；原预建 tree 暂留未用，不并行写入同一引擎任务。不影响 DSH P0 tree。
 
 2026-10-17 P0-B 修复复审：实读 8ebf922/a31ee51，复跑 44 项检查通过，已产出并校验固定 tarball（来源与 SHA 见 review-02）；可进入受控安装验证，用户尚未授权执行安装。P0 与 P1 文件边界无冲突，P1 继续独立推进。晚到 leading 注册失败场景仍列为边界补验项。
 

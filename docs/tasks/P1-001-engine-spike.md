@@ -2,9 +2,11 @@
 
 状态：已授权实现与本地验证，待用户打开新 Codex 会话。
 执行：新 Codex 开发会话；架构/协调/验收：当前主会话。
-分支：`codex/p1-engine-spike`。
-worktree：`/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/p1-engine-spike`。
-base：创建此 worktree 的协调分支准备提交；开工填实际 SHA。
+分支：`codex/p1-engine-spike-b4bf`。
+worktree：`/Users/orange/.codex/worktrees/b4bf/dsh-video-editor`（用户新会话自动创建，现作为唯一活动引擎工作区）。
+base：`831a64df399215ca2074874a6ac904bdca587329`；自动 worktree 起点与原规划相同。Codex 已从 detached HEAD 建立上述分支并同步本路径更正；开工记录实际 HEAD。
+
+原预建目录 `/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/p1-engine-spike` 与分支 `codex/p1-engine-spike` 暂留未使用；不要在两个目录同时执行本任务。
 
 ## 目标
 
