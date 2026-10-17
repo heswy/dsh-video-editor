@@ -1,0 +1,40 @@
+{
+  "name": "dsh-video",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Native normal/video mode shell and an honest empty video workspace for DeepSeek Harness.",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "icon.svg",
+    "locale/*.json",
+    "README.md"
+  ],
+  "icon": "./icon.svg",
+  "license": "MIT",
+  "scripts": {
+    "check": "node scripts/check.mjs && node scripts/smoke-client.mjs"
+  },
+  "dsh": {
+    "manifestVersion": 1,
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-conversation"
+      ]
+    }
+  }
+}
