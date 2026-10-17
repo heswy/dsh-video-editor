@@ -24,6 +24,10 @@
 | [P1-001 引擎验证](tasks/P1-001-engine-spike.md) | Codex 引擎开发 / 主会话验收 | codex/p1-engine-spike-b4bf；~/.codex/worktrees/b4bf/dsh-video-editor | c779b94 / e88615f 单场景可行性通过，主会话独立复测 3+2 测试、哈希与 ffprobe |
 | [P1-002 worker](tasks/P1-002-engine-worker.md) | 原 Codex 引擎会话 | 自行管理原 worktree/分支 | 受控独立 worker 实现放行；不改 DSH 插件 |
 
+## 最新复审与授权状态
+
+51c82a9 / f5eed41 与固定包 0.1.3 已通过代码/包复审（57/57）。原 R1 已关闭，见 P0-005-review-02。下一任务 P0-006；**等待用户明确授权替换安装后执行**，当前不安装、不启停。下面之前的 R1 待修说明为历史记录。
+
 ## 本轮复审交接
 
 执行 `docs/reviews/P0-005-review-01.md` 的 R1：补菜单焦点进入/退出回归，出 0.1.3 固定包再复审；保留 0.1.2，不安装/启停、不改 profile。引擎侧 P2-001 另有通信边界修复，与本任务无共享代码。以下旧下一动作以本段为准。
