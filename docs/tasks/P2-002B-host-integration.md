@@ -1,5 +1,7 @@
 # P2-002-B：原生 Host 桥与受控示例编辑闭环
 
+> Git 授权更新（2026-10-17）：用户已同意正常 feature 分支 push 与草稿 PR 流程；本指南旧“不 push”表述由该授权替代。见 DEVELOPMENT。安装/启停/重启、合并/发布边界不变。
+
 执行：**程序员 2**，原 p0-mode-shell tree/分支；调查基线 `afcf57d`，保持已安装 0.1.3。先读最新 DEVELOPMENT、ADR-0002、P2-002-review-01 与设计 v0.2。记录收到指南的提交及实际 HEAD。
 
 本轮放行**实现、本地验证、准备固定开发 staging**；不安装/替换/启停、不重启、不改 profile、不 push/merge。程序员 1 并行 P2-003，根插件由你独占；packages/video-engine-* 与 spikes 不改。最终 staging 等主会话复审确定 P2-003 提交后再固定；不必等待即可实现 Host/Client 与契约测试。

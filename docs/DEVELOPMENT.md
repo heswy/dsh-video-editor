@@ -18,7 +18,10 @@
 - 用户指定的新 Codex 开发会话使用 `codex/<task-slug>`，首支为 `codex/p1-engine-spike`；这是独立开发会话，不改变主会话分工。
 - DSH 首 worktree 约定：仓库同级 `../dsh-video-editor-worktrees/p0-mode-shell`，分支 `dsh/p0-mode-shell`，由 Codex 创建和维护。后续 DSH worktree 统一放在同级 `../dsh-video-editor-worktrees/<task-slug>`；其他 Codex 会话按应用自己的 worktree 流程管理。优先复用空闲且适合的 worktree。
 - 不同 worktree 不共享工作文件和 node_modules。禁止同时在同一 worktree 修改；共享 .git，不并行运行仓库级破坏性操作。
-- 不 reset/clean/强推、不清除用户变更。提交仅包含本任务文件。基础文档可以本地提交；push、PR、合并、rebase 和发布遵循任务中明确授权。
+- 不 reset/clean/强推、不清除用户变更。提交仅包含本任务文件；不把另一开发者未提交工作带入提交。
+- **2026-10-17 用户已授权正常 Git 协作流程**：主会话维护协调分支；程序员在各自 feature 分支持续 commit + 普通 push，创建/更新草稿 PR，阶段结束后交主会话评审。已有 PR 继续更新，不为同一开发线重复创建。此最新授权覆盖旧任务中的“本地提交、未 push”限制，不覆盖安装/重启/构建脚本授权。
+- 推送分支不等于验收、合并或发布。main 的集成由主会话协调并遵循当次合并授权，开发者不自行 merge；发布/安装继续单独控制。不为了同步改写其它人的共享分支或强推。
+- 每轮报告提交 SHA、PR 链接、验证与未测项；较长任务定期推送可审阅的提交。当前工作树里未提交内容不会自动进入远端备份，不能把已有 PR 当作全部本地工作已保存。
 - 文档进入 main 的集成由主会话协调。DSH 不自行改写全局规则、已接受决策与产品范围；需要变更时在任务记录提出建议，由主会话确认并整合。
 
 ## 插件边界

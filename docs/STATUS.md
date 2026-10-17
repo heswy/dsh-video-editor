@@ -32,22 +32,24 @@
 | [P2-001 通信包](tasks/P2-001-engine-client.md) | 程序员 1 | 自行管理 b4bf worktree/原分支 | 5b9032b 最终收口通过；独立 Node22/24 均10/10 |
 | [P0-006 真机验证](tasks/P0-006-sidebar-live-validation.md) | 原 DSH 会话 | 原 P0 worktree | 98e2571 记录/截图已审；0.2.1 上安装与核心入口/空页/启停通过，面板内交互等未测 |
 | [P2-002-A Host 契约](tasks/P2-002-host-bridge.md) | 程序员 2 | 原 P0 worktree | afcf57d 调查验收通过；ADR-0002 决策收敛 |
-| [P2-003 启动/包入口](tasks/P2-003-engine-launch-packaging.md) | 程序员 1 | 原 b4bf worktree/分支 | env/cwd + exports + 固定包本地实现放行 |
+| [P2-003 启动/包入口](tasks/P2-003-engine-launch-packaging.md) | 程序员 1 | 原 b4bf worktree/分支 | 54f4671 已复审通过；Node22/24 各15通过+1跳过，Desktop24.21真实链通过；固定包见评审新摘要 |
 | [P2-002-B Host 接入](tasks/P2-002B-host-integration.md) | 程序员 2 | 原 P0 worktree | Host/Client/Tool/staging 本地实现放行，最终依赖待 P2-003 复审；不安装 |
 
 ## 下一动作
 
 并行线：程序员 1 补独立包启动/解析能力；程序员 2 接入根 Host 与简洁真实编辑视图。ADR-0002 固定共同契约，文件边界不交叉。
 
-1. 程序员 1 执行 P2-003：完整 env/cwd 透传、worker exports、0.1.1 固定包及部署 Node24.21 验证，原协议不变。
+1. 程序员 1 的 P2-003 已验收；继续维护引擎分支/草稿 PR，按后续接线反馈修复，不自行改根插件。
 2. 程序员 2 执行 P2-002-B：共用 VideoBridge、原生 Fetch/Tool、受控工程真实 PNG/编辑/MP4任务；本地开发与 staging 准备，不碰已安装 0.1.3。
-3. 两边可并行写各自文件；最终 staging 依赖固定到主会话接受的 P2-003 提交，整体评审后再安排安装授权。不 push/merge、不中途改变现有 profile。
+3. 程序员 2 最终 staging 固定引用 54f4671 与 P2-003-review-01 新摘要，整体评审后再安排安装授权。用户已授权普通 feature push/草稿 PR；不自动 merge/发布，不改变现有 profile。
 
 ## 阻塞与未验证
 
 0.1.3 核心侧栏/主面板和启停证据通过。main 内容缺少定向 AX 通道，返回按钮、菜单焦点、主题/字号/窄窗、草稿/引用/附件、静态阅读位置、冷启动等仍未测，采用人工清单，不重复不安全自动化。尚无 DSH 内引擎接入、不可信代码隔离或完整 AI 创作验收。P2 client 的显式 Node22/24 测试已完成收口；仅代表本机小版本和受控 fixture。
 
 ## 最近交接
+
+2026-10-17 Git 工作流与 P2-003 验收：用户明确授权正常 feature push/草稿 PR，替代旧本地-only 限制。54f4671 已独立复测/验收；复打包源码匹配但摘要与原消息不同，独立固定到 artifacts/engine/54f4671，以 P2-003-review-01 为准。程序员2正在进行的根代码未提交，本轮不修改或纳入推送。主会话准备首次三个分支远端保存和草稿PR，结果随后登记。
 
 2026-10-17 Host 契约验收与并行实施：afcf57d 调查通过；主会话独立核对 0.2.1 版本、asar 摘要与 bundled Node24.21。ADR-0002 选真实 Node 配置、显式净化环境、共用 Host dispatcher、fixture allowlist+job归属、真实字节产物与结构化 Tool；不加 Host 幂等缓存或附件。新增 P2-003 给程序员1、P2-002-B 给程序员2；两人本地实现，保持已安装 0.1.3。
 

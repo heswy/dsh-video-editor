@@ -30,3 +30,5 @@
 2026-10-17 D014 / accepted：用户固定称呼程序员 1（dsh-video-editor，DeepSeek 接手原 Codex 的 b4bf 引擎/通信线）与程序员 2（p0-mode-shell，原 DeepSeek 插件/Host 线）。工作树与历史分支沿用，原 Codex 不同时写入；主会话继续协调/评审，任务边界不因更换模型自动扩展。
 
 2026-10-17 D015 / accepted：采用 [ADR-0002](adr/0002-host-bridge-runtime-and-boundaries.md) 的真实 Node 配置与显式 env/cwd、单 VideoBridge/Fetch/Tool、受控 allowlist/job 归属和开发 staging 路线。程序员 1 做 P2-003 包能力，程序员 2 做 P2-002-B 根宿主接入；仅本地实现，安装授权仍单独决定。
+
+2026-10-17 D016 / accepted：用户授权正常 feature 分支持续 commit/push 与草稿 PR 流程，替代旧任务的 local-only/no-push 限制；不等于自动 merge main、发布或替换真实安装。主会话协调基础文档与评审，两程序员维护各自分支和 PR；不清理未提交工作。
