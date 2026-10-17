@@ -108,9 +108,10 @@ npm run check
 
 最终固定根包：`/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/artifacts/p2-b/fa7b0e2/dsh-video-0.2.0.tgz`，38,984 B / 17 files，SHA-256 `d7d0b40ce4ff92da6c9955c360572c65b3cbbd8839d1889eddd96aa32d4752de`（旧 `artifacts/p2-b/dsh-video-0.2.0.tgz` 保留未覆盖）。
 
-最终 staging：`/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/artifacts/p2-b/staging-54f4671-fa7b0e2`（`INTEGRITY.json` 记录 root `fa7b0e29933d36b59ed3ccd569276c3124fd4b0f`、engine `54f467147ae2f61e118099c4947f55e8da877500`、bundle/client/worker 0.2.0/0.1.1/0.1.1；bundle 16、client 12、worker 15 个源文件；`esbuildAvailable:true`；staged patch SHA `306dc966…`，config SHA `6e84a49f…`；安装前无构建脚本/pendingBuilds）。真实链证据 `/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/artifacts/p2-b/evidence/engine-run-2026-10-17T09-07-27-420Z.json`：
+最终安装用干净 staging：`/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/artifacts/p2-b/staging-54f4671-fa7b0e2-clean`（`INTEGRITY.json` SHA-256 `cc4490da5285887b47868fe2e868560792e5cc690a9f8f037b6e1131c07a2f11`；root `fa7b0e29933d36b59ed3ccd569276c3124fd4b0f`、engine `54f467147ae2f61e118099c4947f55e8da877500`、bundle/client/worker 0.2.0/0.1.1/0.1.1；bundle 16、client 12、worker 15 个源文件；`esbuildAvailable:true`；staged patch SHA `71c810d7…`，config SHA `655213d1…`；安装前无构建脚本/pendingBuilds）。原 `staging-54f4671-fa7b0e2` 保留未动。真实链证据 `/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/artifacts/p2-b/evidence/engine-run-2026-10-17T09-13-55-241Z.json`：
 
-- 执行路径：实际 import `staging-54f4671-fa7b0e2/bundle/host/bridge.js`（SHA-256 `07442c86…`），integrity verified；工作树 head `fa7b0e2`、clean，仅记录不作为实现来源。
+- 执行路径：实际 import `staging-54f4671-fa7b0e2-clean/bundle/host/bridge.js`（SHA-256 `07442c86…`），integrity verified；工作树 head `fa7b0e2`、clean，仅记录不作为实现来源。
+- 干净 demo：链路结束后用 staging 自身 `npm run prepare-fixture`（保留 `VIDEO_BROWSER_PATH`）恢复受控项目；`engine-worker/artifacts/projects/demo/index.html` 标题初值回到 `让创意成为影像`，无测试后缀；INTEGRITY 未变。
 - doctor：Node `v24.21.0`、HyperFrames/SDK `0.8.167`、GSAP `3.15.0`、Chrome `155.0.8059.79`、FFmpeg/ffprobe `8.0.1`。
 - open/inspect → edit 目标 `hf-title`（text+timing，初始 `让创意成为影像`），text/timing 同一 target；revision `135a529…` → `f714e71…`。
 - frame 成功：PNG 279,463 B，hash `875b48c6…`，1280×720/2.5s；render 成功：H.264 MP4 135,855 B，hash `fae2687e…`，1280×720、30/1、150 帧、5s（独立 ffprobe 复核一致）；第二 render cancel ack `cancelling` → terminal `cancelled`、`cleaned:true`；close `{closed:true}`、dispose 完成；无 host warning。
