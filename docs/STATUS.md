@@ -51,7 +51,7 @@
 | [P2-003 启动/包入口](tasks/P2-003-engine-launch-packaging.md) | 程序员 1 | 原 b4bf worktree/分支 | 54f4671 已复审通过；Node22/24 各15通过+1跳过，Desktop24.21真实链通过；固定包见评审新摘要 |
 | [P2-002-B Host 接入](tasks/P2-002B-host-integration.md) | 程序员 2 | 原 P0 worktree | e595d4e 首审：83/83 与根包匹配；R1对象绑定/R2Tool截断/R3快照验证/R4版本门禁待修 |
 | [P2-004 R1–R4 修复](tasks/P2-004-host-bridge-fixes.md) | 程序员 2 | 原 P0 worktree/分支 | 已复审通过并安装 0.2.0（link clean staging）；真机验收中：UI 真实工程/画面、Tool doctor/open/frame/status 通过；编辑/导出/生命周期待验 |
-| [P2-005 预览时间点+播放 spike](tasks/P2-005-preview-time-and-player-spike.md) | 程序员 2 | 原 P0 worktree/分支 | B/A 已复审：B 通过（96/96、0.2.1 包 17/17 字节一致、staging 真实链）；A spike 验收（A1 可行需 engine snapshot，A2 不推荐，实现暂缓）；**R1 深色对比未修，待补丁后重装** |
+| [P2-005 预览时间点+播放 spike](tasks/P2-005-preview-time-and-player-spike.md) | 程序员 2 | 原 P0 worktree/分支 | R1 补丁复审通过：97/97、0.2.1 包 17/17 字节一致、staging 真实链；**0.2.1 为安装候选**，待用户重装复核深色按钮与时间点预览 |
 | [P3-001 多 Scene/修订 spike](tasks/P3-001-engine-multiscene-spike.md) | 程序员 1 | 原 b4bf worktree/分支 | 已复审通过：独立复跑 12/12、MP4/ffprobe/证据核对一致；契约冻结 D020–D022；见 [复审](reviews/P3-001-review-01.md) |
 | [P3-003 多 Scene 引擎实现](tasks/P3-003-engine-multiscene-implementation.md) | 程序员 1 | 原 b4bf worktree/分支 | 已下发：工程创建/Scene 操作/inspect 扩展/素材/历史 + AI 候选合并；分 Phase A/B，可提前报 Phase A |
 
@@ -60,7 +60,7 @@
 并行线：P3 主线——程序员 1 实现 P3-003 引擎（多 Scene/创建/合并/历史）；程序员 2 补 P2-005 R1 后重装 0.2.1；总调度冻结 P3 契约并准备 P3-004。真播放等辅助能力暂缓。
 
 1. 程序员 1 按 [P3-003](tasks/P3-003-engine-multiscene-implementation.md) 实现引擎；Phase A 完成后可先 push 交审；完成后出 0.2.0 固定包与真实 15 秒证据。
-2. 程序员 2 完成 P2-005 R1（深色按钮 token 修复 + 静态断言）后重出 0.2.1 包/staging；复审通过后用户重装并复核深色/时间点预览。
+2. 程序员 2 的 P2-005 R1 补丁已复审通过（97/97、0.2.1 包/staging 核对一致）；等用户在 Plugins 卸载 0.2.0、安装 `staging-54f4671-bdcfd72/bundle`，重装后复核深色/浅色按钮、hover/focus/disabled、画面时间点预览与 P2-004 剩余真机验收项。
 3. 总调度复审 P3-003；通过后下发 P3-004（根插件创作流程/AI 上下文/冲突 UI）给程序员 2，再接 P3-005 端到端 15 秒 AI 样例。
 4. 真机验收剩余项（编辑保存/导出取消/生命周期/主题窄窗）随 0.2.1 重装补验。
 5. 总调度维护协调分支文档与 PR #1；保持 main 未合并；不自动 merge/发布。
@@ -70,6 +70,8 @@
 0.1.3 核心侧栏/主面板和启停证据通过。main 内容缺少定向 AX 通道，返回按钮、菜单焦点、主题/字号/窄窗、草稿/引用/附件、静态阅读位置、冷启动等仍未测，采用人工清单，不重复不安全自动化。0.2.0 已真机安装，入口/真实工程/画面与 Tool doctor/open/frame/status 通过；**UI 编辑保存、导出/取消、冲突错误、生命周期与主题窄窗仍未验证**；尚无多 Scene、AI 创作、用户素材、不可信代码隔离。P2 client 的显式 Node22/24 测试仅代表本机小版本和受控 fixture。
 
 ## 最近交接
+
+2026-10-17 P2-005 R1 补丁复审通过：`bdcfd72`/`123353c` 仅改主按钮 token 与静态断言；独立复跑 97/97；0.2.1 tarball 39,702 B、17/17 与提交字节一致；新 staging `staging-54f4671-bdcfd72`（INTEGRITY `b410ec2f…`、staged Host `07442c86…`）真实链通过、demo 干净。已核对宿主 app.asar 中 `button-primary-fill/hover/dimmed` 与 `label-primary-foreground` 真实存在、配对方向正确（深色 fill 实为 `#f9fafb`，报告笔误）。**0.2.1 可作安装候选**，待用户重装后做真实明暗/焦点/disabled 视觉复核。见 [R1 复审](reviews/P2-005-review-02.md)。
 
 2026-10-17 P3-001 复审通过：独立复跑单元测试 12/12；B/A 15s MP4 哈希逐文件核对（B 与 worker 渲染字节完全一致）、ffprobe 450 帧/15.000s/1280×720；q1/q5/q6/q7/q8 证据一致。冻结 D020–D022：单 HTML + Scene 区段 + master timeline、受控整文件重写、stableId 三方合并；revision 保持内容哈希 + 单调 historyCursor；worker 管理 projectsRoot + project.create。已下发 [P3-003 引擎实现](tasks/P3-003-engine-multiscene-implementation.md) 给程序员 1（Phase A 可先交审）。
 
