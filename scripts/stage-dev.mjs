@@ -9,12 +9,18 @@
  * source commit, file digest, version and local dependency link.
  *
  * Usage:
- *   node scripts/stage-dev.mjs --engine-commit <sha> --node <absolute node> \
- *     [--browser <absolute chrome>] [--font <absolute ttf>] [--out <dir>] \
- *     [--skip-fixture] [--allow-dirty]
+ *   node scripts/stage-dev.mjs --engine-commit <sha> --bundle-version <semver> \
+ *     --node <absolute node> [--browser <absolute chrome>] \
+ *     [--font <absolute ttf>] [--out <dir>] [--skip-fixture] [--allow-dirty]
  *
  * The default output lives next to the repository worktree (never inside it):
  *   ../artifacts/p2-b/staging
+ *
+ * The root bundle version is never guessed: `--bundle-version` is required and
+ * must equal the version in the committed root package.json of the exact commit
+ * being staged. A malformed value or mismatch fails before the output directory
+ * or dependency install is created (see scripts/lib/stage-version.mjs), and the
+ * reviewed engine version pins below stay unchanged.
  *
  * The engine commit must already expose the P2-003 `./worker` and
  * `./package.json` exports. The script refuses an old engine snapshot instead of
@@ -28,6 +34,7 @@ import { existsSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createRequire } from 'node:module';
+import { admitBundleVersion, parseBundleVersion } from './lib/stage-version.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const RUNTIME_PATHS = [
@@ -48,13 +55,12 @@ const RUNTIME_PATHS = [
   'README.md',
 ];
 const DEFAULT_OUT = resolve(ROOT, '..', 'artifacts', 'p2-b', 'staging');
-const EXPECTED_BUNDLE_VERSION = '0.2.1';
 const ENGINE_CLIENT = 'packages/video-engine-client';
 const ENGINE_WORKER = 'packages/video-engine-worker';
 
 function usage(message) {
   if (message) console.error(message);
-  console.error('usage: node scripts/stage-dev.mjs --engine-commit <sha> --node <absolute node> [--browser <absolute chrome>] [--font <absolute ttf>] [--out <dir>] [--skip-fixture] [--allow-dirty]');
+  console.error('usage: node scripts/stage-dev.mjs --engine-commit <sha> --bundle-version <semver> --node <absolute node> [--browser <absolute chrome>] [--font <absolute ttf>] [--out <dir>] [--skip-fixture] [--allow-dirty]');
   process.exit(2);
 }
 
@@ -64,7 +70,7 @@ function parseArgs(argv) {
     const key = argv[index];
     if (key === '--skip-fixture') args.skipFixture = true;
     else if (key === '--allow-dirty') args.allowDirty = true;
-    else if (key === '--engine-commit' || key === '--node' || key === '--browser' || key === '--font' || key === '--out') {
+    else if (key === '--engine-commit' || key === '--bundle-version' || key === '--node' || key === '--browser' || key === '--font' || key === '--out') {
       const value = argv[index + 1];
       if (value === undefined) usage(`missing value for ${key}`);
       const name = key.slice(2).replace(/-([a-z])/g, (_match, letter) => letter.toUpperCase());
@@ -73,6 +79,12 @@ function parseArgs(argv) {
     } else usage(`unknown argument ${key}`);
   }
   if (!args.engineCommit) usage('--engine-commit is required');
+  if (!args.bundleVersion) usage('--bundle-version is required');
+  try {
+    args.bundleVersion = parseBundleVersion(args.bundleVersion, '--bundle-version');
+  } catch (error) {
+    usage(error instanceof Error ? error.message : String(error));
+  }
   if (!args.node || isAbsolute(args.node) === false) usage('--node must be an absolute Node executable path');
   if (args.browser !== undefined && isAbsolute(args.browser) === false) usage('--browser must be absolute');
   if (args.font !== undefined && isAbsolute(args.font) === false) usage('--font must be absolute');
@@ -159,6 +171,20 @@ async function main() {
   if (dirty.length > 0 && args.allowDirty !== true) {
     throw new Error('the root worktree is not clean; commit the reviewed code before staging (or pass --allow-dirty for an exploratory snapshot)');
   }
+  // R1 (P2-007): the explicitly declared bundle version must equal the version
+  // pinned in the committed root manifest for this exact commit. This runs
+  // before the output directory, engine extraction or any dependency install.
+  const committedPackageSource = git(['show', `${rootCommit}:package.json`]);
+  let committedPackage;
+  try {
+    committedPackage = JSON.parse(committedPackageSource);
+  } catch (_error) {
+    throw new Error(`committed root package.json at ${rootCommit} is not valid JSON`);
+  }
+  const bundleVersionGate = admitBundleVersion({
+    expectedVersion: args.bundleVersion,
+    manifestVersion: committedPackage.version,
+  });
   const engineCommit = git(['rev-parse', '--verify', `${args.engineCommit}^{commit}`]);
 
   const out = args.out === undefined ? DEFAULT_OUT : resolve(args.out);
@@ -178,11 +204,10 @@ async function main() {
     // 1. Root bundle from the exact reviewed commit, not the working tree.
     await extractCommitPaths(rootCommit, RUNTIME_PATHS, work);
     await copyRuntimeFiles(work, bundleRoot);
-    // package.json is not inside RUNTIME_PATHS; copy the committed one.
-    const committedPackage = git(['show', `${rootCommit}:package.json`]);
-    await writeFile(join(bundleRoot, 'package.json'), committedPackage);
-    const parsedPackage = JSON.parse(committedPackage);
-    if (parsedPackage.version !== EXPECTED_BUNDLE_VERSION) throw new Error(`root bundle version is ${parsedPackage.version}, expected ${EXPECTED_BUNDLE_VERSION}`);
+    // package.json is not inside RUNTIME_PATHS; write the committed one already
+    // admitted by the bundle version gate above.
+    await writeFile(join(bundleRoot, 'package.json'), committedPackageSource);
+    const parsedPackage = committedPackage;
 
     // 2. Engine packages from the exact engine commit.
     await extractCommitPaths(engineCommit, [ENGINE_CLIENT, ENGINE_WORKER], work);
@@ -289,6 +314,12 @@ async function main() {
         client: clientPackage.version,
         worker: workerPackage.version,
       },
+      bundleVersionGate: {
+        expected: bundleVersionGate.expectedVersion,
+        manifest: bundleVersionGate.manifestVersion,
+        source: `committed root package.json at ${rootCommit}`,
+        requirement: 'explicit --bundle-version must equal the pinned committed manifest version; rejected before output/dependency work',
+      },
       node: args.node,
       browser: args.browser === undefined ? null : args.browser,
       font: args.font === undefined ? null : args.font,
@@ -314,6 +345,7 @@ async function main() {
       engineCommit,
       rootCommit,
       versions: integrity.versions,
+      bundleVersionGate: integrity.bundleVersionGate,
       esbuildAvailable,
     }, null, 2));
     if (esbuildAvailable === false) {

@@ -70,8 +70,10 @@
 根仓库不是完整发行包；worker/client 依赖通过**不可变开发快照**准备。最终 staging 必须使用主会话复审通过的 P2-003 引擎提交。
 
 ```sh
-node scripts/stage-dev.mjs   --engine-commit <reviewed-P2-003-sha>   --node /absolute/real/node   --browser /absolute/chrome   [--font /absolute/font] [--out /absolute/staging-dir]
+node scripts/stage-dev.mjs   --engine-commit <reviewed-P2-003-sha>   --bundle-version <reviewed-bundle-version>   --node /absolute/real/node   --browser /absolute/chrome   [--font /absolute/font] [--out /absolute/staging-dir]
 ```
+
+`--bundle-version` 必须显式给出，且与所固定提交根 `package.json` 的版本（当前 **0.2.2**）完全一致；非法 semver 或不一致会在创建输出目录、安装依赖之前失败，脚本不会猜测或隐式接受任意版本。后续升级根版本时同步传入新版本，不删除这项校验。
 
 脚本要求根 worktree 干净、引擎包版本为复审的 `0.1.1` 且暴露 `./worker` / `./package.json` 导出；用该提交的 client/worker 快照 + `npm ci --ignore-scripts` 准备依赖闭包与受控 fixture，生成：
 
@@ -120,6 +122,7 @@ node --check scripts/check-host.mjs
 node scripts/check.mjs          # manifest/patch/exports/files/locale/侧栏契约/UI 范围
 node scripts/smoke-client.mjs   # Client 模块、侧栏原子生命周期、菜单、真实打开/编辑/帧/导出/取消/错误
 node scripts/check-host.mjs     # Host 配置/env/启动单飞/参数/job 归属/路由/Tool/artifact 字节校验/清理
+node scripts/test-stage-version.mjs  # staging 版本门禁行为回归（不安装依赖、不生成快照）
 npm run check
 ```
 

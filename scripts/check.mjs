@@ -176,7 +176,7 @@ check('package files list covers every shipped artifact', () => {
     const covered = pkg.files.some((pattern) => listMatchingFiles(pattern).includes(artifact));
     assert(covered, `files list does not cover required artifact "${artifact}"`);
   }
-  const extra = ['scripts/check.mjs', 'scripts/smoke-client.mjs', 'scripts/check-host.mjs', 'scripts/stage-dev.mjs', 'scripts/test-host-engine.mjs', 'scripts/lib/staged-host.mjs'];
+  const extra = ['scripts/check.mjs', 'scripts/smoke-client.mjs', 'scripts/check-host.mjs', 'scripts/stage-dev.mjs', 'scripts/test-host-engine.mjs', 'scripts/test-stage-version.mjs', 'scripts/lib/staged-host.mjs', 'scripts/lib/stage-version.mjs'];
   for (const tool of extra) {
     assert(exists(tool), `local check tool "${tool}" is missing from the workspace`);
     const packaged = pkg.files.some((pattern) => listMatchingFiles(pattern).includes(tool));
