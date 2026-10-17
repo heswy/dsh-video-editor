@@ -6,7 +6,7 @@
 
 - 仓库：`heswy/dsh-video-editor`。协调分支维护文档与证据；DSH 分支已有未验收的 P0 bundle 和本地检查，不能把协调分支的无代码状态当成全项目无实现。
 - `main` 起点：`9c826bd`；准备分支：`codex/project-foundation`。包含本文件的本地准备提交作为首开发任务基线，交接消息提供精确 SHA，DSH 开工将其记录到任务；未 push 或合并。
-- 用户已确认顶部「普通｜视频」入口。产品见 `product/PRODUCT.md`。
+- 用户最新确认改为左侧「上下文洞察」下、「工作区」上单入口 **Vedio Editor** + 细线条图标，替代顶部胶囊；UI 简洁克制。产品见 `product/PRODUCT.md`。
 - 已归档计划、截图与 DSH 开发包。上一轮已确认 kit 的 16 个 skill 文件与本机 app.asar 相同；README/AGENT-BRIEF 是整理材料。
 - API 基线修正为 Desktop 0.2.0-rc.2；首轮 master 调研中的 Remote 等建议未被验证。
 
@@ -18,8 +18,9 @@
 | [P0-001](tasks/P0-001-mode-shell.md) | DSH 调查 / Codex 评审 | dsh/p0-mode-shell；同级 dsh-video-editor-worktrees/p0-mode-shell | a85308a / dcc0ae4 已审阅，调查验收通过；未做插件 live 验证 |
 | [P0-002](tasks/P0-002-mode-shell-implementation.md) | DSH 实现 / Codex 评审 | 继续 dsh/p0-mode-shell 与原 worktree | 8ebf922 / a31ee51 主要修复复审通过；本地检查 44/44，固定包已产生；未安装 |
 | [P0-003](tasks/P0-003-install-validation.md) | 原 DSH 会话 | 原 P0 worktree | 0104e0e 真页面核心证据已审阅；已安装启用；P0 部分通过，引用/滚动等未完 |
-| [P0-004](tasks/P0-004-lifecycle-and-acceptance.md) | 原 DSH 会话 | 原 P0 worktree | 修重挂缺陷并补验；实现放行，新包安装授权另行确认 |
-| [前端设计规划](design/FRONTEND-DESIGN.md) | Codex | codex/project-foundation；主工作区 | v0.1 方向草案已整理；未实现/未真页面验证 |
+| [P0-004](tasks/P0-004-lifecycle-and-acceptance.md) | 原 DSH 会话 | 原 P0 worktree | ab4bc68 / 6f11ced 已复审；本地 50/50 与 0.1.1 包核对通过；新包未安装，补验使用 0.1.0 |
+| [P0-005](tasks/P0-005-sidebar-entry-and-restraint.md) | 原 DSH 会话 | 原 P0 worktree | 新入口与界面精简实现放行，先交包复审、不安装 |
+| [前端设计规划](design/FRONTEND-DESIGN.md) | Codex | codex/project-foundation；主工作区 | v0.2 用户要求已收敛：侧栏入口、少文案、克制材质；待 P0-005 实现 |
 | [P1-001 引擎验证](tasks/P1-001-engine-spike.md) | Codex 引擎开发 / 主会话验收 | codex/p1-engine-spike-b4bf；~/.codex/worktrees/b4bf/dsh-video-editor | c779b94 / e88615f 单场景可行性通过，主会话独立复测 3+2 测试、哈希与 ffprobe |
 | [P1-002 worker](tasks/P1-002-engine-worker.md) | 原 Codex 引擎会话 | 自行管理原 worktree/分支 | 受控独立 worker 实现放行；不改 DSH 插件 |
 
@@ -27,15 +28,17 @@
 
 并行线：原引擎会话开始 P1-002，只改独立 packages/video-engine-worker 与自身记录；自行管理工作树，不等 P0 收尾。
 
-1. Codex 将联合评审和 P0-004 同步到干净的 DSH tree，用户让其修重挂缺陷并补关键实测。
-2. 引擎会话从协调分支只读取 P1-002 / ADR 后自行开工，不由主会话改其 tree。
-3. 主会话按两边实际提交继续验收，随后定义 P2 Host 集成；当前未合并两条功能分支到 main。
+1. DSH 读取 P0-005，改侧栏入口并精简空工作区；提交 0.1.2 代码和固定包复审，当前安装 0.1.0 保持原状。
+2. 引擎会话继续 P1-002，自行管理其 tree；本轮 UI 改动不影响其范围。
+3. 主会话按提交验收，再安排新包受控真机验证与 P2 Host 集成；未合并功能分支到 main。
 
 ## 阻塞与未验证
 
-顶部靠左及核心 P0 UI 有真实证据；引用/普通文件/静态阅读位置等未完，重挂缺陷待修。单 Scene SDK 编辑与真实导出已在独立引擎通过；尚无 DSH 内引擎接入、不可信代码隔离或完整 AI 创作能力验收。
+P0-004 重挂修复本地通过；引用/普通文件等补验来自旧 0.1.0，不能作为新包真机通过。静态阅读位置、系统 reduced-motion、冷启动、console 仍未完成。侧栏准确位置需 P0-005 核实。单 Scene 引擎通过，尚无 DSH 内引擎接入、不可信代码隔离或完整 AI 创作验收。跨应用误输入已报告，影响未确证，测试边界已收紧。
 
 ## 最近交接
+
+2026-10-17 P0-004 复审及用户设计变更：本地 50 项检查与 0.1.1 固定包独立核对通过；详见 reviews/P0-004-review-01.md。新增 P0-005 与设计 v0.2，替代两处顶部胶囊；0.1.1 归档，未替换当前 0.1.0。DEVELOPMENT 增加误投递事故后的定向测试规则。
 
 2026-10-17 联合评审：已审 P0 0104e0e 真实材料及 P1 c779b94/e88615f；主会话独立运行 SDK/合成进程 3 测试、真实渲染 cancel/timeout 2 测试通过，ffprobe 和 8 组 PNG/hash 核对一致。P1 单 Scene 通过；P0 部分通过。新增 ADR-0001、P0-004、P1-002，继续两线并行，见 reviews/P0-P1-2026-10-17-joint-review.md。
 
