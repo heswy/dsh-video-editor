@@ -50,5 +50,5 @@
 - 实现：`index.js` + `host/{bridge,config,env,engine,errors,routes,tool}.js` 的 plugin-local `VideoBridge`；`POST /api/dsh-video/request` 与 `GET/HEAD /api/dsh-video/artifact`；`video_engine` Tool；真实 Node/清理 env/cwd/惰性单飞启动/插件停止异步 dispose；Client 保留侧栏原子入口与显式「打开示例」，接入真实 inspect/标题与 timing 编辑/PNG/导出/取消，并有面板切换的 bounded view memory；根版本 0.2.0。详见 `docs/research/P2-002B-host-integration.md`。
 - 本地检查：`npm run check` 全通过——静态 29、Client smoke 38、Host 契约 16（含 allowlist/额外参数、typed edit、启动单飞、job 归属、artifact 边界/hash/大小、dispose/路由/Tool/engine 包解析）。均为本地/契约证据，不是真实 Host 激活。
 - 固定包（本地评审）：`/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/artifacts/p2-b/dsh-video-0.2.0.tgz`，37,369 B，SHA-256 `4d5d9a07c155c2df2638943279f12d9067e61ee74dfc44c9cc4ff2a57efea58b`，16 文件；未安装。
-- Staging：`scripts/stage-dev.mjs` 与 `scripts/test-host-engine.mjs` 已备，但**未运行**；等待主会话复审确定的 P2-003 固定引擎提交（本机引擎树当前仍为 `5b9032b`，无 env/cwd seam，不能当最终 staging）。因此真实受控子进程 doctor→…→PNG/MP4、真实页面/路由/Tool/加载卸载均未验证，0.2.0 未安装。
+- Staging：`scripts/stage-dev.mjs` 与 `scripts/test-host-engine.mjs` 已备，但**未运行**；等待主会话复审确定的 P2-003 固定引擎提交。只读核对了程序员 1 已存在但未复审的 `54f4671` 接口层（0.1.1、exports、env/cwd）与本实现一致；未采用、未 stage、未运行。因此真实受控子进程 doctor→…→PNG/MP4、真实页面/路由/Tool/加载卸载均未验证，0.2.0 未安装。
 - 待主会话：代码/包/staging 脚本复审；提供复审通过的 P2-003 提交后由本任务生成不可变 staging 并运行真实引擎链；随后再授权安装与真页面验收。回滚保持已安装 0.1.3 不变。

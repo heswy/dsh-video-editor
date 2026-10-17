@@ -83,12 +83,12 @@ npm run check
 
 - 新增 `scripts/stage-dev.mjs`：要求干净根 worktree + 指定 `--engine-commit <reviewed-P2-003-sha>` + 真实 Node（及可选 Chrome/font），通过 `git archive` 取固定根/引擎快照；校验 engine client/worker 版本 0.1.1、worker `./worker`/`./package.json` 导出；`npm ci --ignore-scripts` 准备 worker 依赖闭包（记录 esbuild 二进制缺失/不运行 postinstall），准备受控 fixture，写快照专属 `config.json`、`INTEGRITY.json`，并在**快照副本** patch 注入可信 config + 本地依赖/链接（根提交 patch 仍 `config: {}`）。
 - 新增 `scripts/test-host-engine.mjs`：通过同一 `VideoBridge` 在真实 staged engine 子进程上跑 doctor→open→inspect→text/timing edit→inspect→frame/status→PNG 字节→render/status→MP4 字节→取消→close→dispose，证据写到 staging 同级 `evidence/`（不修改不可变快照）。
-- **本轮没有运行上述两个脚本**，也没有生成任何 staging 目录：主会话尚未给出复审通过的 P2-003 固定 commit；按指南不能把 5b9032b（无 env/cwd seam）当作最终 staging。没有真实引擎子进程、PNG/MP4 证据，也没有安装。
+- **本轮没有运行上述两个脚本**，也没有生成任何 staging 目录：主会话尚未给出复审通过的 P2-003 固定 commit。只读核对了程序员 1 已存在但**未复审**的 `54f4671` 接口层（client/worker 0.1.1、`./worker`/`./package.json` 导出、可选完整 `env`/绝对 `cwd`）与本实现一致；该提交未被采用、未 stage、未运行。不能把 5b9032b（无 env/cwd seam）当作最终 staging。没有真实引擎子进程、PNG/MP4 证据，也没有安装。
 
 ## 6. 未验证 / 限制 / 下一动作
 
 - 真实 DSH 安装后的路由鉴权、Tool 模型可见性/结果体验、加载/卸载/重启、HMR 替换、真实页面视觉/键盘/明暗/窄窗/草稿保持、artifact 字节实际读取：均未执行；需要安装授权。
-- 真实引擎链、Chrome/FFmpeg/Node 24.21.0 的实际 doctor/PNG/MP4/取消：等待 P2-003 复审固定提交后 staging + `test-host-engine`。
+- 真实引擎链、Chrome/FFmpeg/Node 24.21.0 的实际 doctor/PNG/MP4/取消：等待 P2-003 复审固定提交后 staging + `test-host-engine`；本轮仅只读核对了未复审的 `54f4671` 接口层，未运行。
 - 无 per-session ACL、无多用户工程隔离、无 OS 沙箱；受控 fixture 限制不变；artifact 不支持 Range/连续预览。
 - 根包不是正式可移植发行 tarball；staging 的相对 `file:` 依赖/链接只对该快照有效；正式发行、Windows/Linux、构建脚本/依赖分发另立任务。
 - 0.1.3 回滚保持当前安装不动；0.2.0 包/代码先交主会话复审。
