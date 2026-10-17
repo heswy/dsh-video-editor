@@ -410,20 +410,26 @@ export class VideoBridge {
     const runtime = await (this.runtime === null ? this.prepareRuntime() : Promise.resolve(this.runtime));
     this.runtime = runtime;
 
-    const client = new runtime.WorkerClient({
-      nodeExecutable: runtime.nodeExecutable,
-      workerEntry: runtime.workerEntry,
-      registryPath: runtime.registryPath,
-      cwd: runtime.workerCwd,
-      env: Object.assign({}, this.environment),
-      startupTimeoutMs: runtime.config.startupTimeoutMs,
-      requestTimeoutMs: runtime.config.requestTimeoutMs,
-      shutdownTimeoutMs: runtime.config.shutdownTimeoutMs,
-      forceKillTimeoutMs: runtime.config.forceKillTimeoutMs,
-      maxPending: runtime.config.maxPending,
-      maxLineBytes: runtime.config.maxLineBytes,
-      maxStderrBytes: runtime.config.maxStderrBytes,
-    });
+    let client;
+    try {
+      client = new runtime.WorkerClient({
+        nodeExecutable: runtime.nodeExecutable,
+        workerEntry: runtime.workerEntry,
+        registryPath: runtime.registryPath,
+        cwd: runtime.workerCwd,
+        env: Object.assign({}, this.environment),
+        startupTimeoutMs: runtime.config.startupTimeoutMs,
+        requestTimeoutMs: runtime.config.requestTimeoutMs,
+        shutdownTimeoutMs: runtime.config.shutdownTimeoutMs,
+        forceKillTimeoutMs: runtime.config.forceKillTimeoutMs,
+        maxPending: runtime.config.maxPending,
+        maxLineBytes: runtime.config.maxLineBytes,
+        maxStderrBytes: runtime.config.maxStderrBytes,
+      });
+    } catch (error) {
+      this.log(error, 'worker client construction');
+      throw new BridgeError('E_WORKER_START', 'The video engine could not start', { stage: 'start', cause: error });
+    }
     this.client = client;
     try {
       await client.start();
