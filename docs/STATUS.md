@@ -10,6 +10,12 @@
 - 已归档计划、截图与 DSH 开发包。上一轮已确认 kit 的 16 个 skill 文件与本机 app.asar 相同；README/AGENT-BRIEF 是整理材料。
 - 当前实际 Host 为 Desktop 0.2.1-rc.1（用户侧升级）；P0-006 已重新核对侧栏，P2-002-A 核实 Host API。0.2.0-rc.2 证据保留为历史，首轮 master 建议不直接沿用。
 
+## 当前人员称呼
+
+- 程序员 1：`dsh-video-editor` 工作区，新 DeepSeek 接手 b4bf 引擎/通信代码；旧 Codex 会话不再同时写入。
+- 程序员 2：`p0-mode-shell` 工作区，原 DeepSeek 负责插件 UI/Host。
+- 主会话：架构、计划、协调、评审与验收；目录/分支与管理规则见 DEVELOPMENT。
+
 ## 活动任务
 
 | 任务 | 执行者 | 分支/worktree | 状态 |
@@ -23,24 +29,29 @@
 | [前端设计规划](design/FRONTEND-DESIGN.md) | Codex | codex/project-foundation；主工作区 | v0.2 核心 live 证据通过：侧栏入口、单句空状态；编辑界面待接入 |
 | [P1-001 引擎验证](tasks/P1-001-engine-spike.md) | Codex 引擎开发 / 主会话验收 | codex/p1-engine-spike-b4bf；~/.codex/worktrees/b4bf/dsh-video-editor | c779b94 / e88615f 单场景可行性通过，主会话独立复测 3+2 测试、哈希与 ffprobe |
 | [P1-002 worker](tasks/P1-002-engine-worker.md) | 原 Codex 引擎会话 | 自行管理原 worktree/分支 | 3b5f6de R1 复审通过；本轮独立 7+1 测试通过，受控 worker 验收完成 |
-| [P2-001 通信包](tasks/P2-001-engine-client.md) | 原 Codex 引擎会话 | 自行管理原 worktree/分支 | 6c4b2e9 R4 生产修复通过；Node24 独立10/10；Node22 回归时序 R4-b 待收敛 |
+| [P2-001 通信包](tasks/P2-001-engine-client.md) | 程序员 1 | 自行管理 b4bf worktree/原分支 | 5b9032b 最终收口通过；独立 Node22/24 均10/10 |
 | [P0-006 真机验证](tasks/P0-006-sidebar-live-validation.md) | 原 DSH 会话 | 原 P0 worktree | 98e2571 记录/截图已审；0.2.1 上安装与核心入口/空页/启停通过，面板内交互等未测 |
-
-| [P2-002-A Host 契约](tasks/P2-002-host-bridge.md) | 原 DSH 会话 | 原 P0 worktree | 只读调查与提案放行，不改代码/安装 |
+| [P2-002-A Host 契约](tasks/P2-002-host-bridge.md) | 程序员 2 | 原 P0 worktree | afcf57d 调查验收通过；ADR-0002 决策收敛 |
+| [P2-003 启动/包入口](tasks/P2-003-engine-launch-packaging.md) | 程序员 1 | 原 b4bf worktree/分支 | env/cwd + exports + 固定包本地实现放行 |
+| [P2-002-B Host 接入](tasks/P2-002B-host-integration.md) | 程序员 2 | 原 P0 worktree | Host/Client/Tool/staging 本地实现放行，最终依赖待 P2-003 复审；不安装 |
 
 ## 下一动作
 
-并行线：DSH 做当前宿主 Host 接入契约调查；引擎会话收敛断管回归时序。主会话继续架构与验收。
+并行线：程序员 1 补独立包启动/解析能力；程序员 2 接入根 Host 与简洁真实编辑视图。ADR-0002 固定共同契约，文件边界不交叉。
 
-1. DSH 读取 P2-002-A，调查 0.2.1 的加载/生命周期/UI→Host/Tool 与受控产物访问契约；不改已安装 0.1.3。
-2. 引擎会话按 P2-001-review-03 收敛 R4-b 测试，区分故障前已发送请求与故障后未准入请求，显式核对 Node22/24。生产 EPIPE 崩溃问题已修复，不为迁就断言改坏准入语义。
-3. Host 实现 P2-002-B 在契约评审后再放行；未 merge 功能分支到 main，未 push。
+1. 程序员 1 执行 P2-003：完整 env/cwd 透传、worker exports、0.1.1 固定包及部署 Node24.21 验证，原协议不变。
+2. 程序员 2 执行 P2-002-B：共用 VideoBridge、原生 Fetch/Tool、受控工程真实 PNG/编辑/MP4任务；本地开发与 staging 准备，不碰已安装 0.1.3。
+3. 两边可并行写各自文件；最终 staging 依赖固定到主会话接受的 P2-003 提交，整体评审后再安排安装授权。不 push/merge、不中途改变现有 profile。
 
 ## 阻塞与未验证
 
-0.1.3 核心侧栏/主面板和启停证据通过。main 内容缺少定向 AX 通道，返回按钮、菜单焦点、主题/字号/窄窗、草稿/引用/附件、静态阅读位置、冷启动等仍未测，采用人工清单，不重复不安全自动化。尚无 DSH 内引擎接入、不可信代码隔离或完整 AI 创作验收。P2 client 的 Node22 回归断言时序待收口，不能写成默认 npm test 全通过。
+0.1.3 核心侧栏/主面板和启停证据通过。main 内容缺少定向 AX 通道，返回按钮、菜单焦点、主题/字号/窄窗、草稿/引用/附件、静态阅读位置、冷启动等仍未测，采用人工清单，不重复不安全自动化。尚无 DSH 内引擎接入、不可信代码隔离或完整 AI 创作验收。P2 client 的显式 Node22/24 测试已完成收口；仅代表本机小版本和受控 fixture。
 
 ## 最近交接
+
+2026-10-17 Host 契约验收与并行实施：afcf57d 调查通过；主会话独立核对 0.2.1 版本、asar 摘要与 bundled Node24.21。ADR-0002 选真实 Node 配置、显式净化环境、共用 Host dispatcher、fixture allowlist+job归属、真实字节产物与结构化 Tool；不加 Host 幂等缓存或附件。新增 P2-003 给程序员1、P2-002-B 给程序员2；两人本地实现，保持已安装 0.1.3。
+
+2026-10-17 称呼与引擎收口：用户固定 dsh-video-editor 为程序员 1、p0-mode-shell 为程序员 2；程序员 1 已由 DeepSeek 接手 b4bf，职责/工作树边界写入 DEVELOPMENT。5b9032b 复审通过，Node22/24 独立完整包均10/10，R4-b 已关闭，P2-001 按受控范围验收。程序员 2 继续 P2-002-A。
 
 2026-10-17 中断后继续联合验收：98e2571 的报告及真实去标识截图已核对，0.1.3 核心安装/侧栏/空页面/启停通过，实际 Host 0.2.1-rc.1；未测项保持。6c4b2e9 的 R4 生产错误处理有效，显式 Node24 全套10/10，Node22 的断管回归因未准入请求被强制断言 E_TRANSPORT 而失败，新增 R4-b 测试收敛要求。新增 P2-002-A 允许 DSH 并行只读调查 Host 接入。
 

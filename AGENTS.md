@@ -1,6 +1,7 @@
 # DSH Video 项目入口
 
 - 主会话（Codex）负责产品、架构、计划、任务指南、仓库协调、评审和验收；用户指定的 DSH 开发 Agent 负责实现、验证、修复与开发 PR。未经用户明确重新分工，Codex 不接管功能实现，也不自动派发 Agent。
+- 当前开发称呼固定为程序员 1（引擎/通信）和程序员 2（插件/宿主）；两人均为用户选择的 DeepSeek 会话。工作区、分支、接手与管理边界统一见 `docs/DEVELOPMENT.md`，按任务白名单并行。
 - 开始工作依次读 `docs/STATUS.md`、`docs/DEVELOPMENT.md`、当前任务指南。产品要求见 `docs/product/PRODUCT.md`，决策记录见 `docs/DECISIONS.md`。
 - 可复用开发规则只维护在 `docs/DEVELOPMENT.md`；任务指南只补充范围和验收，不复制规则。
 - 每轮结束更新自己拥有的任务记录；主会话维护 STATUS 与决策。事实、建议、未验证项必须区分。

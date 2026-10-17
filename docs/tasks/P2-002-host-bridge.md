@@ -30,3 +30,7 @@
 - 提案：见 `docs/research/P2-002-host-bridge-contract.md`。核心为 plugin-local 单实例 `VideoBridge`；Host `POST /api/dsh-video/request` dispatcher + `GET /api/dsh-video/artifact`；Client 文档相对 `fetch`；Tool `video_engine` 与路由共用同一方法；请求只接受 Host 注册的 `projectId`/`jobId`，不接受 path/URL；worker 惰性启动、插件停用异步 dispose，UI 切换不启停；受控 fixture + 真实 PNG/MP4 访问边界；开发 staging 安装方案与将来分发待办；P2-B 文件范围/验收建议与未验证清单。
 - 待主会话决策：Node executable 路线（部署真实 Node vs Electron-as-Node）；是否需要给 engine client 增加 `env`/`cwd` seam（跨 owner）；worker 包 `./worker`/`./package.json` exports；worker 依赖（esbuild 等）构建脚本/pnpm pendingBuilds 分发策略；per-project/session 鉴权；Tool 结果/图片呈现范围。
 - 限制/未验证：路由/Tool/worker 启动/HMR/卸载/资源字节服务均未在真实 Host 运行；仅契约核对与只读探针；受控 fixture 不是安全沙箱；Chrome/FFmpeg 当前为系统可用（155.0.8059.79 / 8.0.1），不作为分发契约；Windows/Linux、模型体验、失败注入未验证。
+
+## 主会话调查验收（2026-10-17）
+
+`afcf57d` 调查验收通过，见 P2-002-review-01 与 ADR-0002。保留上述调查记录。程序员 2 下一任务 P2-002-B：Host/Client/Tool 与 staging；程序员 1 同时补 P2-003。只放行本地实现与交付，不改已安装 0.1.3，不 push/merge。
