@@ -32,3 +32,5 @@
 2026-10-17 D015 / accepted：采用 [ADR-0002](adr/0002-host-bridge-runtime-and-boundaries.md) 的真实 Node 配置与显式 env/cwd、单 VideoBridge/Fetch/Tool、受控 allowlist/job 归属和开发 staging 路线。程序员 1 做 P2-003 包能力，程序员 2 做 P2-002-B 根宿主接入；仅本地实现，安装授权仍单独决定。
 
 2026-10-17 D016 / accepted：用户授权正常 feature 分支持续 commit/push 与草稿 PR 流程，替代旧任务的 local-only/no-push 限制；不等于自动 merge main、发布或替换真实安装。主会话协调基础文档与评审，两程序员维护各自分支和 PR；不清理未提交工作。
+
+2026-10-17 D017 / accepted：总调度由原 Codex 主会话交接给 DSH 继任会话；两个程序员会话、工作区、分支与草稿 PR 不变，交接由用户粘贴转发。既有分支/worktree/任务/评审记录延续，不重置、不重开；历史 Codex 提交与文档保留。
