@@ -1,7 +1,7 @@
 # P2-002-B：Host 桥、真实示例编辑与开发 staging 准备
 
 日期：2026-10-17。执行：程序员 2（原 DSH 会话），工作树 `p0-mode-shell`、分支 `dsh/p0-mode-shell`。
-收到指南：`057f56c`（任务文件 `docs/tasks/P2-002B-host-integration.md`）；调查基线 `afcf57d`；实际开工 HEAD `057f56c`。实现提交：`c553b1b`（本记录随后作为文档提交）。
+收到指南：`057f56c`（任务文件 `docs/tasks/P2-002B-host-integration.md`）；调查基线 `afcf57d`；实际开工 HEAD `057f56c`。实现提交：`c553b1b`；后续本地修复 `cbe04e4`、`50fe805`、`9396359`（本记录随后作为文档提交）。
 当前运行 Host 仍为 Desktop **0.2.1-rc.1**；已安装插件仍为 **0.1.3**，本轮**未安装/替换/启停/重启、未改 profile、未 push/merge**。
 
 ## 1. 本轮交付

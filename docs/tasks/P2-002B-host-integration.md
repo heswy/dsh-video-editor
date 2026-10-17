@@ -46,7 +46,7 @@
 
 ## 开发记录（程序员 2 / DSH）
 
-- 基线：收到本指南的提交与实际开工 HEAD 均为 `057f56c`（指南内声明调查基线 `afcf57d`）；实现提交 `c553b1b`。当前 Host 仍为 Desktop `0.2.1-rc.1`，已安装 `dsh-video 0.1.3` 全程未变；**未安装/替换/启停/重启、未改 profile、未 push/merge**。
+- 基线：收到本指南的提交与实际开工 HEAD 均为 `057f56c`（指南内声明调查基线 `afcf57d`）；实现提交 `c553b1b`；后续本地修复 `cbe04e4`/`50fe805`/`9396359`。当前 Host 仍为 Desktop `0.2.1-rc.1`，已安装 `dsh-video 0.1.3` 全程未变；**未安装/替换/启停/重启、未改 profile、未 push/merge**。
 - 实现：`index.js` + `host/{bridge,config,env,engine,errors,routes,tool}.js` 的 plugin-local `VideoBridge`；`POST /api/dsh-video/request` 与 `GET/HEAD /api/dsh-video/artifact`；`video_engine` Tool；真实 Node/清理 env/cwd/惰性单飞启动/插件停止异步 dispose；Client 保留侧栏原子入口与显式「打开示例」，接入真实 inspect/标题与 timing 编辑/PNG/导出/取消，并有面板切换的 bounded view memory；根版本 0.2.0。详见 `docs/research/P2-002B-host-integration.md`。
 - 本地检查：`npm run check` 全通过——静态 29、Client smoke 38、Host 契约 16（含 allowlist/额外参数、typed edit、启动单飞、job 归属、artifact 边界/hash/大小、dispose/路由/Tool/engine 包解析）。均为本地/契约证据，不是真实 Host 激活。
 - 固定包（本地评审）：`/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/artifacts/p2-b/dsh-video-0.2.0.tgz`，37,335 B，SHA-256 `791639ef5a16b97e5da539e9452744b12263014913e361096db157dc3336200c`，16 文件；未安装。
