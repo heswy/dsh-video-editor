@@ -15,21 +15,24 @@
 | 任务 | 执行者 | 分支/worktree | 状态 |
 |---|---|---|---|
 | 项目准备与长期记忆 | Codex | codex/project-foundation；主工作区 | 已完成，本地提交交接；归档完整性及链接检查通过 |
-| [P0-001](tasks/P0-001-mode-shell.md) | 用户指定的 DSH Agent | dsh/p0-mode-shell；同级 dsh-video-editor-worktrees/p0-mode-shell | 已检测到未提交调查文件；待 DSH 正式交付与评审，未修改其工作区 |
+| [P0-001](tasks/P0-001-mode-shell.md) | DSH 调查 / Codex 评审 | dsh/p0-mode-shell；同级 dsh-video-editor-worktrees/p0-mode-shell | a85308a / dcc0ae4 已审阅，调查验收通过；未做插件 live 验证 |
+| [P0-002](tasks/P0-002-mode-shell-implementation.md) | 用户指定的 DSH Agent | 继续 dsh/p0-mode-shell 与原 worktree | 已放行实现；本轮不安装/启用；待用户发送继续提示 |
 | [前端设计规划](design/FRONTEND-DESIGN.md) | Codex | codex/project-foundation；主工作区 | v0.1 方向草案已整理；未实现/未真页面验证 |
 
 ## 下一动作
 
-1. 用户在 DSH 打开 `/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/p0-mode-shell`，发送 `handoffs/DSH-START.md` 中的提示。
-2. DSH 先完成运行时契约调查，保存精确 Slot/props/Host API 与顶部切换可行性，暂不安装、修改 profile 或开始 UI 实现。
-3. 用户把 DSH 的分支/commit 与调查结果带回本会话；Codex 读取实际文件复核，再授权进入 P0-B 实现。
+1. Codex 在确认 DSH worktree 干净后，将已评审调查、设计规划和 P0-002 指南同步到原开发 worktree，保持同一分支。
+2. 用户告诉 DSH 继续读取 STATUS 与 P0-002，开始可安装 bundle 的实现；不重新调查已确认项，不安装或改 profile。
+3. DSH 本地提交并交回包、检查与未验证项；Codex 评审后再由用户确认具体安装验证。
 
 ## 阻塞与未验证
 
-无须现在补充产品细节。待 DSH 运行时调查才能确认顶部挂载点与会话/视图保持策略。没有宿主集成、UI、生成、编辑或导出通过验证。
+用户已确认首版原生顶部靠左入口；无产品决策阻塞。普通输入附件/引用及回退清理仍需真机验证。没有宿主集成、UI、生成、编辑或导出通过验证。
 
 ## 最近交接
 
-2026-10-17 设计补充：用户明确要求优美、精致、优雅，考虑液态玻璃与丰富动效。已写设计规格，包含三层材质、工作区布局、明暗主题与动效谱；DSH 开发 worktree 仍保留原起点，不在其运行中自动切分支/同步文档。P0-A 完成评审后，由 Codex 协调引入设计提交再开始 P0-B。
+2026-10-17 P0-A 评审：已整合调查提交，用户选择先用顶部靠左原生入口。D-A–D-D 已收敛并记录 D008–D010；已发出 P0-002 实现指南。只放行实现与本地检查，未放行安装/push。共享顶部 Slot 是 single，引用/附件状态与当前视频页停用回退纳入验收。
+
+2026-10-17 设计补充：用户明确要求优美、精致、优雅，考虑液态玻璃与丰富动效。已写设计规格，包含材质、工作区布局、明暗主题与动效谱；DSH 工作期间未改其 worktree，P0-A 完成评审后统一同步。
 
 2026-10-17：用户要求开始整理长期项目、建立分支，并与 DSH 协作；Codex 负责建立分支、DSH tree 与目录；用户仅打开工作区并发送提示。初始资料进入 Git，开发规则集中于 DEVELOPMENT，首任务分为调查和实现两个阶段。

@@ -1,5 +1,7 @@
 # DSH 首次交接
 
+> 更新：P0-A 已完成并评审；以下首次提示仅保留历史。当前继续任务为 `docs/tasks/P0-002-mode-shell-implementation.md`，读取 STATUS 后执行该指南。顶部靠左由用户确认，设计规划随本次同步包含在 worktree 中。本轮允许实现/本地检查/提交，不安装/启用/push。
+
 ## 已准备的工作区
 
 分支、worktree 与目录由 Codex 创建和检查，用户不需要执行 Git 命令。

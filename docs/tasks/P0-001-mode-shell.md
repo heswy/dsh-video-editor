@@ -1,6 +1,6 @@
 # P0-001：宿主契约与顶部模式工作区
 
-状态：P0-A 待启动；P0-B 等主会话审阅调查后放行。
+状态：P0-A 调查验收通过（非功能验收）；P0-B 实现已放行，执行新指南 [P0-002-mode-shell-implementation.md](P0-002-mode-shell-implementation.md)。
 执行：用户指定的 DSH Agent。评审/验收：Codex 主会话。
 分支：`dsh/p0-mode-shell`。
 worktree：`/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/p0-mode-shell`。
@@ -22,7 +22,7 @@ base：Codex 从 `codex/project-foundation` 的本地准备提交创建；开工
 
 P0-A 验收：顶部位置和视图保持策略有运行时证据；不确定项明确；主会话能根据文件决定 P0-B 是否可开工。若顶部没有合适 Slot，报告证据与替代方案，不自行降级为侧栏入口。
 
-## P0-B：后续目标，本轮未授权实现
+## P0-B：原范围预告（已被 P0-002 的具体任务取代）
 
 调查经主会话审阅并明确放行后，才建立最小可安装 bundle：
 
@@ -33,7 +33,7 @@ P0-A 验收：顶部位置和视图保持策略有运行时证据；不确定项
 
 P0-B 验收预告：真实目标宿主中反复切换；现有会话/输入保持；浅色/深色和窄窗口；停用后清理；真实页面无 Slot crash。无法运行的项标记未验证，不以语法通过代替。
 
-## 本次权限
+## P0-A 原权限（历史记录；后续按 P0-002）
 
 允许：目标 API 只读 inspection；读取项目证据与本机参考插件；在指定 worktree 写调查和任务记录；提交本地任务文档。
 不包含：插件安装/启用、profile patch、全局依赖安装、功能实现、宿主改动、消息投递、push/PR/merge。需要下一阶段时交付可评审证据，不反复问已有授权的步骤。
@@ -55,4 +55,9 @@ P0-B 验收预告：真实目标宿主中反复切换；现有会话/输入保�
 
 ## 评审记录（Codex 维护）
 
-- 待首次提交。
+- 2026-10-17：已读 `a85308a` / `dcc0ae4` 实际提交与完整调查正文，变更仅为两份文档；`git diff --check` 通过。调查可作为实现依据，P0-A 通过；22 次 inspection 为 DSH 报告，Codex 未独立复跑，不把摘要当作插件真机验证。
+- 独立源码核对：本机随包 ui-layout `MainPanelSlot` 只渲染 active key；`selectPanel` 校验主面板存在；`retainMainPanels` 可清理失效选中；ui-conversation `createConversationStore` 持久化 draft/view；README 指出 Lexical 维护引用身份与附件通道。支持主要机制结论，未证明全部输入内容可无损往返。
+- 必须随 P0-B 验证的风险：草稿引用/附件不能仅凭纯文本 localStorage 推定保留；视频模式停用插件需验证安全回到普通；`conversation.header.leading` 是 single，需检测冲突且不覆盖其他条目。非要求补做整轮调查，已纳入下一任务。
+- D-A：用户明确同意先用顶部靠左原生入口；D-B：其它全局面板首版不常驻；D-C：UI 偏好可持久化，跨面板用插件级 store，不持久化 activePanel；D-D：工程内容 Host 持久化归 P1/P2。见 D008–D010。
+- 部分 API 字段与主题值目前仅有报告摘要，P0-B 在使用时补最小脱敏查询摘录，尤其 Slot props/locale/layout 注入；不需要提交全量含第三方信息的 inspection。
+- 截图/光标/主题等尚无 live 证据，P0-A 通过不表示顶部切换、状态恢复或视觉已通过验收。
