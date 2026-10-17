@@ -4,6 +4,8 @@
 
 ## 当前事实
 
+- **最新产品回看（v0.3，2026-10-17）**：用户要求右侧持续 AI 对话（历史会话、宿主模型选择）、左侧直接播放/选中/就地编辑，并支持自有素材。已更新 PRODUCT/FRONTEND-DESIGN；素材抽屉、工程与会话关系为看图待确认提案，见 `design/concepts/studio-v03-concept.png`。P3-004 快照继续；P3-005 先按新方向整理指南并核实原生对话复用，不继续旧右侧属性表单主路径。本轮只读应用包发现 `dsh/package.json` 为 **0.2.1-rc.2**，当前运行 Host 未核实，先前 rc.1 live 证据保持历史口径。
+
 - **最新调度与目录（2026-10-17）**：用户重新指定当前 Codex 主会话为总调度。p1-engine 原自动树因归档移除，归档 snapshot 与分支同为 `aae05e9`；已在 `/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/p1-engine` 重建，沿用 `codex/p1-engine-spike-b4bf`。历史记录中的 b4bf 路径仅作历史证据，当前任务指南/交接已改新路径。已提交源码完整；旧 node_modules、忽略产物不属于 Git 恢复范围。
 
 - **核心目标（2026-10-17 用户重申）：AI 生成视频。** 判断进度以「用户用一句话让 AI 在 DSH 里建出可编辑的视频工程」为准；宿主接入、预览、播放都只是支撑能力，不得挤占 P3 主线。当前 DSH 内 AI 创作闭环尚未完成；P3-003 多 Scene 引擎已在受控范围验收，当前引擎任务为 P3-004。
