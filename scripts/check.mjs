@@ -131,8 +131,8 @@ check('bundle manifest declares patch and client', () => {
   return `platform=web, inject=[${pkg.dsh.client.inject.join(', ')}]`;
 });
 
-check('package version advanced for the P2-002-B fixed package', () => {
-  assert(pkg.version === '0.2.0', `expected version 0.2.0, found "${pkg.version}"`);
+check('package version advanced for the P2-005 fixed package', () => {
+  assert(pkg.version === '0.2.1', `expected version 0.2.1, found "${pkg.version}"`);
   return pkg.version;
 });
 
@@ -413,6 +413,17 @@ check('P2-002-B: Host modules do not import DSH-internal packages', () => {
     assert(source.includes('@deepseek-ai/') === false, `host/${name} imports a DSH-internal package`);
   }
   return 'node builtins + explicit engine package specifiers only';
+});
+
+check('P2-005: frame-time preview is real and bounded; no fake playback/timeline', () => {
+  for (const needle of ['dsh-video-frame-time', 'video.frameTime', 'parseFrameTime', 'defaultFrameTime', 'frameTimeDraft']) {
+    assert(clientSource.includes(needle), `client.js is missing frame-time preview wiring "${needle}"`);
+  }
+  for (const forbidden of ['播放', '时间线', '自动轮播', '暂停', 'seek']) {
+    assert(clientSource.includes(forbidden) === false, `client.js advertises unsupported playback/timeline capability "${forbidden}"`);
+  }
+  assert(clientSource.includes("time: time,"), 'frame request does not carry the selected time');
+  return 'bounded frame-time input; no fake player/autoplay/timeline';
 });
 
 check('P2-002-B: the editor exposes only the real controlled-project loop', () => {

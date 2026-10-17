@@ -80,6 +80,8 @@ window.__ModuleLoader__.load({
       'video.refreshing': '正在读取…',
       'video.frame.empty': '画面尚未生成',
       'video.frame.failed': '画面加载失败，请重新更新。',
+      'video.frameTime': '画面时间（秒）',
+      'video.frameTime.invalid': '画面时间需在工程时长范围内。',
       'video.noText': '此工程没有可编辑元素。',
       'video.details': '属性',
       'video.target': '目标',
@@ -126,6 +128,8 @@ window.__ModuleLoader__.load({
       'video.refreshing': 'Reloading…',
       'video.frame.empty': 'No frame yet',
       'video.frame.failed': 'The frame could not be loaded. Update it again.',
+      'video.frameTime': 'Frame time (s)',
+      'video.frameTime.invalid': 'Frame time must be within the project duration.',
       'video.noText': 'This project has no editable elements.',
       'video.details': 'Properties',
       'video.target': 'Target',
@@ -873,10 +877,29 @@ window.__ModuleLoader__.load({
       return candidates.length > 0 ? candidates[0] : null;
     }
 
-    function frameTime(project) {
+    function durationOf(project) {
       const duration = Number(project && project.duration);
-      if (Number.isFinite(duration) === false || duration <= 0) return 0;
-      return Math.min(2.5, Math.max(0, duration - 1 / 30));
+      return Number.isFinite(duration) && duration >= 0 ? duration : null;
+    }
+
+    function defaultFrameTime(project, rememberedValue) {
+      const duration = durationOf(project);
+      if (duration === null) return 0;
+      const raw = typeof rememberedValue === 'string' ? rememberedValue.trim() : rememberedValue;
+      if (raw !== '' && raw !== null && raw !== undefined) {
+        const remembered = Number(raw);
+        if (Number.isFinite(remembered) && remembered >= 0 && remembered <= duration) return remembered;
+      }
+      return Math.min(2.5, duration);
+    }
+
+    function parseFrameTime(value, project) {
+      const duration = durationOf(project);
+      if (duration === null) return null;
+      if (typeof value === 'string' && value.trim() === '') return null;
+      const time = Number(value);
+      if (Number.isFinite(time) === false || time < 0 || time > duration) return null;
+      return time;
     }
 
     function formatSeconds(value) {
@@ -973,6 +996,10 @@ window.__ModuleLoader__.load({
       const [job, setJob] = React.useState(remembered.job || null);
       const [busy, setBusy] = React.useState(null);
       const [error, setError] = React.useState(remembered.error || null);
+      const rememberedFrameTime = typeof remembered.frameTimeDraft === 'string'
+        ? remembered.frameTimeDraft
+        : (remembered.frame && Number.isFinite(Number(remembered.frame.time)) ? formatSeconds(remembered.frame.time) : '');
+      const [frameTimeDraft, setFrameTimeDraft] = React.useState(rememberedFrameTime);
       const [targetId, setTargetId] = React.useState(typeof remembered.targetId === 'string' ? remembered.targetId : null);
       const [titleDraft, setTitleDraft] = React.useState(typeof remembered.titleDraft === 'string' ? remembered.titleDraft : '');
       const [startDraft, setStartDraft] = React.useState(typeof remembered.startDraft === 'string' ? remembered.startDraft : '');
@@ -1001,6 +1028,7 @@ window.__ModuleLoader__.load({
           job: job,
           error: error,
           targetId: targetId,
+          frameTimeDraft: frameTimeDraft,
           titleDraft: titleDraft,
           startDraft: startDraft,
           durationDraft: durationDraft,
@@ -1015,9 +1043,12 @@ window.__ModuleLoader__.load({
           resumedRef.current = true;
           if (project === null || job === null || isTerminalJob(job)) return;
           const kind = job.kind === 'frame' ? 'frame' : 'render';
+          const resumeTime = kind === 'frame'
+            ? (parseFrameTime(frameTimeDraft, project) ?? defaultFrameTime(project, frameTimeDraft))
+            : undefined;
           const token = ++jobTokenRef.current;
           setBusy(kind === 'frame' ? 'frame' : 'export');
-          void waitForJob(job, kind, project, token).finally(function finishResume() {
+          void waitForJob(job, kind, project, token, resumeTime).finally(function finishResume() {
             if (aliveRef.current && token === jobTokenRef.current) setBusy(null);
           });
         },
@@ -1133,7 +1164,7 @@ window.__ModuleLoader__.load({
         });
       }
 
-      async function waitForJob(initialJob, kind, targetProject, token) {
+      async function waitForJob(initialJob, kind, targetProject, token, frameTimeSeconds) {
         if (!aliveRef.current || token !== jobTokenRef.current) return null;
         setJob(initialJob);
         const deadline = Date.now() + 125000;
@@ -1155,6 +1186,7 @@ window.__ModuleLoader__.load({
                   url: artifactUrl(initialJob.jobId),
                   revision: targetProject.revision,
                   jobId: initialJob.jobId,
+                  time: frameTimeSeconds,
                 });
               } else {
                 setError(hostError(current.error || { code: 'E_FRAME_FAILED', message: t('video.error.generic') }));
@@ -1172,8 +1204,18 @@ window.__ModuleLoader__.load({
         }
       }
 
-      async function requestFrame(targetProject) {
+      async function requestFrame(targetProject, explicitTime) {
         if (targetProject === null) return;
+        const time = explicitTime === undefined ? parseFrameTime(frameTimeDraft, targetProject) : parseFrameTime(explicitTime, targetProject);
+        if (time === null) {
+          const duration = durationOf(targetProject);
+          setError({
+            code: 'E_PARAMS',
+            message: t('video.frameTime.invalid') + (duration === null ? '' : ' 0–' + formatSeconds(duration) + 's'),
+          });
+          return;
+        }
+        setFrameTimeDraft(formatSeconds(time));
         const token = ++jobTokenRef.current;
         setBusy('frame');
         setError(null);
@@ -1183,9 +1225,9 @@ window.__ModuleLoader__.load({
           const initial = await hostRequest('frame', {
             projectId: targetProject.projectId,
             revision: targetProject.revision,
-            time: frameTime(targetProject),
+            time: time,
           });
-          await waitForJob(initial, 'frame', targetProject, token);
+          await waitForJob(initial, 'frame', targetProject, token, time);
         } catch (requestError) {
           if (aliveRef.current && token === jobTokenRef.current) setError(hostError(requestError));
         } finally {
@@ -1200,16 +1242,21 @@ window.__ModuleLoader__.load({
         setBusy('open');
         setError(null);
         let inspected = null;
+        let initialTime = null;
         try {
           const opened = await hostRequest('open', { projectId: DEMO_PROJECT_ID });
           inspected = await hostRequest('inspect', { projectId: opened.projectId });
-          if (aliveRef.current) applyInspected(inspected, null);
+          initialTime = defaultFrameTime(inspected, frameTimeDraft);
+          if (aliveRef.current) {
+            setFrameTimeDraft(formatSeconds(initialTime));
+            applyInspected(inspected, null);
+          }
         } catch (requestError) {
           if (aliveRef.current) setError(hostError(requestError));
         } finally {
           if (aliveRef.current) setBusy(null);
         }
-        if (inspected !== null && aliveRef.current) void requestFrame(inspected);
+        if (inspected !== null && initialTime !== null && aliveRef.current) void requestFrame(inspected, initialTime);
       }
 
       async function refreshProject() {
@@ -1424,6 +1471,20 @@ window.__ModuleLoader__.load({
             ),
             navigationNotice(),
             errorNotice(),
+            project === null ? null : h('div', { className: 'dv-field', key: 'frame-time' },
+              h('label', { className: 'dv-label', htmlFor: 'dsh-video-frame-time' }, t('video.frameTime')),
+              h('input', {
+                id: 'dsh-video-frame-time',
+                className: 'dv-input',
+                type: 'number',
+                min: '0',
+                max: formatSeconds(durationOf(project) === null ? 0 : durationOf(project)),
+                step: '0.1',
+                value: frameTimeDraft,
+                disabled: busy !== null,
+                onChange: function updateFrameTime(event) { setFrameTimeDraft(event.target.value); },
+              })
+            ),
             project === null || editable.length === 0
               ? (project === null ? null : h('p', { className: 'dv-note' }, t('video.noText')))
               : h('div', { className: 'dv-field' },

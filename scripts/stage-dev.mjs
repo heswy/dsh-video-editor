@@ -48,6 +48,7 @@ const RUNTIME_PATHS = [
   'README.md',
 ];
 const DEFAULT_OUT = resolve(ROOT, '..', 'artifacts', 'p2-b', 'staging');
+const EXPECTED_BUNDLE_VERSION = '0.2.1';
 const ENGINE_CLIENT = 'packages/video-engine-client';
 const ENGINE_WORKER = 'packages/video-engine-worker';
 
@@ -181,7 +182,7 @@ async function main() {
     const committedPackage = git(['show', `${rootCommit}:package.json`]);
     await writeFile(join(bundleRoot, 'package.json'), committedPackage);
     const parsedPackage = JSON.parse(committedPackage);
-    if (parsedPackage.version !== '0.2.0') throw new Error(`root bundle version is ${parsedPackage.version}, expected 0.2.0`);
+    if (parsedPackage.version !== EXPECTED_BUNDLE_VERSION) throw new Error(`root bundle version is ${parsedPackage.version}, expected ${EXPECTED_BUNDLE_VERSION}`);
 
     // 2. Engine packages from the exact engine commit.
     await extractCommitPaths(engineCommit, [ENGINE_CLIENT, ENGINE_WORKER], work);

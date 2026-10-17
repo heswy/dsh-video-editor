@@ -1287,6 +1287,111 @@ test('R1: eyebrow-first inspect selects hf-title and binds title/timing to one s
   assert(textOf(findNode(tree, (node) => node.props && node.props.className === 'dv-project-title')) === '新的标题', 'refreshed title was not the edited hf-title');
 });
 
+test('P2-005: opening exposes the frame-time input at the 2.5s default and sends that time', async () => {
+  const frameTimes = [];
+  let frameIndex = 0;
+  const hostFetch = makeHostFetch((request) => {
+    const method = request.body.method;
+    if (method === 'open') return { ok: true, result: { projectId: 'demo', revision: 'a'.repeat(64) } };
+    if (method === 'inspect') return { ok: true, result: sampleInspect() };
+    if (method === 'frame') {
+      frameTimes.push(request.body.params.time);
+      frameIndex += 1;
+      return { ok: true, result: Object.assign(sampleJob('99999999-2222-4333-8444-55555555555' + frameIndex), { revision: 'a'.repeat(64) }) };
+    }
+    if (method === 'status') return { ok: true, result: Object.assign(sampleJob('99999999-2222-4333-8444-55555555555' + frameIndex), { revision: 'a'.repeat(64), state: 'succeeded', artifact: { name: 'frame.png' } }) };
+    return { ok: false, error: { code: 'E_METHOD', message: 'unexpected' } };
+  });
+  const editor = mountEditor(hostFetch);
+  await buttonByText(editor.tree(), '打开示例').props.onClick();
+  await settle();
+  const tree = editor.rerender();
+  const input = elementById(tree, 'dsh-video-frame-time');
+  assert(input !== null, 'frame-time input missing');
+  assert(input.props.value === '2.50', `default frame time is ${input.props.value}`);
+  assert(frameTimes.length === 1 && frameTimes[0] === 2.5, `initial frame time was ${frameTimes[0]}`);
+});
+
+test('P2-005: update frame uses the selected time and rejects out-of-range values loudly', async () => {
+  const frameTimes = [];
+  let frameIndex = 0;
+  const hostFetch = makeHostFetch((request) => {
+    const method = request.body.method;
+    if (method === 'open') return { ok: true, result: { projectId: 'demo', revision: 'a'.repeat(64) } };
+    if (method === 'inspect') return { ok: true, result: sampleInspect() };
+    if (method === 'frame') {
+      frameTimes.push(request.body.params.time);
+      frameIndex += 1;
+      return { ok: true, result: Object.assign(sampleJob('aaaaaaaa-2222-4333-8444-55555555555' + frameIndex), { revision: 'a'.repeat(64) }) };
+    }
+    if (method === 'status') return { ok: true, result: Object.assign(sampleJob('aaaaaaaa-2222-4333-8444-55555555555' + frameIndex), { revision: 'a'.repeat(64), state: 'succeeded', artifact: { name: 'frame.png' } }) };
+    return { ok: false, error: { code: 'E_METHOD', message: 'unexpected' } };
+  });
+  const editor = mountEditor(hostFetch);
+  await buttonByText(editor.tree(), '打开示例').props.onClick();
+  await settle();
+  let tree = editor.rerender();
+  const initialImage = findNode(tree, (node) => node.props && node.props.className === 'dv-frame');
+  assert(initialImage !== null, 'initial frame missing');
+
+  for (const invalid of ['-0.1', '5.01', '']) {
+    elementById(tree, 'dsh-video-frame-time').props.onChange({ target: { value: invalid } });
+    tree = editor.rerender();
+    await buttonByText(tree, '更新画面').props.onClick();
+    await settle();
+    tree = editor.rerender();
+    const alert = findNode(tree, (node) => node.props && node.props.role === 'alert');
+    assert(alert !== null && textOf(alert).includes('画面时间'), `invalid time ${JSON.stringify(invalid)} was not rejected loudly: ${alert && textOf(alert)}`);
+  }
+  assert(frameTimes.length === 1, `invalid values reached frame: ${JSON.stringify(frameTimes)}`);
+  assert(findNode(tree, (node) => node.props && node.props.className === 'dv-frame') !== null, 'old frame was discarded by an invalid time');
+
+  elementById(tree, 'dsh-video-frame-time').props.onChange({ target: { value: '4.2' } });
+  tree = editor.rerender();
+  await buttonByText(tree, '更新画面').props.onClick();
+  await settle();
+  tree = editor.rerender();
+  assert(frameTimes[frameTimes.length - 1] === 4.2, `selected time was ${frameTimes[frameTimes.length - 1]}`);
+  assert(elementById(tree, 'dsh-video-frame-time').props.value === '4.20', 'selected time was not normalized after update');
+  const image = findNode(tree, (node) => node.props && node.props.className === 'dv-frame');
+  assert(image !== null && image.props.src.includes('status') === false, 'new frame missing after valid update');
+});
+
+test('P2-005: returning to the panel restores the chosen time and frame', async () => {
+  const frameTimes = [];
+  let frameIndex = 0;
+  const hostFetch = makeHostFetch((request) => {
+    const method = request.body.method;
+    if (method === 'open') return { ok: true, result: { projectId: 'demo', revision: 'a'.repeat(64) } };
+    if (method === 'inspect') return { ok: true, result: sampleInspect() };
+    if (method === 'frame') {
+      frameTimes.push(request.body.params.time);
+      frameIndex += 1;
+      return { ok: true, result: Object.assign(sampleJob('bbbbbbbb-2222-4333-8444-55555555555' + frameIndex), { revision: 'a'.repeat(64) }) };
+    }
+    if (method === 'status') return { ok: true, result: Object.assign(sampleJob('bbbbbbbb-2222-4333-8444-55555555555' + frameIndex), { revision: 'a'.repeat(64), state: 'succeeded', artifact: { name: 'frame.png' } }) };
+    return { ok: false, error: { code: 'E_METHOD', message: 'unexpected' } };
+  });
+  const editor = mountEditor(hostFetch);
+  await buttonByText(editor.tree(), '打开示例').props.onClick();
+  await settle();
+  let tree = editor.rerender();
+  elementById(tree, 'dsh-video-frame-time').props.onChange({ target: { value: '4.0' } });
+  tree = editor.rerender();
+  await buttonByText(tree, '更新画面').props.onClick();
+  await settle();
+  tree = editor.rerender();
+  const imageBefore = findNode(tree, (node) => node.props && node.props.className === 'dv-frame');
+  assert(imageBefore !== null, 'frame missing before remount');
+  const callsBefore = hostFetch.calls.length;
+  const remounted = mountInteractivePanel(editor.loaded, editor.env);
+  const remountedTree = remounted.render();
+  const input = elementById(remountedTree, 'dsh-video-frame-time');
+  assert(input !== null && input.props.value === '4.00', `restored time was ${input && input.props.value}`);
+  const imageAfter = findNode(remountedTree, (node) => node.props && node.props.className === 'dv-frame');
+  assert(imageAfter !== null && imageAfter.props.src === imageBefore.props.src, 'restored frame changed');
+  assert(hostFetch.calls.length === callsBefore, 'remount issued a new frame request');
+});
 test('P2-002-B: save edits with expectedRevision/operationId and refresh from the new inspect', async () => {
   const revisionA = 'a'.repeat(64);
   const revisionB = 'b'.repeat(64);

@@ -1,8 +1,8 @@
 {
   "name": "dsh-video",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
-  "description": "Native sidebar entry, a restrained Host bridge and a real controlled-project video workspace for DeepSeek Harness.",
+  "description": "Native sidebar entry, a controlled Host bridge, frame-time preview and a restrained video workspace for DeepSeek Harness.",
   "type": "module",
   "main": "index.js",
   "exports": {
