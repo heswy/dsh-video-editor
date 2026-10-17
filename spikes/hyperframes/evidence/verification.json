@@ -1,0 +1,147 @@
+{
+  "verifiedAt": "2026-10-17T05:41:35.856Z",
+  "metadata": {
+    "programs": [],
+    "stream_groups": [],
+    "streams": [
+      {
+        "codec_name": "h264",
+        "width": 1280,
+        "height": 720,
+        "r_frame_rate": "30/1",
+        "avg_frame_rate": "30/1",
+        "duration": "5.000000",
+        "nb_frames": "150",
+        "nb_read_frames": "150"
+      }
+    ],
+    "format": {
+      "duration": "5.000000"
+    }
+  },
+  "frameToleranceSeconds": 0.03333333333333333,
+  "durationErrorSeconds": 0,
+  "seek": [
+    {
+      "name": "at-0.5s.png",
+      "sha256": "2ef9ed6ad1cedf2bb7d2075e941f4a9a5d4913430fd2367638ee34c021d91469",
+      "identical": true
+    },
+    {
+      "name": "at-0s.png",
+      "sha256": "dc931ad0e97ac9514e334d7636226922701b3165aed57186a6c65b8cd8852d70",
+      "identical": true
+    },
+    {
+      "name": "at-1s.png",
+      "sha256": "3bea071a5f93f7b4683ac6e21822ff5023934e91b73c980328a22205ec3c1f11",
+      "identical": true
+    },
+    {
+      "name": "at-2.5s.png",
+      "sha256": "cc33a6c8088f160048385d7c50c604f4492fe0f7322281bf7af5a84016b9bd87",
+      "identical": true
+    },
+    {
+      "name": "at-3.5s.png",
+      "sha256": "dadb541b13f6334a0ecd3b95181bd9bde4d20d2171905142cf5c31960177af3f",
+      "identical": true
+    },
+    {
+      "name": "at-4.5s.png",
+      "sha256": "fb5a1ce30cf15be451a475afa09a6f0021386fab7de018dbfb50d3a6ffcb5cd1",
+      "identical": true
+    },
+    {
+      "name": "at-4.967s.png",
+      "sha256": "7387b6c8582599e46f8a4265fbebfbeb95ba72e4b8581f83c3908cbd34802fb6",
+      "identical": true
+    },
+    {
+      "name": "at-4s.png",
+      "sha256": "8ed419e5cb8cab22cf1926721eaf60d2a199c890ce7b2768d54b37c013614aa1",
+      "identical": true
+    }
+  ],
+  "lifecycle": {
+    "cancel": {
+      "status": "cancelled",
+      "pid": 83734,
+      "code": 1,
+      "signal": null,
+      "ownedPids": [
+        83734,
+        84088,
+        84165,
+        84304,
+        84370,
+        84476,
+        84553,
+        84580,
+        84634,
+        84713,
+        84714,
+        84739,
+        84740,
+        84831,
+        84832,
+        84933
+      ],
+      "survivors": []
+    },
+    "timeout": {
+      "status": "timed_out",
+      "pid": 86077,
+      "code": 1,
+      "signal": null,
+      "ownedPids": [
+        86077,
+        86258,
+        86335,
+        86746,
+        86844,
+        86948,
+        86963,
+        87105,
+        87107,
+        87186,
+        87203,
+        87228,
+        87243,
+        87244,
+        87321,
+        87322,
+        87420,
+        88106,
+        88145
+      ],
+      "survivors": []
+    }
+  },
+  "files": {
+    "/Users/orange/.codex/worktrees/b4bf/dsh-video-editor/spikes/hyperframes/artifacts/edited.mp4": {
+      "bytes": 125821,
+      "sha256": "68d9805af3dc13bf9afef921d97942f402cba3153eec147224cb055e8998edfa"
+    },
+    "/Users/orange/.codex/worktrees/b4bf/dsh-video-editor/spikes/hyperframes/artifacts/project/index.html": {
+      "bytes": 2445,
+      "sha256": "dd1e57c98e128919d32a2348fe3a3acde32c38f42c763969432de7fae3c14580"
+    },
+    "/Users/orange/.codex/worktrees/b4bf/dsh-video-editor/spikes/hyperframes/artifacts/studio-preview.png": {
+      "bytes": 191420,
+      "sha256": "2c07e7b52cd038f0f351560ab1015f162b9f3c8465e2b2cdf49b18bed65293a5"
+    },
+    "/Users/orange/.codex/worktrees/b4bf/dsh-video-editor/spikes/hyperframes/artifacts/before/at-2.5s.png": {
+      "bytes": 275744,
+      "sha256": "efca929677830434624a262bc13b2f6e1dd39af70619e3455c6753ac079441db"
+    },
+    "/Users/orange/.codex/worktrees/b4bf/dsh-video-editor/spikes/hyperframes/artifacts/ordered/at-2.5s.png": {
+      "bytes": 270902,
+      "sha256": "cc33a6c8088f160048385d7c50c604f4492fe0f7322281bf7af5a84016b9bd87"
+    },
+    "/Users/orange/.codex/worktrees/b4bf/dsh-video-editor/spikes/hyperframes/artifacts/mp4-at-2.5s.png": {
+      "bytes": 204980,
+      "sha256": "042ee5a6a8decae466f4a6f8e0acfc941d4af618cf2ae9acc56a767ee63b66bf"
+    }
+  }
+}

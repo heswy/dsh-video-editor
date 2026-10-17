@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>P1-001 · 单场景引擎验证</title>
+<style>
+@font-face { font-family: SpikeHeiti; src: url('./assets/Heiti.ttc'); font-weight: 400 800; }
+* { box-sizing: border-box; }
+html, body { margin: 0; width: 1280px; height: 720px; overflow: hidden; background: #10191d; }
+#scene { position: relative; width: 1280px; height: 720px; overflow: hidden; color: #edf7f4; font-family: SpikeHeiti, sans-serif; background: radial-gradient(ellipse at 82% 30%, #274840, #10191d 65%); }
+#title { position: absolute; left: 88px; top: 246px; width: 1080px; height: 100px; margin: 0; font-size: 72px; font-weight: 600; line-height: 100px; white-space: nowrap; }
+#eyebrow { position: absolute; left: 90px; top: 185px; font-size: 22px; letter-spacing: 5px; color: #a4d7c2; }
+#subtitle { position: absolute; left: 92px; top: 374px; font-size: 28px; color: #b7c9c3; }
+#orb { position: absolute; left: 100px; top: 516px; width: 56px; height: 56px; border-radius: 50%; background: #b1ebcd; box-shadow: 0 0 80px #84d5ac55; }
+#rule { position: absolute; left: 92px; top: 604px; width: 1096px; height: 2px; background: #4a665c; transform-origin: left; }
+#caption { position: absolute; left: 92px; top: 635px; font-size: 17px; letter-spacing: 2px; color: #97b3a8; }
+</style>
+<script src="./assets/gsap.min.js"></script>
+<script src="./assets/MotionPathPlugin.min.js"></script>
+</head>
+<body>
+<main id="scene" data-composition-id="scene" data-hf-id="hf-scene" data-width="1280" data-height="720" data-fps="30" data-start="0" data-duration="5">
+<div id="eyebrow" data-hf-id="hf-eyebrow">DSH VIDEO / ENGINE STUDY</div>
+<h1 id="title" class="clip" data-hf-id="hf-title" data-start="0" data-duration="5" data-track-index="1">让创意成为影像</h1>
+<div id="subtitle" data-hf-id="hf-subtitle">原生工程 · 确定性时间 · 自由修改</div>
+<div id="orb" data-hf-id="hf-orb"></div>
+<div id="rule" data-hf-id="hf-rule"></div>
+<div id="caption" data-hf-id="hf-caption">P1—001 / 1280 × 720 / 30 FPS / 5 SEC</div>
+</main>
+<script>
+// No randomness, wall clock, network assets or incremental animation state.
+const tl = gsap.timeline({ paused: true });
+tl.fromTo('#orb', { x: 0, rotation: 0 }, { x: 1020, rotation: 180, duration: 5, ease: 'none' }, 0);
+tl.fromTo('#rule', { scaleX: 0.06 }, { scaleX: 1, duration: 5, ease: 'none' }, 0);
+window.__timelines = { scene: tl };
+</script>
+</body>
+</html>

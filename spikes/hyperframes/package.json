@@ -1,0 +1,28 @@
+{
+  "name": "dsh-p1-hyperframes-spike",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "doctor": "node scripts/doctor.mjs",
+    "test": "node --test test/*.test.mjs",
+    "prepare-scene": "node scripts/project.mjs create",
+    "edit": "node scripts/project.mjs edit",
+    "reopen": "node scripts/project.mjs inspect",
+    "frame": "node scripts/frames.mjs",
+    "render": "node scripts/render.mjs",
+    "verify": "node scripts/verify.mjs",
+    "preview": "node scripts/preview.mjs"
+  },
+  "dependencies": {
+    "@hyperframes/sdk": "0.8.167",
+    "gsap": "3.15.0",
+    "hyperframes": "0.8.167"
+  },
+  "devDependencies": {
+    "puppeteer-core": "25.14.0"
+  }
+}
