@@ -4,7 +4,7 @@
 执行：用户指定的 DSH Agent。评审/验收：Codex 主会话。
 分支：`dsh/p0-mode-shell`。
 worktree：`/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/p0-mode-shell`。
-base：用户从 `codex/project-foundation` 的本地准备提交创建；开工时将准确 SHA 记入本文件，不使用移动的 main 作为隐含基线。
+base：Codex 从 `codex/project-foundation` 的本地准备提交创建；开工时将准确 SHA 记入本文件，不使用移动的 main 作为隐含基线。
 
 前置阅读：AGENTS → STATUS → DEVELOPMENT → PRODUCT → 本任务。只按需读取参考包，不重复复制通用规则。
 

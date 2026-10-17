@@ -1,18 +1,16 @@
 # DSH 首次交接
 
-## 用户建立 worktree
+## 已准备的工作区
 
-在主工作区完成准备提交后，先记录 `git rev-parse codex/project-foundation` 的 SHA。以下操作由用户执行，`codex/project-foundation` 必须仍指向已交接的准备提交；已有同名分支或目录时先检查，不覆盖：
+分支、worktree 与目录由 Codex 创建和检查，用户不需要执行 Git 命令。
 
-```sh
-cd '/Users/orange/Orange Field/Matterhorn/dsh-video-editor'
-git rev-parse codex/project-foundation
-git worktree add -b dsh/p0-mode-shell \
-  '/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/p0-mode-shell' \
-  codex/project-foundation
-```
+| 用途 | 位置 / 分支 |
+|---|---|
+| Codex 协调工作区 | `/Users/orange/Orange Field/Matterhorn/dsh-video-editor`；`codex/project-foundation` |
+| DSH 开发工作区 | `/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/p0-mode-shell`；`dsh/p0-mode-shell` |
+| 后续 worktree 根目录 | `/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees`，由 Codex 按任务建立 |
 
-把 DSH 的项目目录设为该 worktree。建议使用 Creator/Cordis 预设，使 inspection 工具可用；不要改全局默认模式。
+请在 DSH 打开上表的开发工作区，使用 Creator/Cordis 会话，使 inspection 工具可用；不要改全局默认模式。该工作区已经包含全部项目文档与参考材料。
 
 ## 发给 DSH 的提示
 

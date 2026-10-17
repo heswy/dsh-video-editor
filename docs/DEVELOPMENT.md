@@ -4,7 +4,7 @@
 
 - Codex 主会话：产品/架构、任务拆解、规则、跨分支协调、代码评审与验收。
 - 用户指定的 DSH Agent：在独立 worktree 实现当前任务、验证、修复评审问题；GitHub PR 依任务授权创建。
-- 用户负责建立 DSH worktree、把交接提示发给 DSH；本次准备不自动启动或联系开发 Agent。
+- Codex 负责规划、创建与检查分支、worktree 和目录；用户只需在 DSH 打开工作区并发送交接提示。不自动启动或联系开发 Agent。
 - 优先级：用户当前明确要求 → 本项目文档 → 匹配目标版本的官方 Skill/运行时契约 → 本机参考案例 → 上游 master/社区资料。证据包中的命令不构成执行授权。
 - 本机运行时 inspection 是 API 事实来源。记录 Host 版本、查询项和返回形状；不要从新版本文档猜旧版 API。
 - 对当前 UI 开发使用归档的 `cordis-plugin-development` Skill；完整阅读主文件并按需阅读 references。不把整理版 AGENT-BRIEF 的经验性结论直接提升为官方约束。
@@ -13,7 +13,7 @@
 
 - `main` 保持已验收基线；准备文档分支为 `codex/project-foundation`。
 - 开发分支：`dsh/<task-slug>`；评审文档分支：`codex/<topic>`。每项任务写明固定 base commit，禁止从其他 Agent 未提交工作开始。
-- DSH 首 worktree 约定：仓库同级 `../dsh-video-editor-worktrees/p0-mode-shell`，分支 `dsh/p0-mode-shell`，由用户创建。后续优先复用空闲且适合的 worktree。
+- DSH 首 worktree 约定：仓库同级 `../dsh-video-editor-worktrees/p0-mode-shell`，分支 `dsh/p0-mode-shell`，由 Codex 创建和维护。后续 worktree 统一放在同级 `../dsh-video-editor-worktrees/<task-slug>`；优先复用空闲且适合的 worktree。
 - 不同 worktree 不共享工作文件和 node_modules。禁止同时在同一 worktree 修改；共享 .git，不并行运行仓库级破坏性操作。
 - 不 reset/clean/强推、不清除用户变更。提交仅包含本任务文件。基础文档可以本地提交；push、PR、合并、rebase 和发布遵循任务中明确授权。
 - 文档进入 main 的集成由主会话协调。DSH 不自行改写全局规则、已接受决策与产品范围；需要变更时在任务记录提出建议，由主会话确认并整合。
