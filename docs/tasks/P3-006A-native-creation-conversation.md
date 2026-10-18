@@ -57,3 +57,10 @@
 - **检查**：干净修复提交上 `npm run check` **123/123**（静态 40、Client smoke 52、Host 契约 31；原 25 项全保留 +6 项故障回归），版本门禁 **10/10**。独立故障探针（复刻复审场景、断言修复后行为）通过；证据 `artifacts/p2-b/evidence/p3-006a-fix-repro-2026-10-18T11-29-09.json`（SHA-256 `e9ed7f53…66be20`）。
 - **新候选**：固定包 `artifacts/p2-b/b382686/dsh-video-0.3.0-alpha.1.tgz`，**56,648 B / 19 files / SHA-256 `61e57430…969f4a7a`**（19/19 与提交一致）；新 staging `artifacts/p2-b/staging-54f4671-b382686`，INTEGRITY SHA **`167f4c41…3f367ab8`**、config `a6b1ca4b…c5fd442`、patch `d8c99661…ab0677c3`；真实链证据 `artifacts/p2-b/evidence/engine-run-2026-10-18T03-30-02-337Z.json`（18,339 B / `b7251329…80768a2`），PNG/MP4 确定性摘要一致、cancel/close/dispose 通过、demo 干净、INTEGRITY 未变。旧 `26bd4c1` 包/staging 与安装用旧 staging 未动。
 - **未测**：同前——未安装/启停/重启、未改 profile、未创建真实用户会话/发模型请求；真实 kit/模型/审批/附件/历史、HMR/停用/重连仍待安装授权验收；故障回归使用受控 controller/临时目录，不冒充真机。
+
+## 真机验收结果（2026-10-18，P3-006-A LIVE）
+
+- 按协调分支 [LIVE 指南](./P3-006A-live-validation.md) 完成受控候选安装与真机验证；详细证据见 [P3-006-A live 证据](../research/P3-006A-live-2026-10-18.md)。
+- 在 Host 0.2.1-rc.2 上安装 `dsh-video 0.3.0-alpha.1`（staging `staging-54f4671-b382686`）后：原生布局/Composer/模型 seat、2 个专用会话与持久映射、历史切换与草稿保留、只读 `inspect`、标题 `edit`+`frame` 与产物 SHA、恢复标题、视频↔对话、停用→启用恢复均 **PASS**；模型请求 **2/2**，专用会话 **2/2**。
+- 发现：运行中的 Host 对 link 包的 client bundle 保持启动记录，页面重载/启停不足以加载新客户端；**需完整重启应用一次**。已在具体阻塞点停止并报告，用户授权手动重启后继续；本轮未改功能/engine。
+- 未测：自然审批、附件导入、`session.diagnose`/根 data-session 直读、MP4 导出；不声称 v0.3 全体验收。未 merge。
