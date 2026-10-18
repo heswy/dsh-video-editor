@@ -13,9 +13,16 @@ import { buildDocument, openComposition } from "@hyperframes/sdk";
 import { fail } from "./errors.mjs";
 import { capabilities } from "./scenes.mjs";
 
-// `project.source` must keep one Tool result under the 64 KiB budget, so the
-// HTML ceiling is a protocol constant shared by the Host (host/limits.js).
+// `project.source` must keep one Tool result under the 64 KiB budget, so two
+// protocol constants bound a composition: the 48 KiB raw UTF-8 ceiling below and
+// the JSON-escaped ceiling further down. The document travels inside a JSON
+// string on the JSONL wire, where every quote/backslash doubles; the escaped
+// ceiling is what really keeps one source result (and one compose request) inside
+// the 64 KiB line/result budget.
 export const MAX_COMPOSITION_BYTES = 48 * 1024;
+// 60 KiB of JSON-escaped string leaves room for the protocol envelope and the
+// other fields inside one 64 KiB JSONL line / Tool result.
+export const MAX_COMPOSITION_ESCAPED_BYTES = 60 * 1024;
 export const MIN_COMPOSITION_WIDTH = 320;
 export const MAX_COMPOSITION_WIDTH = 3840;
 export const MIN_COMPOSITION_HEIGHT = 180;
@@ -50,6 +57,12 @@ const CSS_URL = /url\(\s*(?:"([^"]*)"|'([^']*)'|([^)"']*?))\s*\)/gi;
 const TIMELINES_ASSIGNMENT =
   /window\s*(?:\.\s*__timelines|\[\s*["']__timelines["']\s*\])\s*=\s*\{([\s\S]*?)\}/g;
 const TIMELINES_MAIN_KEY = /(?:^|[,{])\s*(?:main|["']main["'])\s*:/;
+// An obvious placeholder mapping is not a usable timeline. This is a static
+// necessary check only: whether the timeline really plays is proven by the
+// preview runtime (a genuinely broken script surfaces as a recoverable preview
+// error, not as a compose failure).
+const TIMELINES_NULL_MAIN =
+  /(?:^|[,{])\s*(?:main|["']main["'])\s*:\s*(?:null|undefined)\b/;
 
 function invalid(message) {
   // Worker error messages are bounded by the protocol envelope (256 chars).
@@ -165,11 +178,71 @@ function assertMain(html) {
   numericAttribute(attributes, "data-duration", MIN_COMPOSITION_DURATION, MAX_COMPOSITION_DURATION);
 }
 
+// The timeline assignment only counts inside an inline <script> body. Text in
+// HTML comments, attribute values or scripts that were never executed must not
+// satisfy the contract, and a `src=` script body is empty in this document.
+function inlineScriptBodies(html) {
+  const lower = html.toLowerCase();
+  const bodies = [];
+  let index = 0;
+  while (index < html.length) {
+    const commentStart = lower.indexOf("<!--", index);
+    const scriptStart = lower.indexOf("<script", index);
+    if (commentStart < 0 && scriptStart < 0) break;
+    if (commentStart >= 0 && (scriptStart < 0 || commentStart < scriptStart)) {
+      const commentEnd = lower.indexOf("-->", commentStart + 4);
+      if (commentEnd < 0) break;
+      index = commentEnd + 3;
+      continue;
+    }
+    // `<script>` / `<script lang=...>` (not e.g. `<scripts`).
+    const afterName = lower[scriptStart + 7];
+    if (afterName !== undefined && !/[\s>]/.test(afterName)) {
+      index = scriptStart + 7;
+      continue;
+    }
+    const tagEnd = lower.indexOf(">", scriptStart + 7);
+    if (tagEnd < 0) break;
+    const attributes = html.slice(scriptStart + 7, tagEnd);
+    const bodyStart = tagEnd + 1;
+    const bodyEnd = lower.indexOf("</script", bodyStart);
+    if (bodyEnd < 0) break;
+    if (!/(?<![\w.-])src\s*=/i.test(attributes))
+      bodies.push(html.slice(bodyStart, bodyEnd));
+    const closeEnd = lower.indexOf(">", bodyEnd + 8);
+    if (closeEnd < 0) break;
+    index = closeEnd + 1;
+  }
+  return bodies;
+}
+
 function assertTimelineExposure(html) {
-  for (const match of html.matchAll(TIMELINES_ASSIGNMENT))
-    if (TIMELINES_MAIN_KEY.test(match[1])) return;
+  const assignments = [];
+  for (const body of inlineScriptBodies(html))
+    for (const match of body.matchAll(TIMELINES_ASSIGNMENT))
+      assignments.push(match[1]);
+  if (!assignments.length)
+    invalid(
+      'Composition must expose the preview timeline with an inline <script> assignment: window.__timelines = { main: <gsap timeline> } (scripts with src= and HTML comments are ignored; window["__timelines"] is also accepted).',
+    );
+  let usable = false;
+  let placeholder = false;
+  for (const objectBody of assignments) {
+    if (!TIMELINES_MAIN_KEY.test(objectBody)) continue;
+    if (TIMELINES_NULL_MAIN.test(objectBody)) {
+      placeholder = true;
+      continue;
+    }
+    usable = true;
+    break;
+  }
+  if (usable) return;
+  if (placeholder)
+    invalid(
+      "Composition assigns window.__timelines.main as null/undefined; assign a real gsap timeline. This is a static necessary check only: actual playback is proven by the preview runtime.",
+    );
   invalid(
-    'Composition must expose the preview timeline: a script must assign window.__timelines = { main: <gsap timeline> } (window["__timelines"] is also accepted).',
+    'Composition must expose the preview timeline with an inline <script> assignment: window.__timelines = { main: <gsap timeline> } (scripts with src= and HTML comments are ignored; window["__timelines"] is also accepted).',
   );
 }
 
@@ -222,8 +295,8 @@ async function sdkRoundTrip(html) {
  *
  * @param {{html: string, assets?: string[]}} input `assets` is the project
  *   manifest's declared asset list (relative paths).
- * @returns {Promise<{bytes:number,width:number,height:number,duration:number,
- *   elements:{stableId:string,capabilities:string[]}[]}>}
+ * @returns {Promise<{bytes:number,escapedBytes:number,width:number,height:number,
+ *   duration:number,elements:{stableId:string,capabilities:string[]}[]}>}
  *   Throws `E_COMPOSE_INVALID` (stage `"compose"`) on any contract violation.
  */
 export async function validateComposition({ html, assets = [] }) {
@@ -235,11 +308,18 @@ export async function validateComposition({ html, assets = [] }) {
     );
   if (html.includes("\0"))
     invalid("Composition must not contain NUL bytes.");
+  // The document travels as one JSON string on the JSONL wire; a raw-valid but
+  // dense document would otherwise overflow one 64 KiB line/response.
+  const escapedBytes = Buffer.byteLength(JSON.stringify(html), "utf8");
+  if (escapedBytes > MAX_COMPOSITION_ESCAPED_BYTES)
+    invalid(
+      `Composition is ${bytes} UTF-8 bytes but its JSON-escaped form is ${escapedBytes} bytes, above the ${MAX_COMPOSITION_ESCAPED_BYTES}-byte protocol bound; reduce quotes/backslashes (dense inline styles or scripts) or the document size so it fits one JSONL frame under 64 KiB.`,
+    );
   assertDocumentShape(html);
   assertNoFetchSurfaces(html);
   assertDeclaredReferences(html, declared);
   assertMain(html);
   assertTimelineExposure(html);
   const validated = await sdkRoundTrip(html);
-  return { bytes, ...validated };
+  return { bytes, escapedBytes, ...validated };
 }

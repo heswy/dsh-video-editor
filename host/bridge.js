@@ -17,7 +17,7 @@ import { BridgeError, configurationError, logSummary, toPublicError } from './er
 import { allowsProject, tryNormalizeConfig } from './config.js';
 import { buildWorkerEnv } from './env.js';
 import { loadEngine } from './engine.js';
-import { MAX_COMPOSITION_BYTES, TOOL_RESULT_BYTES } from './limits.js';
+import { MAX_COMPOSITION_BYTES, MAX_COMPOSITION_ESCAPED_BYTES, TOOL_RESULT_BYTES } from './limits.js';
 import { SessionService } from './sessions.js';
 import { SESSION_ID_PATTERN } from './session-state.js';
 import { readPreviewFile } from './preview.js';
@@ -163,6 +163,14 @@ function operationId(value) {
  * bytes; a character-count check would let a multibyte document through here
  * only to be rejected after the worker started. NUL bytes are rejected too, so
  * the document is a plain text document before it ever reaches the worker.
+ *
+ * Two byte budgets are enforced, both before any worker start:
+ * - the raw document is at most 48 KiB (the worker's validation bound);
+ * - its JSON-escaped form is at most 60 KiB, so the JSONL request frame stays
+ *   under the worker's 64 KiB line limit. Quotes and backslashes double when
+ *   escaped; without this bound a contract-valid quote-heavy document would
+ *   overflow the frame, and the worker's uncorrelatable E_LINE_LIMIT reply would
+ *   take the worker process (and every later video request) down with it.
  */
 function compositionHtml(value) {
   if (typeof value !== 'string' || value.length === 0) {
@@ -176,6 +184,14 @@ function compositionHtml(value) {
     fail(
       'E_PARAMS',
       `Composition HTML is too large (${bytes} UTF-8 bytes); the limit is 48 KiB (${MAX_COMPOSITION_BYTES} bytes)`,
+      'params'
+    );
+  }
+  const escapedBytes = Buffer.byteLength(JSON.stringify(value), 'utf8');
+  if (escapedBytes > MAX_COMPOSITION_ESCAPED_BYTES) {
+    fail(
+      'E_PARAMS',
+      `Composition HTML is too large after JSON escaping (${bytes} raw UTF-8 bytes expand to ${escapedBytes} bytes; the escaped-frame limit is ${MAX_COMPOSITION_ESCAPED_BYTES} bytes). Reduce repeated quotes/backslashes or shorten the document.`,
       'params'
     );
   }

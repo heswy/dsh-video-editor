@@ -32,7 +32,7 @@ import { buildWorkerEnv } from '../host/env.js';
 import { createRequestRoute, createArtifactRoute, statusForError } from '../host/routes.js';
 import { createVideoTool, TOOL_NAME } from '../host/tool.js';
 import { BridgeError } from '../host/errors.js';
-import { MAX_COMPOSITION_BYTES, TOOL_RESULT_BYTES } from '../host/limits.js';
+import { MAX_COMPOSITION_BYTES, MAX_COMPOSITION_ESCAPED_BYTES, TOOL_RESULT_BYTES } from '../host/limits.js';
 import { loadEngine } from '../host/engine.js';
 import { digestTree, loadStagedHost, sha256 } from './lib/staged-host.mjs';
 import { apply } from '../index.js';
@@ -1534,6 +1534,63 @@ async function main() {
     );
     const sourceRequest = requests.find((entry) => entry.method === 'project.source');
     assert(sourceRequest !== undefined && JSON.stringify(sourceRequest.params) === JSON.stringify({ projectId: PROJECT }), 'project.source parameters were not forwarded exactly');
+  });
+
+  await run('P3-012: quote-heavy html is rejected by the escaped frame budget before the worker starts', async () => {
+    const workspace = await makeWorkspace();
+    const bag = makeCtx(workspace);
+    let composeCalls = 0;
+    const { bridge, engine } = makeBridge(workspace, {
+      handler: (method) => {
+        if (method === 'project.compose') {
+          composeCalls += 1;
+          return composeResult();
+        }
+        return {};
+      },
+    }, bag.ctx);
+
+    // The verifier's availability failure shape: raw-valid (< 48 KiB) but every
+    // character is a quote, so the JSON-escaped request frame would be ~96 KiB
+    // and the worker would die on its uncorrelatable E_LINE_LIMIT reply.
+    const quoteHeavy = '"'.repeat(MAX_COMPOSITION_BYTES - 1);
+    const rawBytes = Buffer.byteLength(quoteHeavy, 'utf8');
+    const escapedBytes = Buffer.byteLength(JSON.stringify(quoteHeavy), 'utf8');
+    assert(rawBytes <= MAX_COMPOSITION_BYTES, 'the quote-heavy fixture must stay within the raw 48 KiB bound');
+    assert(escapedBytes > MAX_COMPOSITION_ESCAPED_BYTES, 'the quote-heavy fixture must exceed the escaped frame bound');
+    const error = await rejects(() =>
+      bridge.invoke('project.compose', { projectId: PROJECT, expectedRevision: REVISION, operationId: 'escape-heavy-1', html: quoteHeavy }, { source: 'http' })
+    );
+    assert(error.code === 'E_PARAMS' && error.stage === 'params', `the quote-heavy document was not rejected as E_PARAMS/params: ${error.code}/${error.stage}`);
+    const message = String(error.message);
+    assert(message.includes(String(rawBytes)), 'the escaped-budget error does not name the raw byte count');
+    assert(message.includes(String(escapedBytes)), 'the escaped-budget error does not name the escaped byte count');
+    assert(message.includes(String(MAX_COMPOSITION_ESCAPED_BYTES)), 'the escaped-budget error does not name the escaped limit');
+    assert(/quotes|backslashes/i.test(message) && /shorten/i.test(message), `the escaped-budget error is not actionable: ${message}`);
+    assert(engine.instances.length === 0 && composeCalls === 0, 'the escaped-budget rejection reached or started the worker');
+
+    // The bound is inclusive: an escaped document at exactly 61440 bytes is
+    // accepted and still leaves the complete JSONL request frame under 64 KiB.
+    const atLimit = '"'.repeat((MAX_COMPOSITION_ESCAPED_BYTES - 2) / 2);
+    assert(Buffer.byteLength(JSON.stringify(atLimit), 'utf8') === MAX_COMPOSITION_ESCAPED_BYTES, 'the escaped boundary fixture is not exact');
+    const normalized = bridge.validate('project.compose', { projectId: PROJECT, expectedRevision: REVISION, operationId: 'escape-boundary', html: atLimit });
+    assert(normalized.html === atLimit, 'a document at the escaped boundary was rejected');
+    const frameBytes = Buffer.byteLength(JSON.stringify({
+      v: 1,
+      id: '00000000-0000-4000-8000-000000000000',
+      method: 'project.compose',
+      params: { projectId: PROJECT, expectedRevision: REVISION, operationId: 'escape-boundary', html: atLimit },
+    }), 'utf8');
+    assert(frameBytes <= 65536, `the escaped boundary still overflows the 64 KiB JSONL request frame: ${frameBytes}`);
+    const overBoundary = await rejects(async () =>
+      bridge.validate('project.compose', { projectId: PROJECT, expectedRevision: REVISION, operationId: 'escape-over', html: atLimit + '"' })
+    );
+    assert(overBoundary.code === 'E_PARAMS', `the escaped bound is not exclusive above the limit: ${overBoundary.code}`);
+
+    // A normal composition still passes and reaches the worker exactly once.
+    const accepted = await bridge.invoke('project.compose', { projectId: PROJECT, expectedRevision: REVISION, operationId: 'escape-normal-1', html: COMPOSITION_HTML }, { source: 'http' });
+    assert(accepted.publishedRevision === NEXT_REVISION && composeCalls === 1, 'a normal composition was rejected or not forwarded');
+    assert(engine.instances.length === 1, `a normal composition did not start the worker once: ${engine.instances.length}`);
   });
 
   await run('P3-012: a composition publish updates prompt facts and the next context', async () => {

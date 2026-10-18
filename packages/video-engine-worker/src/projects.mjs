@@ -15,6 +15,7 @@ import { createFsAdapter } from "@hyperframes/sdk/adapters/fs";
 import { fail, keys, string, number, revision, WorkerError } from "./errors.mjs";
 import {
   MAX_COMPOSITION_BYTES,
+  MAX_COMPOSITION_ESCAPED_BYTES,
   validateComposition,
 } from "./composition.mjs";
 import {
@@ -829,13 +830,23 @@ export class Projects {
           `project.source is limited to ${MAX_COMPOSITION_BYTES} UTF-8 bytes (48 KiB) so one Tool result stays bounded; this composition is ${bytes} bytes.`,
           "compose",
         );
+      const html = current.files.get(entry).toString("utf8");
+      // The html travels as one JSON string in the protocol response; bound the
+      // escaped form so the source result can never exceed the 64 KiB budget.
+      const escapedBytes = Buffer.byteLength(JSON.stringify(html), "utf8");
+      if (escapedBytes > MAX_COMPOSITION_ESCAPED_BYTES)
+        fail(
+          "E_LIMIT",
+          `project.source is limited to ${MAX_COMPOSITION_ESCAPED_BYTES} JSON-escaped bytes so one Tool result stays under 64 KiB; this composition is ${bytes} UTF-8 bytes / ${escapedBytes} escaped bytes. Reduce quotes/backslashes or size.`,
+          "compose",
+        );
       return {
         projectId: id,
         revision: current.revision,
         entry,
         bytes,
         assets: [...current.manifest.assets],
-        html: current.files.get(entry).toString("utf8"),
+        html,
       };
     });
   }

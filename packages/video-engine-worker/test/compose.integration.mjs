@@ -13,6 +13,11 @@ import assert from "node:assert/strict";
 import { chmod, readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { managed } from "./helpers.mjs";
+import {
+  MAX_COMPOSITION_BYTES,
+  MAX_COMPOSITION_ESCAPED_BYTES,
+  validateComposition,
+} from "../src/composition.mjs";
 
 const TEMPLATE = "product-launch-v1";
 const ENTRY = "index.html";
@@ -347,6 +352,48 @@ test("project.compose rejects stale revisions and invalid compositions without t
         message: /window\.__timelines = \{ main: <gsap timeline> \}/,
       },
       {
+        label: "timeline assignment only inside an HTML comment",
+        html: valid
+          .replace(
+            "window.__timelines = { main: tl };",
+            "const unreferenced = true;",
+          )
+          .replace(
+            "</body>",
+            "<!-- window.__timelines = { main: tl }; --></body>",
+          ),
+        message: /inline <script>/,
+      },
+      {
+        label: "timeline assignment only in a script with src",
+        html: valid
+          .replace(
+            "window.__timelines = { main: tl };",
+            "const unreferenced = true;",
+          )
+          .replace(
+            '<script src="./assets/gsap.min.js"></script>',
+            '<script src="./assets/gsap.min.js">window.__timelines = { main: tl };</script>',
+          ),
+        message: /inline <script>/,
+      },
+      {
+        label: "timeline main is null",
+        html: valid.replace(
+          "window.__timelines = { main: tl };",
+          "window.__timelines = { main: null };",
+        ),
+        message: /null\/undefined/,
+      },
+      {
+        label: "timeline main is undefined",
+        html: valid.replace(
+          "window.__timelines = { main: tl };",
+          "window.__timelines = { main: undefined };",
+        ),
+        message: /null\/undefined/,
+      },
+      {
         label: "external URL",
         html: valid.replace(
           "<body>",
@@ -573,7 +620,104 @@ test("project.compose restores the previous composition on persist and snapshot-
   }
 });
 
-test("project.source enforces the 48 KiB AI edit bound while inspect keeps reading the project", async () => {
+test("project.compose bounds JSON-escaped document size so dense HTML cannot overflow a protocol line", async () => {
+  const f = await managed("p3012-compose-escaped");
+  try {
+    const c = f.c;
+    const created = await createProject(c);
+    const projectId = created.projectId;
+    const baseline = await source(c, projectId);
+    const markupBytes = Buffer.byteLength(composition({ body: "" }), "utf8");
+
+    // A ~49024-byte raw document that is valid on every other contract rule but
+    // whose JSON-escaped form is far above 60 KiB: the typed validator rejects it
+    // (raw size alone no longer satisfies the contract).
+    const denseRawBytes = 49024;
+    const denseHtml = composition({
+      body: '"'.repeat(denseRawBytes - markupBytes),
+    });
+    assert.equal(Buffer.byteLength(denseHtml, "utf8"), denseRawBytes);
+    const denseEscapedBytes = Buffer.byteLength(
+      JSON.stringify(denseHtml),
+      "utf8",
+    );
+    assert.ok(
+      denseEscapedBytes > MAX_COMPOSITION_ESCAPED_BYTES,
+      `dense doc must exceed the escaped bound, got ${denseEscapedBytes}`,
+    );
+    await assert.rejects(
+      validateComposition({
+        html: denseHtml,
+        assets: ["assets/gsap.min.js"],
+      }),
+      (error) =>
+        error.code === "E_COMPOSE_INVALID" &&
+        error.stage === "compose" &&
+        /JSON-escaped/.test(error.message) &&
+        error.message.includes(String(denseRawBytes)) &&
+        error.message.includes(String(MAX_COMPOSITION_ESCAPED_BYTES)) &&
+        /quotes\/backslashes/.test(error.message),
+    );
+    // The rejected direct-validation attempt never reached a project, so the
+    // entry and revision are untouched and the worker still answers.
+    assert.equal(await inspectRevision(c, projectId), baseline.revision);
+    assert.equal((await source(c, projectId)).html, baseline.html);
+
+    // Through the real JSONL worker: raw-valid and line-fitting (<64 KiB), but
+    // escaped above the bound -> typed E_COMPOSE_INVALID, no write, still alive.
+    const lineFitHtml = composition({ body: '"'.repeat(31000) });
+    const lineFitRawBytes = Buffer.byteLength(lineFitHtml, "utf8");
+    const lineFitEscapedBytes = Buffer.byteLength(
+      JSON.stringify(lineFitHtml),
+      "utf8",
+    );
+    assert.ok(lineFitRawBytes < MAX_COMPOSITION_BYTES);
+    assert.ok(lineFitEscapedBytes > MAX_COMPOSITION_ESCAPED_BYTES);
+    const requestFrame = JSON.stringify({
+      v: 1,
+      id: "escaped-frame-probe",
+      method: "project.compose",
+      params: {
+        projectId,
+        expectedRevision: baseline.revision,
+        operationId: "compose-escaped",
+        html: lineFitHtml,
+      },
+    });
+    assert.ok(
+      Buffer.byteLength(requestFrame, "utf8") < 65536,
+      "the escaped request line must still reach the worker",
+    );
+    const rejected = await c.call("project.compose", {
+      projectId,
+      expectedRevision: baseline.revision,
+      operationId: "compose-escaped",
+      html: lineFitHtml,
+    });
+    const escapedError = await expectError(
+      rejected,
+      "E_COMPOSE_INVALID",
+      "compose",
+    );
+    assert.match(escapedError.message, /JSON-escaped/);
+    assert.match(escapedError.message, /61440/);
+    // No write happened and the engine still answers inspect/source/compose.
+    assert.equal(await inspectRevision(c, projectId), baseline.revision);
+    assert.equal((await source(c, projectId)).html, baseline.html);
+    const recovered = await c.call("project.compose", {
+      projectId,
+      expectedRevision: baseline.revision,
+      operationId: "compose-after-escaped",
+      html: composition({ text: "恢复" }),
+    });
+    assert.equal(recovered.ok, true, JSON.stringify(recovered));
+    assert.equal(await inspectRevision(c, projectId), recovered.result.revision);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test("project.source enforces the raw 48 KiB and JSON-escaped AI edit bounds while inspect keeps reading the project", async () => {
   const f = await managed("p3012-compose-limit");
   try {
     const c = f.c;
@@ -595,6 +739,27 @@ test("project.source enforces the 48 KiB AI edit bound while inspect keeps readi
     const inspected = await c.call("inspect", { projectId });
     assert.equal(inspected.ok, true, JSON.stringify(inspected));
     assert.equal((await readFile(entryPath)).toString(), oversized);
+
+    // A quote-dense entry below the raw 48 KiB bound but above the 60 KiB
+    // JSON-escaped bound: project.source refuses it with E_LIMIT so the Tool
+    // result can never overflow the 64 KiB budget.
+    const markupBytes = Buffer.byteLength(composition({ body: "" }), "utf8");
+    const dense = composition({ body: '"'.repeat(49024 - markupBytes) });
+    assert.ok(Buffer.byteLength(dense, "utf8") <= MAX_COMPOSITION_BYTES);
+    assert.ok(
+      Buffer.byteLength(JSON.stringify(dense), "utf8") >
+        MAX_COMPOSITION_ESCAPED_BYTES,
+    );
+    await writeFile(entryPath, dense);
+    const escapedLimited = await c.call("project.source", { projectId });
+    const escapedError = await expectError(
+      escapedLimited,
+      "E_LIMIT",
+      "compose",
+    );
+    assert.match(escapedError.message, /JSON-escaped/);
+    assert.match(escapedError.message, /61440/);
+    assert.equal((await readFile(entryPath)).toString(), dense);
     await writeFile(entryPath, original.html);
   } finally {
     await f.cleanup();

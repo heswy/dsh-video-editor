@@ -53,7 +53,7 @@ v1 固定 index.html、30fps、H.264；frame 精确时间 PNG。项目根、入�
 | `inspect` | projectId | revision、尺寸、时长、stableId、文本、原生 timing、规范化 layout/style、capabilities、路径/字节/hash 清单 |
 | `edit` | projectId, expectedRevision, operationId, ops | 保存/读回成功后的 revision；ops 支持 text/timing/layout/style，最多32项（P3-006-B） |
 | `project.compose` | projectId, expectedRevision, operationId, html | 校验并原子发布整份 HTML 合成（创建与后续每次修改同一路径）；返回 publishedRevision、尺寸/时长、文件清单与 snapshot 证明，见下文 P3-012 |
-| `project.source` | projectId | 读取当前 `index.html` 全文、revision 与声明资产；入口超过 48 KiB 返回 `E_LIMIT`，见下文 P3-012 |
+| `project.source` | projectId | 读取当前 `index.html` 全文、revision 与声明资产；入口 >48 KiB 或 JSON 转义后 >60 KiB 返回 `E_LIMIT`，见下文 P3-012 |
 | `frame` | projectId, revision, time, timeoutMs? | 立即返回异步 PNG job；time 位于 [0,duration−1/30] |
 | `render` | projectId, revision, timeoutMs? | 立即返回异步 MP4 job，queued；不等待渲染完成 |
 | `status` | jobId | 当前状态、阶段、进度、projectId/revision/jobId、工具版本；成功时 artifact |
@@ -257,10 +257,10 @@ worker 新配置模式（管理工程，Host 不直接改这些文件）：
 
 ### 合成契约（发布前校验，任一不满足返回 E_COMPOSE_INVALID 且不写盘）
 
-1. UTF-8 1..49152 字节（48 KiB），不含 NUL；`MAX_COMPOSITION_BYTES = 48 * 1024`。
+1. UTF-8 1..49152 字节（48 KiB），不含 NUL；`MAX_COMPOSITION_BYTES = 48 * 1024`。同时 `JSON.stringify(html)` 的 UTF-8 转义字节数必须 ≤ **61440（60 KiB，`MAX_COMPOSITION_ESCAPED_BYTES`）**：文档在 JSONL 里是一个 JSON 字符串，引号/反斜杠/控制字符会成倍增加行长度，超限返回 `E_COMPOSE_INVALID`（消息含原始字节、转义字节与上限），避免一行超过 64 KiB 而丢失请求/响应。
 2. 完整文档：可选 BOM/空白后以 `<!doctype html`（大小写不敏感）或 `<html` 开始，且包含 `</html>`。
 3. 恰好一个 `id="main"` 元素，带非空 `data-composition-id` 与数值 `data-width`（320..3840）、`data-height`（180..2160）、`data-duration`（0.1..3600）。
-4. 必须由脚本暴露预览 timeline：`window.__timelines = { main: <gsap timeline> }`（也接受 `window["__timelines"]`）；缺失时给出可操作的错误。
+4. 必须由**内联 `<script>` 体**里的赋值暴露预览 timeline：`window.__timelines = { main: <gsap timeline> }`（也接受 `window["__timelines"]`）；带 `src=` 的 script、HTML 注释、属性文本里的同名字符串都不算；`main: null`/`main: undefined` 这类明显占位映射被拒绝，缺失/占位时给出可操作错误。**该静态检查是必要条件而非充分条件**：是否真的能播放由固定预览运行时证明，脚本从不赋真实 timeline 会在预览侧表现为可恢复错误，而不是 compose 失败。
 5. 拒绝 `<iframe>/<object>/<embed>/<base>/<link>/<video>/<audio>/<source>/<track>`，以及 `src=`/`href=`/CSS `url(...)` 中的 `http:`/`https:`/`//`/`file:`/`blob:`/`javascript:`。`xmlns="http://www.w3.org/2000/svg"` 是命名空间不是 fetch，允许；`url(#fragment)` 同文档引用也允许。
 6. `src=`/`href=`/`url(...)` 的本地引用（去掉前导 `./`）必须是 `project.json` 已声明资产（通常 `assets/gsap.min.js`）；引用 `index.html`、未声明文件、绝对路径或 `..` 被拒绝，错误信息列出当前声明资产。
 7. SDK 校验与 inspect 一致：`openComposition(html)` 可打开，`buildDocument(comp.serialize())` 的 width/height/duration 有限且在范围内；始终 `comp.dispose()`。
@@ -273,10 +273,10 @@ worker 新配置模式（管理工程，Host 不直接改这些文件）：
 - 写入路径：`atomicWrite(index.html)` → `read()` 逐字节读回核对；不一致或读取失败则用 `atomicWrite` 恢复旧字节并返回 `E_PERSIST`（stage `persist`）；恢复也失败时错误带 `uncertain: true`。
 - 发布后立即通过既有 `Previews.create` 建立新 revision 的私有快照（TTL 单独用 60s），确认入口文件在快照清单内后 `discard`；失败则恢复旧字节并返回 `E_PERSIST`。`preview.status: "ready"` 只表示“契约校验通过 + 该 revision 可通过既有快照路由服务”，不声称浏览器已播放。
 - 成功后 `recordWrite` 追加 `actor:"ai", kind:"project.compose"` 历史条目（summary 形如 `AI composition (653 bytes, 5s)`）；`close`/worker 重启后 revision 与 HTML 从磁盘恢复。
-- `project.source` 只读：返回当前 revision 的完整 HTML 与声明资产；入口 > 48 KiB 返回 `E_LIMIT`（浏览器预览仍可读，Agent 编辑路径拒绝）。`source` 不写事实、不产生历史。
+- `project.source` 只读：返回当前 revision 的完整 HTML 与声明资产；入口 > 48 KiB 或 `JSON.stringify(html)` 转义后 > 60 KiB 返回 `E_LIMIT`（浏览器预览仍可读，Agent 编辑路径拒绝；后者保证 source 结果不会超过 64 KiB Tool 预算）。`source` 不写事实、不产生历史。
 
 ### 测试
 
 - `test/schema.test.mjs`：schema 方法集 == worker switch 方法集（24）、新方法 params/result 双向校验。
-- `test/compose.integration.mjs`（真实 worker 进程）：创建工程 → `project.source` 读回 → `project.compose` 发布（新 revision/history/close 重开/重启持久化）→ 相同内容 `unchanged` → 幂等与 `E_OPERATION_REUSED` → `E_REVISION_CONFLICT` 不改文件 → 各契约失败场景均为 `E_COMPOSE_INVALID` 且 revision/内容不变 → 参数错误 `E_PARAMS` → 工程目录只读注入恢复旧内容（`uncertain: true`）→ 预览快照目录只读注入恢复旧版本。
+- `test/compose.integration.mjs`（真实 worker 进程）：创建工程 → `project.source` 读回 → `project.compose` 发布（新 revision/history/close 重开/重启持久化）→ 相同内容 `unchanged` → 幂等与 `E_OPERATION_REUSED` → `E_REVISION_CONFLICT` 不改文件 → 各契约失败场景均为 `E_COMPOSE_INVALID` 且 revision/内容不变（含引号密集文档的 JSON 转义上限、HTML 注释里的 `__timelines`、`main: null`）→ 参数错误 `E_PARAMS` → 工程目录只读注入恢复旧内容（`uncertain: true`）→ 预览快照目录只读注入恢复旧版本 → 直接植入引号密集入口后 `project.source` 的转义上限 `E_LIMIT`。
 - 运行：`node --test --test-concurrency=1 test/*.test.mjs`（既有 44 项）与 `node --test --test-concurrency=1 test/compose.integration.mjs`。
