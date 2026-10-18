@@ -437,6 +437,28 @@ export function validateDocumentHtml(html, { expectedScenes } = {}) {
   return parsed;
 }
 
+/**
+ * Complete, round-trippable Scene template projection derived from the
+ * authoritative parsed HTML model. This is exactly what scene.update expects
+ * as its `template` parameter, so a client can copy it and change only the
+ * fields it intends to edit without dropping subtitle/badge/logo/shot/accent.
+ * Optional fields are only present when the current document actually has
+ * them; nothing is invented and no Scene identity/timing/paths leak in.
+ */
+export function sceneTemplate(scene) {
+  const template = {
+    title: scene.title,
+    duration: scene.duration,
+  };
+  if (scene.subtitle !== undefined) template.subtitle = scene.subtitle;
+  if (scene.badge !== undefined) template.badge = scene.badge;
+  if (scene.color !== undefined) template.color = scene.color;
+  if (scene.accent !== undefined) template.accent = scene.accent;
+  if (scene.logo !== undefined) template.logo = scene.logo;
+  if (scene.shot !== undefined) template.shot = scene.shot;
+  return template;
+}
+
 export function sceneSummary(scene) {
   return {
     sceneId: scene.sceneId,
@@ -444,6 +466,7 @@ export function sceneSummary(scene) {
     start: scene.start ?? 0,
     duration: scene.duration,
     title: scene.title,
+    template: sceneTemplate(scene),
   };
 }
 
@@ -457,6 +480,7 @@ export function sceneSummaries(parsed) {
       start,
       duration: scene.duration,
       title: scene.title,
+      template: sceneTemplate(scene),
     };
     order += 1;
     start = Math.round((start + scene.duration) * 1000) / 1000;

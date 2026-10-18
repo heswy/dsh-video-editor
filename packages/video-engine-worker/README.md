@@ -190,3 +190,32 @@ worker 新配置模式（管理工程，Host 不直接改这些文件）：
 - 根因（上游 HyperFrames 0.8.167，不改 node_modules）：render 的 static-frame dedup 会创建第二个验证页；该页关闭后主捕获页静默丢失 `page.setViewport(1280,720)` 的 device-metrics override，`window.innerHeight` 降为 633（真实 headless 窗口内容高度），而 `captureBeyondViewport` 已被“内容适配”降为 false，CDP 只绘制视口内 633 行，底部 87 行留黑。
 - 本项目可控适配：worker 对 render job 设置 `HF_STATIC_DEDUP=false`（仅渲染；frame/snapshot 路径不变），避免第二验证页，保持同一 revision/HTML、完整 720p 构图，不裁切/不拉伸/不补色。代价是长静帧渲染失去该去重优化（实测 5s 单场景 render 约 +1–2s；11s 工程仍在 120s 默认超时内）。上游修复后可移除。
 - 回归：`test/render-band.integration.mjs` 覆盖 baseline、人工布局（底部 logo 证明 y>560 内容存在）与 960×720 4:3 静态工程，各两个时刻解码 MP4 帧与同 revision worker frame 对照，并断言底部无黑带、场景背景到底、整帧差异在编码容差内。
+
+## P3-009：完整 Scene 读取契约 scene.template（0.3.2）
+
+两包升 **0.3.2**；JSONL v1、22 个方法、旧字段与写入/重生成/合并/黑带语义均不变。所有 **Scene summary**（`inspect`/`open`、`project.create`、`scene.create/update/remove/reorder`、`project.revise` 成功结果）新增只读字段 **`template`**：
+
+```json
+{
+  "sceneId": "scene-1",
+  "order": 0,
+  "start": 0,
+  "duration": 5,
+  "title": "完整字段场景",
+  "template": {
+    "title": "完整字段场景",
+    "duration": 5,
+    "subtitle": "副标题",
+    "badge": "BADGE",
+    "color": "#123456",
+    "accent": "#abcdef",
+    "logo": "assets/logo.png",
+    "shot": "assets/shot.png"
+  }
+}
+```
+
+- `template` 从当前权威 HTML 的受控解析模型生成，形状冻结为 `{title,duration,subtitle?,badge?,color?,accent?,logo?,shot?}`，**可直接作为 `scene.update.template`（及 `project.revise.template`）输入**；不再包含 `sceneId/order/start/elements`、目录或绝对路径。
+- 颜色/资产路径取当前工程真实值；文本包含人工 text 修改；只改色/换素材时，前端复制当次 `inspect` 的 `template` 再修改目标字段即可保留 subtitle/badge/accent/logo/shot 等其它字段，不需要解析 HTML 或维护第二份真相。
+- 可选字段只在当前文档确实存在时出现（subtitle/logo/shot 等不虚构；受控模板的空 badge 元素返回 `badge:""`）。`scene.update` 仍是完整替换语义，**未改成 partial patch**；未设置/清空字段的既有规则不变。无变化提交仍按既有 `E_INTERNAL` 守卫拒绝。
+- 旧 P2 legacy 单 composition 仍返回 `scenes: []`；schema 的 `sceneSummary`/`inspectScene` 均要求 `template`，方法集与 v1 协议不变。
