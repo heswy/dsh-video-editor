@@ -71,9 +71,10 @@ const REVIEWED_ENGINE_PAIRS = Object.freeze([
   { client: '0.3.0', worker: '0.3.0' },
   { client: '0.3.1', worker: '0.3.1' },
   { client: '0.3.2', worker: '0.3.2' },
+  { client: '0.4.0', worker: '0.4.0' },
 ]);
 /** Managed-project registries exist from engine 0.3.0; stricter than the pair list on purpose. */
-const MANAGED_ENGINE_VERSIONS = Object.freeze(['0.3.0', '0.3.1', '0.3.2']);
+const MANAGED_ENGINE_VERSIONS = Object.freeze(['0.3.0', '0.3.1', '0.3.2', '0.4.0']);
 
 const ENGINE_CLIENT = 'packages/video-engine-client';
 const ENGINE_WORKER = 'packages/video-engine-worker';
