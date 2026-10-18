@@ -68,3 +68,5 @@
 2026-10-18 D029 / accepted：P3-004的df4b74f及e364017记录在受控本机范围验收，两包0.2.1、22方法schema、快照与registry恢复。preview.release未知/重复返回E_SNAPSHOT_NOT_FOUND，清理效果幂等；Host后续按登记/TTL判断有效，不凭磁盘存在。P2-007的8c6bf26/b204760通过，P2-006交付R1关闭；0.2.2可作受控候选但未授权本轮安装。下一阶段拆P3-005-A原生会话/模型/素材契约（p0-mode-shell）、P3-005-B受控画布播放/直接编辑写回验证（p1-engine），按白名单并行，待用户转发启动；不直接开发旧右侧表单或场景卡片。
 
 2026-10-18 D030 / accepted：P3-005-A调查7daa039通过源码/只读契约验收，非实际嵌入真机。会话接线采用videoView source、hero:false和原生Conversation/模型/审批；工程会话允许宿主发现，不自动新Workspace、不归档隐藏。mainView retain仅表示保留，不单独证明编辑器正在挂载；互斥须结合panel可见性与卸载。映射由插件Host独立持久化，权限以可信Agent身份校验。审批首版沿用原生takeover/拒绝/取消，不另造独立Stop或hack未读。下发P3-006-A实际会话接线可独立于进行中B，候选0.3.0-alpha.1暂保留54f4671引擎；画布/新引擎与素材完整创作另行集成，不再追加同类调查轮次。
+
+2026-10-18 D031 / accepted：ea2d1a4的P3-005-B受控浏览器spike通过独立Node10/10、Chrome41/41与能力探针。冻结composition CSS px/静态基座分离、实例消息/生命周期骨架；当前只证明文字可直接写回，拖动/尺寸/样式尚无持久协议，不当作完成。下一实现P3-006-B由p1-engine扩展统一edit的layout/style、inspect能力、场景保留、历史和字段级合并，两包升0.3.0；p0会话alpha接线继续独立。生产Host需补授权/realpath/TTL/精确脚本策略，不直接复制toy服务器；待两线收口后集成真实DSH画布。

@@ -1,3 +1,5 @@
+> 固定交付ea2d1a4的记录；2026-10-18总调度已独立复审通过，见 [P3-005B-review-01](../reviews/P3-005B-review-01.md)。这是受控独立浏览器spike，不是DSH生产界面；下一任务P3-006-B。
+
 # P3-005-B：受控画布播放、点选与直接编辑验证
 
 日期：2026-10-18。执行：**p1-engine**；分支 `codex/p1-engine-spike-b4bf` / PR#2；开工head `e364017`，已审功能固定 **df4b74f / 两包0.2.1**。沿用当前树；先记实际HEAD和协调SHA，不reset。依据 [P3-004复审](../reviews/P3-004-review-01.md)。
@@ -30,4 +32,39 @@
 
 ## 开发记录（p1-engine）
 
-待填写：实际HEAD/协调SHA、试验依赖、命令、真实行为结果、契约与能力缺口、证据、提交、未测项。
+填写：2026-10-18。按本指南执行；开工 `git fetch origin` 成功，协调记忆使用 `origin/codex/project-foundation` @ **920957d**（期间一次 SSL 失败后重试通过）。未切分支、未修改全局规则、未 merge。
+
+### 起点、范围与提交
+
+- 工作树：`/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/p1-engine`，分支 `codex/p1-engine-spike-b4bf`（PR #2）。
+- 开工 HEAD **`e364017`**；引擎功能固定 **`df4b74f`** / 两包 **0.2.1**（P3-004 已验收）。实现提交 **`4ad7b2ec563e125138064305d9bc7742b9b129cb`**（spike + 证据），本记录与研究记录另以 docs 提交。
+- 范围：只新增 `spikes/editor-canvas/**`、`docs/research/P3-005B-editor-canvas-spike.md`、本任务记录；`git diff df4b74f -- packages` 为空（两引擎生产代码/协议/schema 字节不变）；未改根插件/Host/其它 spike/全局 STATUS/决策/profile；未安装/启停/重启、未调模型、未 merge。
+- 试验依赖复用 `packages/video-engine-worker/node_modules`：puppeteer-core 25.14.0、`@hyperframes/sdk` 0.8.167；spike 自身无依赖、无 package-lock/安装脚本。Node v24.14.0、Chrome 155.0.8059.84。
+
+### 真实行为结果（自述，待独立复审）
+
+- 独立试验页 + 真实 Chrome：`spikes/editor-canvas/scripts/run-canvas.mjs` → **41/41 断言通过**（约 21s，含断网阶段）；合约/Host 服务 Node 测试 `npm test --prefix spikes/editor-canvas` → **10/10**（约 1.2s）；能力探针 `capability-probe.mjs` 通过（约 3s）。
+- 播放/seek：9 个时间点（含 4.99/5.0/9.0/10.99s）请求=落点；播放 800ms 推进约 0.70s，暂停后保持。与 worker 抽帧 1.5/5.5/9.0s：Δ≤2 容差内 **99.30%/99.10%/99.93%**，精确逐像素 **99.28%/97.93%/99.92%**，MAE 0.36/0.30/0.04；证据记录 runner 用 git 验证两包相对 `df4b74f` 未变。
+- 选择/坐标：真实鼠标命中 `scene-1-title`；选中层只在 Host 编辑层；letterbox 1100×700 与 760×640 映射点击命中一致、留白不命中；Scene 边界/隐藏对象（时间窗）/重叠 stack/结构容器规则明确。
+- 文字原位编辑：Esc 不写回；Enter 经共享 worker `edit`+`expectedRevision`+`operationId` 写回并重载新快照（`449648a3…`→`876ae63b…`），close/reopen 与 worker 重启后持久；旧 revision 冲突 `E_REVISION_CONFLICT` 不覆盖，刷新重试成功；只读目录注入 `E_PERSIST`，草稿保留、恢复后重试成功。
+- 缺口：拖动/缩放仅编辑层暂态，`layout` op 被 worker `E_PARAMS` 拒绝、revision 不变；播放中拖动被阻止。能力矩阵：文字/timing/Scene 级颜色等可持久化；元素位置/尺寸/样式/层级无协议写路径；SDK `setStyle` 只在 Host 自有副本生效，`scene.update` 整 Scene 重生成会覆盖元素级样式。
+
+### 契约与能力缺口（详见研究记录）
+
+- 冻结最小 v1 消息/坐标契约：iframe WindowProxy 身份 + instanceId + nonce + 严格形状/序号；opaque origin 下 origin=`"null"` 不能认证；命令/事件白名单；迟到/跨实例/撤销实例拒绝；跨层坐标统一 composition CSS px，Host 处理 letterbox。
+- 隔离：`sandbox=allow-scripts`、CSP `default-src none`/`connect-src none`/inline sha256、只按 manifest 路由并逐文件校验；外部请求 0；断网播放可用。只证明受控模板，不是完整安全边界。
+- 最小 typed op 提案（未实现）：`layout`（composition-px）与 `style`（属性白名单），需接入生成器、`expectedRevision`/幂等、历史/undo、merge（`inlineStyles` 已在 stableId 签名中），并让 `scene.*` 重生成保留元素 deltas 或显式冲突。
+
+### 证据
+
+- `spikes/editor-canvas/evidence/canvas-evidence.json`：41 项断言、播放/seek/命中/letterbox/文字编辑/冲突/失败/缺口/合约探针/清理；截图 `canvas-boot.png`、`selection-title.png`、`text-editor-open.png`、`text-committed.png`、`transient-drag.png`、`letterbox-1100x700.png`、3 组预览/worker 帧 PNG。
+- `spikes/editor-canvas/evidence/capability-evidence.json`：worker/SDK 写回矩阵、SDK `setStyle` 持久化与重生成覆盖证据、typed op 提案。
+- 证据中的仓库/试验目录路径已替换为 `<repo>`/`<spike>`，不含个人目录路径。
+- 快照生命周期：旧 revision 请求 `E_REVISION_CONFLICT`；切换后旧 Host 路由 404 + `E_SNAPSHOT_NOT_FOUND`；worker 退出后 `previews/` 为空（证据 `host.snapshotLifecycle`）。
+
+### 未测项与风险
+
+- 未接入真实 DSH/Host：宿主 CSP/焦点/主题/多插件共存、真实 Host 资产路由与会话生命周期未测；本页是独立试验页。
+- 仅受控 `product-launch-v1` 模板；任意 HTML/JS、不可信素材、音视频、多用户、Safari/Firefox/Windows 未测。
+- runtime 对 `data-start` 时间窗的可见性是预览侧近似，非 HyperFrames 导出逐帧 parity（3 个采样点 99% 级一致）。
+- sandbox/CSP 非完整安全边界；nonce/origin 非认证。拖拽对齐线、缩放约束、完整工具条/多选不在本 spike。

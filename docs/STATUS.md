@@ -23,23 +23,23 @@
 
 ## 工作区与当前任务
 
-工作树绝对路径和通用规则只维护在 [DEVELOPMENT](DEVELOPMENT.md)。2026-10-18 已fetch并核对：三棵树完整。p0-mode-shell交付7daa039后干净；p1-engine正在P3-005-B开发，有任务文件与spike未跟踪内容，属于进行中的工作，不操作、不重建。
+工作树绝对路径和通用规则只维护在 [DEVELOPMENT](DEVELOPMENT.md)。2026-10-18 已fetch并核对：三棵树完整。p0-mode-shell交付7daa039后干净；p1-engine交付ea2d1a4后干净；开发树不需要新建或重建。
 
 | 工作区 | 分支 / PR | 最近功能交付 | 当前动作 |
 |---|---|---|---|
-| 主工作区（总调度） | `codex/project-foundation` / [#1](https://github.com/heswy/dsh-video-editor/pull/1) | 当前产品、规则、评审、交接 | P3-005-A调查已验收，P3-006-A会话接线实现指南准备好；等待B回交再冻结画布实现 |
-| p1-engine | `codex/p1-engine-spike-b4bf` / [#2](https://github.com/heswy/dsh-video-editor/pull/2) | `df4b74f` / `e364017` | P3-004已验收；[P3-005-B](tasks/P3-005B-canvas-direct-edit-spike.md) 受控画布/写回spike进行中，尚未交回 |
+| 主工作区（总调度） | `codex/project-foundation` / [#1](https://github.com/heswy/dsh-video-editor/pull/1) | 当前产品、规则、评审、交接 | A/B均已验收；会话侧P3-006-A、引擎直接编辑P3-006-B按白名单并行，随后集成实际画布 |
+| p1-engine | `codex/p1-engine-spike-b4bf` / [#2](https://github.com/heswy/dsh-video-editor/pull/2) | `df4b74f`；spike head `ea2d1a4` | [P3-005-B复审](reviews/P3-005B-review-01.md) 通过；[P3-006-B](tasks/P3-006B-layout-style-persistence.md) 布局/样式持久化实现指南准备好，待用户转发 |
 | p0-mode-shell | `dsh/p0-mode-shell` / [#3](https://github.com/heswy/dsh-video-editor/pull/3) | `8c6bf26`；调查head `7daa039` | [P3-005-A复审](reviews/P3-005A-review-01.md) 调查通过；[P3-006-A](tasks/P3-006A-native-creation-conversation.md) 实际会话接线指南准备好，待用户转发 |
 
-当前工作区HEAD：`p1-engine@e364017`（B开发中）、`p0-mode-shell@7daa039`（已push、干净）；未合并协调分支。
+当前工作区HEAD：`p1-engine@ea2d1a4`（spike已交付、干净）、`p0-mode-shell@7daa039`（已push、干净）；未合并协调分支。
 
 当前接手只使用 [p1-engine 交接](handoffs/p1-engine.md)、[p0-mode-shell 交接](handoffs/p0-mode-shell.md)。旧 programmer1/2 文件保留为历史，不重新执行已交付任务。
 
 ## 接下来按这个顺序
 
-1. 用户转发后p0-mode-shell执行P3-006-A右侧原生会话实际接线，不再重复调查；p1-engine继续P3-005-B画布/写回验证，两线按白名单独立。
-2. A调查已通过；采用videoView source、hero:false、工程映射Host持久化，不新Workspace/不归档隐藏。mainView保留计数不等于编辑器可见，接线需避免双根与错误锁定。B回交后冻结坐标/消息/写回契约。
-3. 会话侧P3-006-A可先实现，不等B；根版本0.3.0-alpha.1候选暂用旧已审引擎54f4671。画布与多Scene新引擎接入待B后下发，未持久化拖动/假播放不可展示为已完成。
+1. 用户转发后p0-mode-shell执行P3-006-A右侧原生会话实际接线，不再重复调查；p1-engine执行P3-006-B统一edit布局/样式持久化，两线按白名单独立。
+2. A调查已通过；采用videoView source、hero:false、工程映射Host持久化，不新Workspace/不归档隐藏。mainView保留计数不等于编辑器可见，接线需避免双根与错误锁定。B已验收：composition CSS px与静态布局基座分离、实例消息/生命周期；toy Host不可原样进生产，需补授权/TTL/精确脚本资源策略。
+3. 会话侧P3-006-A可先实现，不等B；根版本0.3.0-alpha.1候选暂用旧已审引擎54f4671。p1引擎0.3.0补layout/style、场景重生成保留与三方合并；会话侧与引擎完成后下发真正DSH画布整合，不把暂态拖动展示为已保存。
 4. 0.2.2过渡候选已通过但不自动安装；继续保留用户当前0.2.1与全部旧候选。新界面采用引擎df4b74f时需明确更新现有Host/staging版本固定与新方法白名单。
 5. 后续 P3-006 接通工程创建、上下文、素材归属与冲突处理；P3-007 验收真实“一句话→15s 多场景→人工修改→AI 续改→重开→导出”。[ROADMAP](ROADMAP.md) 为规划，不自动授权实现。
 
@@ -59,3 +59,5 @@
 最新评审：[P3-004](reviews/P3-004-review-01.md)、[P2-007](reviews/P2-007-review-01.md) 均在本机受控范围通过。独立检查摘要位于同级 artifacts/reviews/2026-10-18/joint-review-summary.json。评审新建staging仅作测试，其demo有写入，不作为安装路径；开发者干净候选保持原样。
 
 最新调查验收：[P3-005-A](reviews/P3-005A-review-01.md)通过（源码/只读契约，不是实际嵌入真机）；下一任务已准备P3-006-A，安装授权仍是具体候选完成后的步骤。
+
+最新画布spike：[P3-005-B复审](reviews/P3-005B-review-01.md)独立Node10/10、真实Chrome41/41、能力探针通过；播放/选中/文字原位写回已证明，layout/style当前E_PARAMS缺口转P3-006-B。证据在同级artifacts/reviews/2026-10-18/P3-005B-{canvas,capability}/；非真机UI。
