@@ -6,7 +6,7 @@
 
 交一个可安装开发候选，让左侧真正播放、选中、原位编辑、拖动/缩放；右侧原生AI持续修改同一工程，模型/历史保留；支持受控工程创建/重开、换黄色和PNG/JPEG素材导入。无底部场景卡片、无常驻属性第三列、旧目标下拉+表单退出主路径。不是再交一份spike或提案。
 
-- 根0.3.0-alpha.3（C为alpha.2，各自固定产物不覆盖）。引擎冻结 **74294e6**、client/worker **0.3.0**，包摘要见P3-006B-review-02。p1并行修黑带但不等待其实现开始本任务；不要自动跟随PR/分支head。后续审过的BUG-001提交再显式替换固定commit与版本、复跑相应导出检查。
+- 根0.3.0-alpha.3（C为alpha.2，各自固定产物不覆盖）。引擎更新冻结 **82f6219**、client/worker **0.3.1**，BUG-001已通过[独立复审](../reviews/BUG-001-review-01.md)。若已按74294e6/0.3.0开始，不推翻已有UI/Host工作，仅显式换固定commit/两包完整版本，生成新staging并复跑对应真实链；不覆盖旧staging、不自动跟随PR/head。新包在p1树artifacts/engine/82f6219/；worker SHA-256为31c2ed850d445e588d8063cc95a1e57cde1a994cd732c4912bc6c4e9481be8a7，client为dcb939b023e351b4299e3789e8fbf2528083f726e74164da1c6f2fe42ce7e92b。根仍alpha.3，C仍按自己的旧引擎范围完成。
 - 功能仅限已审product-launch-v1和声明的PNG/JPEG资产。legacy demo仍可打开，但不能伪装成已有layout/style能力；用户新建受控工程，旧demo/用户数据不得静默重建或prepare-fixture重置。
 - 接口/坐标/消息依据已审P3-005-B spike ea2d1a4和新engine README/schema；只读取p1固定Git文件，不改p1树。可以将必要runtime/contract逻辑以明确来源落入插件自有模块，不能把独立toy Host直接当生产授权边界。
 
@@ -37,6 +37,6 @@
 - Host与真实worker：新建受控工程→持久目录与会话绑定→三个Scene约15s→换背景黄→人工文字/位置/颜色→AI同对象续改文案保留人工布局→history/undo/redo→close/reopen内容一致→真实MP4。使用受控adapter/脚本验证；不需要真实模型来证明引擎/Host链。
 - 真浏览器插件开发页/组件验证：实际播放/seek；两个动画时刻和两种letterbox尺寸下命中及拖动/缩放基座正确；原位编辑失败/冲突恢复；AI写入后画布更新；文件预览C不回归、返回/历史/草稿与单编辑根保留。
 - 素材真实PNG/JPEG导入并用于受控Scene；跨工程receipt/路径穿越/越限拒绝；快照过期/切换/停用后旧消息和路由失效。日志不含私钥、个人会话正文或任意绝对文件内容。
-- 固定源码提交、新包、新staging与INTEGRITY和完整SHA、分项测试、真实帧/渲染证据、开发记录一次交回PR#3。不把独立开发页当真实DSH激活。BUG-001未关闭时披露黑带，不能把该MP4视觉标为通过。
+- 固定源码提交、新包、新staging与INTEGRITY和完整SHA、分项测试、真实帧/渲染证据、开发记录一次交回PR#3。不把独立开发页当真实DSH激活。使用已审82f6219后对本任务新staging仍需复核导出完整画面；不能把其它提交或当前旧安装自动算作已修复。
 
 本指南授权开发与任务fixture的本地验证，不自动安装alpha.2/alpha.3、不重启DSH、不新增真实模型请求、不改用户当前工程/会话、不merge。现有alpha.1 staging已是用户安装依赖，禁止覆盖/归一化。实际候选完成并复审后再做明确安装验收；安全定向输入规则不变。
