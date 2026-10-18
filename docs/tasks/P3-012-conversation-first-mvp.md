@@ -70,37 +70,66 @@ E. **实际UI证据**：真实组件浏览器证明自动首次预览、两轮�
 | Client 只读自动预览/首开流程 + checks | `97a2ec0` |
 | P3-012 独立 harness + 交付门禁更新 | `8799260` |
 | alpha.4 staging gate（根版本 + 审核版本对） | `79c6e20` |
+| docs：契约/交付/证据记录 | `5f2a271` |
+| 复审缺陷修复（escaped 双上限 + timeline 校验加固） | `d84ec5d` |
+| engine-client spawn-context 测试去 flake（仅测试） | `5956a93` |
 
 ### 检查结果（本轮实际输出）
 
 | 层 | 命令 | 结果 |
 |---|---|---|
 | Engine worker 契约 | `node --test --test-concurrency=1 test/*.test.mjs`（packages/video-engine-worker） | 44 pass / 0 fail |
-| Engine compose 集成 | 同上 `test/compose.integration.mjs` | 4 / 4 |
+| Engine compose 集成 | 同上 `test/compose.integration.mjs` | 5 / 5（含复审缺陷回归） |
 | Engine client | 同上（packages/video-engine-client） | 22 pass / 0 fail / 1 opt-in skip |
-| Host 契约 | `node scripts/check-host.mjs` | 52 / 52（基线 46 保留 + 6 新增） |
+| Host 契约 | `node scripts/check-host.mjs` | 53 / 53（基线 46 + 6 P3-012 + 1 escaped 预算复审回归） |
 | Client 冒烟 | `node scripts/smoke-client.mjs` | 71 / 71（按新范围替换 16 个旧手动编辑器用例，清单见交付消息） |
 | 静态/打包 | `node scripts/check.mjs`、`node scripts/test-stage-version.mjs` | 50 / 50、10 / 10 |
 | 统一门禁 | `npm run check` | 全绿 |
-| 开发 staging 现有链回归 | `test-canvas-browser`、`test-canvas-chain`、`test-host-engine`（固定提交 staging） | 均 ok=true（证据在共享 artifacts/p2-b/evidence/） |
+| 开发 staging 现有链回归 | `test-canvas-browser`、`test-canvas-chain`、`test-host-engine`（最终 fix staging） | 均 ok=true（证据在共享 artifacts/p2-b/evidence/） |
 | 开发 staging 手动画布套件 | `test-canvas-workspace` | 本轮按任务不要求重跑/扩展手动拖拽用例，未作为交付关口（默认 false 路径仍保留） |
-| P3-012 独立验证（chain） | `scripts/test-conversation-chain.mjs --staging <fixed>` | ok=true，**230/230**：同工程 3 轮 compose（A/B/B-mod）、28/28 失败矩阵原子性、幂等/冲突/作用域、snapshot 字节、真 Chrome 双题材 ready/seek/play、prompt context、close/reopen |
-| P3-012 独立验证（preview） | `scripts/test-conversation-preview.mjs --staging <fixed>` | ok=true，**41/41**，B1–B5：首开自动 ready 651ms、发布→左侧 ready 1483/1296ms、play/pause/seek、失败+恢复、产品面板 0 手动控件/0 写请求；7 张真实页面截图 |
+| P3-012 独立验证（chain） | `scripts/test-conversation-chain.mjs --staging <fix staging>` | ok=true，**230/230**：同工程 3 轮 compose（A/B/B-mod）、28/28 失败矩阵原子性、幂等/冲突/作用域、snapshot 字节、真 Chrome 双题材 ready/seek/play、prompt context、close/reopen |
+| P3-012 独立验证（preview） | `scripts/test-conversation-preview.mjs --staging <fix staging>` | ok=true，**41/41**，B1–B5：首开自动 ready 708ms、发布→左侧 ready 1518/1221ms、play/pause/seek、失败+恢复、产品面板 0 手动控件/0 写请求；8 张真实页面截图 |
+| 复审缺陷 post-fix probe | verifier 对抗性 probe（fix staging） | 7/7 期望结果：HIGH 引擎致死输入现被 typed 拒绝且 engine 存活；注释/null timeline 被拒；source escaped E_LIMIT |
+
+### 独立复审缺陷与修复（2026-10-18）
+
+独立 verifier 对冻结 staging 做对抗性边界 probe，报告 3 项；均已修复并经可执行证据闭环
+（详见 research 第 6 节，修复提交 `d84ec5d`）：
+
+1. **HIGH**：契约合法的 quote/backslash 密集 HTML 经 JSON 转义后超过 worker 64 KiB JSONL 行，
+   worker 返回不可关联 `E_LINE_LIMIT` 帧 → engine client 杀 worker → 之后所有视频请求
+   `E_WORKER_EXITED`。修复：Host validate 阶段 escaped ≤61440 预校验（`E_PARAMS`，不启动 worker）+
+   worker composition escaped 上限（`E_COMPOSE_INVALID`）+ source escaped `E_LIMIT`。修复后 probe：
+   typed 拒绝、无 fatal protocol、engine 后续 inspect/source/compose 正常；边界 escaped 60499 B
+   文档仍可发布（不过度收紧）。
+2. **MEDIUM**：timeline 暴露原来按原始 HTML 文本匹配，注释中的赋值/`main: null` 也能发布并拿到
+   `publishedRevision`。修复：只扫描 inline `<script>` 体，拒绝字面量 null/undefined；明确
+   “静态必要非充分”，播放证明仍由预览 runtime 承担。
+3. **LOW**：原文 “48 KiB 保证 source <64 KiB” 的声言在转义下不成立；escaped 上限加入后成立
+   （source escaped >61440 返回 `E_LIMIT`），注释与文档同步更正。
+
+残留限制：engine client 对不可关联协议帧仍按既有设计致命处理（Host 预校验使文档允许路径不再产生）；
+engine-client spawn-context 测试在高负载下的 200ms handshake 预算偶发超时（与运行时修复无关），
+已给该两类用例独立宽松预算（`5956a93`），负向超时用例保持 200ms。
 
 ### 交付物
 
-- 新引擎包（固定提交重打）：`artifacts/p3-012/packages/`；staging 快照
-  `artifacts/p2-b/staging-p3-012-<engine8>-<root8>/`（INTEGRITY.json 记录 commit/versions/摘要）；
-  最终 staging 在源码冻结后重建，路径/摘要以交付消息为准。
-- push `codex/video-studio` 并更新统一草稿 PR（原 PR 保留）。
+- 新引擎包（固定提交 `d84ec5d` 重打）：`artifacts/p3-012/packages/`（client 8610 B
+  `14b85c39…ed513`，worker 66733 B `f86b8639…7863b`）。
+- 最终 clean staging：`artifacts/p2-b/staging-p3-012-d84ec5d-d84ec5d`（rootCommit=engineCommit
+  `d84ec5d`，rootDirty=false；INTEGRITY.json sha256
+  `9b8aff4ba3f9afaec75d603ed5dc6652aac9e987b9c8e43bf5e37de9c15ba199`）。
+- push `codex/video-studio` 并创建/更新草稿 PR（此前统一分支 PR 创建超时未确认，本轮按
+  head=codex/video-studio 查询为 0 后创建草稿 PR #4；原 #1/#2/#3 保留）。
 - 本轮只完成**单元/契约 + 开发 staging 真组件浏览器**两层；真实 DSH 安装、真实模型对话、真机
   验收仍需总调度复审后按授权安排。安装/模型请求不在本任务授权内。
 
 ### 复审关注点（已知边界，不谎报）
 
-1. 48 KiB 的 AI 编辑上限是 MVP 边界；旧更大工程可预览但 `project.source` 明确 `E_LIMIT`。
-2. `preview.status:"ready"` 只证明契约+SDK+快照管线可服务，不是浏览器播放证明；播放由左侧
-   snapshot+runtime 证实，失败显示可恢复错误。
+1. 原始 48 KiB（且 JSON-escaped ≤60 KiB）是 AI 编辑路径的 MVP 上限；旧更大/quotes 密集工程可被
+   浏览器预览，但 `project.source` 会明确 `E_LIMIT`，不静默截断。
+2. `preview.status:"ready"` 只证明契约+SDK+快照管线可服务，不是浏览器播放证明；timeline 暴露是
+   静态必要非充分校验；播放由左侧 snapshot+runtime 证实，失败显示可恢复错误。
 3. compose 是全文档替换：prompt 已要求保留无关内容，但复杂回归仍取决于模型质量；真实模型闭环
    未在本轮授权内验证。
 4. 旧手动画布路径仍保留代码与 P3-008 runtime 契约覆盖，产品 UI 不可达；本轮未重跑全部手动拖拽

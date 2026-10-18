@@ -24,12 +24,13 @@ STATUS/PRODUCT 与 `docs/tasks/P3-012-conversation-first-mvp.md` 为准：**右�
 
 提交的是一个完整 HTML 文档，全部满足后才可能发布：
 
-1. UTF-8 1..49152 bytes（48 KiB，Host 与 worker 同常量），无 NUL；
+1. UTF-8 1..49152 bytes（48 KiB，Host 与 worker 同常量），且 JSON-stringify 后的转义形式 ≤61440 bytes（60 KiB，Host 与 worker 同常量），无 NUL；
 2. 完整文档：去 BOM/前导空白后以 `<!doctype html>`（或 `<html>`）开始，包含 `</html>`；
 3. 恰好一个 `id="main"` 元素，带非空 `data-composition-id`，并有数值
    `data-width`(320..3840)、`data-height`(180..2160)、`data-duration`(0.1..3600)；
-4. 暴露固定预览 runtime 所需时间线：脚本赋值 `window.__timelines = { main: … }`
-   （也接受 `window["__timelines"]`）；
+4. 暴露固定预览 runtime 所需时间线：**inline `<script>` 体内**赋值 `window.__timelines = { main: … }`
+   （也接受 `window["__timelines"]`；HTML 注释与 `src=` 脚本不计入），`main` 不能是字面量 `null`/`undefined`；
+   代码注释与本文明确该检查是“必要非充分”，真正播放由预览 runtime 证明，静默失败会显示可恢复预览错误；
 5. 无 `<iframe>/<object>/<embed>/<base>/<link>/<video>/<audio>/<source>/<track>`；
    `src`/`href`/CSS `url()` 位置禁止 `http(s):`、`//`、`file:`、`blob:`、`javascript:`；
    SVG `xmlns` 与 `url(#fragment)` 是命名空间/同文档引用，允许；
@@ -46,7 +47,7 @@ AI 通过同一提交入口表达（首轮采用已验证的 HTML/SVG/GSAP 程�
 
 `project.compose` 参数：`{projectId, expectedRevision, operationId, html}`。
 
-语义：项目队列串行；operationId 幂等（同 payload 返回缓存结果，不同 payload
+语义：先做 48 KiB 原始 + 60 KiB escaped 双上限校验（escaped 上限保证请求帧与 source 结果都留在 64 KiB 协议/结果预算内）；项目队列串行；operationId 幂等（同 payload 返回缓存结果，不同 payload
 `E_OPERATION_REUSED`）；`expectedRevision` 不匹配在任何校验/写入前返回
 `E_REVISION_CONFLICT`；契约失败 `E_COMPOSE_INVALID`（不发生产物、不写 revision）；通过后
 原子写 `<project>/index.html`、重新读取并逐字节比对；随后用既有 `Previews.create` 生成并丢弃
@@ -69,7 +70,7 @@ AI 通过同一提交入口表达（首轮采用已验证的 HTML/SVG/GSAP 程�
 ```
 
 `project.source` 参数 `{projectId}`；结果 `{projectId, revision, entry, bytes, assets, html}`
-（当前入口精确字节）；>48 KiB 返回 `E_LIMIT`（保证单次 Tool 结果在 64 KiB 预算内）。
+（当前入口精确字节）；原始 >48 KiB 或 escaped >60 KiB 返回 `E_LIMIT`（保证单次 Tool 结果在 64 KiB 预算内）。
 
 ### 2.3 Host / Tool / prompt context
 
@@ -108,9 +109,9 @@ AI 通过同一提交入口表达（首轮采用已验证的 HTML/SVG/GSAP 程�
 |---|---|
 | Bundle | `0.3.0-alpha.4`（root commit 见下） |
 | Engine client / worker | `0.4.0` / `0.4.0`（协议 JSONL v1 不变，24 方法） |
-| 固定提交 | 功能提交 `9efb172`（engine）、`32f4f77`（host）、`97a2ec0`（client）、`8799260`（harness/checks）、`79c6e20`（alpha.4 staging gate）；最终 docs commit 见 STATUS/PR |
-| Engine tarball | 从固定提交 `git archive` 后 `npm pack`：worker `dsh-video-engine-worker-0.4.0.tgz`、client `dsh-video-engine-client-0.4.0.tgz`（大小/SHA-256 见交付消息与 `artifacts/p3-012/packages/`） |
-| Staging | `artifacts/p2-b/staging-p3-012-<engine8>-<root8>/`（`stage-dev.mjs` 从固定提交提取 root/engine，`npm ci --ignore-scripts` + 受控 fixture）；`INTEGRITY.json` 记录 rootCommit/engineCommit/versions/逐文件摘要 |
+| 固定提交 | `9efb172`（engine 0.4.0）、`32f4f77`（host）、`97a2ec0`（client）、`8799260`（harness/checks）、`79c6e20`（alpha.4 staging gate）、`5f2a271`（docs）、`d84ec5d`（复审缺陷修复）、`5956a93`（测试去 flake）；最终 docs commit 见 STATUS/PR |
+| Engine tarball | 从固定提交 `d84ec5d` 的 `git archive` 后 `npm pack`：client 8610 B `14b85c39e89e912d6ab0924c88967c85c83c43921420a8b44334f4a5f35ed513`，worker 66733 B `f86b8639280b4c9f9d3dfefc4f11f41767f2912a228bafdb88a29e940ce7863b`（`artifacts/p3-012/packages/`） |
+| Staging | 最终 clean 快照 `artifacts/p2-b/staging-p3-012-d84ec5d-d84ec5d/`（rootCommit=engineCommit=`d84ec5d`，rootDirty=false；`INTEGRITY.json` sha256 `9b8aff4ba3f9afaec75d603ed5dc6652aac9e987b9c8e43bf5e37de9c15ba199`，逐文件摘要记录 root/engine/versions） |
 
 未安装到用户 DSH、未改 profile/调用模型：安装与真机验收仍需总调度复审后另行授权。
 
@@ -123,11 +124,12 @@ AI 通过同一提交入口表达（首轮采用已验证的 HTML/SVG/GSAP 程�
    - `packages/video-engine-worker`: `node --test --test-concurrency=1 test/*.test.mjs` →
      **44 pass / 0 fail**（含扩展后的 schema 双方法校验）。
    - `packages/video-engine-worker`: `node --test --test-concurrency=1 test/compose.integration.mjs`
-     → **4/4**：发布/source/历史/重开/重启一致；unchanged/幂等复用；契约失败矩阵不写入口；
-     stale revision 拒绝；写盘与快照证明失败均回滚旧作品；source 48 KiB 界。
+     → **5/5**：发布/source/历史/重开/重启一致；unchanged/幂等复用；契约失败矩阵不写入口；
+     stale revision 拒绝；写盘与快照证明失败均回滚旧作品；source 原始/escaped 界；复审回归
+     （quote 密集文档 typed 拒绝且 worker 存活、注释/null timeline 被拒）。
    - `packages/video-engine-client`: 同命令 → **22 pass / 0 fail / 1 opt-in skip**（0.4.0 打包、
      compose/source 帧形状、worker `uncertain` 透传）。
-2. **Host 契约（fake worker seam，Node）**：`node scripts/check-host.mjs` → **52/52**。覆盖 Tool
+2. **Host 契约（fake worker seam，Node）**：`node scripts/check-host.mjs` → **53/53**。覆盖 Tool
    action/参数/schema/工作流文案、48 KiB 预校验、compose 后 facts/下一轮 context 的 revision 与
    free-form mode、prompt context 必须片段/预算/无路径泄漏、compose/source 的 Agent Session 作用域、
    project.list recency/default/stat 容错。基线 46 项保留，无删除。
@@ -150,48 +152,75 @@ AI 通过同一提交入口表达（首轮采用已验证的 HTML/SVG/GSAP 程�
 6. **未验证（诚实申报）**：真实 DSH 安装/激活、真实模型对话闭环、真机 UI 像素/主题/窄窗、
    外部素材导入新路径、任意更大 HTML 的模型生成质量、宿主崩溃/重启后的自动恢复、其他插件共存。
 
-## 5. 独立验证（verifier 会话内独立 harness）
+## 5. 独立验证（verifier，最终 fix staging）
 
-两个 harness 由独立 verifier 编写，在固定提交 staging 上串联跑（非并发），产物与截图在
+两个 harness 由独立 verifier 编写，在最终 clean 快照上按顺序运行（非并发），产物与截图在
 `artifacts/p3-012/evidence/`：
 
-- `scripts/test-conversation-chain.mjs` → **ok=true，230/230 checks**（chain-2026-10-18T09-05-52-570Z）。
-  同一受管工程经真实 staged Tool（`agent.session.id`）连续 3 次 compose：genre A 插画动画
-  (1280×720/6s)、genre B 文字动效 (720×1280/5s)、以及基于已发布 source 的第二轮修改（改
-  headline/accent/动画，kicker/sub/footer/背景字节保留）；每轮 inspect revision/frame 同步、
-  source 精确往返。失败矩阵 **28/28** 均返回 typed error 且 revision 与入口字节不变
-  （缺 `#main`/`__timelines`、外链/嵌入标签、重复 #main、非法尺寸/时长、NUL、>48KiB 等），另有
-  E_REVISION_CONFLICT / E_OPERATION_REUSED / unchanged / 幂等重放 / Tool 作用域三态 / 参数错误。
-  snapshot entry 逐字节一致（仅注入固定 runtime）、CSP `connect-src 'none'`、gsap 资产字节一致；
-  真 Chrome fixed runtime：genre A ready {1280,720,6}、seek 2.4 精确、play 到 2.8667s；genre B
-  {720,1280,5}、seek 2.0、play 到 2.4667s；无外部请求。真实 host prompt context 3303 字符，含
-  工作流/48 KiB/`window.__timelines`/禁止 shell 写工程/自由创作路径/新 revision，无绝对路径。
-  close→reopen 得到同一 revision 与精确字节；dispose 后 0 路由/in-flight/snapshot。
-- `scripts/test-conversation-preview.mjs` → **ok=true，41/41 checks，B1–B5 全 true**
-  （preview-2026-10-18T09-10-54-623Z，7 张真实页面截图）。真实 staged client factory 按 region 标记
-  抽取并与 INTEGRITY 校验（clientSha256 `551e43e8…`）后在真 Chrome 挂载、对真实 staged bridge/
-  worker/request route 运行。模拟边界已记录：宿主原生会话渲染面用 inert harness faces、页面内注入
-  一次性 fetch 失败；P3-012 未改会话面板。
-  - **B1** 首次挂载自动供给工程+Session 并自动出画面：mount→ready 651ms（无用户动作、无 demo）；
-    Tool compose A 发布→左侧 ready **1483ms**（Tool 45ms + follow poll/load 1438ms）。
-  - **B2** 同工程第二次 compose B 发布→ready **1296ms**；revision 标记/snapshot/画面像素均变化；
+- `scripts/test-conversation-chain.mjs --staging staging-p3-012-d84ec5d-d84ec5d` →
+  **ok=true，230/230 checks**（chain-2026-10-18T09-21-36-685Z）。同一受管工程经真实 staged Tool
+  （`agent.session.id`）连续 3 次 compose：genre A 插画动画 (1280×720/6s)、genre B 文字动效
+  (720×1280/5s)、以及基于已发布 source 的第二轮修改（改 headline/accent/动画，kicker/sub/footer/
+  背景字节保留）；每轮 inspect revision/frame 同步、source 精确往返。失败矩阵 **28/28** 均返回
+  typed error 且 revision 与入口字节不变；另有 E_REVISION_CONFLICT / E_OPERATION_REUSED /
+  unchanged / 幂等重放 / Tool 作用域三态 / 参数错误。snapshot entry 逐字节一致（仅注入固定
+  runtime）、CSP `connect-src 'none'`、gsap 资产字节一致；真 Chrome fixed runtime：genre A ready
+  {1280,720,6}、seek 2.4 精确、play 到 2.867s；genre B {720,1280,5}、seek 2.0、play 到 2.467s；
+  无外部请求。真实 host prompt context 3303 字符，含工作流/双上限/`window.__timelines`/禁止 shell
+  写工程/自由创作路径/新 revision，无绝对路径。close→reopen 同一 revision 与精确字节；dispose 后
+  0 路由/in-flight/snapshot；staging 前后源文件摘要审计 same=true（只读）。
+- `scripts/test-conversation-preview.mjs --staging staging-p3-012-d84ec5d-d84ec5d` →
+  **ok=true，41/41 checks，B1–B5 全 true**（preview-2026-10-18T09-23-44-973Z，8 张真实页面截图）。
+  真实 staged client factory 按 region 标记抽取并与 INTEGRITY 校验后在真 Chrome 挂载、对真实
+  staged bridge/worker/request route 运行。模拟边界已记录：宿主原生会话渲染面用 inert harness
+  faces、页面内一次性 fetch 失败注入；P3-012 未改会话面板。
+  - **B1** 首次挂载自动供给工程+Session 并自动出画面：mount→ready **708ms**（无用户动作、无 demo）；
+    Tool compose A 发布→左侧 ready **1518ms**（Tool 59 + follow poll/load 1459）。
+  - **B2** 同工程第二次 compose B 发布→ready **1221ms**；revision 标记/snapshot/画面像素均变化；
     poll 实测 1500ms 中位；全程无手动刷新。
-  - **B3** 真鼠标播放→时间前进、按钮变 Pause；暂停稳定 0.75/0.75、按钮回 Play；真 range 点击 seek
-    → `3.01 / 5.00`。
+  - **B3** 真鼠标播放→时间前进、按钮变 Pause；暂停稳定；真 range 点击 seek→`3.01 / 5.00`。
   - **B4** 注入 preview.snapshot 失败→phase=error 且提示可恢复+Retry（非旧文案）；Retry→同 revision
-    ready；第二次失败后一个正常 revision 自动恢复，无需用户动作；无工程写请求。
-  - **B5** 产品面板审计：0 个延期手动控件（无 undo/redo/materials/addScene/export/颜色/数字/文本/
-    file/textarea/selection/editor/drawer/tools），仅 Play+seek+time；真实点击/双击/ArrowRight/Space
+    ready；后续正常 revision 自动恢复，无需用户动作；无工程写请求。
+  - **B5** 产品面板审计：0 个延期手动控件，仅 Play+seek+time；真实点击/双击/ArrowRight/Space
     产生 **0 写请求**、无选择/编辑器；external requests 0。
-  - 诚实噪声：2 次旧 iframe 的 gsap 资产加载被取消（新 revision 注册时 Host 替换同工程旧 snapshot
-    路由），归类为替换期取消，非用户可见失败；最终检查通过。
+  - 诚实噪声：旧 iframe 的 gsap 资产加载在新 revision 注册时被替换取消（Host 替换同工程旧 snapshot
+    路由），属替换期取消，非用户可见失败；最终检查通过。
 
-## 6. 已知限制与后续
+## 6. 独立复审发现的缺陷与修复（2026-10-18，commit `d84ec5d`）
 
-- 48 KiB composition 上限是 AI 编辑路径的 MVP 边界；已有更大的旧工程仍可被浏览器预览，但
+独立 verifier 在冻结 staging 上做了对抗性边界 probe，发现并报告 3 项；修复后已用可执行证据闭环：
+
+1. **HIGH（已关闭）— 一个契约合法输入可杀死视频引擎。** 原始 48 KiB 内但 quote/backslash 密集的
+   HTML，JSON 转义后使 JSONL 请求帧 > 65536；worker 返回无法关联的 `id:null` E_LINE_LIMIT 帧，
+   engine client 视为协议失败并 SIGTERM worker，之后所有视频请求 `E_WORKER_EXITED`，需重载插件。
+   修复：Host 在 validate 阶段同时校验 escaped ≤61440（`E_PARAMS`，不启动 worker）；worker
+   composition 校验同一 escaped 上限（`E_COMPOSE_INVALID`）；worker `project.source` 加 escaped
+   `E_LIMIT`。修复后 probe：49024 B quote 文档被 typed 拒绝（fatalProtocolError=false、入口字节
+   不变）、随后 inspect/source/normal compose 均正常（无 E_PROTOCOL/E_WORKER_EXITED）；较小的
+   escaped 60499 B 文档仍可正常 compose（边界是 escaped 驱动，不过度收紧）。证据：
+   `artifacts/p3-012/evidence/defect-boundary-2026-10-18T09-14-26-864Z/`（修复前）、
+   `defect-postfix-2026-10-18T09-23-59-589Z/`（修复后 7/7 期望结果）。
+2. **MEDIUM（已关闭）— timeline 暴露是原始 HTML 文本匹配。** `window.__timelines = { main: tl };`
+   写在 HTML 注释里、或 `main: null` 都能 compose 成功并拿到 `publishedRevision`，但 runtime 永远
+   无法 ready。修复：只扫描 inline `<script>` 体（忽略 HTML 注释与 `src=` 脚本），拒绝字面量
+   `main: null/undefined`；代码注释与本文明确这是“必要非充分”静态检查，播放证明仍由预览 runtime
+   承担，失败会显示可恢复预览错误而不是静默成功。
+3. **LOW（已关闭）— “48 KiB 保证 source <64 KiB”的声言不总成立。** escaped 上限修复后该声言可执行
+   成立：source escaped >61440 返回 `E_LIMIT`（planted 49024 B quote 入口验证），正常 source 结果
+   与 Tool wrapper 都在 64 KiB 内；composition.mjs 头部注释同步更正。
+
+残留限制（如实记录，不影响本轮 A–E 验收）：engine client 对无法关联的协议帧仍按致命处理（既有设计），
+Host 的 escaped 预校验使文档允许路径不再能产生这种帧。engine-client 有一个 spawn-context 测试在原
+200ms handshake 预算下受高负载影响偶发超时（与运行时修复无关），已在 `5956a93` 给该两类用例独立
+宽松预算（负向超时用例保持 200ms）。
+
+## 7. 已知限制与后续
+
+- 原始 48 KiB + JSON-escaped 60 KiB 双上限是 AI 编辑路径的 MVP 边界；已有更大的旧工程仍可被浏览器预览，但
   `project.source` 会明确 `E_LIMIT`，不静默截断。
-- 发布前校验是"契约+SDK+快照管线"验证，不是"浏览器已播放"证明；真正播放由左侧 snapshot+runtime
-  证实，运行时播放失败会显示可恢复错误（用户可让 AI 修正或重试），不谎报完成。
+- 发布前校验是"契约+SDK+快照管线"验证，不是"浏览器已播放"证明；timeline 暴露是静态必要非充分
+  校验；真正播放由左侧 snapshot+runtime 证实，运行时播放失败会显示可恢复错误（用户可让 AI 修正
+  或重试），不谎报完成。
 - iframe sandbox/CSP 不是 OS 沙箱；本轮没有新增任意 Node/文件/网络入口：compose 只能写绑定工程入口。
 - compose 全量替换文档，AI 需自行保留未要求修改的内容；prompt 已明确要求，但复杂回归仍取决于模型。
 - 手动编辑控件已从产品 UI 移除但底层 typed API/代码保留，后续恢复直接编辑时无需重做引擎。

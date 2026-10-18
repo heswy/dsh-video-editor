@@ -27,7 +27,9 @@
 | Tool | `video_engine`（同一 dispatcher；非 doctor action 必须来自绑定工程的受信 Agent Session）；P3-012 增加 conversation-first 创作/修改入口 `project.compose`、`project.source` |
 | 侧栏入口 | `sidebar.panellist`，`id: dsh-video`、`order: 30`、label `Vedio Editor` |
 | 面板 key | `main` keyed slot 的 `dsh-video`；另声明私有 session child，仅用于取得原生 `SessionProvider` kit |
-| 引擎依赖 | 独立 `dsh-video-engine-client` / `dsh-video-engine-worker`，仅开发 staging 快照内解析；本候选固定提交 `9efb172` / 两包 `0.4.0`（从固定提交重打 tarball：client 8610 B `14b85c39e89e912d6ab0924c88967c85c83c43921420a8b44334f4a5f35ed513`，worker 64992 B `ada2b40af1d252149f4d5c2b7f2a3fc9f1e5e48a607b5a8b3c9554cb197fa326`） |
+| 引擎依赖 | 独立 `dsh-video-engine-client` / `dsh-video-engine-worker`，仅开发 staging 快照内解析；本候选固定提交 `d84ec5d` / 两包 `0.4.0`（从固定提交重打 tarball：client 8610 B `14b85c39e89e912d6ab0924c88967c85c83c43921420a8b44334f4a5f35ed513`，worker 66733 B `f86b8639280b4c9f9d3dfefc4f11f41767f2912a228bafdb88a29e940ce7863b`） |
+
+| 开发 staging | `artifacts/p2-b/staging-p3-012-d84ec5d-d84ec5d`（rootCommit=engineCommit `d84ec5d`，clean；`INTEGRITY.json` sha256 `9b8aff4ba3f9afaec75d603ed5dc6652aac9e987b9c8e43bf5e37de9c15ba199`）；仅开发快照，不随包分发 |
 
 `index.js` 是 Host half：一个 plugin-local `VideoBridge` 同时服务精确 Fetch 路由和 Tool；`host/` 保存校验、错误映射、环境清理、worker 适配、产物发布、会话映射、局部图片预览、受控项目/素材收件箱与预览快照路由。`client.js` 是手写浏览器半（`window.__ModuleLoader__.load` 格式），只 `require('react')`，通过文档相对 `fetch('api/dsh-video/request')` 调用 Host；右侧 AI 直接渲染宿主原生 `conversation.content` Factory，不自建聊天。
 
@@ -78,12 +80,13 @@
 
 ### 对话生成、自动预览与续改（P3-012，当前主流程）
 
-- **唯一提交路径**：AI 通过 `video_engine` 的 `project.compose` 提交**完整 HTML composition**（同一路径同时用于首次生成与每轮修改）；发布前 Host+worker 共同校验 composition 契约（48 KiB、唯一 `#main`+`data-composition-id`+数值尺寸/时长、`window.__timelines={main:…}`、无外部 URL/嵌入元素、仅已声明本地资产、SDK 回环），再原子写入口、字节回读、私有快照证明、写历史；任一失败回滚最后有效作品并返回可操作 typed error（回滚失败才标 `uncertain`）。`project.source` 读取当前权威 HTML+revision 作为修改基线。
+- **唯一提交路径**：AI 通过 `video_engine` 的 `project.compose` 提交**完整 HTML composition**（同一路径同时用于首次生成与每轮修改）；发布前 Host+worker 共同校验 composition 契约（原始 48 KiB 且 JSON-escaped 60 KiB 双上限、唯一 `#main`+`data-composition-id`+数值尺寸/时长、inline `<script>` 中的 `window.__timelines={main:…}`、无外部 URL/嵌入元素、仅已声明本地资产、SDK 回环），再原子写入口、字节回读、私有快照证明、写历史；任一失败回滚最后有效作品并返回可操作 typed error（回滚失败才标 `uncertain`）。`project.source` 读取当前权威 HTML+revision 作为修改基线（同样受 escaped 上限，保证单次 Tool 结果有界）。
 - **AI 与预览同一修订**：compose 成功返回 `publishedRevision` 与 `preview:{mode:'snapshot',status:'ready',checked:'composition+snapshot'}`（只证明契约+快照管线可服务，不声称浏览器已播放）；Host 立即刷新 prompt facts。左侧 `preview.snapshot` 按同一 revision 加载，播放/seek 由 fixed runtime 自身时钟驱动。
 - **自动更新**：左面板对任意已载入工程每 1500ms `inspect` 一次，revision 变化自动换新快照，无需刷新/重开；加载中保留最后有效画面；快照失败显示可恢复错误+重试，不再有旧 PNG/表单降级或永久“画面尚未生成”。迟到的旧工程/旧 revision 结果有 projectId/mounted 守卫，不覆盖当前作品。
 - **首开即创作**：`project.list` 返回 `{projects:[{projectId,updatedAt}], defaultProjectId}`；Plugin 自动打开记住的/最近的受管工程并载入其绑定原生 Session，工程无会话时自动创建一次；完全无工程时自动创建一次「空工程+会话」。右侧原生 Conversation/历史/模型/文件预览不变，不常驻第三列、无场景卡片。
 - **产品 UI 只读**：对象点选/描边/拖动/缩放手柄、原位文字编辑、浮动属性、目标下拉/颜色/字号/时间表单、“保存修改”、素材抽屉/场景按钮/导出按钮均不出现在当前产品 UI；底层 typed edit/scene API 与旧手动画布实现保留，后续恢复直接编辑时复用。
-- 支持范围由上述 composition 契约决定，不绑定 `product-launch-v1` 模板；首轮采用已验证的 HTML/SVG/GSAP 程序化作品形式，不引入新渲染后端。已知边界：48 KiB 是 AI 编辑路径上限；compose 全量替换文档，未要求修改的内容由 AI 保留；真实模型生成质量/长对话效果未在本轮授权内验收。
+- **独立复审**：独立 verifier 在冻结 staging 上发现 1 项 HIGH availability 缺陷（quote 密集但契约合法的 HTML 经 JSON 转义后可逾 64 KiB JSONL 帧并杀死 worker）与 2 项校验/声言问题；已在 `d84ec5d` 修复：Host+worker 双侧 escaped ≤60 KiB 上限、timeline 只认 inline `<script>` 且拒绝 null/undefined，并用 post-fix probe 闭环。最终 fix staging 上独立 harness A–E 全过（chain 230/230、browser 41/41）。
+- 支持范围由上述 composition 契约决定，不绑定 `product-launch-v1` 模板；首轮采用已验证的 HTML/SVG/GSAP 程序化作品形式，不引入新渲染后端。已知边界：48 KiB（且 JSON-escaped ≤60 KiB）是 AI 编辑路径上限；timeline 暴露是静态必要校验，真正播放由左侧 runtime 证明，静态检查通过但运行时不播放会显示可恢复预览错误而不是假“已完成”；compose 全量替换文档，未要求修改的内容由 AI 保留；真实模型生成质量/长对话效果未在本轮授权内验收。
 
 ### 受控画布、工程与素材（P3-008）
 
