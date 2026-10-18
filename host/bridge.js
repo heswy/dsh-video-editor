@@ -97,6 +97,12 @@ const MAX_REGISTRY_BYTES = 1024 * 1024;
 const SNAPSHOT_ID = /^[a-f0-9]{32}$/;
 const TEMPLATE_ID = 'product-launch-v1';
 const SCENE_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
+/**
+ * Frozen engine 0.3.2 scene.template text limits: title 1..2048, subtitle/badge
+ * 0..2048 when present (the same contract as typed text edits). The Host keeps
+ * the upper bound: valid long copy is passed through untruncated.
+ */
+const SCENE_TEXT_MAX = 2048;
 
 function isPlainObject(value) {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
@@ -248,14 +254,14 @@ function sceneTemplate(value, allowSceneId) {
     if (allowed.includes(key) === false) fail('E_PARAMS', 'Unexpected scene template field', 'params');
   }
   if (finite(value.duration) === false || value.duration < 0.5 || value.duration > 60) fail('E_PARAMS', 'Scene duration out of range', 'params');
-  if (typeof value.title !== 'string' || value.title.length < 1 || value.title.length > 200) fail('E_PARAMS', 'Scene title is invalid', 'params');
+  if (typeof value.title !== 'string' || value.title.length < 1 || value.title.length > SCENE_TEXT_MAX) fail('E_PARAMS', 'Scene title is invalid', 'params');
   const next = { duration: value.duration, title: value.title };
   if (value.subtitle !== undefined) {
-    if (typeof value.subtitle !== 'string' || value.subtitle.length > 300) fail('E_PARAMS', 'Scene subtitle is invalid', 'params');
+    if (typeof value.subtitle !== 'string' || value.subtitle.length > SCENE_TEXT_MAX) fail('E_PARAMS', 'Scene subtitle is invalid', 'params');
     next.subtitle = value.subtitle;
   }
   if (value.badge !== undefined) {
-    if (typeof value.badge !== 'string' || value.badge.length > 48) fail('E_PARAMS', 'Scene badge is invalid', 'params');
+    if (typeof value.badge !== 'string' || value.badge.length > SCENE_TEXT_MAX) fail('E_PARAMS', 'Scene badge is invalid', 'params');
     next.badge = value.badge;
   }
   for (const [key, pattern] of [['color', COLOR], ['accent', COLOR]]) {

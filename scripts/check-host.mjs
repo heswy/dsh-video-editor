@@ -1094,6 +1094,115 @@ async function main() {
     assert(badStyle.code === 'E_PARAMS', 'invalid style color was accepted');
   });
 
+  await run('R1: Host scene template text limits match the frozen engine 0.3.2 contract', async () => {
+    const workspace = await makeWorkspace();
+    const bag = makeCtx(workspace);
+    const { bridge, engine } = makeBridge(workspace, { handler: () => ({}) }, bag.ctx);
+    const sceneUpdate = (template) => bridge.validate('scene.update', { projectId: PROJECT, expectedRevision: REVISION, operationId: 'scene-limit', sceneId: 'scene-1', template });
+    const sceneCreate = (template) => bridge.validate('scene.create', { projectId: PROJECT, expectedRevision: REVISION, operationId: 'scene-limit', template });
+    const revise = (template) => bridge.validate('project.revise', { projectId: PROJECT, baseRevision: REVISION, expectedRevision: REVISION, operationId: 'revise-limit', sceneId: 'scene-1', template });
+    const base = { title: 'T', duration: 5 };
+
+    // Lengths that the old 200/300/48 Host limits rejected are legal frozen copy.
+    const formerlyRejected = sceneUpdate({ title: 'x'.repeat(201), duration: 5, subtitle: 'y'.repeat(301), badge: 'z'.repeat(49) });
+    assert(formerlyRejected.template.title.length === 201 && formerlyRejected.template.subtitle.length === 301 && formerlyRejected.template.badge.length === 49, 'formerly rejected long template text was not accepted unchanged');
+
+    // Exactly 2048 is the inclusive upper bound for all three text fields.
+    const atLimit = sceneUpdate({ title: '长'.repeat(2048), duration: 5, subtitle: '文'.repeat(2048), badge: 'b'.repeat(2048) });
+    assert(atLimit.template.title.length === 2048 && atLimit.template.subtitle.length === 2048 && atLimit.template.badge.length === 2048, 'the exact 2048 boundary was rejected or altered');
+
+    // Empty subtitle/badge are legal "present" values; an empty or absent title is not.
+    const emptyOptional = sceneUpdate({ title: 'T', duration: 5, subtitle: '', badge: '' });
+    assert(emptyOptional.template.subtitle === '' && emptyOptional.template.badge === '', 'empty optional template text was rejected');
+    for (const template of [{ title: '', duration: 5 }, { duration: 5 }]) {
+      const error = await rejects(async () => sceneUpdate(template));
+      assert(error.code === 'E_PARAMS', `empty/absent title was accepted: ${error.code}`);
+    }
+
+    // 2049 is rejected for every text field on all three template-taking methods.
+    for (const overrides of [{ title: 'x'.repeat(2049) }, { subtitle: 'x'.repeat(2049) }, { badge: 'x'.repeat(2049) }]) {
+      const template = Object.assign({}, base, overrides);
+      for (const [name, run] of [['scene.update', () => sceneUpdate(template)], ['scene.create', () => sceneCreate(template)], ['project.revise', () => revise(template)]]) {
+        const error = await rejects(async () => run());
+        assert(error.code === 'E_PARAMS' && error.stage === 'params', `${name} did not reject over-limit template text as E_PARAMS: ${error.code}`);
+      }
+    }
+    assert(sceneCreate({ title: 'x'.repeat(2048), duration: 5 }).template.title.length === 2048, 'scene.create rejected the 2048 title');
+    assert(revise({ title: 'x'.repeat(2048), duration: 5, subtitle: 'y'.repeat(2048), badge: 'z'.repeat(2048) }).template.badge.length === 2048, 'project.revise rejected the 2048 badge');
+
+    // Other frozen template validations are unchanged.
+    const invalid = [
+      { title: 'T', duration: 0.4 },
+      { title: 'T', duration: 60.1 },
+      { title: 'T', duration: '5' },
+      { title: 7, duration: 5 },
+      { title: 'T', duration: 5, subtitle: 7 },
+      { title: 'T', duration: 5, badge: null },
+      { title: 'T', duration: 5, color: 'red' },
+      { title: 'T', duration: 5, accent: '#12345' },
+      { title: 'T', duration: 5, logo: '../logo.png' },
+      { title: 'T', duration: 5, shot: 'assets/logo.svg' },
+      { title: 'T', duration: 5, extra: 'nope' },
+      { title: 'T', duration: 5, sceneId: 'scene-1' },
+    ];
+    for (const template of invalid) {
+      const error = await rejects(async () => sceneUpdate(template));
+      assert(error.code === 'E_PARAMS', `invalid scene template was accepted: ${JSON.stringify(template).slice(0, 80)}`);
+    }
+    const normalized = sceneCreate({ title: 'T', duration: 5, color: '#FFD400', logo: 'assets/logo.png', sceneId: 'scene-2' });
+    assert(normalized.template.color === '#ffd400' && normalized.template.logo === 'assets/logo.png' && normalized.template.sceneId === 'scene-2', 'scene.create template normalization changed');
+    // Validation is pure: none of the above started the worker.
+    assert(engine.instances.length === 0, 'scene template validation started the worker');
+  });
+
+  await run('R1: long scene template copy reaches the worker untruncated; invalid lengths never start it', async () => {
+    const workspace = await makeWorkspace();
+    const bag = makeCtx(workspace);
+    const { bridge, engine } = makeBridge(workspace, { handler: () => ({ projectId: PROJECT, revision: REVISION, written: true }) }, bag.ctx);
+    const longTitle = '长'.repeat(2048);
+    const longSubtitle = 'x'.repeat(2048);
+    const longBadge = 'b'.repeat(201);
+    const template = { title: longTitle, duration: 5, subtitle: longSubtitle, badge: longBadge, color: '#FFD400', logo: 'assets/logo.png' };
+    const overlimit = { title: 'x'.repeat(2049), duration: 5 };
+    const reviseOverlimit = { title: 'T', duration: 5, subtitle: 'x'.repeat(2049) };
+
+    // Over-limit requests are typed before the worker is started or called.
+    for (const params of [
+      ['scene.update', { projectId: PROJECT, expectedRevision: REVISION, operationId: 'long-invalid', sceneId: 'scene-1', template: overlimit }],
+      ['scene.create', { projectId: PROJECT, expectedRevision: REVISION, operationId: 'long-invalid', template: overlimit }],
+      ['project.revise', { projectId: PROJECT, baseRevision: REVISION, expectedRevision: REVISION, operationId: 'long-invalid', sceneId: 'scene-1', template: reviseOverlimit }],
+    ]) {
+      const error = await rejects(() => bridge.invoke(params[0], params[1], { source: 'http' }));
+      assert(error.code === 'E_PARAMS', `over-limit ${params[0]} was forwarded: ${error.code}`);
+    }
+    assert(engine.instances.length === 0, 'invalid template lengths started the worker');
+
+    const updated = await bridge.invoke('scene.update', { projectId: PROJECT, expectedRevision: REVISION, operationId: 'long-update', sceneId: 'scene-1', template }, { source: 'http' });
+    assert(updated.written === true, 'long scene.update did not reach the worker');
+    const reviseTemplate = { title: '长'.repeat(1000), duration: 5, subtitle: 'y'.repeat(2048), badge: 'z'.repeat(2048), shot: 'assets/canvas-test.png' };
+    const revised = await bridge.invoke('project.revise', { projectId: PROJECT, baseRevision: REVISION, expectedRevision: REVISION, operationId: 'long-revise', sceneId: 'scene-1', template: reviseTemplate }, { source: 'http' });
+    assert(revised.written === true, 'long project.revise did not reach the worker');
+
+    const requests = engine.instances[0].requests;
+    const sceneUpdateRequest = requests.find((entry) => entry.method === 'scene.update');
+    assert(sceneUpdateRequest !== undefined, 'the worker never received scene.update');
+    assert(
+      sceneUpdateRequest.params.template.title === longTitle &&
+      sceneUpdateRequest.params.template.subtitle === longSubtitle &&
+      sceneUpdateRequest.params.template.badge === longBadge,
+      'the worker received truncated or altered long scene.update text'
+    );
+    assert(sceneUpdateRequest.params.template.title.length === 2048, 'the worker did not receive the full 2048-character title');
+    const reviseRequest = requests.find((entry) => entry.method === 'project.revise');
+    assert(reviseRequest !== undefined, 'the worker never received project.revise');
+    assert(
+      reviseRequest.params.template.subtitle === reviseTemplate.subtitle &&
+      reviseRequest.params.template.badge === reviseTemplate.badge,
+      'the worker received truncated project.revise text'
+    );
+    assert(reviseRequest.params.template.shot === 'assets/canvas-test.png', 'project.revise lost the shot while carrying long text');
+  });
+
   await run('P3-008: UI-only managed methods are refused from the model Tool source', async () => {
     const workspace = await makeWorkspace();
     const bag = makeCtx(workspace);
