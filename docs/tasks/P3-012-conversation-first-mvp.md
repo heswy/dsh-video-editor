@@ -187,3 +187,51 @@ preview-2026-10-18T09-58-16-890Z, r1-adversarial-2026-10-18T09-56-53-537Z}/`。
   竞态（`bb711d1`，断言未放宽）。
 - 仍未验证/未授权：真实 DSH 安装与激活、真实模型对话闭环、真机 UI/主题/窄窗/重启恢复、
   Windows/Linux；真实模型质量与长对话效果待复审后授权验收。安装/重启/模型请求不在本任务授权内。
+
+---
+
+## 复审 R2-follow-up 补修记录（2026-10-18 第三轮，review `30568b1`）· 自述，待复审
+
+第二轮复审 [docs/reviews/P3-012-review-02.md]：**R1 关闭**；正常链 261/261、原 R2 压力 68/68、
+基础 178+版本 10、worker 46/compose 6/client 22+skip、包/staging 通过。唯一残留：保留的 active
+iframe 的 width/height/duration 仍来自最新 target props——旧 720×1280/5s 作品保留时，1280×720/6s
+候选快照失败会把旧 iframe 改成 1280×720、`seek.max` 改 6。本轮只补该项，不修 R1、不加功能、不恢复
+手动编辑；engine 继续固定 `0deef8f`，未重打无变化引擎、未重跑无关长渲染。
+
+### 实现与固定提交
+
+| 内容 | commit |
+|---|---|
+| Per-instance 预览元数据隔离：实例自带 `{width,height,duration}` + 按 revision 有界 metadata map；可见 stage/letterbox/iframe/hit-test/seek/时长全部用 active 元数据；candidate 用自身；runtime ready 后原子切换；失败/等待期间旧作品几何与时长冻结 | `7cab3b9` |
+| R2F 真浏览器回归（失败/runtime 失败/延迟等待保持旧几何、成功原子切换） | `a59fb13` |
+| Harness-only 修复：R2F baseline 在 stress 模式下确定性建立 genre-B baseline（未放宽断言） | `4fdad5b` |
+
+### 检查结果（本轮实际输出）
+
+| 层 | 命令 | 结果 |
+|---|---|---|
+| Client 静态/冒烟 | `node scripts/check.mjs`、`node scripts/smoke-client.mjs` | **52 / 52**、**75 / 75**（+1 check、+2 smoke；修复前用复审 repro 复现失败，修复后通过） |
+| Host 契约 | `node scripts/check-host.mjs` | 54 / 54（未改 host） |
+| Engine（未改） | worker `test/*.test.mjs`、`compose.integration.mjs`、engine client | 46/46、6/6、22 pass+1 skip |
+| 版本门禁 | `scripts/test-stage-version.mjs` | 10 / 10 |
+| verifier 正常 preview（真 Chrome） | `scripts/test-conversation-preview.mjs --staging <r2f staging>` | **ok=true，151/151，B1–B5 全 true**；17 张截图 |
+| verifier R2 压力 | `DSH_R2_STRESS=1 ...preview...` | **ok=true，159/159**（原 68 不加宽） |
+| verifier 正常 chain | `scripts/test-conversation-chain.mjs --staging <r2f staging>` | **ok=true，261/261**（engine/host 未变，无回归） |
+| 既有 staging 链 | 本轮 client-only 变更；engine/host 未变，按交接不重跑无关长渲染 | — |
+
+几何证据：Case A/B/C 失败或等待期间 active iframe 恒 **720×1280**、stage aspect **0.5625**、
+`seek.max=5`、`"/ 5.00"`、旧画面可播放、旧快照 0 释放；成功切换后原子变为 **1280×720**、aspect
+**1.7778**、`seek.max=6`、`"/ 6.00"`，旧快照切换后恰好释放 1 次，candidate 消失，旧消息无影响、
+Host records ≤4、teardown 无泄漏。Case C 注入 2600ms 延迟响应验证等待窗口，隐藏 candidate 自身按
+1280×720 挂载。
+
+### 交付物与结论
+
+- 新固定 root `a59fb13`（client 修复 `7cab3b9` + harness；harness-only `4fdad5b`）；engine 保持
+  `0deef8f`（包字节未变，无需重打）。
+- 新 clean staging：`artifacts/p2-b/staging-p3-012-r2f-0deef8f-a59fb13`（rootDirty=false，
+  INTEGRITY sha256 `c28b60adadd1fdb419651598220e0dddddb096663d0699f9112058c91bdfe46a`）。
+- **R2-follow-up CLOSED**：不同宽高比/时长的候选在请求失败、runtime 失败、延迟等待期间均保持旧作品
+  尺寸/时长/播放；成功 ready 后统一原子切换；原正常链/压力/零手动控件验收无回归；未发现产品缺陷。
+- 未授权/未验证：真实 DSH 安装与激活、真实模型闭环、真机 UI/主题/窄窗/重启恢复、Windows/Linux；
+  本轮未安装/未重启/未改 profile/用户工程/未发模型请求/未 merge main。

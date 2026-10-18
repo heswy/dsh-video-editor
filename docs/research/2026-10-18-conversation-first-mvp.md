@@ -109,9 +109,9 @@ AI 通过同一提交入口表达（首轮采用已验证的 HTML/SVG/GSAP 程�
 |---|---|
 | Bundle | `0.3.0-alpha.4`（root commit 见下） |
 | Engine client / worker | `0.4.0` / `0.4.0`（协议 JSONL v1 不变，24 方法） |
-| 固定提交 | 第一轮：`9efb172`（engine 0.4.0）、`32f4f77`（host）、`97a2ec0`（client）、`8799260`（harness/checks）、`79c6e20`（alpha.4 staging gate）、`5f2a271`（docs）、`d84ec5d`（缺陷修复）、`5956a93`（测试去 flake）、`e4b8a07`（docs）。R1/R2 补修轮：`0deef8f`（R1 engine）、`552b695`（R2 host 快照保留+prompt）、`de7f3ba`（R2 client）、`d49be12`（R1/R2 harness），其后 `bb711d1`（harness-only 释放观察竞态修复）与 docs commit 见 PR#4 |
+| 固定提交 | R2-follow-up：root `a59fb13`（client `7cab3b9` + R2F harness `a59fb13`），engine 保持 `0deef8f`；harness-only 修复 `4fdad5b` 与 docs commit 见 PR#4。第一轮：`9efb172`（engine 0.4.0）、`32f4f77`（host）、`97a2ec0`（client）、`8799260`（harness/checks）、`79c6e20`（alpha.4 staging gate）、`5f2a271`（docs）、`d84ec5d`（缺陷修复）、`5956a93`（测试去 flake）、`e4b8a07`（docs）。R1/R2 补修轮：`0deef8f`（R1 engine）、`552b695`（R2 host 快照保留+prompt）、`de7f3ba`（R2 client）、`d49be12`（R1/R2 harness），其后 `bb711d1`（harness-only 释放观察竞态修复）与 docs commit 见 PR#4 |
 | Engine tarball | R1/R2 后从固定 engine 提交 `0deef8f` 的 `git archive` 后 `npm pack`：client 8610 B `14b85c39e89e912d6ab0924c88967c85c83c43921420a8b44334f4a5f35ed513`（内容未变），worker 68190 B `b56dba237e0612497caea40cc53e6b1ef22b7b18f7d36be96f8b94e5502e09f8`（`artifacts/p3-012/packages-r1r2/`；上一轮 `d84ec5d` 包保留在 `packages/`） |
-| Staging | R1/R2 最终 clean 快照 `artifacts/p2-b/staging-p3-012-r1r2-0deef8f-d49be12/`（rootCommit=`d49be12`、engineCommit=`0deef8f`，rootDirty=false；`INTEGRITY.json` sha256 `a71f657878a470874112c1790a38828c13395dde6459f8f21846a31a9939896b`）；上一轮 `staging-p3-012-d84ec5d-d84ec5d` 保留追溯 |
+| Staging | R2-follow-up 最终 clean 快照 `artifacts/p2-b/staging-p3-012-r2f-0deef8f-a59fb13/`（rootCommit=`a59fb13`、engineCommit=`0deef8f`，rootDirty=false；`INTEGRITY.json` sha256 `c28b60adadd1fdb419651598220e0dddddb096663d0699f9112058c91bdfe46a`）；R1/R2 轮 `staging-p3-012-r1r2-0deef8f-d49be12` 与上一轮 `staging-p3-012-d84ec5d-d84ec5d` 保留追溯 |
 
 未安装到用户 DSH、未改 profile/调用模型：安装与真机验收仍需总调度复审后另行授权。
 
@@ -134,12 +134,12 @@ AI 通过同一提交入口表达（首轮采用已验证的 HTML/SVG/GSAP 程�
    action/参数/schema/工作流文案、48 KiB 预校验、compose 后 facts/下一轮 context 的 revision 与
    free-form mode、prompt context 必须片段/预算/无路径泄漏、compose/source 的 Agent Session 作用域、
    project.list recency/default/stat 容错。基线 46 项保留，无删除。
-3. **Client 冒烟（fake host，Node VM）**：`node scripts/smoke-client.mjs` → **73/73**。新增
+3. **Client 冒烟（fake host，Node VM）**：`node scripts/smoke-client.mjs` → **75/75**。新增
    P3-012 流程用例（首开自动供给一次、自动打开最近工程并忽略 demo、revision 轮询自动换快照、
    快照失败可恢复且非旧文案、产品面板无手动控件、返回面板恢复记住工程、无会话自动建一次、
    previewOnly 组件门禁）。基线 80 项中手动画布/旧表单相关 16 项按新范围替换（清单见交付消息），
    P3-008 runtime 契约与手动 wiring 用例继续覆盖。
-4. **静态/打包门禁**：`node scripts/check.mjs` → **51/51**；`node scripts/test-stage-version.mjs`
+4. **静态/打包门禁**：`node scripts/check.mjs` → **52/52**；`node scripts/test-stage-version.mjs`
    → **10/10**（alpha.4 版本门禁）；`npm run check` 全绿。
 5. **开发 staging 真组件浏览器（真实 Chrome + 真实 staging Host/worker）**：
    - P3-008 runtime/画布回归（旧手动路径仍保留在默认 false 分支）：
@@ -222,7 +222,9 @@ Host 的 escaped 预校验使文档允许路径不再能产生这种帧。engine
   `project.source` 会明确 `E_LIMIT`，不静默截断。
 - 发布前校验是"契约+SDK+快照管线"验证，不是"浏览器已播放"证明；timeline 暴露是静态必要非充分
   校验。R2 起：新 revision 只有其 runtime ready 才替换显示；候选失败时保留最后有效作品并在就近
-  提示错误+重试，初次无作品失败仍显示完整可恢复错误。
+  提示错误+重试，初次无作品失败仍显示完整可恢复错误。R2-follow-up 起每个预览实例绑定自身
+  width/height/duration：等待/失败期间旧作品的 viewport、letterbox、seek 范围与时长显示都不受
+  新 target props 影响，成功切换才原子更新全部显示元数据。
 - R1 语义：compose 的权威 commit 点是入口写+回读+快照证明；历史写入失败返回成功+真实
   publishedRevision+`history.status=\"degraded\"`，不把已发布内容报成失败，也不掩盖历史降级
   （历史可能缺失该次 entry；内容/预览仍权威）。
@@ -302,3 +304,61 @@ worker 44/compose 5、client 22+skip、真实链 230/230、原浏览器 41/41）
 
 本轮只做原范围失败保护补修，未新增功能/手动编辑/模型请求/安装；真实 DSH 安装与模型闭环仍待复审
 后按授权安排。
+
+## 9. 复审 R2-follow-up：预览实例元数据隔离（2026-10-18 第三轮，review `30568b1`）
+
+第二轮复审（[docs/reviews/P3-012-review-02.md]）结论：R1 关闭，正常链 261/261 与原 R2 压力 68/68
+通过；**唯一残留**是保留的 active iframe 仍使用最新 target props 的 width/height/duration——旧
+720×1280/5s 作品保留时，若 1280×720/6s 候选快照失败，旧 iframe 被改成 1280×720、`seek.max` 变 6，
+旧画面被错误 viewport 裁切、旧 5 秒作品显示成 6 秒。本轮只补该项，不修 R1、不加功能、不恢复手动
+编辑；engine 继续固定 `0deef8f`（无 engine 改动、不重打无变化引擎）。
+
+### 修复（client `7cab3b9`）
+
+- **元数据绑定实例**：每个 snapshot 实例捕获请求 revision 的 `{width,height,duration}`；按 revision
+  维护有界 metadata map（64 条），props 已前进后重试旧 target 仍用其自身几何。
+- **可见显示只读 active**：stage 尺寸/letterbox、可见 iframe element 宽高/transform、hit-test/选择/
+  拖拽映射、manual layout box、`seek.max`/value clamp、`seekTo`/time clamp、时长标签全部使用
+  active 实例元数据；仅在没有 ready 实例时按 candidate→inspected 回退（加载态，seek 禁用）。
+- **候选只读自身**：隐藏 candidate iframe 用自己的 width/height 计算尺寸/缩放，不写入可见状态。
+- **原子切换**：candidate runtime ready 后同一个 handler 原子切换 active/candidate/slot 与全部显示
+  元数据，恢复播放位置按新实例 duration clamp，旧实例切换后才卸载并释放旧快照。
+- **失败/等待冻结**：fetch/预加载/snapshot 失败/runtime 失败期间，props.inspected 更新不改变
+  active 的 iframe 尺寸、letterbox、`seek.max`、时长标签、time 与可播放性；markers/notice/retry/
+  旧消息隔离/无手动控件/无写手势保持。manual `previewOnly:false` 路径共用同一元数据管线。
+
+### 回归与证据
+
+- Client 冒烟/静态：`check.mjs` **52/52**（+1 R2F 检查，1 条 P3-008 断言改为 per-instance scale
+  表达式，语义不变）、`smoke-client.mjs` **75/75**（+2 R2F；在修复前 client 上用复审原 repro 复现
+  `720×1280 → 1280×720` 失败，修复后通过）、`check-host.mjs` 54/54、其余闸门不变。
+- **verifier 真 Chrome（新 staging `staging-p3-012-r2f-0deef8f-a59fb13`）**：
+  - 正常 preview **151/151，B1–B5 全 true**（60 原有 + 90 R2F + 1 确定性 baseline），证据
+    `artifacts/p3-012/evidence/preview-2026-10-18T14-25-58-838Z/`（17 张截图）；
+  - `DSH_R2_STRESS=1` 压力 **159/159**（原 68 压力项不放宽 + 90 R2F），证据
+    `preview-2026-10-18T14-26-50-620Z/`；5 连发切换/双 retry/卸载无泄漏继续通过；
+  - 正常 chain **261/261**（engine/host 未变，无 A–E/R1 回归），证据
+    `chain-2026-10-18T14-30-42-897Z/`。
+  - 关键几何证据：Case A/B/C 失败或等待期间 active iframe 均保持 **720×1280**、stage aspect
+    **0.5625**、**seek.max=5**、label **"/ 5.00"**、旧画面可播放、旧快照 0 次释放；成功切换后原子
+    变为 **1280×720**、aspect **1.7778**、**seek.max=6**、**"/ 6.00"**，旧快照**切换后恰好释放
+    1 次**，candidate 消失，Host records ≤4，旧消息无影响，teardown 0 泄漏。Case C 用 2600ms 延迟
+    响应验证等待窗口，并观察到隐藏 candidate 自身按 1280×720 尺寸挂载。
+- 复审缺陷复现：verifier 先在**修复前** staging 上运行新 harness，得到 150 checks/22 metadata
+  failures（geometry 翻转与复审一致），修复后全绿；harness 未放宽任何既有断言。
+- 一轮 harness-only 修复（`4fdad5b`）：R2F baseline 在 `DSH_R2_STRESS=1` 下假设压力块后是 genre B，
+  而实际为 genre A；改为确定性建立 genre-B baseline 并记录 1 条 setup check，仅 harness 变更。
+
+### 提交/staging
+
+| 项 | 值 |
+|---|---|
+| Client 修复 | `7cab3b9` |
+| R2F harness | `a59fb13` |
+| Harness-only 修复 | `4fdad5b`（sha256 `scripts/test-conversation-preview.mjs` = `10655a3b…`） |
+| 运行时固定 root | `a59fb13`；engine 固定 `0deef8f`（本包字节未变） |
+| 最终 clean staging | `artifacts/p2-b/staging-p3-012-r2f-0deef8f-a59fb13`（rootDirty=false，INTEGRITY sha256 `c28b60adadd1fdb419651598220e0dddddb096663d0699f9112058c91bdfe46a`） |
+
+结论：**R2-follow-up CLOSED**（不同宽高比/时长的候选在请求失败、runtime 失败、延迟等待期间均保持
+旧作品尺寸/时长/播放；成功 ready 后统一原子切换），正常链/原压力/原有验收无回归；未发现产品缺陷。
+仍未安装/未重启/未发模型请求/未 merge main；真实 DSH 安装与模型闭环待复审后按授权安排。
