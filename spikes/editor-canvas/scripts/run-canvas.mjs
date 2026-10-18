@@ -378,6 +378,13 @@ async function main() {
       return categories;
     });
 
+    // Put the browser offline before playback/seek/selection: the snapshot and
+    // runtime are already loaded, and no product operation may need network.
+    await setOffline(true);
+    evidence.playback.offline = await page.evaluate(() => ({
+      onLine: navigator.onLine,
+    }));
+
     // ── pixel-size phase: fixed 1280×720 stage at page origin ────────────
     await page.evaluate(() => {
       const stage = document.getElementById("stage");
@@ -716,6 +723,16 @@ async function main() {
     }
     await setStageSize(1280, 720);
     await page.evaluate(() => window.__canvas.seek(1.0));
+
+    await setOffline(false);
+    evidence.playback.offline.restoredOnline = await page.evaluate(
+      () => navigator.onLine,
+    );
+    await check("playback/seek/selection ran with the browser offline", async () => {
+      assert.equal(evidence.playback.offline.onLine, false);
+      assert.equal(evidence.playback.offline.restoredOnline, true);
+      return evidence.playback.offline;
+    });
 
     // ── in-place text edit: cancel / commit / persistence ────────────────
     const beforeEditState = await canvasState();

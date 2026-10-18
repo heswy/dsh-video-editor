@@ -1,6 +1,6 @@
 {
   "kind": "p3-005b-editor-canvas-spike",
-  "startedAt": "2026-10-18T02:22:54.654Z",
+  "startedAt": "2026-10-18T02:24:54.666Z",
   "independence": "standalone test page driven by puppeteer-core; not the DSH plugin and not a real DSH page",
   "versions": {
     "node": "v24.14.0",
@@ -32,7 +32,7 @@
     "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/155.0.0.0 Safari/537.36"
   },
   "project": {
-    "projectId": "proj-mvd7am5p-631149fa",
+    "projectId": "proj-mvd7d6o5-0d70d86c",
     "initialRevision": "449648a3af6b644615799c180fe71de7c1f1b097ac2be9971410e7cd20d848b2",
     "duration": 11,
     "width": 1280,
@@ -230,9 +230,9 @@
     ]
   },
   "host": {
-    "url": "http://127.0.0.1:61835/",
-    "origin": "http://127.0.0.1:61835",
-    "entryCachedCsp": "default-src 'none'; script-src http://127.0.0.1:61835 'sha256-MWPMlt9GUx+xu4PPxr6KVDsUPeoLEUlTISvBXaiN44M='; style-src http://127.0.0.1:61835 'unsafe-inline'; img-src http://127.0.0.1:61835 data:; font-src 'none'; connect-src 'none'; frame-src 'none'; media-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'self'",
+    "url": "http://127.0.0.1:62515/",
+    "origin": "http://127.0.0.1:62515",
+    "entryCachedCsp": "default-src 'none'; script-src http://127.0.0.1:62515 'sha256-MWPMlt9GUx+xu4PPxr6KVDsUPeoLEUlTISvBXaiN44M='; style-src http://127.0.0.1:62515 'unsafe-inline'; img-src http://127.0.0.1:62515 data:; font-src 'none'; connect-src 'none'; frame-src 'none'; media-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'self'",
     "inlineScriptHashes": 1
   },
   "isolation": {
@@ -299,10 +299,10 @@
     ],
     "playPause": {
       "startTime": 2,
-      "after800ms": 2.699899999999999,
+      "after800ms": 2.699900000000002,
       "playingFlag": true,
-      "pauseReturned": 2.7831999999999995,
-      "afterPause250ms": 2.7831999999999995
+      "pauseReturned": 2.7832000000000026,
+      "afterPause250ms": 2.7832000000000026
     },
     "hiddenObject": {
       "subtitleRect": {
@@ -327,6 +327,10 @@
         "scene-2-section",
         "hf-main"
       ]
+    },
+    "offline": {
+      "onLine": false,
+      "restoredOnline": true
     }
   },
   "comparisons": [
@@ -486,7 +490,7 @@
       "beforeRevision": "449648a3af6b644615799c180fe71de7c1f1b097ac2be9971410e7cd20d848b2",
       "afterRevision": "876ae63b39680b39d16b0e2ba8a90ebfc3b655aed5ae2ea20a83dc1cd2f2de0f",
       "workerText": "画布原位修改",
-      "snapshotId": "eac4b431f3b8f0cb99c314355c4a62a6",
+      "snapshotId": "52bcf5456663bbfc1fa84587f0fb1b3d",
       "historyCursor": null
     },
     "persistence": {
@@ -635,7 +639,7 @@
       "gapProposalAfterDrag": null,
       "blockedDiagnostics": [
         {
-          "at": "2026-10-18T02:23:24.173Z",
+          "at": "2026-10-18T02:25:22.313Z",
           "type": "drag-blocked-while-playing",
           "detail": {
             "stableId": "scene-1-title"
@@ -653,7 +657,7 @@
     },
     "foreignSourceDelta": 1,
     "revokedInstance": {
-      "oldInstanceId": "inst-6ff6d4410b4c",
+      "oldInstanceId": "inst-690425b9ad44",
       "result": {
         "ok": false,
         "code": "E_INSTANCE_NOT_FOUND"
@@ -666,7 +670,7 @@
     "destroy": {
       "results": [
         {
-          "instanceId": "inst-006e6384aa97",
+          "instanceId": "inst-de23270f0252",
           "destroyed": true
         }
       ],
@@ -785,6 +789,10 @@
       "ok": true
     },
     {
+      "name": "playback/seek/selection ran with the browser offline",
+      "ok": true
+    },
+    {
       "name": "Esc restores text without writing",
       "ok": true
     },
@@ -838,11 +846,11 @@
     }
   ],
   "failures": [],
-  "finishedAt": "2026-10-18T02:23:30.404Z",
-  "elapsedMs": 35747,
+  "finishedAt": "2026-10-18T02:25:28.717Z",
+  "elapsedMs": 34049,
   "summary": {
-    "total": 39,
-    "passed": 39,
+    "total": 40,
+    "passed": 40,
     "failed": 0,
     "evidence": "evidence/canvas-evidence.json"
   }

@@ -49,7 +49,7 @@ scripts/
   lib/host-server.mjs      试验 Host：session、快照 manifest 精确路由、逐文件
                            byte/sha256 校验、CSP+inline hash、runtime 注入、请求日志
   lib/worker-harness.mjs   真实 worker/client：受控工程、快照、edit、frame、重开/重启
-  run-canvas.mjs           真实 Chrome 证据 runner（39 项断言）
+  run-canvas.mjs           真实 Chrome 证据 runner（40 项断言）
   capability-probe.mjs     worker 写入路径 vs SDK setStyle 的能力矩阵与缺口
 test/
   contract.test.mjs        消息严格性/违规序列/迟到响应/跨实例/坐标/编辑守卫

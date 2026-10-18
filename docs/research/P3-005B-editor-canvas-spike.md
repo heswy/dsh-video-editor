@@ -6,9 +6,9 @@
 
 ## 结论（先行）
 
-1. **最小真实链路跑通**：真实 worker 受控工程 → `preview.snapshot` → Host 只按 manifest 路由精确字节 → 沙箱 iframe（opaque origin）播放/seek → 点击选中实际对象 → 双击原位修改文字 → 共享 worker `edit`+`expectedRevision`+`operationId` 写回 → 新快照重载。39/39 自动化断言通过；9 个时间点 seek 请求/落点一致；预览与 worker 抽帧在 1.5/5.5/9.0s **像素一致 99.3%/99.1%/99.9%，MAE 0.36/0.30/0.04**（差异集中在字形抗锯齿）。
+1. **最小真实链路跑通**：真实 worker 受控工程 → `preview.snapshot` → Host 只按 manifest 路由精确字节 → 沙箱 iframe（opaque origin）播放/seek → 点击选中实际对象 → 双击原位修改文字 → 共享 worker `edit`+`expectedRevision`+`operationId` 写回 → 新快照重载。40/40 自动化断言通过；9 个时间点 seek 请求/落点一致；预览与 worker 抽帧在 1.5/5.5/9.0s **像素一致 99.3%/99.1%/99.9%，MAE 0.36/0.30/0.04**（差异集中在字形抗锯齿）。
 2. **写回能力缺口明确**：现有协议只能持久化 **文字**（`text`）与 **元素显式 timing**；**Scene 级**颜色/强调色/Logo/截图/时长/标题可由 `scene.update`（整 Scene 重写）持久化。**元素位置 left/top、尺寸、颜色/字体等样式、层级/旋转、拖动/缩放均无 worker 写路径**：Host 侧拖动/缩放只能改编辑层，提交 `layout` typed op 被 worker 以 `E_PARAMS: Unsupported edit type` 拒绝，revision 不变，重载后回到模板位置。SDK `setStyle` 可在 Host 自有副本持久化，但随后 `scene.update` 的整 Scene 重生成会把元素级样式覆盖回模板值——正式实现必须把 typed layout/style op 接进生成器、历史与合并路径，不能靠 SDK 旁路写入。
-3. **消息/坐标契约可冻结为 v1 最小集**：iframe WindowProxy 身份 + 每实例 instanceId + nonce + 严格消息形状/序号；`event.origin` 在 opaque origin 下为 `"null"`，**不能作为认证**；nonce 不是沙箱。命令 `ping/state/seek/play/pause/hitTest/getElements/destroy`，事件 `ready/state/seeked/playing/paused/hit/elements/destroyed/error`；所有跨层坐标使用 **composition CSS px**，Host 独立处理 letterbox/缩放。过期 revision 与未知 stableId 在调用 worker 前由 Host 拒绝。
+3. **消息/坐标契约可冻结为 v1 最小集**：iframe WindowProxy 身份 + 每实例 instanceId + nonce + 严格消息形状/序号；`event.origin` 在 opaque origin 下为 `"null"`，**不能作为认证**；nonce 不是沙箱。命令 `ping/state/seek/play/pause/hitTest/getElements/destroy`，事件 `ready/state/seeked/playing/paused/hit/elements/destroyed/error`；所有跨层坐标使用 **composition CSS px**，Host 独立处理 letterbox/缩放。未知 stableId 在调用 worker 前由 Host 拒绝；过期 revision 没有推送通道可预知，由 worker 以 `E_REVISION_CONFLICT` 拒绝，Host 呈现冲突并支持刷新后重试。
 4. **隔离与资源边界已实测**：`sandbox="allow-scripts"`（无 `allow-same-origin`）、`referrerpolicy=no-referrer`；父页面读 `contentDocument` 为 `null`、`contentWindow.document` 抛 `SecurityError`；entry 响应 `default-src 'none'`、`connect-src 'none'`、`frame-ancestors 'self'`、内联 timeline 按 sha256 hash 放行、Host 注入固定 runtime（外部脚本，受 host source 限制）；加载只请求本 Host 路由，外部请求 0，断网后 seek/play/选中仍工作。**只证明受控模板可行，不证明任意 HTML/JS 安全或完整沙箱。**
 5. **证据与清理**：`spikes/editor-canvas/evidence/`（JSON 状态/哈希/对比 + 截图，约 0.7 MB）；销毁实例后无 frame、无新命令/事件；快照释放后 Host 路由 404、`previews/` 为空、运行目录删除、浏览器与服务关闭。
 
@@ -17,7 +17,7 @@
 - 代码/证据：`spikes/editor-canvas/**`（README 含固定输入与命令）。
 - 复跑（仓库根）：
   - `npm test --prefix spikes/editor-canvas` → 合约 + Host 服务 **10/10**，约 1.2s。
-  - `node spikes/editor-canvas/scripts/run-canvas.mjs --chrome "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"` → 真实 Chrome **39/39**，约 21s，输出 `evidence/canvas-evidence.json` + 截图。
+  - `node spikes/editor-canvas/scripts/run-canvas.mjs --chrome "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"` → 真实 Chrome **40/40**，约 21s，输出 `evidence/canvas-evidence.json` + 截图。
   - `node spikes/editor-canvas/scripts/capability-probe.mjs` → 能力矩阵，输出 `evidence/capability-evidence.json`，约 3s。
 - 固定输入：引擎 `df4b74f` / 两包 0.2.1、Node v24.14.0、Chrome 155.0.8059.84、puppeteer-core 25.14.0、`@hyperframes/sdk` 0.8.167、contract v1、runtime `p3-005b-runtime.1`。puppeteer/SDK 复用 worker 的 node_modules，本 spike 无独立依赖、无安装脚本。
 
@@ -26,8 +26,9 @@
 | 项 | 结果 |
 |---|---|
 | 受控工程 | 3 Scene（5+4+2=11s）、1280×720/30fps、4 个声明资产；inspect 12 个可点对象（9 个 text/timing，2 个空 capability 图片/线，1 个 badge） |
-| 播放/seek | 9 点：0/0.5/1.5/2.75/4.99/5.0/6.5/9.0/10.99s 请求=落点；播放 800ms 推进 0.72s；暂停后 250ms 时间不变 |
+| 播放/seek | 9 点：0/0.5/1.5/2.75/4.99/5.0/6.5/9.0/10.99s 请求=落点；播放 800ms 推进约 0.70s；暂停后 250ms 时间不变 |
 | 与 worker 抽帧 | 1.5s：99.30% 像素一致、MAE 0.358、maxΔ226；5.5s：99.10%/0.297/240；9.0s：99.93%/0.042/232 |
+| 断网播放 | 加载完成后 `page.setOfflineMode(true)`（`navigator.onLine=false`），9 点 seek、播放/暂停、命中/选中/letterbox 全部照常；写回阶段恢复在线（`restoredOnline:true`） |
 | 命中/选择 | 单击命中 `scene-1-title`；选中覆盖层只在 Host 层，沙箱 elements 矩形不变；scene 边界 4.99s→scene-1-title、6.5s→scene-2-title；5.01s 标题入场动画未可见 → 结构容器（明确规则） |
 | 隐藏/重叠 | 5.1s 点 scene-2-subtitle 坐标 → `scene-2-section`（时间窗未开始）；5.6s → `scene-2-subtitle`；重叠点返回 shot，stack `[shot, rule, section, main]` |
 | letterbox | 1100×700（scale 0.859375，top 40.625）与 760×640（scale 0.59375，top 106.25）：映射点击命中同一 stableId，留白区不命中 |
