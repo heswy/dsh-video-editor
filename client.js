@@ -152,6 +152,14 @@ window.__ModuleLoader__.load({
       'video.canvas.noAssets': '还没有图片素材。',
       'video.canvas.useAsset': '用作画面',
       'video.canvas.newSceneTitle': '新场景',
+      'video.canvas.templateUnavailable': '当前场景缺少完整的可写数据，已取消本次写入以免丢失其它内容。',
+      'video.canvas.invalidColor': '场景底色无效。',
+      'video.canvas.invalidAsset': '图片素材地址无效。',
+      'video.canvas.layoutRefused': '该对象缺少可用的静态位置，已取消本次写入。',
+      'video.canvas.layoutScaleUnknown': '无法确定该对象当前的缩放比例，已取消本次写入。',
+      'video.canvas.persistFailed': '保存失败，请重试。',
+      'video.canvas.retryText': '重试保存',
+      'video.canvas.revisionRefreshed': '工程已更新，请再次提交保存。',
       'video.error.session': '创作会话暂不可用。',
       'video.error.sessionConfig': '创作会话尚未配置。',
       'video.error.sessionState': '创作会话记录无法读取，请检查 Host 存储。',
@@ -262,6 +270,14 @@ window.__ModuleLoader__.load({
       'video.canvas.noAssets': 'No image assets yet.',
       'video.canvas.useAsset': 'Use as picture',
       'video.canvas.newSceneTitle': 'New scene',
+      'video.canvas.templateUnavailable': 'This Scene does not expose complete writable data, so the write was cancelled to avoid dropping other content.',
+      'video.canvas.invalidColor': 'The Scene background color is invalid.',
+      'video.canvas.invalidAsset': 'The picture asset address is invalid.',
+      'video.canvas.layoutRefused': 'This object has no usable static position, so the write was cancelled.',
+      'video.canvas.layoutScaleUnknown': 'The current scale of this object is unknown, so the write was cancelled.',
+      'video.canvas.persistFailed': 'The save failed. Try again.',
+      'video.canvas.retryText': 'Retry save',
+      'video.canvas.revisionRefreshed': 'The project was updated; submit the save again.',
       'video.error.session': 'Creation conversations are temporarily unavailable.',
       'video.error.sessionConfig': 'Creation conversations are not configured.',
       'video.error.sessionState': 'The creation conversation record could not be read. Check the Host storage.',
@@ -937,6 +953,24 @@ window.__ModuleLoader__.load({
   font:inherit;
   resize:none;
 }
+.dv-editor-actions{
+  position:absolute;
+  z-index:3;
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:6px;
+  max-width:min(320px, 90%);
+  padding:3px 6px;
+  border:1px solid color-mix(in srgb, var(--dsw-alias-state-error-primary, #e06c75) 55%, transparent);
+  border-radius:5px;
+  background:var(--dsw-alias-bg-overlay,#232327);
+  box-shadow:0 8px 20px -14px rgba(0,0,0,.6);
+  font-size:.74em;
+}
+.dv-editor-actions .dv-button{min-height:22px;padding:0 7px;font-size:.92em;}
+.dv-editor-actions .dv-editor-retry{flex:none;}
+.dv-editor-actions .dv-tool-error{min-width:0;overflow:hidden;text-overflow:ellipsis;}
 .dv-canvas-status{
   margin:auto;
   padding:14px;
@@ -1466,6 +1500,7 @@ window.__ModuleLoader__.load({
       else if (code === 'E_REVISION_CONFLICT' || code === 'E_OPERATION_REUSED' || code === 'E_PROJECT_CLOSING' || code === 'E_PROJECT_NOT_OPEN') friendly = t('video.error.conflict');
       else if (code === 'E_WORKER_START' || code === 'E_WORKER_EXITED' || code === 'E_WORKER_DISPOSED' || code === 'E_TRANSPORT' || code === 'E_STARTUP') friendly = t('video.error.worker');
       else if (code === 'E_ARTIFACT_INTEGRITY' || code === 'E_ARTIFACT_NOT_READY') friendly = t('video.frame.failed');
+      else if (code === 'E_PERSIST') friendly = t('video.canvas.persistFailed');
       else if (code === 'E_SESSION_CONFIG') friendly = t('video.error.sessionConfig');
       else if (code === 'E_SESSION_STATE_CORRUPT' || code === 'E_SESSION_STATE_VERSION' || code === 'E_SESSION_STATE_LIMIT' || code === 'E_SESSION_STATE_DISPOSED') friendly = t('video.error.sessionState');
       else if (code === 'E_SESSION_CREATE' || code === 'E_SESSION_RESPONSE' || code === 'E_SESSION_NOT_BOUND' || code === 'E_SESSION_ALREADY_BOUND' || code === 'E_AGENT_REQUIRED' || code === 'E_PROJECT_SCOPE') friendly = t('video.error.session');
@@ -1546,6 +1581,508 @@ window.__ModuleLoader__.load({
     function stateText(state, t) {
       return typeof state === 'string' && state.length > 0 ? t('video.state.' + state) : '';
     }
+
+    // ---------------------------------------------------------------------------
+    // Pure canvas helpers. Kept at module scope, free of React/DOM/Host state so
+    // the Node smoke test can execute this exact source (vm-extracted) and prove
+    // the numeric layout patch, the frozen Scene template copy and the reviewed
+    // P3-005-B runtime message contract without a browser. CanvasWorkspace is the
+    // only caller; keeping them here also keeps the browser harness extraction
+    // inside the two reviewed region slices.
+    // ---------------------------------------------------------------------------
+
+    const CANVAS_CONTRACT_VERSION = 1;
+    const CANVAS_MAX_MESSAGE_BYTES = 16384;
+    const CANVAS_INSTANCE_ID = /^[a-z0-9][a-z0-9-]{7,63}$/;
+    const CANVAS_NONCE = /^[a-f0-9]{32}$/;
+    const CANVAS_COMMAND_TYPES = Object.freeze([
+      'ping',
+      'state',
+      'seek',
+      'play',
+      'pause',
+      'hitTest',
+      'getElements',
+      'destroy',
+    ]);
+    const CANVAS_EVENT_TYPES = Object.freeze([
+      'ready',
+      'pong',
+      'state',
+      'seeked',
+      'playing',
+      'paused',
+      'hit',
+      'elements',
+      'destroyed',
+      'error',
+    ]);
+    // Direct (unsolicited) events may not carry a replyTo: every one of these is
+    // a direct answer to a command, so a floating copy is a protocol violation
+    // and would otherwise let a stale snapshot mutate the current UI.
+    const CANVAS_CORRELATED_EVENT_TYPES = Object.freeze([
+      'pong',
+      'seeked',
+      'playing',
+      'paused',
+      'hit',
+      'elements',
+      'state',
+      'destroyed',
+    ]);
+    const CANVAS_COMMAND_REQUIRED = Object.freeze({
+      ping: [],
+      state: [],
+      seek: ['time'],
+      play: [],
+      pause: [],
+      hitTest: ['x', 'y'],
+      getElements: [],
+      destroy: [],
+    });
+    const CANVAS_EVENT_REQUIRED = Object.freeze({
+      ready: ['runtimeVersion', 'width', 'height', 'duration'],
+      pong: [],
+      state: ['time', 'duration', 'playing'],
+      seeked: ['time'],
+      playing: ['time'],
+      paused: ['time'],
+      hit: ['hit'],
+      elements: ['elements'],
+      destroyed: [],
+      error: ['code', 'message'],
+    });
+    const CANVAS_COMMAND_KEYS = Object.freeze(['v', 'kind', 'instanceId', 'nonce', 'seq', 'type', 'payload']);
+    const CANVAS_EVENT_KEYS = Object.freeze(['v', 'kind', 'instanceId', 'nonce', 'seq', 'type', 'replyTo', 'payload']);
+    const CANVAS_SCENE_TEMPLATE_KEYS = Object.freeze(['title', 'duration', 'subtitle', 'badge', 'color', 'accent', 'logo', 'shot']);
+    const CANVAS_SCENE_COLOR = /^#[0-9a-fA-F]{6}$/;
+    const CANVAS_SCENE_ASSET = /^assets\/[A-Za-z0-9][A-Za-z0-9._-]*\.(png|jpe?g)$/i;
+    const CANVAS_REVISION = /^[a-f0-9]{64}$/;
+
+    function canvasPlainObject(value) {
+      return value !== null && typeof value === 'object' && Array.isArray(value) === false;
+    }
+
+    function canvasFiniteNumber(value) {
+      return typeof value === 'number' && Number.isFinite(value);
+    }
+
+    function canvasExactKeys(value, allowed, required) {
+      if (canvasPlainObject(value) === false) return 'not-object';
+      for (const key of Object.keys(value)) {
+        if (allowed.includes(key) === false) return 'unknown-key:' + key;
+      }
+      for (const key of required) {
+        if (Object.prototype.hasOwnProperty.call(value, key) === false || value[key] === undefined) return 'missing-key:' + key;
+      }
+      return null;
+    }
+
+    function canvasIsOversizedMessage(message) {
+      try {
+        const encoded = JSON.stringify(message);
+        if (typeof TextEncoder === 'function') return new TextEncoder().encode(encoded).length > CANVAS_MAX_MESSAGE_BYTES;
+        return encoded.length > CANVAS_MAX_MESSAGE_BYTES;
+      } catch (_error) {
+        return true;
+      }
+    }
+
+    function canvasValidateEnvelope(message, kind, types, required, allowedKeys) {
+      const keyError = canvasExactKeys(message, allowedKeys, allowedKeys);
+      if (keyError !== null) return { ok: false, code: 'E_MALFORMED', detail: keyError };
+      if (message.v !== CANVAS_CONTRACT_VERSION) return { ok: false, code: 'E_VERSION', detail: 'unsupported contract version' };
+      if (message.kind !== kind) return { ok: false, code: 'E_MALFORMED', detail: 'wrong kind' };
+      if (typeof message.instanceId !== 'string' || CANVAS_INSTANCE_ID.test(message.instanceId) === false) {
+        return { ok: false, code: 'E_INSTANCE', detail: 'invalid instanceId' };
+      }
+      if (typeof message.nonce !== 'string' || CANVAS_NONCE.test(message.nonce) === false) {
+        return { ok: false, code: 'E_NONCE', detail: 'invalid nonce' };
+      }
+      if (Number.isInteger(message.seq) === false || message.seq < 1) {
+        return { ok: false, code: 'E_SEQ', detail: 'seq must be a positive integer' };
+      }
+      if (types.includes(message.type) === false) return { ok: false, code: 'E_TYPE', detail: 'unknown message type' };
+      if (kind === 'evt' && message.replyTo !== null && Number.isInteger(message.replyTo) === false) {
+        return { ok: false, code: 'E_REPLY', detail: 'replyTo must be integer or null' };
+      }
+      if (canvasPlainObject(message.payload) === false) return { ok: false, code: 'E_PAYLOAD', detail: 'payload must be an object' };
+      const payloadKeys = required[message.type];
+      const payloadError = canvasExactKeys(message.payload, payloadKeys, payloadKeys);
+      if (payloadError !== null) return { ok: false, code: 'E_PAYLOAD', detail: message.type + ':' + payloadError };
+      return { ok: true };
+    }
+
+    /** Validate a runtime event against the reviewed P3-005-B contract. */
+    function canvasValidateEvent(message) {
+      const envelope = canvasValidateEnvelope(message, 'evt', CANVAS_EVENT_TYPES, CANVAS_EVENT_REQUIRED, CANVAS_EVENT_KEYS);
+      if (envelope.ok === false) return envelope;
+      const payload = message.payload;
+      if (message.type === 'ready') {
+        if (
+          typeof payload.runtimeVersion !== 'string' ||
+          canvasFiniteNumber(payload.width) === false ||
+          canvasFiniteNumber(payload.height) === false ||
+          canvasFiniteNumber(payload.duration) === false ||
+          payload.width <= 0 ||
+          payload.height <= 0 ||
+          payload.duration <= 0
+        ) {
+          return { ok: false, code: 'E_PAYLOAD', detail: 'ready shape' };
+        }
+      } else if (message.type === 'state') {
+        if (canvasFiniteNumber(payload.time) === false || canvasFiniteNumber(payload.duration) === false || typeof payload.playing !== 'boolean') {
+          return { ok: false, code: 'E_PAYLOAD', detail: 'state shape' };
+        }
+      } else if (message.type === 'seeked' || message.type === 'playing' || message.type === 'paused') {
+        if (canvasFiniteNumber(payload.time) === false) return { ok: false, code: 'E_PAYLOAD', detail: message.type + '.time' };
+      } else if (message.type === 'hit') {
+        if (payload.hit !== null && canvasValidateHit(payload.hit) !== null) return { ok: false, code: 'E_PAYLOAD', detail: 'hit shape' };
+      } else if (message.type === 'elements') {
+        if (Array.isArray(payload.elements) === false || payload.elements.length > 512) {
+          return { ok: false, code: 'E_PAYLOAD', detail: 'elements shape' };
+        }
+      } else if (message.type === 'error') {
+        if (
+          typeof payload.code !== 'string' ||
+          payload.code.length === 0 ||
+          payload.code.length > 64 ||
+          typeof payload.message !== 'string' ||
+          payload.message.length > 512
+        ) {
+          return { ok: false, code: 'E_PAYLOAD', detail: 'error shape' };
+        }
+      }
+      return { ok: true };
+    }
+
+    /** Validate a parent-to-runtime command (the UI only sends known types). */
+    function canvasValidateCommand(message) {
+      const envelope = canvasValidateEnvelope(message, 'cmd', CANVAS_COMMAND_TYPES, CANVAS_COMMAND_REQUIRED, CANVAS_COMMAND_KEYS);
+      if (envelope.ok === false) return envelope;
+      const payload = message.payload;
+      if (message.type === 'seek') {
+        if (canvasFiniteNumber(payload.time) === false) return { ok: false, code: 'E_PAYLOAD', detail: 'seek.time must be finite' };
+      } else if (message.type === 'hitTest') {
+        if (canvasFiniteNumber(payload.x) === false || canvasFiniteNumber(payload.y) === false) {
+          return { ok: false, code: 'E_PAYLOAD', detail: 'hitTest coordinates must be finite' };
+        }
+      }
+      return { ok: true };
+    }
+
+    /** Returns null for a valid hit description, else the failing detail. */
+    function canvasValidateHit(hit) {
+      if (canvasPlainObject(hit) === false) return 'not-object';
+      const allowed = ['stableId', 'sceneId', 'tag', 'text', 'rect', 'style', 'stack'];
+      for (const key of Object.keys(hit)) {
+        if (allowed.includes(key) === false) return 'unknown:' + key;
+      }
+      if (typeof hit.stableId !== 'string' || hit.stableId.length === 0) return 'stableId';
+      if (hit.sceneId !== null && typeof hit.sceneId !== 'string') return 'sceneId';
+      if (typeof hit.tag !== 'string' || hit.tag.length > 32) return 'tag';
+      if (typeof hit.text !== 'string') return 'text';
+      if (canvasPlainObject(hit.rect) === false) return 'rect';
+      const rectError = canvasExactKeys(hit.rect, ['x', 'y', 'width', 'height'], ['x', 'y', 'width', 'height']);
+      if (rectError !== null) return 'rect:' + rectError;
+      for (const value of Object.values(hit.rect)) {
+        if (canvasFiniteNumber(value) === false) return 'rect-number';
+      }
+      if (hit.rect.width < 0 || hit.rect.height < 0) return 'rect-negative';
+      if (canvasPlainObject(hit.style) === false) return 'style';
+      if (Array.isArray(hit.stack) === false || hit.stack.length > 32) return 'stack';
+      for (const id of hit.stack) {
+        if (typeof id !== 'string') return 'stack-id';
+      }
+      return null;
+    }
+
+    /**
+     * One ledger per preview snapshot instance. Mirrors the reviewed spike
+     * contract: commands carry increasing seq numbers, incoming events must pass
+     * the strict shape check, belong to this exact instance/nonce, advance the
+     * event sequence strictly and either answer a pending command or be an
+     * explicit unsolicited event (ready/error). `revoke()` returns the still
+     * pending seqs so the caller can settle every promise explicitly.
+     */
+    function canvasMessageLedger(options) {
+      const settings = canvasPlainObject(options) ? options : {};
+      const instanceId = settings.instanceId;
+      const nonce = settings.nonce;
+      const timeoutMs = canvasFiniteNumber(settings.timeoutMs) && settings.timeoutMs > 0 ? settings.timeoutMs : 4000;
+      if (typeof instanceId !== 'string' || CANVAS_INSTANCE_ID.test(instanceId) === false) throw new TypeError('invalid canvas instanceId');
+      if (typeof nonce !== 'string' || CANVAS_NONCE.test(nonce) === false) throw new TypeError('invalid canvas nonce');
+      let nextSeq = 1;
+      let lastEventSeq = 0;
+      let revoked = false;
+      const pending = new Map();
+      const now = typeof settings.now === 'function' ? settings.now : Date.now;
+
+      function command(type, payload) {
+        const message = {
+          v: CANVAS_CONTRACT_VERSION,
+          kind: 'cmd',
+          instanceId: instanceId,
+          nonce: nonce,
+          seq: nextSeq,
+          type: type,
+          payload: payload === undefined ? {} : payload,
+        };
+        const validation = canvasValidateCommand(message);
+        if (validation.ok === false) throw new TypeError('invalid canvas command: ' + validation.detail);
+        nextSeq += 1;
+        pending.set(message.seq, { type: type, deadline: now() + timeoutMs });
+        return message;
+      }
+
+      function revoke() {
+        revoked = true;
+        const seqs = [...pending.keys()];
+        pending.clear();
+        return seqs;
+      }
+
+      function expire(at) {
+        const expired = [];
+        for (const [seq, entry] of pending) {
+          if (entry.deadline <= at) {
+            expired.push(seq);
+            pending.delete(seq);
+          }
+        }
+        return expired;
+      }
+
+      function accept(message, acceptance) {
+        const optionsInput = canvasPlainObject(acceptance) ? acceptance : {};
+        const at = canvasFiniteNumber(optionsInput.now) ? optionsInput.now : now();
+        function drop(code, detail) {
+          return { accepted: false, code: code, detail: detail, seq: canvasPlainObject(message) && Number.isInteger(message.seq) ? message.seq : null };
+        }
+        if (revoked) return drop('E_INSTANCE_REVOKED', 'canvas instance was revoked');
+        if (optionsInput.sourceOk !== true) return drop('E_SOURCE_MISMATCH', 'event source is not this iframe');
+        if (canvasIsOversizedMessage(message)) return drop('E_OVERSIZED', 'event exceeds the message size limit');
+        const validation = canvasValidateEvent(message);
+        if (validation.ok === false) return drop(validation.code, validation.detail);
+        if (message.instanceId !== instanceId) return drop('E_WRONG_INSTANCE', 'event belongs to another instance');
+        if (message.nonce !== nonce) return drop('E_NONCE', 'nonce mismatch');
+        if (message.seq <= lastEventSeq) return drop('E_STALE_SEQ', 'event sequence already seen');
+        lastEventSeq = message.seq;
+        let correlated = null;
+        if (message.replyTo !== null) {
+          correlated = pending.get(message.replyTo) || null;
+          if (correlated === null) return drop('E_LATE_RESPONSE', 'no pending command for seq ' + message.replyTo);
+          pending.delete(message.replyTo);
+        } else if (CANVAS_CORRELATED_EVENT_TYPES.includes(message.type)) {
+          return drop('E_UNCORRELATED', message.type + ' needs replyTo');
+        }
+        void at;
+        return {
+          accepted: true,
+          seq: message.seq,
+          type: message.type,
+          payload: message.payload,
+          replyTo: message.replyTo,
+          commandType: correlated === null ? null : correlated.type,
+        };
+      }
+
+      function pendingCount() {
+        return pending.size;
+      }
+
+      function pendingSeqs() {
+        return [...pending.keys()];
+      }
+
+      return { command: command, accept: accept, revoke: revoke, expire: expire, pendingCount: pendingCount, pendingSeqs: pendingSeqs };
+    }
+
+    /** Static layout base (composition px) from the authoritative inspect. */
+    function canvasStaticBase(layout) {
+      function extent(key, positive) {
+        if (canvasPlainObject(layout) === false) return null;
+        const value = layout[key];
+        if (canvasFiniteNumber(value) === false || value < 0) return null;
+        if (positive === true && value <= 0) return null;
+        return value;
+      }
+      return {
+        left: extent('left', false),
+        top: extent('top', false),
+        width: extent('width', true),
+        height: extent('height', true),
+      };
+    }
+
+    function canvasClampNumber(value, minimum, maximum) {
+      const ceiling = maximum < minimum ? minimum : maximum;
+      return Math.min(Math.max(value, minimum), ceiling);
+    }
+
+    function canvasRoundNumber(value) {
+      return Math.round(value * 1000) / 1000;
+    }
+
+    function canvasValidRect(value) {
+      if (canvasPlainObject(value) === false) return null;
+      if (canvasFiniteNumber(value.x) === false || canvasFiniteNumber(value.y) === false) return null;
+      if (canvasFiniteNumber(value.width) === false || canvasFiniteNumber(value.height) === false) return null;
+      if (value.width < 0 || value.height < 0) return null;
+      return { x: value.x, y: value.y, width: value.width, height: value.height };
+    }
+
+    /**
+     * Turn an animated drag preview into the static layout patch to persist.
+     *
+     * `base` is inspected.elements[].layout (null = unset/auto), `animated` is the
+     * runtime hit rect captured at pointer-down and `preview` is the same rect
+     * moved by the pointer delta. A move only patches left/top from the static
+     * origin plus the animated delta; a resize inverts the current animation
+     * scale (sx from width, sy from height, else sy := sx) so neither the
+     * transform nor the animated offset is ever baked into the document.
+     */
+    function canvasLayoutPatch(input) {
+      const settings = canvasPlainObject(input) ? input : {};
+      const mode = typeof settings.mode === 'string' ? settings.mode : '';
+      const base = settings.base;
+      const animated = canvasValidRect(settings.animated);
+      const preview = canvasValidRect(settings.preview);
+      const composition = canvasPlainObject(settings.composition)
+        ? canvasValidRect({ x: 0, y: 0, width: settings.composition.width, height: settings.composition.height })
+        : null;
+      if (canvasPlainObject(base) === false || animated === null || preview === null || composition === null) {
+        return { ok: false, code: 'E_LAYOUT_INPUT', detail: 'layout drag input is incomplete' };
+      }
+      if (composition.width <= 0 || composition.height <= 0) {
+        return { ok: false, code: 'E_LAYOUT_INPUT', detail: 'composition size is unknown' };
+      }
+      const move = mode === 'move';
+      const widthSide = mode.includes('e') || mode.includes('w');
+      const heightSide = mode.includes('n') || mode.includes('s');
+      if (move === false && (mode === '' || /^[ns]?[ew]?$/.test(mode) === false || (widthSide === false && heightSide === false))) {
+        return { ok: false, code: 'E_LAYOUT_INPUT', detail: 'unknown drag mode' };
+      }
+      const dx = preview.x - animated.x;
+      const dy = preview.y - animated.y;
+      if (move) {
+        if (base.left === null || base.top === null) return { ok: false, code: 'E_LAYOUT_BASE', detail: 'static origin is unknown' };
+        const widthBasis = base.width !== null ? base.width : animated.width;
+        const heightBasis = base.height !== null ? base.height : animated.height;
+        return {
+          ok: true,
+          patch: {
+            left: canvasRoundNumber(canvasClampNumber(base.left + dx, 0, composition.width - widthBasis)),
+            top: canvasRoundNumber(canvasClampNumber(base.top + dy, 0, composition.height - heightBasis)),
+          },
+        };
+      }
+      // sx is only derivable from the static width; an auto width must never be
+      // turned into a scale guess. sy falls back to sx, as the reviewed inverse
+      // mapping specifies (uniform scale when the static height is auto).
+      const sxFromWidth = base.width !== null && animated.width > 0 ? animated.width / base.width : null;
+      const syFromHeight = base.height !== null && animated.height > 0 ? animated.height / base.height : null;
+      const sxKnown = sxFromWidth !== null && Number.isFinite(sxFromWidth) && sxFromWidth > 0;
+      const syKnown = syFromHeight !== null && Number.isFinite(syFromHeight) && syFromHeight > 0;
+      const sx = sxKnown ? sxFromWidth : null;
+      const sy = syKnown ? syFromHeight : sx;
+      if (widthSide && (sx === null || sx <= 0)) return { ok: false, code: 'E_LAYOUT_SCALE', detail: 'current width scale is unknown' };
+      if (heightSide && (sy === null || sy <= 0)) return { ok: false, code: 'E_LAYOUT_SCALE', detail: 'current height scale is unknown' };
+      const patch = {};
+      // East/south edges keep the static left/top, so the composition bound for
+      // the new extent is the remaining space after that static origin.
+      const widthCeiling = widthSide && mode.includes('w') === false && base.left !== null ? Math.max(1, composition.width - base.left) : composition.width;
+      const heightCeiling = heightSide && mode.includes('n') === false && base.top !== null ? Math.max(1, composition.height - base.top) : composition.height;
+      if (widthSide) patch.width = canvasRoundNumber(canvasClampNumber(preview.width / sx, 1, widthCeiling));
+      if (heightSide) patch.height = canvasRoundNumber(canvasClampNumber(preview.height / sy, 1, heightCeiling));
+      if (mode.includes('w')) {
+        if (base.left === null) return { ok: false, code: 'E_LAYOUT_BASE', detail: 'static left is unknown' };
+        const left = canvasClampNumber(base.left + dx / sx, 0, composition.width - 1);
+        patch.left = canvasRoundNumber(left);
+        if (widthSide) patch.width = canvasRoundNumber(canvasClampNumber(preview.width / sx, 1, Math.max(1, composition.width - left)));
+      }
+      if (mode.includes('n')) {
+        if (base.top === null) return { ok: false, code: 'E_LAYOUT_BASE', detail: 'static top is unknown' };
+        const top = canvasClampNumber(base.top + dy / sy, 0, composition.height - 1);
+        patch.top = canvasRoundNumber(top);
+        if (heightSide) patch.height = canvasRoundNumber(canvasClampNumber(preview.height / sy, 1, Math.max(1, composition.height - top)));
+      }
+      return { ok: true, patch: patch };
+    }
+
+    /**
+     * Validate and copy the frozen P3-009 `scene.template` from one authoritative
+     * inspect result. The returned object is exactly the full replacement input
+     * for scene.update: every supported field is preserved, sceneId and unknown
+     * keys are not copied, and an absent/invalid template is refused instead of
+     * guessed from UI defaults.
+     */
+    function canvasCopySceneTemplate(template) {
+      if (canvasPlainObject(template) === false) return { ok: false, detail: 'scene template is absent' };
+      for (const key of Object.keys(template)) {
+        if (key === 'sceneId') continue;
+        if (CANVAS_SCENE_TEMPLATE_KEYS.includes(key) === false) return { ok: false, detail: 'unknown scene template field ' + key };
+      }
+      if (typeof template.title !== 'string' || template.title.length < 1 || template.title.length > 200) {
+        return { ok: false, detail: 'scene title is invalid' };
+      }
+      if (canvasFiniteNumber(template.duration) === false || template.duration < 0.5 || template.duration > 60) {
+        return { ok: false, detail: 'scene duration is invalid' };
+      }
+      const copy = { title: template.title, duration: template.duration };
+      if (template.subtitle !== undefined) {
+        if (typeof template.subtitle !== 'string' || template.subtitle.length > 300) return { ok: false, detail: 'scene subtitle is invalid' };
+        copy.subtitle = template.subtitle;
+      }
+      if (template.badge !== undefined) {
+        if (typeof template.badge !== 'string' || template.badge.length > 48) return { ok: false, detail: 'scene badge is invalid' };
+        copy.badge = template.badge;
+      }
+      for (const key of ['color', 'accent']) {
+        if (template[key] === undefined) continue;
+        if (typeof template[key] !== 'string' || CANVAS_SCENE_COLOR.test(template[key]) === false) return { ok: false, detail: 'scene ' + key + ' is invalid' };
+        copy[key] = template[key];
+      }
+      for (const key of ['logo', 'shot']) {
+        if (template[key] === undefined) continue;
+        if (typeof template[key] !== 'string' || CANVAS_SCENE_ASSET.test(template[key]) === false) return { ok: false, detail: 'scene ' + key + ' is invalid' };
+        copy[key] = template[key];
+      }
+      return { ok: true, template: copy };
+    }
+
+    /**
+     * Copy the complete template for one Scene from one authoritative inspect
+     * result, together with that inspect's revision (the expectedRevision for the
+     * immediately following scene.update).
+     */
+    function canvasSceneTemplate(inspected, sceneId) {
+      if (canvasPlainObject(inspected) === false) return { ok: false, code: 'E_SCENE_TEMPLATE', detail: 'inspect result is unavailable' };
+      if (typeof inspected.revision !== 'string' || CANVAS_REVISION.test(inspected.revision) === false) {
+        return { ok: false, code: 'E_SCENE_TEMPLATE', detail: 'authoritative revision is unavailable' };
+      }
+      if (Array.isArray(inspected.scenes) === false) return { ok: false, code: 'E_SCENE_TEMPLATE', detail: 'scenes are unavailable' };
+      const scene = inspected.scenes.find(function findScene(candidate) {
+        return canvasPlainObject(candidate) && candidate.sceneId === sceneId;
+      });
+      if (scene === undefined) return { ok: false, code: 'E_SCENE_NOT_FOUND', detail: 'scene is no longer present' };
+      const copied = canvasCopySceneTemplate(scene.template);
+      if (copied.ok === false) return { ok: false, code: 'E_SCENE_TEMPLATE', detail: copied.detail };
+      return { ok: true, revision: inspected.revision, sceneId: sceneId, template: copied.template };
+    }
+
+    function canvasNormalizedColor(value) {
+      return typeof value === 'string' && CANVAS_SCENE_COLOR.test(value) ? value.toLowerCase() : null;
+    }
+
+    function canvasNormalizedAssetPath(value) {
+      return typeof value === 'string' && CANVAS_SCENE_ASSET.test(value) ? value : null;
+    }
+
+    function canvasIsRevisionConflict(error) {
+      return canvasPlainObject(error) && error.code === 'E_REVISION_CONFLICT';
+    }
+
     //#endregion
 
     //#region components
@@ -1788,6 +2325,7 @@ window.__ModuleLoader__.load({
       const [selected, setSelected] = React.useState(null);
       const [drag, setDrag] = React.useState(null);
       const [editor, setEditor] = React.useState(null);
+      const [editorNotice, setEditorNotice] = React.useState(null);
       const [busy, setBusy] = React.useState(null);
       const [actionError, setActionError] = React.useState(null);
       const [stageSize, setStageSize] = React.useState({ width: 0, height: 0 });
@@ -1803,9 +2341,7 @@ window.__ModuleLoader__.load({
       const stageRef = React.useRef(null);
       const wrapRef = React.useRef(null);
       const overlayRef = React.useRef(null);
-      const instanceRef = React.useRef(null);
-      const nonceRef = React.useRef(null);
-      const seqRef = React.useRef(0);
+      const ledgerRef = React.useRef(null);
       const pendingRef = React.useRef(new Map());
       const timeRef = React.useRef(0);
       const selectedRef = React.useRef(null);
@@ -1833,36 +2369,53 @@ window.__ModuleLoader__.load({
         }
       }
 
+      // Settle every still pending runtime command explicitly: resolve its
+      // promise with null, clear its timeout and drop it from the waiter map.
+      // Never leave a dangling promise when an instance is unbound, replaced or
+      // destroyed (the reviewed P3-005-B contract requirement).
+      function settlePendingCommands() {
+        const pending = pendingRef.current;
+        for (const [seq, entry] of pending) {
+          pending.delete(seq);
+          clearTimeout(entry.timer);
+          entry.resolve(null);
+        }
+        const ledger = ledgerRef.current;
+        if (ledger !== null) ledger.revoke();
+        readyRef.current = false;
+      }
+
       function postCommand(type, payload) {
         return new Promise(function commandPromise(resolve) {
           const frame = iframeRef.current;
-          if (frame === null || typeof frame.contentWindow === 'undefined') {
+          const ledger = ledgerRef.current;
+          if (frame === null || ledger === null || typeof frame.contentWindow === 'undefined') {
             resolve(null);
             return;
           }
-          const seq = ++seqRef.current;
+          let message;
+          try {
+            message = ledger.command(type, payload || {});
+          } catch (_error) {
+            // The UI only constructs contract commands; an invalid one is a bug,
+            // not something to post to the sandbox.
+            resolve(null);
+            return;
+          }
           const pending = pendingRef.current;
           const timer = setTimeout(function timeout() {
-            pending.delete(seq);
+            if (pending.has(message.seq) === false) return;
+            pending.delete(message.seq);
+            ledger.expire(Date.now() + 1);
             resolve(null);
           }, 4000);
-          pending.set(seq, { resolve: resolve, timer: timer });
+          pending.set(message.seq, { resolve: resolve, timer: timer });
           try {
-            frame.contentWindow.postMessage(
-              {
-                v: 1,
-                kind: 'cmd',
-                instanceId: instanceRef.current,
-                nonce: nonceRef.current,
-                seq: seq,
-                type: type,
-                payload: payload || {},
-              },
-              '*'
-            );
+            frame.contentWindow.postMessage(message, '*');
           } catch (_error) {
             clearTimeout(timer);
-            pending.delete(seq);
+            pending.delete(message.seq);
+            ledger.expire(Date.now() + 1);
             resolve(null);
           }
         });
@@ -1947,9 +2500,10 @@ window.__ModuleLoader__.load({
           if (token !== snapshotToken.current) return;
           const instance = canvasInstanceId();
           const nonce = canvasNonce();
-          instanceRef.current = instance;
-          nonceRef.current = nonce;
-          seqRef.current = 0;
+          // A new snapshot is a new sandbox instance: settle every promise that
+          // still belongs to the old instance before its ledger is replaced.
+          settlePendingCommands();
+          ledgerRef.current = canvasMessageLedger({ instanceId: instance, nonce: nonce, timeoutMs: 4000 });
           pendingRef.current = new Map();
           setSnapshot({
             snapshotId: next.snapshotId,
@@ -1982,6 +2536,7 @@ window.__ModuleLoader__.load({
           if (snapshot === null) return function noMessages() {};
           const frame = iframeRef.current;
           if (frame === null) return function noFrame() {};
+          const boundLedger = ledgerRef.current;
           function restoreRuntimeState() {
             const restore = snapshot.restore;
             const target = restore && Number.isFinite(restore.time) ? Math.min(restore.time, duration) : 0;
@@ -2001,26 +2556,21 @@ window.__ModuleLoader__.load({
               }
             });
           }
-          function handleMessage(event) {
-            if (event.source !== frame.contentWindow) return;
-            const data = event.data;
-            if (data === null || typeof data !== 'object' || data.kind !== 'evt') return;
-            if (data.instanceId !== instanceRef.current || data.nonce !== nonceRef.current) return;
-            if (Number.isInteger(data.seq) === false) return;
-            if (typeof data.type !== 'string') return;
+          function settleWaiter(seq, payload) {
             const pending = pendingRef.current;
-            if (Number.isInteger(data.replyTo) && pending.has(data.replyTo)) {
-              const entry = pending.get(data.replyTo);
-              pending.delete(data.replyTo);
-              clearTimeout(entry.timer);
-              entry.resolve(data.payload);
-            }
-            if (data.type === 'ready') {
+            const entry = pending.get(seq);
+            if (entry === undefined) return;
+            pending.delete(seq);
+            clearTimeout(entry.timer);
+            entry.resolve(payload);
+          }
+          function handleRuntimeEvent(outcome) {
+            const payload = outcome.payload;
+            if (outcome.type === 'ready') {
               readyRef.current = true;
               setPhase('ready');
               restoreRuntimeState();
-            } else if (data.type === 'seeked' || data.type === 'state') {
-              const payload = data.payload || {};
+            } else if (outcome.type === 'seeked' || outcome.type === 'state') {
               if (Number.isFinite(payload.time)) setTime(payload.time);
               if (typeof payload.playing === 'boolean') setPlaying(payload.playing);
               if (readyRef.current === false) {
@@ -2028,28 +2578,40 @@ window.__ModuleLoader__.load({
                 setPhase('ready');
                 restoreRuntimeState();
               }
-            } else if (data.type === 'playing') {
+            } else if (outcome.type === 'playing') {
               setPlaying(true);
-            } else if (data.type === 'paused') {
+            } else if (outcome.type === 'paused') {
               setPlaying(false);
-              if (data.payload && Number.isFinite(data.payload.time)) setTime(data.payload.time);
-            } else if (data.type === 'hit') {
-              const payload = data.payload || {};
+              if (Number.isFinite(payload.time)) setTime(payload.time);
+            } else if (outcome.type === 'hit') {
               setSelectedSafe(payload.hit || null);
-            } else if (data.type === 'error') {
-              const payload = data.payload || {};
-              setActionError({ code: payload.code || 'E_RUNTIME', message: payload.message || t('video.canvas.runtimeError') });
+            } else if (outcome.type === 'error') {
+              setActionError({ code: payload.code, message: payload.message });
+            } else if (outcome.type === 'destroyed') {
+              settlePendingCommands();
             }
+          }
+          function handleMessage(event) {
+            if (event.source !== frame.contentWindow) return;
+            const ledger = ledgerRef.current;
+            if (ledger === null) return;
+            const outcome = ledger.accept(event.data, { sourceOk: true });
+            if (outcome.accepted === false) return;
+            if (outcome.replyTo !== null) settleWaiter(outcome.replyTo, outcome.type === 'error' ? null : outcome.payload);
+            handleRuntimeEvent(outcome);
           }
           if (typeof window === 'undefined' || typeof window.addEventListener !== 'function') return function noWindow() {};
           window.addEventListener('message', handleMessage);
           return function unbind() {
             window.removeEventListener('message', handleMessage);
-            for (const entry of pendingRef.current.values()) clearTimeout(entry.timer);
-            pendingRef.current.clear();
+            // Explicit settlement: a replaced snapshot already settled its own
+            // pending commands before its ledger was swapped out; only this
+            // still-active instance still owns promises.
+            if (ledgerRef.current === boundLedger) settlePendingCommands();
+            else if (boundLedger !== null) boundLedger.revoke();
           };
         },
-        [snapshot, stageSize.width, stageSize.height]
+        [snapshot]
       );
 
       React.useEffect(
@@ -2101,13 +2663,20 @@ window.__ModuleLoader__.load({
             /* pointer capture is best effort */
           }
         }
-        const rect = selected.rect;
+        const rect = canvasValidRect(selected.rect);
+        if (rect === null) return;
+        // The static base is the authoritative inspected layout, never the
+        // animated getBoundingClientRect the runtime reported for the hit.
+        const element = selectedElement();
+        const base = element !== null ? canvasStaticBase(element.layout) : canvasStaticBase(null);
         setEditor(null);
+        setEditorNotice(null);
         setDrag({
           mode: mode,
           pointerId: event.pointerId,
           start: point,
-          rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+          rect: rect,
+          base: base,
           preview: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
           stableId: selected.stableId,
           moved: false,
@@ -2142,9 +2711,26 @@ window.__ModuleLoader__.load({
         setDrag({ ...drag, preview: next, moved: drag.moved || moved });
       }
 
-      async function commitLayout(preview) {
+      async function commitLayout(current) {
         const element = selectedRef.current;
-        if (element === null) return;
+        if (element === null || current === null) return;
+        const plan = canvasLayoutPatch({
+          mode: current.mode,
+          base: current.base,
+          animated: current.rect,
+          preview: current.preview,
+          composition: { width: width, height: height },
+        });
+        if (plan.ok === false) {
+          // Unknown static origin/scale: refuse loudly instead of persisting the
+          // animated rectangle. The selection keeps its pre-drag rect (the drag
+          // preview was already cleared) and no request is sent.
+          setActionError({
+            code: plan.code,
+            message: t(plan.code === 'E_LAYOUT_SCALE' ? 'video.canvas.layoutScaleUnknown' : 'video.canvas.layoutRefused'),
+          });
+          return;
+        }
         setBusy('layout');
         setActionError(null);
         try {
@@ -2157,12 +2743,7 @@ window.__ModuleLoader__.load({
                 type: 'layout',
                 target: element.stableId,
                 unit: 'composition-px',
-                box: {
-                  left: Math.round(preview.x * 1000) / 1000,
-                  top: Math.round(preview.y * 1000) / 1000,
-                  width: Math.round(preview.width * 1000) / 1000,
-                  height: Math.round(preview.height * 1000) / 1000,
-                },
+                box: plan.patch,
               },
             ],
           });
@@ -2181,28 +2762,67 @@ window.__ModuleLoader__.load({
         setDrag(null);
         if (current.moved) {
           suppressClickRef.current = true;
-          void commitLayout(current.preview);
+          void commitLayout(current);
         }
       }
 
       async function submitText() {
         if (editor === null || busy !== null) return;
+        if (editor.refreshRequired === true) {
+          // The previous explicit submit hit a revision conflict. Retrying now
+          // refreshes the authoritative revision only: the user has to submit
+          // again afterwards, so a newer project is never overwritten silently
+          // and nothing is replayed automatically.
+          setBusy('text');
+          setActionError(null);
+          try {
+            await onReload();
+            setEditor(function clearConflict(previous) {
+              if (previous === null) return null;
+              return Object.assign({}, previous, { refreshRequired: false, error: null });
+            });
+            setEditorNotice(t('video.canvas.revisionRefreshed'));
+          } catch (reloadError) {
+            setActionError(hostError(reloadError));
+            onError(hostError(reloadError));
+          } finally {
+            setBusy(null);
+          }
+          return;
+        }
+        // One operationId is created when the editor opens and reused on every
+        // retry: the worker replays the same operation idempotently, so an
+        // uncertain failure cannot apply the text twice.
         const value = editor.value;
         const stableId = editor.stableId;
-        setEditor(null);
+        const textOperationId = typeof editor.operationId === 'string' && editor.operationId.length > 0 ? editor.operationId : operationId();
         setBusy('text');
         setActionError(null);
         try {
           await hostRequest('edit', {
             projectId: projectId,
             expectedRevision: revision,
-            operationId: operationId(),
+            operationId: textOperationId,
             ops: [{ type: 'text', target: stableId, text: value }],
           });
+          setEditor(null);
+          setEditorNotice(null);
           await onReload();
         } catch (error) {
-          setActionError(hostError(error));
-          onError(hostError(error));
+          // Keep the draft and its target visible; no automatic retry and no
+          // silent close. A conflict additionally requires an explicit reload
+          // step before the next explicit submit.
+          const failure = hostError(error);
+          setActionError(failure);
+          setEditor(function keepDraft(previous) {
+            if (previous === null) return null;
+            return Object.assign({}, previous, {
+              operationId: textOperationId,
+              error: failure,
+              refreshRequired: canvasIsRevisionConflict(failure),
+            });
+          });
+          onError(failure);
         } finally {
           setBusy(null);
         }
@@ -2236,15 +2856,31 @@ window.__ModuleLoader__.load({
       async function applySceneColor() {
         const scene = currentScene();
         if (scene === null || busy !== null) return;
+        const color = canvasNormalizedColor(sceneColor);
+        if (color === null) {
+          setActionError({ code: 'E_PARAMS', message: t('video.canvas.invalidColor') });
+          return;
+        }
         setBusy('scene');
         setActionError(null);
         try {
-          const template = { title: scene.title, duration: scene.duration, color: sceneColor };
+          // A fresh authoritative inspect right before the write: scene.update
+          // replaces the complete template, so the copy must come from the
+          // current project state and the write must use this revision.
+          const fresh = await hostRequest('inspect', { projectId: projectId });
+          const prepared = canvasSceneTemplate(fresh, scene.sceneId);
+          if (prepared.ok === false) {
+            // Refuse instead of destructive guessing: no scene.update is sent.
+            setActionError({ code: prepared.code, message: t('video.canvas.templateUnavailable') });
+            return;
+          }
+          const template = prepared.template;
+          template.color = color;
           await hostRequest('scene.update', {
             projectId: projectId,
-            expectedRevision: revision,
+            expectedRevision: prepared.revision,
             operationId: operationId(),
-            sceneId: scene.sceneId,
+            sceneId: prepared.sceneId,
             template: template,
           });
           await onReload();
@@ -2340,16 +2976,30 @@ window.__ModuleLoader__.load({
       async function useAsset(assetPath) {
         const scene = currentScene();
         if (scene === null || busy !== null) return;
+        const shot = canvasNormalizedAssetPath(assetPath);
+        if (shot === null) {
+          setActionError({ code: 'E_PARAMS', message: t('video.canvas.invalidAsset') });
+          return;
+        }
         setBusy('asset-use');
         setActionError(null);
         try {
-          const template = { title: scene.title, duration: scene.duration, shot: assetPath };
-          if (/^#[0-9a-fA-F]{6}$/.test(sceneColor)) template.color = sceneColor;
+          // Same fresh-inspect rule as the background change: copy the complete
+          // authoritative template and change only the shot. The UI colour state
+          // must never leak into an unrelated Scene write.
+          const fresh = await hostRequest('inspect', { projectId: projectId });
+          const prepared = canvasSceneTemplate(fresh, scene.sceneId);
+          if (prepared.ok === false) {
+            setActionError({ code: prepared.code, message: t('video.canvas.templateUnavailable') });
+            return;
+          }
+          const template = prepared.template;
+          template.shot = shot;
           await hostRequest('scene.update', {
             projectId: projectId,
-            expectedRevision: revision,
+            expectedRevision: prepared.revision,
             operationId: operationId(),
-            sceneId: scene.sceneId,
+            sceneId: prepared.sceneId,
             template: template,
           });
           await onReload();
@@ -2408,10 +3058,16 @@ window.__ModuleLoader__.load({
         if (selected === null || isTextSelected() === false) return;
         setPlaying(false);
         void postCommand('pause');
+        setEditorNotice(null);
         setEditor({
           stableId: selected.stableId,
           value: typeof selected.text === 'string' ? selected.text : '',
           rect: selected.rect,
+          // One operationId for this editor lifetime: retries reuse it so the
+          // worker can replay an uncertain write idempotently.
+          operationId: operationId(),
+          error: null,
+          refreshRequired: false,
         });
       }
 
@@ -2516,18 +3172,49 @@ window.__ModuleLoader__.load({
                   value: editor.value,
                   autoFocus: true,
                   onChange: function updateEditor(event) {
-                    setEditor({ ...editor, value: event.target.value });
+                    const nextValue = event.target.value;
+                    setEditor(function updateDraft(previous) {
+                      if (previous === null) return null;
+                      return Object.assign({}, previous, { value: nextValue });
+                    });
                   },
                   onKeyDown: function editorKeys(event) {
                     if (event.key === 'Escape') {
                       event.preventDefault();
                       setEditor(null);
+                      setEditorNotice(null);
                     } else if (event.key === 'Enter' && event.shiftKey === false) {
                       event.preventDefault();
                       void submitText();
                     }
                   },
                 })
+              : null,
+            editor !== null && (editor.error !== null || editorNotice !== null || editor.refreshRequired === true)
+              ? h(
+                  'div',
+                  {
+                    className: 'dv-editor-actions',
+                    style: {
+                      left: editor.rect.x * selectedScale + 'px',
+                      top: (editor.rect.y + editor.rect.height) * selectedScale + 4 + 'px',
+                    },
+                  },
+                  editor.error !== null ? h('span', { className: 'dv-tool-error', role: 'alert' }, errorText(editor.error, t)) : null,
+                  editorNotice !== null ? h('span', { className: 'dv-tool-hint' }, editorNotice) : null,
+                  h(
+                    'button',
+                    {
+                      type: 'button',
+                      className: 'dv-button dv-button-quiet dv-editor-retry',
+                      onClick: function retryTextSave() {
+                        void submitText();
+                      },
+                      disabled: busy !== null,
+                    },
+                    t('video.canvas.retryText')
+                  )
+                )
               : null
           )
         );

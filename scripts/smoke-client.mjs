@@ -19,7 +19,10 @@
  * late/repeated/collapsed declarations, failure rollback, coexistence with the
  * shipped rows, unload fallback without stealing another panel, restrained empty
  * state, display-menu semantics, preference persistence and corruption safety,
- * and the sidebar icon owner-props contract.
+ * the sidebar icon owner-props contract, and (P3-008 R1/R2/R5/R6) the reviewed
+ * runtime message contract, the static-base inverse-mapped drag/resize patches,
+ * the frozen Scene template copy/refusal path and the inline-editor failure
+ * recovery with operationId reuse.
  *
  * Not covered / not claimed: real browser rendering, CSS animation playback,
  * layout, the exact host row pixels, installation or any live host verification.
@@ -54,10 +57,26 @@ function translate(key) {
 }
 
 //#region minimal React shim + renderer
-function createReact() {
+function createReact(runtime) {
   let currentRuntime = null;
+  const capture = runtime || null;
 
-  function runtime() {
+  function fakeRect(node) {
+    const style = (node.props && node.props.style) || {};
+    function px(value) {
+      return typeof value === 'string' && /^-?(?:\d+|\d*\.\d+)px$/.test(value) ? parseFloat(value) : null;
+    }
+    const width = px(style.width);
+    const height = px(style.height);
+    if (width !== null && height !== null) return { left: 0, top: 0, width: width, height: height };
+    const className = typeof node.props.className === 'string' ? node.props.className : '';
+    if (className.split(/\s+/).includes('dv-canvas-wrap') && capture !== null) {
+      return { left: 0, top: 0, width: capture.stageSize.width, height: capture.stageSize.height };
+    }
+    return { left: 0, top: 0, width: 0, height: 0 };
+  }
+
+  function currentScope() {
     if (currentRuntime === null) throw new Error('hook called outside a component render');
     return currentRuntime;
   }
@@ -95,6 +114,19 @@ function createReact() {
       return renderNode(rendered, context);
     }
     const domNode = { type, props: props || {}, children: renderNode((props || {}).children, context) };
+    domNode.getBoundingClientRect = function boundingRect() {
+      return fakeRect(domNode);
+    };
+    if (type === 'iframe' && capture !== null) {
+      // A minimal WindowProxy stand-in: the canvas posts contract commands into
+      // it and the smoke test answers them through window "message" listeners.
+      domNode.contentWindow = {
+        postMessage(message) {
+          capture.commands.push(message);
+        },
+      };
+      capture.iframes.push(domNode);
+    }
     const forwardedRef = domNode.props.ref;
     if (forwardedRef !== undefined && forwardedRef !== null) {
       domNode.focus = function focus() {
@@ -115,7 +147,7 @@ function createReact() {
       return { type, props: nextProps };
     },
     useState(initial) {
-      const scope = runtime();
+      const scope = currentScope();
       const index = scope.hookIndex++;
       if (!(index in scope.hooks)) scope.hooks[index] = typeof initial === 'function' ? initial() : initial;
       return [
@@ -126,24 +158,24 @@ function createReact() {
       ];
     },
     useEffect(effect) {
-      runtime().effects.push(effect);
+      currentScope().effects.push(effect);
     },
     useRef(initial) {
-      const scope = runtime();
+      const scope = currentScope();
       const index = scope.hookIndex++;
       if (!(index in scope.hooks)) scope.hooks[index] = { current: initial };
       return scope.hooks[index];
     },
     useCallback(callback) {
-      runtime();
+      currentScope();
       return callback;
     },
     useMemo(factory) {
-      runtime();
+      currentScope();
       return factory();
     },
     useSyncExternalStore(_subscribe, getSnapshot) {
-      runtime();
+      currentScope();
       return getSnapshot();
     },
     renderInteractive(component, props) {
@@ -498,6 +530,13 @@ function loadClient(options) {
   const config = options || {};
   const registrations = [];
   const frames = [];
+  const runtime = {
+    listeners: [],
+    commands: [],
+    iframes: [],
+    timers: new Set(),
+    stageSize: config.stageSize || { width: 1280, height: 720 },
+  };
   const sandbox = {
     window: {
       __ModuleLoader__: {
@@ -505,12 +544,27 @@ function loadClient(options) {
           registrations.push(registration);
         },
       },
+      addEventListener(type, listener) {
+        if (type === 'message' && typeof listener === 'function') runtime.listeners.push(listener);
+      },
+      removeEventListener(type, listener) {
+        if (type !== 'message') return;
+        const index = runtime.listeners.indexOf(listener);
+        if (index >= 0) runtime.listeners.splice(index, 1);
+      },
     },
     localStorage: config.storage,
     fetch: typeof config.fetch === 'function' ? config.fetch : undefined,
     console: { log() {}, warn() {}, error() {} },
-    setTimeout,
-    clearTimeout,
+    setTimeout(callback, delay, ...args) {
+      const handle = setTimeout(callback, delay, ...args);
+      runtime.timers.add(handle);
+      return handle;
+    },
+    clearTimeout(handle) {
+      runtime.timers.delete(handle);
+      clearTimeout(handle);
+    },
     requestAnimationFrame(callback) {
       if (config.queueFrames !== true) {
         callback();
@@ -529,7 +583,7 @@ function loadClient(options) {
   vm.runInContext(CLIENT_SOURCE, context, { filename: 'client.js' });
   assert(registrations.length === 1, `expected one module registration, got ${registrations.length}`);
   const registration = registrations[0];
-  const react = createReact();
+  const react = createReact(runtime);
   const exportsObject = registration.factory((specifier) => {
     if (specifier === 'react') return react;
     throw new Error(`unexpected external require("${specifier}")`);
@@ -539,6 +593,7 @@ function loadClient(options) {
     react,
     exports: exportsObject,
     sandbox,
+    runtime,
     flushFrames(rounds = 8) {
       for (let round = 0; round < rounds; round += 1) {
         const batch = frames.splice(0);
@@ -831,8 +886,12 @@ function managedInspected() {
 
 function sessionFetch(options) {
   const config = options || {};
-  const fetchFunction = makeHostFetch((request) => {
+  const fetchFunction = makeHostFetch(async (request) => {
     const method = request.body.method;
+    if (typeof config.handler === 'function') {
+      const custom = await config.handler(request, config);
+      if (custom !== undefined) return custom;
+    }
     if (method === 'session.list') {
       return Promise.resolve({
         ok: true,
@@ -919,7 +978,7 @@ function sessionFetch(options) {
 
 function mountSessionEditor(hostFetch, options) {
   const config = options || {};
-  const loaded = loadClient({ fetch: hostFetch });
+  const loaded = loadClient({ fetch: hostFetch, stageSize: config.stageSize });
   const env = createFakeEnvironment({ services: { sessions: config.sessions } });
   loaded.exports.apply(env.ctx);
   const main = registrationOf(env, 'main');
@@ -2312,6 +2371,963 @@ test('P3-008: new project creates a managed canvas and asks the worker for a sna
   assert(hostFetch.config.createCalls === 1, 'creating the managed project did not create exactly one bound Session');
 });
 
+//#region tests: R1/R2/R5/R6 canvas contracts
+// Pure-helper extraction: execute the exact shipped source of the reviewed
+// helper block from <root>/client.js inside a Node VM. The block lives in the
+// shipped `host bridge helpers` region and has no React/DOM dependency, so the
+// tests below assert the shipped bytes instead of a reimplementation.
+function extractClientRegion(name) {
+  const start = CLIENT_SOURCE.indexOf('//#region ' + name);
+  assert(start >= 0, `client region "${name}" not found`);
+  const end = CLIENT_SOURCE.indexOf('//#endregion', start);
+  assert(end > start, `client region "${name}" has no closing marker`);
+  return CLIENT_SOURCE.slice(start, end);
+}
+
+const CANVAS_HELPER_NAMES = [
+  'canvasValidateEvent',
+  'canvasValidateCommand',
+  'canvasValidateHit',
+  'canvasIsOversizedMessage',
+  'canvasMessageLedger',
+  'canvasStaticBase',
+  'canvasLayoutPatch',
+  'canvasSceneTemplate',
+  'canvasCopySceneTemplate',
+  'canvasNormalizedColor',
+  'canvasNormalizedAssetPath',
+  'canvasIsRevisionConflict',
+  'canvasValidRect',
+];
+
+const CANVAS = (function loadCanvasHelpers() {
+  const source = extractClientRegion('host bridge helpers');
+  assert(source.includes('function canvasLayoutPatch('), 'inverse-mapped layout helper is missing from the shipped client');
+  assert(source.includes('function canvasValidateEvent('), 'strict runtime event validator is missing from the shipped client');
+  assert(source.includes('function canvasMessageLedger('), 'per-snapshot message ledger is missing from the shipped client');
+  const exportExpression = ';({' + CANVAS_HELPER_NAMES.map((name) => name + ': ' + name).join(', ') + '})';
+  return vm.runInContext(source + exportExpression, vm.createContext({}), { filename: 'client.js#host-bridge-helpers' });
+})();
+
+const CANVAS_TEST_INSTANCE = 'dvcanvas-smoketest';
+const CANVAS_TEST_NONCE = '0123456789abcdef0123456789abcdef';
+const CANVAS_REVISION = 'c'.repeat(64);
+const CANVAS_NEXT_REVISION = 'd'.repeat(64);
+const CANVAS_FRESH_REVISION = 'e'.repeat(64);
+
+function canvasContractEvent(overrides) {
+  const base = {
+    v: 1,
+    kind: 'evt',
+    instanceId: CANVAS_TEST_INSTANCE,
+    nonce: CANVAS_TEST_NONCE,
+    seq: 1,
+    type: 'state',
+    replyTo: null,
+    payload: { time: 0, duration: 5, playing: false },
+  };
+  return Object.assign(base, overrides || {});
+}
+
+test('R6 pure: strict runtime event validation covers envelope, seq, types and payload shapes', () => {
+  assert(CANVAS.canvasValidateEvent(canvasContractEvent()).ok === true, 'a valid state event was rejected');
+  const valid = [
+    canvasContractEvent({ type: 'ready', payload: { runtimeVersion: 'p3-008-runtime.1', width: 1280, height: 720, duration: 15 } }),
+    canvasContractEvent({ type: 'pong', replyTo: 1, payload: {} }),
+    canvasContractEvent({ type: 'seeked', replyTo: 1, payload: { time: 2 } }),
+    canvasContractEvent({ type: 'playing', replyTo: 1, payload: { time: 2 } }),
+    canvasContractEvent({ type: 'paused', replyTo: 1, payload: { time: 2 } }),
+    canvasContractEvent({ type: 'hit', replyTo: 1, payload: { hit: null } }),
+    canvasContractEvent({ type: 'elements', replyTo: 1, payload: { elements: [] } }),
+    canvasContractEvent({ type: 'destroyed', replyTo: 1, payload: {} }),
+    canvasContractEvent({ type: 'error', payload: { code: 'E_RUNTIME', message: 'boom' } }),
+  ];
+  for (const event of valid) {
+    const result = CANVAS.canvasValidateEvent(event);
+    assert(result.ok === true, `valid ${event.type} event was rejected: ${JSON.stringify(result)}`);
+  }
+  const invalid = [
+    ['version', canvasContractEvent({ v: 2 }), 'E_VERSION'],
+    ['kind', canvasContractEvent({ kind: 'cmd' }), 'E_MALFORMED'],
+    ['unknown envelope key', canvasContractEvent({ extra: true }), 'E_MALFORMED'],
+    ['missing replyTo', canvasContractEvent({ replyTo: undefined }), 'E_MALFORMED'],
+    ['instance id', canvasContractEvent({ instanceId: 'SHORT' }), 'E_INSTANCE'],
+    ['nonce', canvasContractEvent({ nonce: 'xyz' }), 'E_NONCE'],
+    ['seq zero', canvasContractEvent({ seq: 0 }), 'E_SEQ'],
+    ['seq fraction', canvasContractEvent({ seq: 1.5 }), 'E_SEQ'],
+    ['unknown type', canvasContractEvent({ type: 'unknown' }), 'E_TYPE'],
+    ['payload array', canvasContractEvent({ payload: [] }), 'E_PAYLOAD'],
+    ['replyTo string', canvasContractEvent({ replyTo: 'one' }), 'E_REPLY'],
+    ['ready width', canvasContractEvent({ type: 'ready', payload: { runtimeVersion: 'x', width: 0, height: 720, duration: 15 } }), 'E_PAYLOAD'],
+    ['state playing', canvasContractEvent({ payload: { time: 0, duration: 5 } }), 'E_PAYLOAD'],
+    ['state duration', canvasContractEvent({ payload: { time: 0, duration: '5', playing: false } }), 'E_PAYLOAD'],
+    ['seeked time', canvasContractEvent({ type: 'seeked', replyTo: 1, payload: { time: '2' } }), 'E_PAYLOAD'],
+    ['hit shape', canvasContractEvent({ type: 'hit', replyTo: 1, payload: { hit: { stableId: '' } } }), 'E_PAYLOAD'],
+    ['elements size', canvasContractEvent({ type: 'elements', replyTo: 1, payload: { elements: new Array(513).fill({}) } }), 'E_PAYLOAD'],
+    ['error code', canvasContractEvent({ type: 'error', payload: { code: '', message: 'x' } }), 'E_PAYLOAD'],
+    ['error message type', canvasContractEvent({ type: 'error', payload: { code: 'E', message: 2 } }), 'E_PAYLOAD'],
+  ];
+  for (const [label, event, code] of invalid) {
+    const result = CANVAS.canvasValidateEvent(event);
+    assert(result.ok === false && result.code === code, `${label}: expected ${code}, got ${JSON.stringify(result)}`);
+  }
+  assert(CANVAS.canvasValidateCommand({ v: 1, kind: 'cmd', instanceId: CANVAS_TEST_INSTANCE, nonce: CANVAS_TEST_NONCE, seq: 1, type: 'hitTest', payload: { x: 1, y: 2 } }).ok === true, 'valid command rejected');
+  assert(CANVAS.canvasValidateCommand({ v: 1, kind: 'cmd', instanceId: CANVAS_TEST_INSTANCE, nonce: CANVAS_TEST_NONCE, seq: 1, type: 'seek', payload: { time: Number.NaN } }).ok === false, 'invalid seek command accepted');
+  assert(CANVAS.canvasIsOversizedMessage({ payload: { text: 'x'.repeat(20000) } }) === true, 'oversized event was not detected');
+  assert(CANVAS.canvasIsOversizedMessage(canvasContractEvent()) === false, 'normal event was flagged oversized');
+});
+
+test('R6 pure: the message ledger enforces monotonic seq, exact correlation and explicit revocation', () => {
+  const ledger = CANVAS.canvasMessageLedger({ instanceId: CANVAS_TEST_INSTANCE, nonce: CANVAS_TEST_NONCE, timeoutMs: 50 });
+  const first = ledger.command('hitTest', { x: 10, y: 20 });
+  assert(first.seq === 1 && first.v === 1 && first.kind === 'cmd' && first.instanceId === CANVAS_TEST_INSTANCE, 'command envelope shape is wrong');
+  const second = ledger.command('state');
+  assert(second.seq === 2 && ledger.pendingCount() === 2, 'commands are not tracked with increasing seq');
+  let threw = false;
+  try {
+    ledger.command('hitTest', { x: Number.NaN, y: 0 });
+  } catch (_error) {
+    threw = true;
+  }
+  assert(threw === true, 'an invalid command payload was accepted');
+  const hit = canvasContractEvent({ seq: 1, type: 'hit', replyTo: 1, payload: { hit: null } });
+  assert(ledger.accept(hit, { sourceOk: false }).code === 'E_SOURCE_MISMATCH', 'wrong event source was not dropped');
+  assert(ledger.accept(canvasContractEvent({ instanceId: 'dvcanvas-other1', seq: 1, type: 'hit', replyTo: 1, payload: { hit: null } }), { sourceOk: true }).code === 'E_WRONG_INSTANCE', 'wrong instance was not dropped');
+  assert(ledger.accept(canvasContractEvent({ nonce: 'f'.repeat(32), seq: 1, type: 'hit', replyTo: 1, payload: { hit: null } }), { sourceOk: true }).code === 'E_NONCE', 'wrong nonce was not dropped');
+  assert(ledger.accept(canvasContractEvent({ payload: { text: 'x'.repeat(20000) } }), { sourceOk: true }).code === 'E_OVERSIZED', 'oversized event was not dropped');
+  assert(ledger.accept(canvasContractEvent({ extra: true }), { sourceOk: true }).code === 'E_MALFORMED', 'malformed event was not dropped');
+  assert(ledger.accept(canvasContractEvent({ seq: 1, type: 'state', replyTo: null }), { sourceOk: true }).code === 'E_UNCORRELATED', 'a floating direct response was accepted');
+  assert(ledger.accept(canvasContractEvent({ seq: 2, type: 'hit', replyTo: 99, payload: { hit: null } }), { sourceOk: true }).code === 'E_LATE_RESPONSE', 'a reply to an unknown command was accepted');
+  const accepted = ledger.accept(canvasContractEvent({ seq: 3, type: 'hit', replyTo: 1, payload: { hit: null } }), { sourceOk: true });
+  assert(accepted.accepted === true && accepted.commandType === 'hitTest' && accepted.replyTo === 1, 'a correlated reply was not accepted');
+  assert(ledger.pendingCount() === 1, 'the answered command was not removed');
+  assert(ledger.accept(canvasContractEvent({ seq: 3, type: 'hit', replyTo: 1, payload: { hit: null } }), { sourceOk: true }).code === 'E_STALE_SEQ', 'a duplicate event seq was accepted');
+  const stateReply = ledger.accept(canvasContractEvent({ seq: 4, type: 'state', replyTo: 2, payload: { time: 1, duration: 5, playing: false } }), { sourceOk: true });
+  assert(stateReply.accepted === true && ledger.pendingCount() === 0, 'the second correlated reply was not settled');
+  assert(ledger.accept(canvasContractEvent({ seq: 5, type: 'state', replyTo: 2, payload: { time: 1, duration: 5, playing: false } }), { sourceOk: true }).code === 'E_LATE_RESPONSE', 'a second reply to the same command was accepted');
+
+  const revoked = CANVAS.canvasMessageLedger({ instanceId: CANVAS_TEST_INSTANCE, nonce: CANVAS_TEST_NONCE, timeoutMs: 50 });
+  revoked.command('ping');
+  revoked.command('state');
+  const expired = revoked.expire(Date.now() + 1000);
+  assert(expired.length === 2 && revoked.pendingCount() === 0, `expire did not release both pending commands: ${JSON.stringify(expired)}`);
+  revoked.command('ping');
+  const pendingSeqs = revoked.revoke();
+  assert(pendingSeqs.length === 1 && pendingSeqs[0] === 3, `revoke did not return every pending seq: ${JSON.stringify(pendingSeqs)}`);
+  assert(revoked.pendingCount() === 0, 'revoke left pending commands');
+  assert(revoked.accept(canvasContractEvent({ seq: 6, type: 'error', payload: { code: 'E_RUNTIME', message: 'x' } }), { sourceOk: true }).code === 'E_INSTANCE_REVOKED', 'a revoked ledger accepted an event');
+});
+
+test('R2 pure: a move patches only left/top from the static base, never the animated offset or auto size', () => {
+  const animated = { x: 88, y: 210, width: 980, height: 72 };
+  const base = { left: 88, top: 196, width: 980, height: null };
+  const moved = CANVAS.canvasLayoutPatch({
+    mode: 'move',
+    base: base,
+    animated: animated,
+    preview: { x: 98, y: 210, width: 980, height: 72 },
+    composition: { width: 1280, height: 720 },
+  });
+  assert(moved.ok === true, `move patch failed: ${JSON.stringify(moved)}`);
+  assert(JSON.stringify(moved.patch) === JSON.stringify({ left: 98, top: 196 }), `move patch was ${JSON.stringify(moved.patch)}; the animation offset or auto height leaked into the layout`);
+  const clamped = CANVAS.canvasLayoutPatch({
+    mode: 'move',
+    base: base,
+    animated: animated,
+    preview: { x: 1500, y: -100, width: 980, height: 72 },
+    composition: { width: 1280, height: 720 },
+  });
+  assert(JSON.stringify(clamped.patch) === JSON.stringify({ left: 300, top: 0 }), `move clamp was ${JSON.stringify(clamped.patch)}`);
+  const unknownOrigin = CANVAS.canvasLayoutPatch({
+    mode: 'move',
+    base: { left: null, top: 196, width: 980, height: null },
+    animated: animated,
+    preview: { x: 98, y: 210, width: 980, height: 72 },
+    composition: { width: 1280, height: 720 },
+  });
+  assert(unknownOrigin.ok === false && unknownOrigin.code === 'E_LAYOUT_BASE', 'a move without a static origin was not refused');
+  assert(CANVAS.canvasLayoutPatch({ mode: 'move', base: base }).ok === false, 'incomplete drag input was accepted');
+});
+
+test('R2 pure: resize inverse-maps the animation scale per axis with sy falling back to sx', () => {
+  const scaleX = CANVAS.canvasLayoutPatch({
+    mode: 'se',
+    base: { left: 0, top: 0, width: 400, height: 100 },
+    animated: { x: 100, y: 50, width: 200, height: 100 },
+    preview: { x: 100, y: 50, width: 240, height: 130 },
+    composition: { width: 1280, height: 720 },
+  });
+  assert(JSON.stringify(scaleX.patch) === JSON.stringify({ width: 480, height: 130 }), `scaleX resize patch was ${JSON.stringify(scaleX.patch)}`);
+  const autoHeight = CANVAS.canvasLayoutPatch({
+    mode: 'se',
+    base: { left: 88, top: 196, width: 980, height: null },
+    animated: { x: 88, y: 210, width: 980, height: 72 },
+    preview: { x: 88, y: 210, width: 1030, height: 92 },
+    composition: { width: 1280, height: 720 },
+  });
+  assert(JSON.stringify(autoHeight.patch) === JSON.stringify({ width: 1030, height: 92 }), `auto-height resize patch was ${JSON.stringify(autoHeight.patch)}`);
+  const northWest = CANVAS.canvasLayoutPatch({
+    mode: 'nw',
+    base: { left: 100, top: 100, width: 400, height: 200 },
+    animated: { x: 50, y: 40, width: 200, height: 100 },
+    preview: { x: 30, y: 30, width: 220, height: 110 },
+    composition: { width: 1280, height: 720 },
+  });
+  assert(JSON.stringify(northWest.patch) === JSON.stringify({ width: 440, height: 220, left: 60, top: 80 }), `nw resize patch was ${JSON.stringify(northWest.patch)}`);
+  const bounds = CANVAS.canvasLayoutPatch({
+    mode: 'se',
+    base: { left: 0, top: 0, width: 200, height: 100 },
+    animated: { x: 0, y: 0, width: 200, height: 100 },
+    preview: { x: 0, y: 0, width: 5000, height: 5000 },
+    composition: { width: 1280, height: 720 },
+  });
+  assert(bounds.patch.width === 1280 && bounds.patch.height === 720, `resize bounds clamp was ${JSON.stringify(bounds.patch)}`);
+  const rightBound = CANVAS.canvasLayoutPatch({
+    mode: 'se',
+    base: { left: 1000, top: 0, width: 200, height: 100 },
+    animated: { x: 1000, y: 0, width: 200, height: 100 },
+    preview: { x: 1000, y: 0, width: 500, height: 100 },
+    composition: { width: 1280, height: 720 },
+  });
+  assert(
+    JSON.stringify(rightBound.patch) === JSON.stringify({ width: 280, height: 100 }),
+    `east resize did not stay inside the composition: ${JSON.stringify(rightBound.patch)}`
+  );
+  const unknownScale = CANVAS.canvasLayoutPatch({
+    mode: 'se',
+    base: { left: 10, top: 10, width: null, height: null },
+    animated: { x: 10, y: 10, width: 100, height: 50 },
+    preview: { x: 10, y: 10, width: 120, height: 60 },
+    composition: { width: 1280, height: 720 },
+  });
+  assert(unknownScale.ok === false && unknownScale.code === 'E_LAYOUT_SCALE', 'a resize without any known static extent was not refused');
+  const autoWidthScale = CANVAS.canvasLayoutPatch({
+    mode: 'se',
+    base: { left: 10, top: 10, width: null, height: 100 },
+    animated: { x: 10, y: 10, width: 200, height: 100 },
+    preview: { x: 10, y: 10, width: 240, height: 120 },
+    composition: { width: 1280, height: 720 },
+  });
+  assert(
+    autoWidthScale.ok === false && autoWidthScale.code === 'E_LAYOUT_SCALE',
+    'a resize with an auto width guessed an x scale instead of refusing (animated width could be baked)'
+  );
+});
+
+test('R1 pure: the authoritative Scene template is copied complete with only sceneId stripped', () => {
+  const fullTemplate = {
+    title: 'Scene 1',
+    duration: 5,
+    subtitle: '保留副标题',
+    badge: '保留标签',
+    color: '#123456',
+    accent: '#abcdef',
+    logo: 'assets/logo.png',
+    shot: 'assets/old-shot.png',
+    sceneId: 'scene-1',
+  };
+  const inspected = {
+    revision: CANVAS_FRESH_REVISION,
+    scenes: [
+      { sceneId: 'scene-1', template: fullTemplate },
+      { sceneId: 'scene-2', template: { title: 'Scene 2', duration: 5 } },
+    ],
+  };
+  const prepared = CANVAS.canvasSceneTemplate(inspected, 'scene-1');
+  assert(prepared.ok === true, `template copy failed: ${JSON.stringify(prepared)}`);
+  assert(prepared.revision === CANVAS_FRESH_REVISION, 'the fresh authoritative revision was not returned');
+  const expected = {
+    title: 'Scene 1',
+    duration: 5,
+    subtitle: '保留副标题',
+    badge: '保留标签',
+    color: '#123456',
+    accent: '#abcdef',
+    logo: 'assets/logo.png',
+    shot: 'assets/old-shot.png',
+  };
+  assert(JSON.stringify(prepared.template) === JSON.stringify(expected), `template copy was ${JSON.stringify(prepared.template)}`);
+  assert(prepared.template !== fullTemplate, 'the template must be a copy, not the inspect object');
+  prepared.template.color = '#ffffff';
+  assert(fullTemplate.color === '#123456', 'mutating the copy changed the inspect result');
+  const absent = CANVAS.canvasSceneTemplate({ revision: CANVAS_FRESH_REVISION, scenes: [{ sceneId: 'scene-1' }] }, 'scene-1');
+  assert(absent.ok === false && absent.code === 'E_SCENE_TEMPLATE', 'an absent template was not refused');
+  const missingRequired = CANVAS.canvasSceneTemplate({ revision: CANVAS_FRESH_REVISION, scenes: [{ sceneId: 'scene-1', template: { title: '', duration: 5 } }] }, 'scene-1');
+  assert(missingRequired.ok === false && missingRequired.code === 'E_SCENE_TEMPLATE', 'an invalid title was not refused');
+  const unknownField = CANVAS.canvasSceneTemplate({ revision: CANVAS_FRESH_REVISION, scenes: [{ sceneId: 'scene-1', template: { title: 'a', duration: 5, extra: true } }] }, 'scene-1');
+  assert(unknownField.ok === false && unknownField.code === 'E_SCENE_TEMPLATE', 'an unknown template field was silently kept');
+  const missingScene = CANVAS.canvasSceneTemplate(inspected, 'scene-9');
+  assert(missingScene.ok === false && missingScene.code === 'E_SCENE_NOT_FOUND', 'an absent scene was not reported');
+  const badRevision = CANVAS.canvasSceneTemplate({ revision: 'not-a-revision', scenes: inspected.scenes }, 'scene-1');
+  assert(badRevision.ok === false && badRevision.code === 'E_SCENE_TEMPLATE', 'an untrusted revision was accepted');
+  assert(CANVAS.canvasValidateHit({ stableId: 'a', sceneId: null, tag: 'div', text: '', rect: { x: 0, y: 0, width: 1, height: 1 }, style: {}, stack: [] }) === null, 'a valid hit was rejected');
+});
+//#region canvas component fixture + gesture helpers
+function canvasHitPayload(overrides) {
+  return Object.assign(
+    {
+      stableId: 'scene-1-title',
+      sceneId: 'scene-1',
+      tag: 'div',
+      text: 'Scene 1',
+      rect: { x: 88, y: 210, width: 980, height: 72 },
+      style: {
+        color: '#ffffff',
+        fontSize: '64px',
+        fontFamily: 'ui-sans-serif',
+        fontWeight: '600',
+        lineHeight: '1.1',
+        textAlign: 'left',
+        letterSpacing: '0px',
+        whiteSpace: 'normal',
+      },
+      stack: ['scene-1-title'],
+    },
+    overrides || {}
+  );
+}
+
+function canvasManagedInspect(options) {
+  const settings = options || {};
+  const sceneTemplate =
+    settings.template === undefined
+      ? {
+          title: 'Scene 1',
+          duration: 5,
+          subtitle: '保留副标题',
+          badge: '保留标签',
+          color: '#123456',
+          accent: '#654321',
+          logo: 'assets/logo.png',
+          shot: 'assets/old-shot.png',
+          sceneId: 'scene-1',
+        }
+      : settings.template;
+  const scene = { sceneId: 'scene-1', order: 0, start: 0, duration: 5, title: 'Scene 1', elements: [] };
+  const scenes = settings.scenes || [sceneTemplate === null ? scene : Object.assign({}, scene, { template: sceneTemplate })];
+  return {
+    projectId: 'proj-smoke',
+    revision: settings.revision || CANVAS_REVISION,
+    width: 1280,
+    height: 720,
+    duration: 15,
+    scenes: scenes,
+    elements: settings.elements || [
+      {
+        stableId: 'scene-1-title',
+        sceneId: 'scene-1',
+        text: 'Scene 1',
+        timing: { start: 0, duration: 5 },
+        capabilities: ['text', 'layout', 'style'],
+        layout: settings.layout === undefined ? { left: 88, top: 196, width: 980, height: 120 } : settings.layout,
+        style: { color: '#ffffff', fontSize: 64, fontWeight: 600, textAlign: 'left' },
+      },
+    ],
+    files: settings.files || [{ path: 'assets/photo.png', bytes: 120, sha256: 'd'.repeat(64) }],
+  };
+}
+
+function canvasFetch(options) {
+  const config = options || {};
+  const state = { revision: config.revision || CANVAS_REVISION, edits: [], updates: [], inspects: [] };
+  const fetchFunction = sessionFetch({
+    activeSessionId: null,
+    sessions: [],
+    newSessionId: 'session-canvas-smoke',
+    handler: async (request) => {
+      const method = request.body.method;
+      if (method === 'project.create') {
+        return {
+          ok: true,
+          result: {
+            projectId: 'proj-smoke',
+            revision: state.revision,
+            scenes: [{ sceneId: 'scene-1', order: 0, start: 0, duration: 5, title: 'Scene 1' }],
+          },
+        };
+      }
+      if (method === 'inspect') {
+        state.inspects.push(request.body.params);
+        const result = typeof config.inspect === 'function' ? config.inspect(state) : canvasManagedInspect({ revision: state.revision });
+        return { ok: true, result: result };
+      }
+      if (method === 'edit') {
+        state.edits.push(request.body.params);
+        if (typeof config.edit === 'function') {
+          const custom = await config.edit(request, state);
+          if (custom !== undefined) return custom;
+        }
+        if (state.revision === CANVAS_REVISION) state.revision = CANVAS_NEXT_REVISION;
+        return { ok: true, result: { projectId: 'proj-smoke', revision: state.revision, operationId: request.body.params.operationId } };
+      }
+      if (method === 'scene.update') {
+        state.updates.push(request.body.params);
+        if (typeof config.sceneUpdate === 'function') {
+          const custom = await config.sceneUpdate(request, state);
+          if (custom !== undefined) return custom;
+        }
+        state.revision = CANVAS_FRESH_REVISION;
+        return { ok: true, result: { projectId: 'proj-smoke', revision: state.revision, scenes: [] } };
+      }
+      return undefined;
+    },
+  });
+  fetchFunction.state = state;
+  return fetchFunction;
+}
+
+function canvasMethodCalls(hostFetch, method) {
+  return hostFetch.calls.filter((call) => call.body && call.body.method === method);
+}
+
+async function mountCanvasReady(options) {
+  const settings = options || {};
+  const editor = mountSessionEditor(settings.fetch, {
+    sessions: makeSessionsService({ list: [] }),
+    kit: makeSessionKit(),
+    stageSize: settings.stageSize,
+  });
+  const create = buttonByText(editor.tree(), translateFor(editor.env)('video.project.new'));
+  assert(create !== null, 'new-project action missing from the empty state');
+  create.props.onClick();
+  for (let round = 0; round < 4; round += 1) {
+    await settle();
+    editor.rerender();
+  }
+  await settle();
+  const tree = editor.tree();
+  assert(findNode(tree, (node) => node.props && node.props.className === 'dv-canvas-shell') !== null, 'managed canvas did not mount');
+  assert(findNode(tree, (node) => node.props && node.props.className === 'dv-stage-frame') !== null, 'snapshot iframe did not render');
+  return editor;
+}
+
+function canvasOverlay(tree) {
+  const overlay = findNode(tree, (node) => node.props && node.props.className === 'dv-overlay');
+  assert(overlay !== null, 'canvas overlay is missing');
+  return overlay;
+}
+
+function takeCanvasCommand(editor, type) {
+  const commands = editor.loaded.runtime.commands;
+  const index = commands.findIndex((message) => message.type === type);
+  if (index < 0) return null;
+  return commands.splice(index, 1)[0];
+}
+
+function canvasLatestFrame(editor) {
+  const frames = editor.loaded.runtime.iframes;
+  assert(frames.length > 0, 'canvas iframe was never rendered');
+  return frames[frames.length - 1];
+}
+
+function canvasDispatch(editor, options) {
+  const settings = options || {};
+  const runtime = editor.loaded.runtime;
+  const reference = settings.reference || null;
+  const instanceId = settings.instanceId !== undefined ? settings.instanceId : reference !== null ? reference.instanceId : null;
+  const nonce = settings.nonce !== undefined ? settings.nonce : reference !== null ? reference.nonce : null;
+  assert(typeof instanceId === 'string' && typeof nonce === 'string', 'canvas dispatch needs an instance reference');
+  if (runtime.eventSeqs === undefined) runtime.eventSeqs = new Map();
+  const last = runtime.eventSeqs.get(instanceId) || 0;
+  const seq = settings.seq !== undefined ? settings.seq : last + 1;
+  runtime.eventSeqs.set(instanceId, Math.max(last, seq));
+  const event = {
+    v: 1,
+    kind: 'evt',
+    instanceId: instanceId,
+    nonce: nonce,
+    seq: seq,
+    type: settings.type,
+    replyTo: settings.replyTo !== undefined ? settings.replyTo : reference !== null ? reference.seq : null,
+    payload: settings.payload || {},
+  };
+  const frame = settings.frame || canvasLatestFrame(editor);
+  const source = settings.source !== undefined ? settings.source : frame.contentWindow;
+  for (const listener of runtime.listeners.slice()) listener({ source: source, data: event });
+  return event;
+}
+
+function canvasSelectText(editor) {
+  canvasOverlay(editor.tree()).props.onClick({ clientX: 640, clientY: 360 });
+  const command = takeCanvasCommand(editor, 'hitTest');
+  assert(command !== null, 'the canvas did not request a hit test');
+  canvasDispatch(editor, { reference: command, type: 'hit', payload: { hit: canvasHitPayload() } });
+  editor.rerender();
+  const selection = findNode(editor.tree(), (node) => node.props && node.props.className === 'dv-selection');
+  assert(selection !== null, 'selection was not applied from the correlated runtime hit');
+  return selection;
+}
+
+function canvasOpenTextEditor(editor) {
+  const selection = findNode(editor.tree(), (node) => node.props && node.props.className === 'dv-selection');
+  assert(selection !== null, 'selection missing before opening the text editor');
+  selection.props.onDoubleClick();
+  const pause = takeCanvasCommand(editor, 'pause');
+  if (pause !== null) canvasDispatch(editor, { reference: pause, type: 'paused', payload: { time: 0 } });
+  editor.rerender();
+  const textarea = findNode(editor.tree(), (node) => node.props && node.props.className === 'dv-inline-editor');
+  assert(textarea !== null, 'inline text editor did not open');
+  return textarea;
+}
+
+function canvasTypeDraft(editor, value) {
+  const textarea = findNode(editor.tree(), (node) => node.props && node.props.className === 'dv-inline-editor');
+  assert(textarea !== null, 'inline text editor is missing');
+  textarea.props.onChange({ target: { value: value } });
+  editor.rerender();
+  return findNode(editor.tree(), (node) => node.props && node.props.className === 'dv-inline-editor');
+}
+
+function canvasPressEnter(editor) {
+  const textarea = findNode(editor.tree(), (node) => node.props && node.props.className === 'dv-inline-editor');
+  assert(textarea !== null, 'inline text editor is missing');
+  textarea.props.onKeyDown({ key: 'Enter', shiftKey: false, preventDefault() {} });
+}
+
+function canvasRetryButton(editor) {
+  const overlay = findNode(editor.tree(), (node) => node.props && node.props.className === 'dv-overlay');
+  if (overlay === null) return null;
+  // The reviewed requirement is that the retry affordance sits in the editor
+  // overlay next to the still-open draft, not in a detached toolbar.
+  return findNode(overlay, (node) => node.type === 'button' && typeof node.props.className === 'string' && node.props.className.split(/\s+/).includes('dv-editor-retry'));
+}
+
+function canvasDrag(editor, options) {
+  const settings = options || {};
+  const tree = editor.tree();
+  let handleTarget;
+  if (settings.handle === undefined || settings.handle === null) {
+    handleTarget = findNode(tree, (node) => node.props && node.props.className === 'dv-selection');
+    assert(handleTarget !== null, 'selection missing before the move gesture');
+  } else {
+    handleTarget = findNode(
+      tree,
+      (node) => node.props && typeof node.props.className === 'string' && node.props.className.split(/\s+/).includes('dv-handle-' + settings.handle)
+    );
+    assert(handleTarget !== null, `resize handle ${settings.handle} missing`);
+  }
+  const pointer = { pointerId: 11, preventDefault() {}, stopPropagation() {} };
+  handleTarget.props.onPointerDown(Object.assign({}, pointer, { clientX: settings.startX, clientY: settings.startY }));
+  editor.rerender();
+  canvasOverlay(editor.tree()).props.onPointerMove(Object.assign({}, pointer, { clientX: settings.moveX, clientY: settings.moveY }));
+  editor.rerender();
+  canvasOverlay(editor.tree()).props.onPointerUp(Object.assign({}, pointer, { clientX: settings.moveX, clientY: settings.moveY }));
+}
+//#endregion
+
+test('R1 wiring: scene colour is copied from a fresh authoritative template and only the colour changes', async () => {
+  const template = {
+    title: 'Scene 1',
+    duration: 5,
+    subtitle: '保留副标题',
+    badge: '保留标签',
+    color: '#123456',
+    accent: '#654321',
+    logo: 'assets/logo.png',
+    shot: 'assets/old-shot.png',
+    sceneId: 'scene-1',
+  };
+  const hostFetch = canvasFetch({ inspect: (state) => canvasManagedInspect({ revision: state.revision, template: template }) });
+  const editor = await mountCanvasReady({ fetch: hostFetch });
+  try {
+    // The authoritative project moved on out of band: this UI still renders the
+    // old revision, so the write must come from the fresh inspect under test.
+    hostFetch.state.revision = CANVAS_FRESH_REVISION;
+    let tree = editor.rerender();
+    const colorInput = findNode(tree, (node) => node.props && node.props.type === 'color');
+    assert(colorInput !== null, 'scene colour input is missing');
+    colorInput.props.onChange({ target: { value: '#FFD400' } });
+    tree = editor.rerender();
+    const apply = buttonByText(tree, translateFor(editor.env)('video.canvas.apply'));
+    assert(apply !== null, 'scene colour apply action is missing');
+    apply.props.onClick();
+    await settle();
+    editor.rerender();
+    const updates = canvasMethodCalls(hostFetch, 'scene.update');
+    assert(updates.length === 1, `expected one scene.update, got ${updates.length}`);
+    const params = updates[0].body.params;
+    assert(params.sceneId === 'scene-1', `scene.update targeted ${params.sceneId}`);
+    assert(params.expectedRevision === CANVAS_FRESH_REVISION, `scene.update used ${params.expectedRevision} instead of the fresh inspect revision`);
+    const expected = {
+      title: 'Scene 1',
+      duration: 5,
+      subtitle: '保留副标题',
+      badge: '保留标签',
+      color: '#ffd400',
+      accent: '#654321',
+      logo: 'assets/logo.png',
+      shot: 'assets/old-shot.png',
+    };
+    assert(JSON.stringify(params.template) === JSON.stringify(expected), `scene.update template was ${JSON.stringify(params.template)}`);
+    assert(params.template.sceneId === undefined, 'the scene.update template leaked sceneId');
+    assert(typeof params.operationId === 'string' && params.operationId.length > 0, 'scene.update lost its operationId');
+    assert(canvasMethodCalls(hostFetch, 'inspect').length >= 2, 'no fresh inspect was issued before the scene write');
+    assert(
+      findNode(editor.rerender(), (node) => node.props && node.props['data-canvas-revision'] === CANVAS_FRESH_REVISION) !== null,
+      'the canvas did not reload the fresh revision after the write'
+    );
+  } finally {
+    editor.interactive.unmount();
+  }
+});
+
+test('R1 wiring: an absent Scene template refuses the destructive write with localized copy', async () => {
+  const hostFetch = canvasFetch({ inspect: (state) => canvasManagedInspect({ revision: state.revision, template: null }) });
+  const editor = await mountCanvasReady({ fetch: hostFetch });
+  try {
+    const tree = editor.rerender();
+    buttonByText(tree, translateFor(editor.env)('video.canvas.apply')).props.onClick();
+    await settle();
+    editor.rerender();
+    assert(canvasMethodCalls(hostFetch, 'scene.update').length === 0, 'scene.update was sent without an authoritative template');
+    const alert = findNode(editor.tree(), (node) => node.props && node.props.role === 'alert');
+    assert(
+      alert !== null && textOf(alert).includes(translateFor(editor.env)('video.canvas.templateUnavailable')),
+      `refusal copy missing: ${alert && textOf(alert)}`
+    );
+  } finally {
+    editor.interactive.unmount();
+  }
+});
+
+test('R1 wiring: using a picture keeps the complete template and never injects the UI colour', async () => {
+  const template = {
+    title: 'Scene 1',
+    duration: 5,
+    subtitle: '保留副标题',
+    badge: '保留标签',
+    color: '#123456',
+    accent: '#654321',
+    logo: 'assets/logo.png',
+    shot: 'assets/old-shot.png',
+  };
+  const hostFetch = canvasFetch({ inspect: (state) => canvasManagedInspect({ revision: state.revision, template: template }) });
+  const editor = await mountCanvasReady({ fetch: hostFetch });
+  try {
+    let tree = editor.rerender();
+    buttonByText(tree, translateFor(editor.env)('video.canvas.materials')).props.onClick();
+    tree = editor.rerender();
+    const use = buttonByText(tree, translateFor(editor.env)('video.canvas.useAsset'));
+    assert(use !== null, 'asset use action is missing from the drawer');
+    use.props.onClick();
+    await settle();
+    editor.rerender();
+    const updates = canvasMethodCalls(hostFetch, 'scene.update');
+    assert(updates.length === 1, `expected one scene.update, got ${updates.length}`);
+    const params = updates[0].body.params;
+    const expected = {
+      title: 'Scene 1',
+      duration: 5,
+      subtitle: '保留副标题',
+      badge: '保留标签',
+      color: '#123456',
+      accent: '#654321',
+      logo: 'assets/logo.png',
+      shot: 'assets/photo.png',
+    };
+    assert(JSON.stringify(params.template) === JSON.stringify(expected), `asset template was ${JSON.stringify(params.template)}`);
+    assert(params.template.color !== '#1d4ed8', 'the UI default colour leaked into the asset write');
+    assert(params.expectedRevision === CANVAS_REVISION, `asset write used ${params.expectedRevision}`);
+  } finally {
+    editor.interactive.unmount();
+  }
+});
+
+test('R2 wiring: a component move writes the static-base patch and reloads the new revision', async () => {
+  const hostFetch = canvasFetch({
+    inspect: (state) => canvasManagedInspect({ revision: state.revision, layout: { left: 88, top: 196, width: 980, height: null } }),
+  });
+  const editor = await mountCanvasReady({ fetch: hostFetch });
+  try {
+    canvasSelectText(editor);
+    canvasDrag(editor, { startX: 500, startY: 246, moveX: 510, moveY: 246 });
+    await settle();
+    editor.rerender();
+    const edits = canvasMethodCalls(hostFetch, 'edit');
+    assert(edits.length === 1, `expected one layout edit, got ${edits.length}`);
+    const params = edits[0].body.params;
+    const op = params.ops[0];
+    assert(op.type === 'layout' && op.unit === 'composition-px' && op.target === 'scene-1-title', `unexpected layout op ${JSON.stringify(op)}`);
+    assert(JSON.stringify(op.box) === JSON.stringify({ left: 98, top: 196 }), `layout box was ${JSON.stringify(op.box)}; the animated Y offset or the auto height leaked into the write`);
+    assert(params.expectedRevision === CANVAS_REVISION, 'layout edit lost expectedRevision');
+    assert(
+      findNode(editor.rerender(), (node) => node.props && node.props['data-canvas-revision'] === CANVAS_NEXT_REVISION) !== null,
+      'the new revision did not replace the canvas snapshot after the layout write'
+    );
+  } finally {
+    editor.interactive.unmount();
+  }
+});
+
+test('R2 wiring: a failed layout write restores the pre-drag selection and never retries automatically', async () => {
+  const hostFetch = canvasFetch({
+    inspect: (state) => canvasManagedInspect({ revision: state.revision, layout: { left: 88, top: 196, width: 980, height: null } }),
+    edit: async () => ({ ok: false, error: { code: 'E_PERSIST', message: 'SDK persistence failed' } }),
+  });
+  const editor = await mountCanvasReady({ fetch: hostFetch });
+  try {
+    canvasSelectText(editor);
+    canvasDrag(editor, { startX: 500, startY: 246, moveX: 510, moveY: 246 });
+    await settle();
+    await settle();
+    assert(canvasMethodCalls(hostFetch, 'edit').length === 1, 'the failed layout write was not sent exactly once');
+    const tree = editor.rerender();
+    const selection = findNode(tree, (node) => node.props && node.props.className === 'dv-selection');
+    assert(selection !== null, 'selection was lost after the failed layout write');
+    assert(selection.props.style.left === '88px' && selection.props.style.top === '210px', `selection rect was not restored: ${JSON.stringify(selection.props.style)}`);
+    const alert = findNode(tree, (node) => node.props && node.props.role === 'alert');
+    assert(alert !== null && textOf(alert).includes(translateFor(editor.env)('video.canvas.persistFailed')), `failure copy missing: ${alert && textOf(alert)}`);
+    assert(findNode(tree, (node) => node.props && node.props['data-canvas-revision'] === CANVAS_REVISION) !== null, 'a failed write changed the canvas revision');
+    await settle();
+    assert(canvasMethodCalls(hostFetch, 'edit').length === 1, 'the failed layout write was retried automatically');
+  } finally {
+    editor.interactive.unmount();
+  }
+});
+
+test('R2 wiring: a missing static layout refuses the write with localized copy', async () => {
+  const hostFetch = canvasFetch({ inspect: (state) => canvasManagedInspect({ revision: state.revision, layout: null }) });
+  const editor = await mountCanvasReady({ fetch: hostFetch });
+  try {
+    canvasSelectText(editor);
+    canvasDrag(editor, { startX: 500, startY: 246, moveX: 510, moveY: 246 });
+    await settle();
+    editor.rerender();
+    assert(canvasMethodCalls(hostFetch, 'edit').length === 0, 'a layout write was sent without a static base');
+    const alert = findNode(editor.tree(), (node) => node.props && node.props.role === 'alert');
+    assert(alert !== null && textOf(alert).includes(translateFor(editor.env)('video.canvas.layoutRefused')), `refusal copy missing: ${alert && textOf(alert)}`);
+  } finally {
+    editor.interactive.unmount();
+  }
+});
+
+test('R5: a failed text save keeps the draft and reuses the editor operationId on retry', async () => {
+  let failFirst = true;
+  const hostFetch = canvasFetch({
+    edit: async () => {
+      if (failFirst) {
+        failFirst = false;
+        return { ok: false, error: { code: 'E_PERSIST', message: 'SDK persistence failed' } };
+      }
+      return undefined;
+    },
+  });
+  const editor = await mountCanvasReady({ fetch: hostFetch });
+  try {
+    canvasSelectText(editor);
+    canvasOpenTextEditor(editor);
+    canvasTypeDraft(editor, '人工改标题');
+    canvasPressEnter(editor);
+    await settle();
+    editor.rerender();
+    assert(canvasMethodCalls(hostFetch, 'edit').length === 1, 'the failed text save was not sent exactly once');
+    const kept = findNode(editor.tree(), (node) => node.props && node.props.className === 'dv-inline-editor');
+    assert(kept !== null && kept.props.value === '人工改标题', `the draft was lost after the failure: ${kept && kept.props.value}`);
+    assert(canvasRetryButton(editor) !== null, 'the retry affordance is missing from the editor overlay');
+    const alert = findNode(editor.tree(), (node) => node.props && node.props.role === 'alert');
+    assert(alert !== null && textOf(alert).includes(translateFor(editor.env)('video.canvas.persistFailed')), 'the failure copy is missing');
+    await settle();
+    assert(canvasMethodCalls(hostFetch, 'edit').length === 1, 'the failed text save was retried automatically');
+    canvasRetryButton(editor).props.onClick();
+    await settle();
+    editor.rerender();
+    const edits = canvasMethodCalls(hostFetch, 'edit');
+    assert(edits.length === 2, `expected one explicit retry, got ${edits.length} edits`);
+    assert(edits[0].body.params.operationId === edits[1].body.params.operationId, 'the retry lost the editor operationId');
+    assert(
+      edits[1].body.params.ops[0].text === '人工改标题' && edits[1].body.params.ops[0].target === 'scene-1-title',
+      'the retry changed the draft or its target'
+    );
+    assert(findNode(editor.tree(), (node) => node.props && node.props.className === 'dv-inline-editor') === null, 'the editor did not close after the successful retry');
+    const editIndex = hostFetch.calls.indexOf(edits[1]);
+    assert(hostFetch.calls.slice(editIndex + 1).some((call) => call.body.method === 'inspect'), 'the successful save did not reload the authoritative project');
+    assert(
+      findNode(editor.tree(), (node) => node.props && node.props['data-canvas-revision'] === CANVAS_NEXT_REVISION) !== null,
+      'the saved revision did not replace the canvas snapshot'
+    );
+  } finally {
+    editor.interactive.unmount();
+  }
+});
+
+test('R5: a revision conflict refreshes only on explicit retry and needs a later explicit submit', async () => {
+  let conflicts = 1;
+  const hostFetch = canvasFetch({
+    edit: async (request, state) => {
+      if (conflicts > 0) {
+        conflicts = 0;
+        state.revision = CANVAS_FRESH_REVISION;
+        return { ok: false, error: { code: 'E_REVISION_CONFLICT', message: 'Project changed before edit' } };
+      }
+      return undefined;
+    },
+  });
+  const editor = await mountCanvasReady({ fetch: hostFetch });
+  try {
+    canvasSelectText(editor);
+    canvasOpenTextEditor(editor);
+    canvasTypeDraft(editor, '冲突标题');
+    const inspectBefore = canvasMethodCalls(hostFetch, 'inspect').length;
+    canvasPressEnter(editor);
+    await settle();
+    editor.rerender();
+    assert(canvasMethodCalls(hostFetch, 'edit').length === 1, 'the conflict submit did not send exactly one write');
+    assert(canvasMethodCalls(hostFetch, 'inspect').length === inspectBefore, 'the conflict reloaded the project without an explicit retry');
+    const kept = findNode(editor.tree(), (node) => node.props && node.props.className === 'dv-inline-editor');
+    assert(kept !== null && kept.props.value === '冲突标题', 'the conflict lost the draft');
+    const alert = findNode(editor.tree(), (node) => node.props && node.props.role === 'alert');
+    assert(alert !== null && textOf(alert).includes(translateFor(editor.env)('video.error.conflict')), `conflict copy missing: ${alert && textOf(alert)}`);
+    // Explicit retry 1: refresh the authoritative revision, do not write.
+    canvasRetryButton(editor).props.onClick();
+    await settle();
+    editor.rerender();
+    assert(canvasMethodCalls(hostFetch, 'edit').length === 1, 'the refresh retry silently submitted the draft');
+    assert(canvasMethodCalls(hostFetch, 'inspect').length === inspectBefore + 1, 'the explicit retry did not refresh the authoritative revision');
+    const notice = findNode(
+      editor.tree(),
+      (node) => node.props && node.props.className === 'dv-tool-hint' && textOf(node).includes(translateFor(editor.env)('video.canvas.revisionRefreshed'))
+    );
+    assert(notice !== null, 'the refreshed-revision notice is missing');
+    const keptAfterRefresh = findNode(editor.tree(), (node) => node.props && node.props.className === 'dv-inline-editor');
+    assert(keptAfterRefresh !== null && keptAfterRefresh.props.value === '冲突标题', 'the draft did not survive the conflict refresh');
+    // Explicit retry 2: the actual write against the refreshed revision.
+    canvasRetryButton(editor).props.onClick();
+    await settle();
+    editor.rerender();
+    const edits = canvasMethodCalls(hostFetch, 'edit');
+    assert(edits.length === 2, `expected the later explicit submit, got ${edits.length} edits`);
+    assert(edits[1].body.params.expectedRevision === CANVAS_FRESH_REVISION, `the retried write used ${edits[1].body.params.expectedRevision}`);
+    assert(edits[0].body.params.operationId === edits[1].body.params.operationId, 'the retry lost the editor operationId');
+    assert(findNode(editor.tree(), (node) => node.props && node.props.className === 'dv-inline-editor') === null, 'the editor did not close after the successful retry');
+  } finally {
+    editor.interactive.unmount();
+  }
+});
+
+test('R5: an uncertain network failure keeps the draft and reuses the operationId', async () => {
+  let failFirst = true;
+  const hostFetch = canvasFetch({
+    edit: async () => {
+      if (failFirst) {
+        failFirst = false;
+        return new Error('socket closed before the response');
+      }
+      return undefined;
+    },
+  });
+  const editor = await mountCanvasReady({ fetch: hostFetch });
+  try {
+    canvasSelectText(editor);
+    canvasOpenTextEditor(editor);
+    canvasTypeDraft(editor, '网络标题');
+    canvasPressEnter(editor);
+    await settle();
+    editor.rerender();
+    assert(canvasMethodCalls(hostFetch, 'edit').length === 1, 'the network failure did not stop at one write');
+    const kept = findNode(editor.tree(), (node) => node.props && node.props.className === 'dv-inline-editor');
+    assert(kept !== null && kept.props.value === '网络标题', 'the network failure lost the draft');
+    const alert = findNode(editor.tree(), (node) => node.props && node.props.role === 'alert');
+    assert(alert !== null && textOf(alert).includes(translateFor(editor.env)('video.error.network')), `network failure copy missing: ${alert && textOf(alert)}`);
+    canvasRetryButton(editor).props.onClick();
+    await settle();
+    editor.rerender();
+    const edits = canvasMethodCalls(hostFetch, 'edit');
+    assert(edits.length === 2 && edits[0].body.params.operationId === edits[1].body.params.operationId, 'the uncertain retry did not reuse the operationId');
+    assert(findNode(editor.tree(), (node) => node.props && node.props.className === 'dv-inline-editor') === null, 'the editor did not close after the retry');
+  } finally {
+    editor.interactive.unmount();
+  }
+});
+
+test('R5: Escape closes the inline editor without sending any write', async () => {
+  const hostFetch = canvasFetch({});
+  const editor = await mountCanvasReady({ fetch: hostFetch });
+  try {
+    canvasSelectText(editor);
+    canvasOpenTextEditor(editor);
+    canvasTypeDraft(editor, '不应提交');
+    const textarea = findNode(editor.tree(), (node) => node.props && node.props.className === 'dv-inline-editor');
+    let prevented = false;
+    textarea.props.onKeyDown({ key: 'Escape', preventDefault() { prevented = true; } });
+    await settle();
+    editor.rerender();
+    assert(prevented === true, 'Escape was not handled by the inline editor');
+    assert(findNode(editor.tree(), (node) => node.props && node.props.className === 'dv-inline-editor') === null, 'Escape did not close the inline editor');
+    assert(canvasMethodCalls(hostFetch, 'edit').length === 0, 'Escape sent an edit request');
+  } finally {
+    editor.interactive.unmount();
+  }
+});
+
+test('R5: a successful save closes the editor first and then reloads the new revision', async () => {
+  const hostFetch = canvasFetch({});
+  const editor = await mountCanvasReady({ fetch: hostFetch });
+  try {
+    canvasSelectText(editor);
+    canvasOpenTextEditor(editor);
+    canvasTypeDraft(editor, '成功标题');
+    const before = hostFetch.calls.length;
+    canvasPressEnter(editor);
+    await settle();
+    editor.rerender();
+    const edits = canvasMethodCalls(hostFetch, 'edit');
+    assert(edits.length === 1, `expected one text edit, got ${edits.length}`);
+    const op = edits[0].body.params.ops[0];
+    assert(op.type === 'text' && op.text === '成功标题' && op.target === 'scene-1-title', `unexpected text op ${JSON.stringify(op)}`);
+    const editIndex = hostFetch.calls.indexOf(edits[0]);
+    assert(editIndex >= before, 'the edit was not sent after the explicit submit');
+    assert(hostFetch.calls.slice(editIndex + 1).some((call) => call.body.method === 'inspect'), 'the successful save did not reload the authoritative project');
+    assert(findNode(editor.tree(), (node) => node.props && node.props.className === 'dv-inline-editor') === null, 'the editor did not close on success');
+    assert(
+      findNode(editor.tree(), (node) => node.props && node.props['data-canvas-revision'] === CANVAS_NEXT_REVISION) !== null,
+      'the canvas did not load the saved revision'
+    );
+  } finally {
+    editor.interactive.unmount();
+  }
+});
+
+test('R6 wiring: the canvas drops wrong-source, uncorrelated and malformed events and accepts only correlated replies', async () => {
+  const hostFetch = canvasFetch({});
+  const editor = await mountCanvasReady({ fetch: hostFetch });
+  try {
+    canvasOverlay(editor.tree()).props.onClick({ clientX: 640, clientY: 360 });
+    const command = takeCanvasCommand(editor, 'hitTest');
+    assert(command !== null, 'the canvas did not request a hit test');
+    assert(
+      command.v === 1 &&
+        command.kind === 'cmd' &&
+        /^[a-z0-9][a-z0-9-]{7,63}$/.test(command.instanceId) &&
+        command.nonce.length === 32 &&
+        command.seq === 1,
+      `outgoing command is not the reviewed contract shape: ${JSON.stringify(command)}`
+    );
+    assert(findNode(editor.tree(), (node) => node.props && node.props.className === 'dv-selection') === null, 'a selection existed before any runtime reply');
+    const dispatchOptions = { reference: command, type: 'hit', payload: { hit: canvasHitPayload() } };
+    // No rerender happens between these dispatches: the review contract must be
+    // enforced inside one bound snapshot instance.
+    canvasDispatch(editor, Object.assign({}, dispatchOptions, { source: {} }));
+    canvasDispatch(editor, Object.assign({}, dispatchOptions, { instanceId: 'dvcanvas-other1' }));
+    canvasDispatch(editor, Object.assign({}, dispatchOptions, { replyTo: null }));
+    canvasDispatch(editor, Object.assign({}, dispatchOptions, { payload: { hit: { stableId: 42 } } }));
+    assert(findNode(editor.tree(), (node) => node.props && node.props.className === 'dv-selection') === null, 'a dropped event mutated the selection');
+    const accepted = canvasDispatch(editor, dispatchOptions);
+    canvasDispatch(editor, Object.assign({}, dispatchOptions, { seq: 1, payload: { hit: null } }));
+    editor.rerender();
+    assert(findNode(editor.tree(), (node) => node.props && node.props.className === 'dv-selection') !== null, 'the valid correlated hit reply was not applied');
+    assert(typeof accepted.seq === 'number' && accepted.seq > 1, 'event sequence is not strictly increasing');
+    // Unbind must settle the pending command promise explicitly: the waiter is
+    // resolved with null, its timer is cleared and the listener is removed.
+    canvasOverlay(editor.tree()).props.onClick({ clientX: 320, clientY: 240 });
+    assert(takeCanvasCommand(editor, 'hitTest') !== null, 'the final pending command was not posted');
+    assert(editor.loaded.runtime.timers.size > 0, 'a pending command did not have a settlement timer');
+    editor.interactive.unmount();
+    assert(editor.loaded.runtime.listeners.length === 0, 'the canvas left a message listener bound after unmount');
+    assert(editor.loaded.runtime.timers.size === 0, `unmount left ${editor.loaded.runtime.timers.size} pending command timer(s); pending promises were not settled`);
+  } finally {
+    editor.interactive.unmount();
+  }
+});
 
 //#endregion
 
