@@ -11,7 +11,8 @@
 
 import { createHash } from 'node:crypto';
 import { realpath, readFile, stat } from 'node:fs/promises';
-import { isAbsolute, join, relative, resolve } from 'node:path';
+import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { BridgeError, configurationError, logSummary, toPublicError } from './errors.js';
 import { allowsProject, tryNormalizeConfig } from './config.js';
 import { buildWorkerEnv } from './env.js';
@@ -627,18 +628,27 @@ export class VideoBridge {
       configError: this.configError,
     });
     this.managedProjects = null;
+    this.projectDirectoryCache = null;
     this.snapshots = new SnapshotRoutes(this.ctx !== undefined && this.ctx !== null ? this.ctx.connection : undefined);
     this.assets = new AssetInbox({
       connection: this.ctx !== undefined && this.ctx !== null ? this.ctx.connection : undefined,
       root: this.config !== null && this.config.assetInboxRoot !== undefined ? this.config.assetInboxRoot : undefined,
       maxBytes: this.config !== null ? this.config.maxAssetBytes : undefined,
+      // The bridge owns the trusted allowlist; an upload may only land in the
+      // inbox for a project this deployment has actually registered.
+      isTrustedProject: (id) => this.config !== null && this.config.projectIds.has(id),
     });
   }
 
   /** Register the authenticated asset upload route from the plugin effect. */
   installAssetRoute() {
     this.assets.install();
-    return () => this.assets.dispose();
+    // On plugin disable the request/artifact/tool registrations are torn down
+    // first; accepted uploads are drained and cleaned by VideoBridge.dispose.
+    return () => {
+      this.assets.close();
+      this.assets.uninstall();
+    };
   }
 
   /** Exact route handler for the authenticated asset upload. */
@@ -666,6 +676,7 @@ export class VideoBridge {
       next.assetInboxRoot = await canonicalDirectory(managedConfig.assetInboxRoot, 'assetInboxRoot');
     }
     this.managedProjects = next;
+    this.projectDirectoryCache = projects;
     if (this.runtime !== null) this.runtime.managed = next;
     return next;
   }
@@ -681,6 +692,167 @@ export class VideoBridge {
     const runtime = this.runtime;
     if (runtime === null) return null;
     return join(runtime.artifactRoot, 'previews');
+  }
+
+  /**
+   * Canonical per-project content directories from the trusted worker registry.
+   *
+   * Managed mode reads the worker-managed registry once discovered; legacy mode
+   * resolves `registry.projects` directly, bounded to this deployment's trusted
+   * id allowlist. Never starts the worker.
+   */
+  async projectDirectories() {
+    const config = this.requireConfig();
+    if (this.managedProjects !== null) return this.managedProjects.projects;
+    if (this.projectDirectoryCache !== null) return this.projectDirectoryCache;
+    let registry;
+    try {
+      registry = parseRegistry(await readFile(config.registryPath, 'utf8'));
+    } catch (_error) {
+      return new Map();
+    }
+    const map = new Map();
+    try {
+      if (registry.managed === true) {
+        const projectsRoot = await canonicalDirectory(registry.root, 'registry.projectsRoot');
+        const managedRegistryPath = await canonicalFile(registry.managedRegistryPath, 'registry.registryPath');
+        for (const [id, projectPath] of await readManagedProjectMap(managedRegistryPath, projectsRoot, PROJECT_ID)) {
+          if (config.projectIds.has(id)) map.set(id, projectPath);
+        }
+      } else {
+        const registryRoot = await canonicalDirectory(registry.root, 'registry.root');
+        for (const [id, projectPath] of Object.entries(registry.projects)) {
+          if (config.projectIds.has(id) === false) continue;
+          try {
+            const real = await realpath(projectPath);
+            if ((await stat(real)).isDirectory() === false) continue;
+            if (inside(registryRoot, real) === false) continue;
+            map.set(id, real);
+          } catch (_error) {
+            /* an unavailable registered project simply has no previewable root */
+          }
+        }
+      }
+    } catch (_error) {
+      return new Map();
+    }
+    this.projectDirectoryCache = map;
+    return map;
+  }
+
+  /** Canonical directory root, or null when it is missing/not a directory. */
+  async canonicalPreviewRoot(path) {
+    if (typeof path !== 'string' || path.length === 0) return null;
+    try {
+      const real = await realpath(path);
+      return (await stat(real)).isDirectory() ? real : null;
+    } catch (_error) {
+      return null;
+    }
+  }
+
+  /** Whether one canonical artifact file is a recorded output of this project's job. */
+  artifactOwnedBy(projectId, artifactRoot, canonical) {
+    if (typeof projectId !== 'string' || typeof canonical !== 'string') return false;
+    if (dirname(canonical) !== artifactRoot) return false;
+    const match = basename(canonical).match(ARTIFACT_NAME);
+    if (match === null) return false;
+    const record = this.jobs.get(match[1]);
+    return record !== undefined && record.projectId === projectId;
+  }
+
+  /**
+   * Provenance roots for previewing one bound project/Session pair (R3).
+   *
+   * Unrestricted roots are owned outright by this project: its trusted content
+   * directory and its per-project Session working directory. Artifact, upload
+   * receipt and legacy shared-Session-root files carry an exact ownership probe.
+   */
+  async previewRoots(projectId, sessionId, requestedPath) {
+    const config = this.requireConfig();
+    const roots = [];
+    let projectDirectory = null;
+    try {
+      projectDirectory = (await this.projectDirectories()).get(projectId) || null;
+    } catch (_error) {
+      projectDirectory = null;
+    }
+    if (projectDirectory !== null) roots.push({ kind: 'project', path: projectDirectory });
+
+    let sessionCwd = null;
+    try {
+      sessionCwd = await this.sessions.sessionCwd();
+    } catch (_error) {
+      sessionCwd = null;
+    }
+    if (sessionCwd !== null) {
+      let projectSessionRoot = null;
+      try {
+        projectSessionRoot = await this.sessions.projectSessionRoot(projectId);
+      } catch (_error) {
+        projectSessionRoot = null;
+      }
+      if (projectSessionRoot !== null && inside(sessionCwd, projectSessionRoot)) {
+        roots.push({ kind: 'session', path: projectSessionRoot });
+      }
+      // The user-visible form may differ from the canonical form (for example a
+      // `/var` vs `/private/var` prefix on macOS); the Session log names whatever
+      // the native chat rendered, so accept the literal requested form too. Both
+      // forms are only honored when the real canonical file is inside this root.
+      const literalForms = [];
+      if (typeof requestedPath === 'string' && requestedPath.length > 0 && requestedPath.length <= 4096) {
+        let literal = requestedPath;
+        if (literal.startsWith('file://')) {
+          try {
+            literal = fileURLToPath(literal);
+          } catch (_error) {
+            literal = null;
+          }
+        }
+        if (typeof literal === 'string' && isAbsolute(literal) && literal.includes('\0') === false) {
+          literalForms.push(literal);
+        } else if (typeof literal === 'string' && typeof config.sessionCwd === 'string' && isAbsolute(config.sessionCwd)) {
+          literalForms.push(join(config.sessionCwd, literal));
+        }
+      }
+      const ownedSessionRoots = [...config.projectIds].map((id) => join(sessionCwd, id));
+      roots.push({
+        kind: 'legacy',
+        path: sessionCwd,
+        // The old shared root holds several projects' files; only the bound
+        // Session's own inspected events can prove one exact path. Files under a
+        // per-project Session root stay owned by that project and never qualify.
+        verify: (canonical) => {
+          for (const owned of ownedSessionRoots) {
+            if (inside(owned, canonical)) return false;
+          }
+          const forms = literalForms.filter((form) => form !== canonical);
+          return this.sessions.sessionReferencesPath(sessionId, [canonical, ...forms]);
+        },
+      });
+    }
+
+    const artifactRoot = await this.canonicalPreviewRoot(
+      this.runtime !== null ? this.runtime.artifactRoot : config.artifactRoot
+    );
+    if (artifactRoot !== null) {
+      roots.push({
+        kind: 'artifact',
+        path: artifactRoot,
+        verify: (canonical) => this.artifactOwnedBy(projectId, artifactRoot, canonical),
+      });
+    }
+    if (typeof this.assets.root === 'string' && this.assets.root.length > 0) {
+      const inboxRoot = await this.canonicalPreviewRoot(this.assets.root);
+      if (inboxRoot !== null) {
+        roots.push({
+          kind: 'receipt',
+          path: inboxRoot,
+          verify: (canonical) => this.assets.ownsFile(projectId, canonical),
+        });
+      }
+    }
+    return roots;
   }
 
   /** Bounded diagnostic state; never includes paths, environment values or stderr. */
@@ -910,17 +1082,54 @@ export class VideoBridge {
     }
   }
 
+  /**
+   * Best-effort worker cleanup that must still run after `closing` is set (for
+   * example releasing a snapshot the worker produced for a request that was
+   * already accepted). It talks to the live client directly, never starts one.
+   */
+  async releaseWorkerSnapshot(snapshotId) {
+    const client = this.client !== null ? this.client : null;
+    if (client === null || typeof client.request !== 'function') return false;
+    try {
+      const config = this.config;
+      const options = config !== null ? { timeoutMs: config.requestTimeoutMs } : undefined;
+      await client.request('preview.release', { snapshotId }, options);
+      return true;
+    } catch (error) {
+      this.log(error, 'late snapshot release');
+      return false;
+    }
+  }
+
   validate(method, params) {
     const config = this.requireConfig();
     if (REQUEST_METHODS.includes(method) === false) fail('E_METHOD', 'Unknown video action', 'params');
     return validateParams(config, method, params);
   }
 
-  async invoke(method, params, options) {
-    const settings = options || {};
+  /**
+   * Admit one accepted request synchronously, then run it.
+   *
+   * Every request that passes the closing gate enters the single `inFlight` set
+   * before any await inside the dispatcher. Dispose therefore drains exactly the
+   * work it accepted — including the early-return branches (project.list,
+   * project.create, asset.import, preview snapshots, preview, session.*) — and
+   * nothing they publish can outlive the teardown.
+   */
+  invoke(method, params, options) {
     if (this.closing || this.disposed) {
-      throw new BridgeError('E_WORKER_DISPOSED', 'The video service is stopping', { stage: 'lifecycle' });
+      return Promise.reject(new BridgeError('E_WORKER_DISPOSED', 'The video service is stopping', { stage: 'lifecycle' }));
     }
+    const task = this.dispatch(method, params, options || {});
+    this.inFlight.add(task);
+    const settle = () => {
+      this.inFlight.delete(task);
+    };
+    task.then(settle, settle);
+    return task;
+  }
+
+  async dispatch(method, params, settings) {
     const config = this.requireConfig();
     if (config.projectsRoot !== undefined) {
       try {
@@ -960,6 +1169,15 @@ export class VideoBridge {
     if (method === 'preview.snapshot') {
       if (settings.source === 'tool') throw new BridgeError('E_METHOD', 'Preview snapshot is a UI-only action', { stage: 'params' });
       const snapshot = await this.callClient('preview.snapshot', normalized);
+      // A worker result that arrives after disable began must not publish routes;
+      // release the private snapshot instead of registering it.
+      if (this.closing || this.disposed) {
+        const snapshotId = snapshot !== null && typeof snapshot === 'object' ? snapshot.snapshotId : undefined;
+        if (typeof snapshotId === 'string' && SNAPSHOT_ID.test(snapshotId)) {
+          await this.releaseWorkerSnapshot(snapshotId);
+        }
+        throw new BridgeError('E_WORKER_DISPOSED', 'The video service is stopping', { stage: 'lifecycle' });
+      }
       const root = this.previewRoot();
       if (root === null) throw new BridgeError('E_WORKER_START', 'The preview root is unavailable before worker startup', { stage: 'preview' });
       try {
@@ -985,75 +1203,48 @@ export class VideoBridge {
       if (settings.source === 'tool') {
         throw new BridgeError('E_METHOD', 'Preview is a UI-only action, not a model tool action', { stage: 'params' });
       }
-      const previewTask = (async () => {
-        const config = this.requireConfig();
-        const ownerProject = await this.sessions.projectForSession(normalized.sessionId);
-        if (ownerProject === null) {
-          throw new BridgeError('E_SESSION_NOT_BOUND', 'This Session is not bound to a video project', { stage: 'scope' });
-        }
-        if (ownerProject !== normalized.projectId) {
-          throw new BridgeError('E_PROJECT_SCOPE', 'The preview targets a Session outside this project', { stage: 'scope' });
-        }
-        return readPreviewFile({
-          sessionCwd: config.sessionCwd,
-          artifactRoot: config.artifactRoot,
-          path: normalized.path,
-          maxBytes: config.maxPreviewBytes,
-        });
-      })();
-      this.inFlight.add(previewTask);
-      try {
-        return await previewTask;
-      } finally {
-        this.inFlight.delete(previewTask);
+      const ownerProject = await this.sessions.projectForSession(normalized.sessionId);
+      if (ownerProject === null) {
+        throw new BridgeError('E_SESSION_NOT_BOUND', 'This Session is not bound to a video project', { stage: 'scope' });
       }
+      if (ownerProject !== normalized.projectId) {
+        throw new BridgeError('E_PROJECT_SCOPE', 'The preview targets a Session outside this project', { stage: 'scope' });
+      }
+      const roots = await this.previewRoots(normalized.projectId, normalized.sessionId, normalized.path);
+      return readPreviewFile({
+        roots,
+        path: normalized.path,
+        maxBytes: config.maxPreviewBytes,
+      });
     }
     if (SESSION_METHODS.includes(method)) {
       if (settings.source === 'tool') throw new BridgeError('E_METHOD', 'Session management is not a model tool action', { stage: 'params' });
-      this.requireConfig();
-      // Session operations are accepted work too: track them in the same
-      // inFlight set so dispose refuses new calls, drains accepted creates and
-      // only then lets SessionService tear down its store/context.
-      const sessionTask = (async () => this.sessions.handle(method, normalized))();
-      this.inFlight.add(sessionTask);
-      try {
-        return await sessionTask;
-      } finally {
-        this.inFlight.delete(sessionTask);
-      }
+      return this.sessions.handle(method, normalized);
     }
     if (method === 'status' || method === 'cancel') {
       const record = this.jobs.get(normalized.jobId);
       if (record === undefined) throw new BridgeError('E_JOB_NOT_FOUND', 'Unknown video job', { stage: 'job' });
     }
 
-    const task = (async () => {
-      if (settings.source === 'tool' && method !== 'doctor') {
-        await this.assertToolScope(method, normalized, settings.agentSessionId);
-      }
-      const result = await this.callClient(method, normalized);
-      if (method === 'frame' || method === 'render') {
-        this.rememberJob(method, normalized, result);
-      } else if (method === 'inspect' || method === 'open') {
-        this.rememberFacts(result);
-      } else if (method === 'status' || method === 'cancel') {
-        const record = this.jobs.get(normalized.jobId);
-        if (record === undefined) throw new BridgeError('E_JOB_NOT_FOUND', 'Unknown video job', { stage: 'job' });
-        if (result !== null && typeof result === 'object' && result.projectId !== undefined && result.projectId !== record.projectId) {
-          throw new BridgeError('E_JOB_NOT_FOUND', 'Unknown video job', { stage: 'job' });
-        }
-      }
-      if (method === 'close' && result !== null && typeof result === 'object' && result.closed === true) {
-        this.snapshots.revokeProject(normalized.projectId);
-      }
-      return publicResult(this.requireConfig().maxResultBytes, result, settings.source);
-    })();
-    this.inFlight.add(task);
-    try {
-      return await task;
-    } finally {
-      this.inFlight.delete(task);
+    if (settings.source === 'tool' && method !== 'doctor') {
+      await this.assertToolScope(method, normalized, settings.agentSessionId);
     }
+    const result = await this.callClient(method, normalized);
+    if (method === 'frame' || method === 'render') {
+      this.rememberJob(method, normalized, result);
+    } else if (method === 'inspect' || method === 'open') {
+      this.rememberFacts(result);
+    } else if (method === 'status' || method === 'cancel') {
+      const record = this.jobs.get(normalized.jobId);
+      if (record === undefined) throw new BridgeError('E_JOB_NOT_FOUND', 'Unknown video job', { stage: 'job' });
+      if (result !== null && typeof result === 'object' && result.projectId !== undefined && result.projectId !== record.projectId) {
+        throw new BridgeError('E_JOB_NOT_FOUND', 'Unknown video job', { stage: 'job' });
+      }
+    }
+    if (method === 'close' && result !== null && typeof result === 'object' && result.closed === true) {
+      this.snapshots.revokeProject(normalized.projectId);
+    }
+    return publicResult(this.requireConfig().maxResultBytes, result, settings.source);
   }
 
   /**
@@ -1215,10 +1406,21 @@ export class VideoBridge {
     };
   }
 
-  /** Refuse new work, then await every accepted request and the one worker teardown. */
+  /**
+   * Refuse new work, abort pending uploads, drain every accepted request, then
+   * tear down the worker, Sessions, snapshot routes and inbox receipts. Nothing
+   * accepted or published can outlive the resolved dispose promise.
+   */
   dispose() {
     if (this.disposePromise !== null) return this.disposePromise;
     this.closing = true;
+    // Streams are not in inFlight; closing the inbox rejects new bytes and
+    // cancels active readers before the drain below waits on accepted work.
+    try {
+      this.assets.close();
+    } catch (error) {
+      this.log(error, 'asset inbox close');
+    }
     const startTask = this.starting;
     this.disposePromise = (async () => {
       if (startTask !== null) {
@@ -1228,21 +1430,14 @@ export class VideoBridge {
           /* a failed start has no live worker left to stop */
         }
       }
+      // Accepted requests may still need the worker; drain them before teardown.
+      await Promise.allSettled([...this.inFlight]);
       const client = this.client;
       this.client = null;
       this.started = false;
-      let teardown;
       if (client !== null && typeof client.dispose === 'function') {
         try {
-          teardown = client.dispose();
-        } catch (error) {
-          this.log(error, 'worker dispose');
-        }
-      }
-      await Promise.allSettled([...this.inFlight]);
-      if (teardown !== undefined) {
-        try {
-          await teardown;
+          await client.dispose();
         } catch (error) {
           this.log(error, 'worker dispose');
         }
@@ -1258,7 +1453,7 @@ export class VideoBridge {
         this.log(error, 'preview routes dispose');
       }
       try {
-        this.assets.dispose();
+        await this.assets.dispose();
       } catch (error) {
         this.log(error, 'asset inbox dispose');
       }

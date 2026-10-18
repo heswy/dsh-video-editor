@@ -17,12 +17,14 @@
  */
 
 import { createHash } from 'node:crypto';
-import { mkdtemp, mkdir, readFile, readdir, realpath, rm, symlink, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { access, mkdtemp, mkdir, readFile, readdir, realpath, rm, symlink, writeFile } from 'node:fs/promises';
+import { basename, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { pathToFileURL } from 'node:url';
 import { VideoBridge } from '../host/bridge.js';
 import { SessionStateStore } from '../host/session-state.js';
+import { sessionEventsReferencePath as sessionLogReferencesPath } from '../host/sessions.js';
+import { AssetInbox } from '../host/asset-inbox.js';
 import { buildWorkerEnv } from '../host/env.js';
 import { createRequestRoute, createArtifactRoute, statusForError } from '../host/routes.js';
 import { createVideoTool, TOOL_NAME } from '../host/tool.js';
@@ -287,6 +289,63 @@ function makeBridge(workspace, behavior, ctx) {
     engineLoader: engine.engineLoader,
   });
   return { bridge, engine };
+}
+
+/** Build a bridge with trusted config overrides (e.g. an asset inbox root). */
+function makeBridgeWithConfig(workspace, configOverrides, behavior, ctx) {
+  const engine = fakeEngine(workspace, behavior);
+  const bridge = new VideoBridge({
+    ctx: ctx || makeCtx(workspace).ctx,
+    rawConfig: Object.assign({}, workspace.config, configOverrides),
+    engineLoader: engine.engineLoader,
+  });
+  return { bridge, engine };
+}
+
+async function exists(path) {
+  try {
+    await access(path);
+    return true;
+  } catch (_error) {
+    return false;
+  }
+}
+
+async function listIfPresent(directory) {
+  try {
+    return await readdir(directory);
+  } catch (_error) {
+    return [];
+  }
+}
+
+async function uploadPng(bridge, projectId, name, bytes) {
+  const request = new Request('http://127.0.0.1/api/dsh-video/asset-upload', {
+    method: 'POST',
+    headers: { 'content-type': 'image/png', 'x-dsh-project-id': projectId, 'x-dsh-file-name': name || 'pixel.png' },
+    body: bytes || PNG,
+  });
+  const response = await bridge.uploadAsset(request);
+  let body = null;
+  try {
+    body = await response.json();
+  } catch (_error) {
+    body = null;
+  }
+  return { response, body };
+}
+
+/** Direct inbox upload used for lifecycle tests (no bridge allowlist in the way). */
+function inboxUpload(inbox, projectId, name, bytes, mediaType) {
+  return inbox.handle(new Request('http://127.0.0.1/api/dsh-video/asset-upload', {
+    method: 'POST',
+    headers: {
+      'content-type': mediaType || 'image/png',
+      'x-dsh-project-id': projectId,
+      'x-dsh-file-name': name,
+    },
+    body: bytes === undefined ? PNG : bytes,
+  }));
 }
 
 function jobResponse(method, params, state) {
@@ -742,7 +801,11 @@ async function main() {
     assert(left.sessionId === right.sessionId, 'concurrent creates did not share one single-flight operation');
     assert(bag.sessionController.created.length === 2, `expected two controller creates, got ${bag.sessionController.created.length}`);
     const trustedCwd = await realpath(workspace.sessionCwd);
-    assert(bag.sessionController.created[0].request.cwd === trustedCwd, 'creation did not use the trusted sessionCwd');
+    // New Sessions start in the trusted per-project Session root so their files
+    // are attributable to exactly this project, not the shared root.
+    const projectCwd = await realpath(join(trustedCwd, PROJECT));
+    assert(bag.sessionController.created[0].request.cwd === projectCwd, 'creation did not use the trusted per-project Session root');
+    assert(projectCwd.startsWith(trustedCwd + '/'), 'per-project Session root is not inside sessionCwd');
     const stored = JSON.parse(await readFile(workspace.sessionStatePath, 'utf8'));
     assert(stored.version === 1 && stored.projects[PROJECT].sessionIds.includes(first.sessionId), 'mapping did not persist the returned id');
     assert(stored.sessions[first.sessionId].projectId === PROJECT, 'reverse mapping missing');
@@ -797,24 +860,48 @@ async function main() {
   });
 
 
-  await run('P3-006-C: preview reads only a registered Session\'s bounded image roots without starting the worker', async () => {
+  await run('P3-006-C: preview reads only this project\'s owned roots without starting the worker', async () => {
     const workspace = await makeWorkspace();
+    const inboxRoot = join(workspace.root, 'asset-inbox');
     const bag = makeCtx(workspace);
-    const { bridge, engine } = makeBridge(workspace, { handler: () => ({}) }, bag.ctx);
+    const { bridge, engine } = makeBridgeWithConfig(workspace, { assetInboxRoot: inboxRoot }, { handler: () => ({}) }, bag.ctx);
     const sessionId = await createBoundSession(bridge);
-    const artifactFile = join(workspace.outputRoot, 'frame.png');
+
+    // 1. This project's trusted managed content directory.
+    const projectFile = join(workspace.projectDir, 'assets', 'own.png');
+    await mkdir(join(workspace.projectDir, 'assets'), { recursive: true });
+    await writeFile(projectFile, PNG);
+    const projectPreview = await bridge.invoke('preview', { projectId: PROJECT, sessionId, path: projectFile }, { source: 'http' });
+    assert(projectPreview.mediaType === 'image/png' && projectPreview.sha256 === PNG_HASH, 'own project file preview was denied');
+    // Markdown local image links reach the Host as a file:// address.
+    const fileUrlPreview = await bridge.invoke('preview', { projectId: PROJECT, sessionId, path: pathToFileURL(projectFile).href }, { source: 'http' });
+    assert(fileUrlPreview.sha256 === PNG_HASH, 'file:// local-link preview of an own project file was denied');
+
+    // 2. This project's recorded job artifact is attributed through the job registry.
+    bridge.jobs.set(JOB_ID, { projectId: PROJECT, revision: REVISION, kind: 'frame' });
+    const artifactFile = join(workspace.outputRoot, `${JOB_ID}.png`);
     await writeFile(artifactFile, PNG);
     const artifactPreview = await bridge.invoke('preview', { projectId: PROJECT, sessionId, path: artifactFile }, { source: 'http' });
-    assert(artifactPreview.mediaType === 'image/png', `artifact preview media type is ${artifactPreview.mediaType}`);
-    assert(artifactPreview.fileName === 'frame.png', `preview filename is ${artifactPreview.fileName}`);
-    assert(artifactPreview.size === PNG.length && artifactPreview.sha256 === PNG_HASH, 'preview bytes/hash do not match the file');
-    assert(typeof artifactPreview.dataUrl === 'string' && artifactPreview.dataUrl.startsWith('data:image/png;base64,'), 'preview dataUrl missing');
+    assert(artifactPreview.fileName === `${JOB_ID}.png` && artifactPreview.sha256 === PNG_HASH, 'own job artifact preview was denied');
     assert(artifactPreview.dataUrl.includes(artifactFile) === false, 'preview leaked an absolute Host path into the data URL');
 
-    const localFile = join(workspace.sessionCwd, 'manual.png');
-    await writeFile(localFile, PNG);
+    // 3. A Host-issued upload receipt target is owned by the project it was issued to.
+    const upload = await uploadPng(bridge, PROJECT, 'receipt.png');
+    assert(upload.response.status === 200 && typeof upload.body.receiptId === 'string', `receipt upload failed: ${JSON.stringify(upload.body)}`);
+    const receiptName = (await readdir(inboxRoot)).find((name) => name.endsWith('receipt.png'));
+    assert(typeof receiptName === 'string', 'uploaded receipt file is missing');
+    const receiptTarget = join(inboxRoot, receiptName);
+    const receiptPreview = await bridge.invoke('preview', { projectId: PROJECT, sessionId, path: receiptTarget }, { source: 'http' });
+    assert(receiptPreview.sha256 === PNG_HASH, 'Host-issued upload receipt file was not previewable');
+
+    // 4. This project's own per-project Session working directory, absolute and relative.
+    const projectSessionRoot = await realpath(join(workspace.sessionCwd, PROJECT));
+    await writeFile(join(projectSessionRoot, 'manual.png'), PNG);
+    const sessionPreview = await bridge.invoke('preview', { projectId: PROJECT, sessionId, path: join(projectSessionRoot, 'manual.png') }, { source: 'http' });
+    assert(sessionPreview.sha256 === PNG_HASH, 'own Session file preview was denied');
     const relativePreview = await bridge.invoke('preview', { projectId: PROJECT, sessionId, path: 'manual.png' }, { source: 'http' });
-    assert(relativePreview.fileName === 'manual.png' && relativePreview.sha256 === PNG_HASH, 'relative session preview did not resolve under sessionCwd');
+    assert(relativePreview.fileName === 'manual.png' && relativePreview.sha256 === PNG_HASH, 'relative Session preview did not resolve under the per-project Session root');
+
     assert(engine.instances.length === 0, 'preview started the video worker');
   });
 
@@ -828,20 +915,33 @@ async function main() {
     await writeFile(outside, PNG);
     const denied = await rejects(() => bridge.invoke('preview', { projectId: PROJECT, sessionId, path: outside }, { source: 'http' }));
     assert(denied.code === 'E_PREVIEW_DENIED', `outside root was not denied: ${denied.code}`);
-    const escape = await rejects(() => bridge.invoke('preview', { projectId: PROJECT, sessionId, path: '../../secret.png' }, { source: 'http' }));
+    // A missing path outside the owned roots is denied too, not reported as
+    // "not found": preview must not become a filesystem existence oracle.
+    const ghost = await rejects(() => bridge.invoke('preview', { projectId: PROJECT, sessionId, path: join(workspace.root, 'ghost.png') }, { source: 'http' }));
+    assert(ghost.code === 'E_PREVIEW_DENIED', `missing outside path leaked an existence signal: ${ghost.code}`);
+    // A missing path inside an owned root keeps the honest "not found" code.
+    const missingInside = await rejects(() => bridge.invoke('preview', { projectId: PROJECT, sessionId, path: join(workspace.projectDir, 'missing.png') }, { source: 'http' }));
+    assert(missingInside.code === 'E_PREVIEW_NOT_FOUND', `missing owned path was not typed as not found: ${missingInside.code}`);
+    // "../../../" from <sessionCwd>/<project>/ resolves to the workspace root.
+    const escape = await rejects(() => bridge.invoke('preview', { projectId: PROJECT, sessionId, path: '../../../secret.png' }, { source: 'http' }));
     assert(escape.code === 'E_PREVIEW_DENIED', `relative traversal was not denied: ${escape.code}`);
 
-    const textFile = join(workspace.outputRoot, 'notes.txt');
+    // A symlink inside an owned root may not smuggle an outside file in.
+    await symlink(outside, join(workspace.projectDir, 'link.png'));
+    const linked = await rejects(() => bridge.invoke('preview', { projectId: PROJECT, sessionId, path: join(workspace.projectDir, 'link.png') }, { source: 'http' }));
+    assert(linked.code === 'E_PREVIEW_DENIED', `symlink escape was not denied: ${linked.code}`);
+
+    const textFile = join(workspace.projectDir, 'notes.txt');
     await writeFile(textFile, 'not an image');
     const unsupported = await rejects(() => bridge.invoke('preview', { projectId: PROJECT, sessionId, path: textFile }, { source: 'http' }));
     assert(unsupported.code === 'E_PREVIEW_UNSUPPORTED', `text preview was not unsupported: ${unsupported.code}`);
 
-    const fakeImage = join(workspace.outputRoot, 'fake.png');
+    const fakeImage = join(workspace.projectDir, 'fake.png');
     await writeFile(fakeImage, '<!doctype html><script>alert(1)</script>');
     const mismatched = await rejects(() => bridge.invoke('preview', { projectId: PROJECT, sessionId, path: fakeImage }, { source: 'http' }));
     assert(mismatched.code === 'E_PREVIEW_UNSUPPORTED', `renamed non-image was not rejected: ${mismatched.code}`);
 
-    const large = join(workspace.outputRoot, 'large.png');
+    const large = join(workspace.projectDir, 'large.png');
     await writeFile(large, Buffer.concat([PNG, Buffer.alloc(2048)]));
     const limit = await rejects(() => bridge.invoke('preview', { projectId: PROJECT, sessionId, path: large }, { source: 'http' }));
     assert(limit.code === 'E_PREVIEW_LIMIT', `over-limit preview was not typed: ${limit.code}`);
@@ -854,8 +954,10 @@ async function main() {
     const { bridge } = makeBridge(workspace, { handler: () => ({}) }, bag.ctx);
     const sessionId = await createBoundSession(bridge);
     const otherSession = await createBoundSession(bridge, OTHER);
-    const file = join(workspace.outputRoot, 'frame.png');
+    const file = join(workspace.projectDir, 'frame.png');
     await writeFile(file, PNG);
+    const otherFile = join(workspace.registry.projects[OTHER], 'own.png');
+    await writeFile(otherFile, PNG);
 
     const unregistered = await rejects(() => bridge.invoke('preview', { projectId: PROJECT, sessionId: 'session-unregistered', path: file }, { source: 'http' }));
     assert(unregistered.code === 'E_SESSION_NOT_BOUND', `unregistered Session preview was not rejected: ${unregistered.code}`);
@@ -865,8 +967,110 @@ async function main() {
     assert(toolPreview.code === 'E_METHOD', `tool preview was not rejected: ${toolPreview.code}`);
     const invalid = await rejects(() => bridge.invoke('preview', { projectId: PROJECT, sessionId, path: 5 }, { source: 'http' }));
     assert(invalid.code === 'E_PARAMS', 'invalid preview path was not rejected');
-    const otherPreview = await bridge.invoke('preview', { projectId: OTHER, sessionId: otherSession, path: file }, { source: 'http' });
-    assert(otherPreview.sha256 === PNG_HASH, 'other project preview did not read its own registered Session');
+    const otherPreview = await bridge.invoke('preview', { projectId: OTHER, sessionId: otherSession, path: otherFile }, { source: 'http' });
+    assert(otherPreview.sha256 === PNG_HASH, 'other project preview did not read its own project file');
+  });
+
+  await run('R3: preview denies same-root cross-project artifacts, project files and receipts', async () => {
+    const OTHER = 'other';
+    const OTHER_JOB = '99999999-2222-4333-8444-555555555555';
+    const workspace = await makeWorkspace({ projects: { [OTHER]: 'projects-other/other' } });
+    const inboxRoot = join(workspace.root, 'asset-inbox');
+    const bag = makeCtx(workspace);
+    const { bridge } = makeBridgeWithConfig(workspace, { assetInboxRoot: inboxRoot }, { handler: () => ({}) }, bag.ctx);
+    const sessionId = await createBoundSession(bridge);
+    const otherSession = await createBoundSession(bridge, OTHER);
+
+    // Same artifact root, other project's job output: attribution comes from the
+    // job registry, never from "inside artifactRoot".
+    bridge.jobs.set(OTHER_JOB, { projectId: OTHER, revision: REVISION, kind: 'frame' });
+    const otherArtifact = join(workspace.outputRoot, `${OTHER_JOB}.png`);
+    await writeFile(otherArtifact, PNG);
+    const artifactDenied = await rejects(() => bridge.invoke('preview', { projectId: PROJECT, sessionId, path: otherArtifact }, { source: 'http' }));
+    assert(artifactDenied.code === 'E_PREVIEW_DENIED', `cross-project artifact was served: ${artifactDenied.code}`);
+    const ownArtifactPreview = await bridge.invoke('preview', { projectId: OTHER, sessionId: otherSession, path: otherArtifact }, { source: 'http' });
+    assert(ownArtifactPreview.sha256 === PNG_HASH, 'owning project could not preview its own artifact');
+
+    // Same projectsRoot, other project's content directory.
+    const otherDir = workspace.registry.projects[OTHER];
+    await writeFile(join(otherDir, 'secret.png'), PNG);
+    const projectDenied = await rejects(() => bridge.invoke('preview', { projectId: PROJECT, sessionId, path: join(otherDir, 'secret.png') }, { source: 'http' }));
+    assert(projectDenied.code === 'E_PREVIEW_DENIED', `cross-project project file was served: ${projectDenied.code}`);
+
+    // An upload receipt issued to another project stays in that project.
+    const otherUpload = await uploadPng(bridge, OTHER, 'other.png');
+    assert(otherUpload.response.status === 200, `other-project upload failed: ${JSON.stringify(otherUpload.body)}`);
+    const otherReceiptName = (await readdir(inboxRoot)).find((name) => name.endsWith('other.png'));
+    const otherReceiptTarget = join(inboxRoot, otherReceiptName);
+    const receiptDenied = await rejects(() => bridge.invoke('preview', { projectId: PROJECT, sessionId, path: otherReceiptTarget }, { source: 'http' }));
+    assert(receiptDenied.code === 'E_PREVIEW_DENIED', `cross-project receipt file was served: ${receiptDenied.code}`);
+    const receiptOwned = await bridge.invoke('preview', { projectId: OTHER, sessionId: otherSession, path: otherReceiptTarget }, { source: 'http' });
+    assert(receiptOwned.sha256 === PNG_HASH, 'owning project could not preview its own receipt file');
+  });
+
+  await run('R3: legacy shared-root previews require this Session\'s exact event reference', async () => {
+    const OTHER = 'other';
+    const workspace = await makeWorkspace({ projects: { [OTHER]: 'projects-other/other' } });
+    const legacyFile = join(workspace.sessionCwd, 'legacy.png');
+    await writeFile(legacyFile, PNG);
+    const otherLegacyFile = join(workspace.sessionCwd, OTHER, 'other-legacy.png');
+    await mkdir(join(workspace.sessionCwd, OTHER), { recursive: true });
+    await writeFile(otherLegacyFile, PNG);
+    let events = [];
+    const bag = makeCtx(workspace, { controller: { inspect: async () => ({ meta: { id: 'session-1' }, events }) } });
+    const { bridge } = makeBridge(workspace, { handler: () => ({}) }, bag.ctx);
+    const sessionId = await createBoundSession(bridge);
+
+    // No reference at all: belonging to the old shared root is not permission.
+    let error = await rejects(() => bridge.invoke('preview', { projectId: PROJECT, sessionId, path: legacyFile }, { source: 'http' }));
+    assert(error.code === 'E_PREVIEW_DENIED', `unreferenced legacy file was served: ${error.code}`);
+
+    // A longer path token is not an exact reference.
+    events = [{ type: 'user/message', seq: 1, time: 1, data: { content: [{ type: 'text', text: `${legacyFile}.bak` }] } }];
+    error = await rejects(() => bridge.invoke('preview', { projectId: PROJECT, sessionId, path: legacyFile }, { source: 'http' }));
+    assert(error.code === 'E_PREVIEW_DENIED', `prefix-only legacy reference was accepted: ${error.code}`);
+
+    // The bound Session's own log names the exact absolute path.
+    events = [{ type: 'user/message', seq: 2, time: 2, data: { content: [{ type: 'text', text: `见附件 ${legacyFile}` }] } }];
+    const allowed = await bridge.invoke('preview', { projectId: PROJECT, sessionId, path: legacyFile }, { source: 'http' });
+    assert(allowed.sha256 === PNG_HASH, 'exactly-referenced legacy file was denied');
+
+    // A file:// form of the same absolute path counts, and tool results are events too.
+    events = [{ type: 'tool/result', seq: 3, time: 3, data: { message: { role: 'tool', content: [{ type: 'text', text: `saved ${pathToFileURL(legacyFile).href}` }] } } }];
+    const fileUrlAllowed = await bridge.invoke('preview', { projectId: PROJECT, sessionId, path: legacyFile }, { source: 'http' });
+    assert(fileUrlAllowed.sha256 === PNG_HASH, 'file URL legacy reference was denied');
+
+    // Another project's private Session root never becomes "legacy shared root".
+    events = [{ type: 'user/message', seq: 4, time: 4, data: { content: [{ type: 'text', text: otherLegacyFile }] } }];
+    error = await rejects(() => bridge.invoke('preview', { projectId: PROJECT, sessionId, path: otherLegacyFile }, { source: 'http' }));
+    assert(error.code === 'E_PREVIEW_DENIED', `cross-project Session file was served through a legacy reference: ${error.code}`);
+
+    // Unavailable controller/inspection denies instead of falling back to the root.
+    const noInspectBag = makeCtx(workspace);
+    noInspectBag.sessionController.inspect = undefined;
+    const noInspectBridge = makeBridge(workspace, { handler: () => ({}) }, noInspectBag.ctx).bridge;
+    const noInspectSession = await createBoundSession(noInspectBridge);
+    events = [{ type: 'user/message', seq: 5, time: 5, data: { content: [{ type: 'text', text: legacyFile }] } }];
+    error = await rejects(() => noInspectBridge.invoke('preview', { projectId: PROJECT, sessionId: noInspectSession, path: legacyFile }, { source: 'http' }));
+    assert(error.code === 'E_PREVIEW_DENIED', `missing controller inspection was not denied: ${error.code}`);
+    await noInspectBridge.dispose();
+
+    // Pure bounded scan boundary: exact token only, never a longer path.
+    assert(sessionLogReferencesPath([{ data: { text: '/a/b.png' } }], '/a/b.png') === true, 'exact event path did not match');
+    assert(sessionLogReferencesPath([{ data: { text: '/x/a/b.png' } }], '/a/b.png') === false, 'path suffix matched');
+    assert(sessionLogReferencesPath([{ data: { text: '/a/b.png.bak' } }], '/a/b.png') === false, 'path prefix matched');
+    assert(sessionLogReferencesPath([{ data: { text: '"/a/b.png",' } }], '/a/b.png') === true, 'quoted event path did not match');
+    assert(sessionLogReferencesPath([{ data: { text: 'no path' } }], '/a/b.png') === false, 'unrelated event matched');
+    // The scan is newest-first and bounded: an old reference behind more than the
+    // byte budget of newer events is denied instead of reading a whole huge log.
+    const filler = Array.from({ length: 600 }, (_, index) => ({ type: 'user/message', seq: index + 1, time: index, data: { content: [{ type: 'text', text: 'x'.repeat(500) }] } }));
+    assert(sessionLogReferencesPath(filler, '/a/b.png') === false, 'filler events matched');
+    const newestReference = filler.slice();
+    newestReference[599] = { type: 'user/message', seq: 600, time: 600, data: { content: [{ type: 'text', text: '/a/b.png' }] } };
+    assert(sessionLogReferencesPath(newestReference, '/a/b.png') === true, 'newest exact reference was not found');
+    const oldestReference = filler.slice();
+    oldestReference[0] = { type: 'user/message', seq: 1, time: 0, data: { content: [{ type: 'text', text: '/a/b.png' }] } };
+    assert(sessionLogReferencesPath(oldestReference, '/a/b.png') === false, 'the scan read past its bounded byte budget');
   });
 
 
@@ -999,6 +1203,15 @@ async function main() {
     assert(imported.asset.path === 'assets/canvas-test.png', 'asset.import result was not returned');
     assert(bag.receivedAssetImport && bag.receivedAssetImport.sourceName && bag.receivedAssetImport.sourceName.includes('canvas-test.png'), 'worker did not receive the controlled inbox basename');
     assert(!JSON.stringify(bag.receivedAssetImport).includes(workspace.root), 'worker asset.import received an absolute project path');
+    assert((await listIfPresent(inbox)).length === 0, 'the imported inbox copy was not cleaned up after handoff');
+    const unknownProject = await inboxBridge.uploadAsset(new Request('http://127.0.0.1/api/dsh-video/asset-upload', {
+      method: 'POST',
+      headers: { 'content-type': 'image/png', 'x-dsh-project-id': 'unregistered', 'x-dsh-file-name': 'unknown.png' },
+      body: PNG,
+    }));
+    const unknownBody = await unknownProject.json();
+    assert(unknownProject.status === 404 && unknownBody.error.code === 'E_PROJECT_NOT_FOUND', `bridge-level unknown project upload was not rejected: ${unknownProject.status}/${JSON.stringify(unknownBody)}`);
+    assert((await listIfPresent(inbox)).length === 0, 'unknown-project upload wrote a file');
     const badUpload = await inboxBridge.uploadAsset(new Request('http://127.0.0.1/api/dsh-video/asset-upload', {
       method: 'POST',
       headers: { 'content-type': 'image/png', 'x-dsh-project-id': PROJECT, 'x-dsh-file-name': 'fake.png' },
@@ -1255,6 +1468,192 @@ async function main() {
     await bridge.dispose();
   });
 
+  await run('R4: every accepted bridge request is admitted synchronously into one inFlight set', async () => {
+    const workspace = await makeWorkspace();
+    const inboxRoot = join(workspace.root, 'asset-inbox');
+    const bag = makeCtx(workspace);
+    let release;
+    const gate = new Promise((resolve) => {
+      release = resolve;
+    });
+    const { bridge } = makeBridgeWithConfig(workspace, { assetInboxRoot: inboxRoot }, {
+      handler: async (method, params) => {
+        await gate;
+        if (method === 'project.create') return { projectId: 'created-project', revision: REVISION };
+        if (method === 'asset.import') return { projectId: PROJECT, revision: REVISION };
+        if (method === 'preview.release') return { snapshotId: params.snapshotId, released: true };
+        if (method === 'preview.snapshot') return { snapshotId: 'a'.repeat(32), projectId: PROJECT, revision: REVISION, entry: 'index.html', files: [] };
+        return {};
+      },
+    }, bag.ctx);
+    const sessionId = await createBoundSession(bridge);
+    const upload = await uploadPng(bridge, PROJECT, 'admission.png');
+    assert(upload.response.status === 200, `admission upload failed: ${JSON.stringify(upload.body)}`);
+    const ownFile = join(workspace.projectDir, 'own.png');
+    await writeFile(ownFile, PNG);
+    const calls = [
+      bridge.invoke('doctor', {}),
+      bridge.invoke('project.list', {}),
+      bridge.invoke('session.diagnose', {}, { source: 'http' }),
+      bridge.invoke('session.list', { projectId: PROJECT }, { source: 'http' }),
+      bridge.invoke('session.select', { projectId: PROJECT, sessionId }, { source: 'http' }),
+      bridge.invoke('project.create', { templateId: 'product-launch-v1' }, { source: 'http' }),
+      bridge.invoke('asset.import', { projectId: PROJECT, expectedRevision: REVISION, operationId: 'admit-1', receiptId: upload.body.receiptId }, { source: 'http' }),
+      bridge.invoke('preview.snapshot', { projectId: PROJECT, revision: REVISION }, { source: 'http' }),
+      bridge.invoke('preview.release', { snapshotId: 'a'.repeat(32) }, { source: 'http' }),
+      bridge.invoke('preview', { projectId: PROJECT, sessionId, path: ownFile }, { source: 'http' }),
+    ];
+    // All ten branches were admitted before any await could settle; the early
+    // return branches are no longer outside the drain set.
+    assert(bridge.inFlight.size === calls.length, `expected ${calls.length} admitted requests, saw ${bridge.inFlight.size}`);
+    release();
+    await Promise.allSettled(calls);
+    assert(bridge.state().inFlight === 0, `inFlight was not released: ${bridge.state().inFlight}`);
+    await bridge.dispose();
+    assert(bridge.disposed === true, 'bridge was not disposed');
+  });
+
+  await run('R4: a delayed worker snapshot is drained and never published after dispose', async () => {
+    const workspace = await makeWorkspace();
+    const snapshotId = 'a'.repeat(32);
+    const snapshotDir = join(workspace.outputRoot, 'previews', snapshotId);
+    await mkdir(snapshotDir, { recursive: true });
+    const entry = Buffer.from('<html><body>late snapshot</body></html>');
+    await writeFile(join(snapshotDir, 'index.html'), entry);
+    const bag = makeCtx(workspace);
+    let release;
+    const gate = new Promise((resolve) => {
+      release = resolve;
+    });
+    const { bridge, engine } = makeBridge(workspace, {
+      handler: async (method, params) => {
+        if (method === 'preview.snapshot') {
+          await gate;
+          return {
+            snapshotId,
+            projectId: PROJECT,
+            revision: REVISION,
+            entry: 'index.html',
+            expiresAt: new Date(Date.now() + 60000).toISOString(),
+            files: [{ path: 'index.html', bytes: entry.length, sha256: createHash('sha256').update(entry).digest('hex') }],
+          };
+        }
+        if (method === 'preview.release') return { snapshotId: params.snapshotId, released: true };
+        return {};
+      },
+    }, bag.ctx);
+    const request = bridge.invoke('preview.snapshot', { projectId: PROJECT, revision: REVISION }, { source: 'http' }).then(
+      (value) => ({ ok: true, value }),
+      (error) => ({ ok: false, error })
+    );
+    assert(bridge.inFlight.size === 1, `snapshot request was not admitted: ${bridge.inFlight.size}`);
+    const dispose = bridge.dispose();
+    await new Promise((resolve) => setImmediate(resolve));
+    assert(bridge.disposed === false, 'dispose resolved before the accepted snapshot settled');
+    release();
+    const result = await request;
+    await dispose;
+    assert(result.ok === false && result.error.code === 'E_WORKER_DISPOSED', `late snapshot was published: ${result.ok ? 'resolved' : result.error.code}`);
+    assert(bridge.snapshots.records.size === 0, 'a snapshot record was published after dispose began');
+    assert(bag.routes.length === 0, `a preview route was published after dispose: ${bag.routes.length}`);
+    assert(bridge.state().inFlight === 0 && bridge.disposed === true, 'dispose did not drain and complete');
+    const methods = engine.instances[0].requests.map((entry2) => entry2.method);
+    assert(methods.includes('preview.snapshot') && methods.includes('preview.release'), `late snapshot was not released: ${methods.join(',')}`);
+    assert((await exists(join(snapshotDir, 'index.html'))) === true, 'Host preview teardown deleted worker-owned snapshot files');
+  });
+
+  await run('R4: a delayed upload body cannot write a file or receipt after dispose', async () => {
+    const workspace = await makeWorkspace();
+    const inboxRoot = join(workspace.root, 'asset-inbox');
+    const { bridge } = makeBridgeWithConfig(workspace, { assetInboxRoot: inboxRoot }, { handler: () => ({}) });
+    let streamController;
+    const request = new Request('http://127.0.0.1/api/dsh-video/asset-upload', {
+      method: 'POST',
+      headers: { 'content-type': 'image/png', 'x-dsh-project-id': PROJECT, 'x-dsh-file-name': 'late.png' },
+      body: new ReadableStream({
+        start(controller) {
+          streamController = controller;
+        },
+      }),
+      duplex: 'half',
+    });
+    const uploadTask = bridge.uploadAsset(request);
+    await new Promise((resolve) => setImmediate(resolve));
+    const dispose = bridge.dispose();
+    try {
+      streamController.enqueue(PNG);
+    } catch (_error) {
+      /* dispose already cancelled the reader */
+    }
+    try {
+      streamController.close();
+    } catch (_error) {
+      /* dispose already cancelled the reader */
+    }
+    const response = await uploadTask;
+    await dispose;
+    assert(response.ok === false, 'a delayed upload was accepted after dispose began');
+    assert(bridge.assets.receipts.size === 0, 'an upload receipt survived dispose');
+    assert((await listIfPresent(inboxRoot)).length === 0, 'an upload file survived dispose');
+    assert(bridge.assets.disposed === true && bridge.disposed === true, 'inbox/bridge was not disposed');
+  });
+
+  await run('R4: asset inbox enforces trusted projects, expiry, failure cleanup and idempotent dispose', async () => {
+    const workspace = await makeWorkspace();
+    const inboxRoot = join(workspace.root, 'asset-inbox');
+    await mkdir(inboxRoot, { recursive: true });
+    const inbox = new AssetInbox({ root: inboxRoot, maxReceipts: 2, isTrustedProject: (id) => id === PROJECT });
+
+    // 1. An unknown/unregistered project is rejected before any bytes are stored.
+    const unknownResponse = await inboxUpload(inbox, 'unregistered', 'u.png');
+    const unknownBody = await unknownResponse.json();
+    assert(unknownResponse.status === 404 && unknownBody.error.code === 'E_PROJECT_NOT_FOUND', `unknown project upload was not rejected: ${unknownResponse.status}/${JSON.stringify(unknownBody)}`);
+    assert((await listIfPresent(inboxRoot)).length === 0, 'rejected upload wrote a file');
+    assert(inbox.receipts.size === 0, 'rejected upload created a receipt');
+
+    // 2. A failed content upload stores nothing; a later retry succeeds cleanly.
+    const badResponse = await inboxUpload(inbox, PROJECT, 'bad.png', Buffer.from('<!doctype html><script>1</script>'));
+    assert(badResponse.status === 400, `non-image upload returned ${badResponse.status}`);
+    assert((await listIfPresent(inboxRoot)).length === 0, 'failed upload left a file behind');
+    assert(inbox.receipts.size === 0, 'failed upload created a receipt');
+    const goodResponse = await inboxUpload(inbox, PROJECT, 'ok.png');
+    assert(goodResponse.status === 200, `retry after a failed upload returned ${goodResponse.status}`);
+    const goodReceipt = await goodResponse.json();
+    assert(inbox.receipts.size === 1, 'successful retry did not create exactly one receipt');
+    assert((await listIfPresent(inboxRoot)).length === 1, 'successful retry did not create exactly one file');
+
+    // 3. Receipt count is bounded and an over-limit upload stores nothing.
+    const secondResponse = await inboxUpload(inbox, PROJECT, 'cap.png');
+    assert(secondResponse.status === 200, `second upload returned ${secondResponse.status}`);
+    const cappedResponse = await inboxUpload(inbox, PROJECT, 'cap2.png');
+    const cappedBody = await cappedResponse.json();
+    assert(cappedResponse.status === 413 && cappedBody.error.code === 'E_ASSET_LIMIT', `receipt cap was not enforced: ${cappedResponse.status}/${JSON.stringify(cappedBody)}`);
+    assert(inbox.receipts.size === 2 && (await listIfPresent(inboxRoot)).length === 2, 'over-limit upload leaked a file or receipt');
+
+    // 4. An expired receipt sweep removes its owned inbox copy.
+    const okayReceipt = inbox.receipts.get(goodReceipt.receiptId);
+    const expiredTarget = okayReceipt.target;
+    okayReceipt.createdAt = 0;
+    const removed = await inbox.sweep();
+    assert(removed === 1 && inbox.receipts.size === 1, `expired receipt was not swept: ${removed}`);
+    assert((await exists(expiredTarget)) === false, 'expired receipt file survived the sweep');
+
+    // 5. Dispose removes only this inbox's outstanding copies and is idempotent.
+    const projectAsset = join(workspace.projectDir, 'keep.png');
+    await writeFile(projectAsset, PNG);
+    const firstDispose = inbox.dispose();
+    const secondDispose = inbox.dispose();
+    assert(firstDispose === secondDispose, 'repeated dispose returned different promises');
+    await firstDispose;
+    assert((await listIfPresent(inboxRoot)).length === 0, 'dispose left inbox copies behind');
+    assert((await exists(projectAsset)) === true, 'dispose deleted a project asset');
+    assert(inbox.disposed === true, 'inbox was not marked disposed');
+    const lateResponse = await inboxUpload(inbox, PROJECT, 'late.png');
+    const lateBody = await lateResponse.json();
+    assert(lateResponse.status === 503 && lateBody.error.code === 'E_ASSET_DISPOSED', `late upload was accepted after dispose: ${lateResponse.status}`);
+    assert(inbox.receipts.size === 0 && (await listIfPresent(inboxRoot)).length === 0, 'late upload wrote anything after dispose');
+  });
+
   await run('R3: verifier executes the staged Host bytes and rejects tampered snapshots', async () => {
     const root = await mkdtemp(join(tmpdir(), 'dsh-video-staged-'));
     const staging = join(root, 'staging');
@@ -1319,7 +1718,7 @@ async function main() {
     await rm(root, { recursive: true, force: true });
   });
 
-  await run('apply registers one request route, one artifact route and one Tool within an effect', async () => {
+  await run('apply registers one request route, one artifact route, one asset route and one Tool within an effect', async () => {
     const workspace = await makeWorkspace();
     const fake = makeCtx(workspace);
     apply(fake.ctx, workspace.config);
@@ -1329,6 +1728,18 @@ async function main() {
     assert(fake.tools.length === 1 && fake.tools[0].name === TOOL_NAME, 'tool registration');
     assert(fake.cleanups.length === 1 && typeof fake.cleanups[0] === 'function', 'effect cleanup');
     await fake.cleanups[0]();
+    assert(fake.routes.length === 0, 'effect cleanup left routes registered');
+
+    // With a configured inbox the same effect installs the streaming upload route
+    // and its cleanup removes it before the bridge drains accepted work.
+    const withInbox = await makeWorkspace();
+    const inboxRoot = join(withInbox.root, 'asset-inbox');
+    const inboxCtx = makeCtx(withInbox);
+    apply(inboxCtx.ctx, Object.assign({}, withInbox.config, { assetInboxRoot: inboxRoot }));
+    assert(inboxCtx.routes.length === 3, `expected three routes, saw ${inboxCtx.routes.length}`);
+    assert(inboxCtx.routes[2].path === '/api/dsh-video/asset-upload' && inboxCtx.routes[2].requestBody === 'streaming', 'asset upload route is not the streaming route');
+    await inboxCtx.cleanups[0]();
+    assert(inboxCtx.routes.length === 0, 'asset route cleanup left routes registered');
   });
 
   console.log(`\n${passes} passed, ${failures.length} failed`);

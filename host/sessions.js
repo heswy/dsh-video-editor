@@ -11,8 +11,8 @@
  * from the UI without checking the persisted mapping first.
  */
 
-import { realpath, stat } from 'node:fs/promises';
-import { isAbsolute } from 'node:path';
+import { mkdir, realpath, stat } from 'node:fs/promises';
+import { isAbsolute, join, relative } from 'node:path';
 import { createRequire } from 'node:module';
 import { BridgeError, logSummary } from './errors.js';
 import { MAX_SESSIONS_PER_PROJECT, SESSION_ID_PATTERN, SESSION_STATE_VERSION, SessionStateStore } from './session-state.js';
@@ -28,17 +28,114 @@ try {
 const PROMPT_CONTEXT_NAME = 'dsh-video:project';
 const PROMPT_CONTEXT_ORDER = 4500;
 const REQUEST_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+const PROJECT_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const MAX_CREATE_DEDUPE = 32;
 const MAX_LIST_ITEMS = 100;
-
-function sessionError(code, message, details) {
-  return new BridgeError(code, message, { stage: 'session', details });
-}
+/**
+ * Bounded legacy-reference scan: an old shared-root file is only previewable when
+ * this exact Session's own inspected events name that exact absolute path. The
+ * scan never reads more than this from the newest events backwards, so a huge
+ * log cannot turn one preview click into an unbounded read.
+ */
+const LEGACY_SCAN_MAX_EVENTS = 512;
+const LEGACY_SCAN_MAX_BYTES = 256 * 1024;
+const LEGACY_SCAN_MAX_DEPTH = 8;
+const LEGACY_SCAN_MAX_STRING = 8192;
+const LEGACY_INSPECT_TIMEOUT_MS = 3000;
+/** Characters that would turn an "exact path" match into a longer path token. */
+const PATH_TOKEN_CHAR = /[A-Za-z0-9._~-]/;
 
 function isPlainObject(value) {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
   const prototype = Object.getPrototypeOf(value);
   return prototype === Object.prototype || prototype === null;
+}
+
+function insidePath(root, candidate) {
+  const rel = relative(root, candidate);
+  return rel === '' || (rel.startsWith('..') === false && isAbsolute(rel) === false);
+}
+
+/**
+ * Whether one event value names the exact absolute path as a complete token.
+ * Plain equality covers file-card titles; embeddings require a non-path
+ * boundary on both sides so `/a/foo.png` never matches `/a/foo.png.bak`.
+ */
+function valueReferencesPath(value, absolutePath) {
+  if (value === absolutePath) return true;
+  let index = value.indexOf(absolutePath);
+  while (index !== -1) {
+    const before = index === 0 ? '' : value[index - 1];
+    const after = value[index + absolutePath.length];
+    if ((before === '' || PATH_TOKEN_CHAR.test(before) === false) && (after === undefined || PATH_TOKEN_CHAR.test(after) === false)) {
+      return true;
+    }
+    index = value.indexOf(absolutePath, index + 1);
+  }
+  return false;
+}
+
+/**
+ * Bounded exact-path reference scan over inspected Session events.
+ *
+ * @param events - `inspection.events` from `sessionController.inspect`.
+ * @param absolutePathOrPaths - one canonical absolute path, or every literal form
+ *   of the requested path (e.g. the pre-realpath form) whose ownership is being
+ *   verified.
+ * @returns true only when this Session's own log explicitly names one of them.
+ */
+export function sessionEventsReferencePath(events, absolutePathOrPaths) {
+  const candidates = (Array.isArray(absolutePathOrPaths) ? absolutePathOrPaths : [absolutePathOrPaths])
+    .filter((path) => typeof path === 'string' && path.length > 0 && path.length <= 4096 && path.includes('\0') === false);
+  if (candidates.length === 0) return false;
+  if (Array.isArray(events) === false || events.length === 0) return false;
+  let budget = LEGACY_SCAN_MAX_BYTES;
+  const start = Math.max(0, events.length - LEGACY_SCAN_MAX_EVENTS);
+  for (let index = events.length - 1; index >= start; index -= 1) {
+    if (budget <= 0) return false;
+    const event = events[index];
+    if (event === null || typeof event !== 'object') continue;
+    const found = scanValue(event.data, candidates, budget, 0);
+    budget -= found.scanned;
+    if (found.matched) return true;
+  }
+  return false;
+}
+
+/** Depth/budget-bounded string walk; only string leaves can be path references. */
+function scanValue(value, paths, budget, depth) {
+  if (budget <= 0) return { matched: false, scanned: 0 };
+  if (depth > LEGACY_SCAN_MAX_DEPTH) return { matched: false, scanned: 0 };
+  if (typeof value === 'string') {
+    if (value.length > LEGACY_SCAN_MAX_STRING) return { matched: false, scanned: Math.min(value.length, budget) };
+    for (const path of paths) {
+      if (valueReferencesPath(value, path)) return { matched: true, scanned: value.length };
+    }
+    return { matched: false, scanned: value.length };
+  }
+  if (Array.isArray(value)) {
+    let scanned = 0;
+    for (const item of value) {
+      const result = scanValue(item, paths, budget - scanned, depth + 1);
+      scanned += result.scanned;
+      if (result.matched) return { matched: true, scanned };
+    }
+    return { matched: false, scanned };
+  }
+  if (value !== null && typeof value === 'object') {
+    let scanned = 0;
+    for (const key of Object.keys(value)) {
+      const result = scanValue(value[key], paths, budget - scanned, depth + 1);
+      scanned += result.scanned;
+      if (result.matched) return { matched: true, scanned };
+    }
+    return { matched: false, scanned };
+  }
+  return { matched: false, scanned: 0 };
+}
+
+function sessionError(code, message, details) {
+  return new BridgeError(code, message, { stage: 'session', details });
 }
 
 /**
@@ -97,6 +194,7 @@ export class SessionService {
     this.creating = new Map();
     this.created = new Map();
     this.cwdPromise = null;
+    this.projectSessionRoots = new Map();
     this.closing = false;
     this.disposed = false;
     this.disposePromise = null;
@@ -168,6 +266,69 @@ export class SessionService {
       })();
     }
     return this.cwdPromise;
+  }
+
+  /**
+   * Trusted per-project Session working directory (`<sessionCwd>/<projectId>`).
+   *
+   * New creation Sessions are started here so their files are owned by exactly
+   * one project; the same canonical root is what the preview provenance check
+   * treats as this project's own Session files. It is created by the Host, not
+   * taken from UI input.
+   */
+  async projectSessionRoot(projectId) {
+    this.requireEnabled();
+    if (typeof projectId !== 'string' || PROJECT_ID_PATTERN.test(projectId) === false) {
+      throw sessionError('E_PARAMS', 'Invalid project id for the Session root');
+    }
+    const cached = this.projectSessionRoots.get(projectId);
+    if (cached !== undefined) return cached;
+    const base = await this.sessionCwd();
+    const candidate = join(base, projectId);
+    if (insidePath(base, candidate) === false) {
+      throw sessionError('E_SESSION_CONFIG', 'The per-project Session root escapes "sessionCwd"');
+    }
+    try {
+      await mkdir(candidate, { recursive: true, mode: 0o700 });
+      const real = await realpath(candidate);
+      if (insidePath(base, real) === false) throw new Error('escaped root');
+      if ((await stat(real)).isDirectory() === false) throw new Error('not a directory');
+      this.projectSessionRoots.set(projectId, real);
+      return real;
+    } catch (_error) {
+      throw sessionError('E_SESSION_CONFIG', 'The per-project Session root is unavailable');
+    }
+  }
+
+  /**
+   * Whether this bound Session's own inspected events explicitly name one exact
+   * absolute path (or one of the accepted literal forms of it). Only used for
+   * legacy files under the old shared Session root. Unavailable
+   * controller/events deny instead of widening the root.
+   */
+  async sessionReferencesPath(sessionId, absolutePathOrPaths) {
+    if (this.closing || this.disposed) return false;
+    const controller = this.service('sessionController');
+    if (controller === null || typeof controller !== 'object' || typeof controller.inspect !== 'function') return false;
+    let inspection;
+    const abort = new AbortController();
+    const timer = setTimeout(() => {
+      try {
+        abort.abort();
+      } catch (_error) {
+        /* abort is best effort */
+      }
+    }, LEGACY_INSPECT_TIMEOUT_MS);
+    if (typeof timer.unref === 'function') timer.unref();
+    try {
+      inspection = await controller.inspect(sessionId, abort.signal);
+    } catch (_error) {
+      return false;
+    } finally {
+      clearTimeout(timer);
+    }
+    if (inspection === null || typeof inspection !== 'object' || Array.isArray(inspection.events) === false) return false;
+    return sessionEventsReferencePath(inspection.events, absolutePathOrPaths);
   }
 
   /** Observe archived Sessions without activating their Agents, when available. */
@@ -333,7 +494,9 @@ export class SessionService {
     if (existing !== undefined) return existing;
     const ordinal = project.sessionIds.length + 1;
     const task = (async () => {
-      const cwd = await this.sessionCwd();
+      // New Sessions start in the trusted per-project Session root so their own
+      // files stay attributable to exactly this project (not the shared root).
+      const cwd = await this.projectSessionRoot(projectId);
       const controller = this.controller();
       let created;
       try {
