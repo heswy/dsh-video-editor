@@ -61,6 +61,11 @@ export function apply(ctx, config) {
       } catch (error) {
         report(ctx, 'tool-registration-failed', error);
       }
+      try {
+        disposers.push(bridge.installAssetRoute());
+      } catch (error) {
+        report(ctx, 'asset-route-registration-failed', error);
+      }
 
       return async function disposeHostBridge() {
         for (const disposer of disposers.splice(0).reverse()) {

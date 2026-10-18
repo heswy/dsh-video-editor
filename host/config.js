@@ -30,6 +30,9 @@ export const CONFIG_KEYS = Object.freeze([
   'maxArtifactBytes',
   'maxResultBytes',
   'maxPreviewBytes',
+  'projectsRoot',
+  'assetInboxRoot',
+  'maxAssetBytes',
 ]);
 
 const DEFAULT_LIMITS = Object.freeze({
@@ -44,6 +47,7 @@ const DEFAULT_LIMITS = Object.freeze({
   maxArtifactBytes: 64 * 1024 * 1024,
   maxResultBytes: 1024 * 1024,
   maxPreviewBytes: 8 * 1024 * 1024,
+  maxAssetBytes: 8 * 1024 * 1024,
 });
 
 const NUMBER_RULES = Object.freeze({
@@ -58,6 +62,7 @@ const NUMBER_RULES = Object.freeze({
   maxArtifactBytes: { min: 1024, max: 256 * 1024 * 1024 },
   maxResultBytes: { min: 4096, max: 8 * 1024 * 1024 },
   maxPreviewBytes: { min: 1024, max: 8 * 1024 * 1024 },
+  maxAssetBytes: { min: 1024, max: 8 * 1024 * 1024 },
 });
 
 const MAX_PATH = 4096;
@@ -99,7 +104,9 @@ export function normalizeConfig(raw) {
   const artifactRoot = requirePath(raw.artifactRoot, 'artifactRoot');
   const sessionStatePath = optionalPath(raw.sessionStatePath, 'sessionStatePath');
   const sessionCwd = optionalPath(raw.sessionCwd, 'sessionCwd');
-  for (const [name, value] of [['workerEntry', workerEntry], ['workerCwd', workerCwd], ['registryPath', registryPath], ['artifactRoot', artifactRoot], ['sessionStatePath', sessionStatePath], ['sessionCwd', sessionCwd]]) {
+  const projectsRoot = optionalPath(raw.projectsRoot, 'projectsRoot');
+  const assetInboxRoot = optionalPath(raw.assetInboxRoot, 'assetInboxRoot');
+  for (const [name, value] of [['workerEntry', workerEntry], ['workerCwd', workerCwd], ['registryPath', registryPath], ['artifactRoot', artifactRoot], ['sessionStatePath', sessionStatePath], ['sessionCwd', sessionCwd], ['projectsRoot', projectsRoot], ['assetInboxRoot', assetInboxRoot]]) {
     if (value !== undefined && isAbsolute(value) === false) throw configurationError(`"${name}" must be an absolute path`);
   }
 
@@ -134,6 +141,8 @@ export function normalizeConfig(raw) {
     artifactRoot,
     ...(sessionStatePath === undefined ? {} : { sessionStatePath }),
     ...(sessionCwd === undefined ? {} : { sessionCwd }),
+    ...(projectsRoot === undefined ? {} : { projectsRoot }),
+    ...(assetInboxRoot === undefined ? {} : { assetInboxRoot }),
     projectIds,
     allowedProjects: Object.freeze([...projectIds]),
     ...limits,

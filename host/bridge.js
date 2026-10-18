@@ -20,6 +20,8 @@ import { TOOL_RESULT_BYTES } from './limits.js';
 import { SessionService } from './sessions.js';
 import { SESSION_ID_PATTERN } from './session-state.js';
 import { readPreviewFile } from './preview.js';
+import { AssetInbox, ASSET_UPLOAD_ROUTE } from './asset-inbox.js';
+import { SnapshotRoutes, SNAPSHOT_ROUTE_BASE } from './snapshot.js';
 
 export const REQUEST_METHODS = Object.freeze([
   'doctor',
@@ -36,6 +38,19 @@ export const REQUEST_METHODS = Object.freeze([
   'session.select',
   'session.diagnose',
   'preview',
+  'project.create',
+  'project.list',
+  'asset.import',
+  'scene.create',
+  'scene.update',
+  'scene.remove',
+  'scene.reorder',
+  'project.revise',
+  'history',
+  'undo',
+  'redo',
+  'preview.snapshot',
+  'preview.release',
 ]);
 
 const METHOD_PARAMS = Object.freeze({
@@ -53,6 +68,19 @@ const METHOD_PARAMS = Object.freeze({
   'session.select': ['projectId', 'sessionId'],
   'session.diagnose': [],
   preview: ['projectId', 'sessionId', 'path'],
+  'project.create': ['templateId', 'title', 'width', 'height', 'fps'],
+  'project.list': [],
+  'asset.import': ['projectId', 'expectedRevision', 'operationId', 'receiptId'],
+  'scene.create': ['projectId', 'expectedRevision', 'operationId', 'sceneId', 'afterSceneId', 'template'],
+  'scene.update': ['projectId', 'expectedRevision', 'operationId', 'sceneId', 'template'],
+  'scene.remove': ['projectId', 'expectedRevision', 'operationId', 'sceneId'],
+  'scene.reorder': ['projectId', 'expectedRevision', 'operationId', 'order'],
+  'project.revise': ['projectId', 'baseRevision', 'expectedRevision', 'operationId', 'sceneId', 'template'],
+  history: ['projectId', 'limit'],
+  undo: ['projectId', 'expectedRevision', 'operationId'],
+  redo: ['projectId', 'expectedRevision', 'operationId'],
+  'preview.snapshot': ['projectId', 'revision', 'ttlMs'],
+  'preview.release': ['snapshotId'],
 });
 
 const SESSION_METHODS = Object.freeze(['session.list', 'session.create', 'session.select', 'session.diagnose']);
@@ -65,6 +93,9 @@ const REQUEST_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const PROJECT_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const MEDIA = Object.freeze({ png: 'image/png', mp4: 'video/mp4' });
 const MAX_REGISTRY_BYTES = 1024 * 1024;
+const SNAPSHOT_ID = /^[a-f0-9]{32}$/;
+const TEMPLATE_ID = 'product-launch-v1';
+const SCENE_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
 function isPlainObject(value) {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
@@ -133,6 +164,13 @@ function timeoutMs(value) {
   return numberInRange(value, 'timeoutMs', 100, 120000);
 }
 
+const COLOR = /^#[0-9a-fA-F]{6}$/;
+const ELEMENT_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/;
+
+function finite(value) {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
 function validateOps(value) {
   if (Array.isArray(value) === false || value.length === 0 || value.length > 32) {
     fail('E_PARAMS', 'Expected 1–32 typed ops', 'params');
@@ -155,8 +193,87 @@ function validateOps(value) {
       if (op.duration !== undefined) next.duration = numberInRange(op.duration, 'duration', 1 / 240, 3600);
       return next;
     }
+    if (op.type === 'layout') {
+      if (hasExactKeys(op, ['type', 'target', 'unit', 'box']) === false) fail('E_PARAMS', 'Invalid layout edit fields', 'params');
+      if (op.unit !== 'composition-px') fail('E_PARAMS', 'Unsupported layout unit', 'params');
+      if (isPlainObject(op.box) === false) fail('E_PARAMS', 'Invalid layout box', 'params');
+      const box = {};
+      const allowed = ['left', 'top', 'width', 'height'];
+      for (const key of Object.keys(op.box)) {
+        if (allowed.includes(key) === false) fail('E_PARAMS', 'Unexpected layout field', 'params');
+        if (finite(op.box[key]) === false) fail('E_PARAMS', 'Layout values must be finite numbers', 'params');
+        box[key] = op.box[key];
+      }
+      if (Object.keys(box).length === 0) fail('E_PARAMS', 'Layout box is empty', 'params');
+      if (box.left !== undefined && (box.left < 0 || box.left > 3840)) fail('E_PARAMS', 'Layout left out of range', 'params');
+      if (box.top !== undefined && (box.top < 0 || box.top > 2160)) fail('E_PARAMS', 'Layout top out of range', 'params');
+      if (box.width !== undefined && (box.width < 1 || box.width > 3840)) fail('E_PARAMS', 'Layout width out of range', 'params');
+      if (box.height !== undefined && (box.height < 1 || box.height > 2160)) fail('E_PARAMS', 'Layout height out of range', 'params');
+      return { type: 'layout', target: text(op.target, 'target', 256), unit: 'composition-px', box };
+    }
+    if (op.type === 'style') {
+      if (hasExactKeys(op, ['type', 'target', 'styles']) === false) fail('E_PARAMS', 'Invalid style edit fields', 'params');
+      if (isPlainObject(op.styles) === false) fail('E_PARAMS', 'Invalid style patch', 'params');
+      const styles = {};
+      for (const key of Object.keys(op.styles)) {
+        if (['color', 'fontSize', 'fontWeight', 'textAlign'].includes(key) === false) fail('E_PARAMS', 'Unexpected style field', 'params');
+        const value = op.styles[key];
+        if (key === 'color') {
+          if (typeof value !== 'string' || COLOR.test(value) === false) fail('E_PARAMS', 'Invalid style color', 'params');
+          styles.color = value.toLowerCase();
+        } else if (key === 'fontSize') {
+          if (finite(value) === false || value < 8 || value > 256) fail('E_PARAMS', 'Invalid font size', 'params');
+          styles.fontSize = value;
+        } else if (key === 'fontWeight') {
+          if (Number.isInteger(value) === false || value < 100 || value > 900 || value % 100 !== 0) fail('E_PARAMS', 'Invalid font weight', 'params');
+          styles.fontWeight = value;
+        } else {
+          if (!['left', 'center', 'right'].includes(value)) fail('E_PARAMS', 'Invalid text align', 'params');
+          styles.textAlign = value;
+        }
+      }
+      if (Object.keys(styles).length === 0) fail('E_PARAMS', 'Style patch is empty', 'params');
+      return { type: 'style', target: text(op.target, 'target', 256), styles };
+    }
     fail('E_PARAMS', 'Unsupported edit type', 'params');
   });
+}
+
+function sceneTemplate(value, allowSceneId) {
+  if (isPlainObject(value) === false) fail('E_PARAMS', 'Invalid scene template', 'params');
+  const allowed = ['duration', 'title', 'subtitle', 'badge', 'color', 'accent', 'logo', 'shot'];
+  if (allowSceneId === true) allowed.push('sceneId');
+  for (const key of Object.keys(value)) {
+    if (allowed.includes(key) === false) fail('E_PARAMS', 'Unexpected scene template field', 'params');
+  }
+  if (finite(value.duration) === false || value.duration < 0.5 || value.duration > 60) fail('E_PARAMS', 'Scene duration out of range', 'params');
+  if (typeof value.title !== 'string' || value.title.length < 1 || value.title.length > 200) fail('E_PARAMS', 'Scene title is invalid', 'params');
+  const next = { duration: value.duration, title: value.title };
+  if (value.subtitle !== undefined) {
+    if (typeof value.subtitle !== 'string' || value.subtitle.length > 300) fail('E_PARAMS', 'Scene subtitle is invalid', 'params');
+    next.subtitle = value.subtitle;
+  }
+  if (value.badge !== undefined) {
+    if (typeof value.badge !== 'string' || value.badge.length > 48) fail('E_PARAMS', 'Scene badge is invalid', 'params');
+    next.badge = value.badge;
+  }
+  for (const [key, pattern] of [['color', COLOR], ['accent', COLOR]]) {
+    if (value[key] === undefined) continue;
+    if (typeof value[key] !== 'string' || pattern.test(value[key]) === false) fail('E_PARAMS', `Scene ${key} is invalid`, 'params');
+    next[key] = value[key].toLowerCase();
+  }
+  for (const key of ['logo', 'shot']) {
+    if (value[key] === undefined) continue;
+    if (typeof value[key] !== 'string' || /^assets\/[A-Za-z0-9][A-Za-z0-9._-]*\.(png|jpe?g)$/i.test(value[key]) === false) {
+      fail('E_PARAMS', `Scene ${key} is invalid`, 'params');
+    }
+    next[key] = value[key];
+  }
+  if (allowSceneId === true && value.sceneId !== undefined) {
+    if (typeof value.sceneId !== 'string' || SCENE_ID.test(value.sceneId) === false) fail('E_PARAMS', 'Invalid sceneId', 'params');
+    next.sceneId = value.sceneId;
+  }
+  return next;
 }
 
 /** Validate and normalize one typed request against the worker v1 contract. */
@@ -229,6 +346,105 @@ export function validateParams(config, method, params) {
     if (typeof sessionId !== 'string' || SESSION_ID_PATTERN.test(sessionId) === false) fail('E_PARAMS', 'Invalid sessionId', 'params');
     return { projectId: allowedProject(config, params.projectId), sessionId };
   }
+  if (method === 'project.create') {
+    if (params.templateId !== TEMPLATE_ID) fail('E_PARAMS', 'Unsupported project template', 'params');
+    const next = { templateId: TEMPLATE_ID };
+    if (params.title !== undefined) {
+      if (typeof params.title !== 'string' || params.title.length < 1 || params.title.length > 120) fail('E_PARAMS', 'Invalid project title', 'params');
+      next.title = params.title;
+    }
+    if (params.width !== undefined) {
+      if (Number.isInteger(params.width) === false || params.width < 320 || params.width > 3840) fail('E_PARAMS', 'Invalid project width', 'params');
+      next.width = params.width;
+    }
+    if (params.height !== undefined) {
+      if (Number.isInteger(params.height) === false || params.height < 180 || params.height > 2160) fail('E_PARAMS', 'Invalid project height', 'params');
+      next.height = params.height;
+    }
+    if (params.fps !== undefined && params.fps !== 30) fail('E_PARAMS', 'Only 30 fps is supported', 'params');
+    return next;
+  }
+  if (method === 'project.list') return {};
+  if (method === 'asset.import') {
+    if (typeof params.receiptId !== 'string' || /^[0-9a-f-]{36}$/.test(params.receiptId) === false) fail('E_PARAMS', 'Invalid upload receipt', 'params');
+    return {
+      projectId: allowedProject(config, params.projectId),
+      expectedRevision: revision(params.expectedRevision),
+      operationId: operationId(params.operationId),
+      receiptId: params.receiptId,
+    };
+  }
+  if (method === 'scene.create' || method === 'scene.update' || method === 'scene.remove' || method === 'scene.reorder') {
+    const next = {
+      projectId: allowedProject(config, params.projectId),
+      expectedRevision: revision(params.expectedRevision),
+      operationId: operationId(params.operationId),
+    };
+    if (method === 'scene.create') {
+      if (params.sceneId !== undefined) {
+        if (typeof params.sceneId !== 'string' || SCENE_ID.test(params.sceneId) === false) fail('E_PARAMS', 'Invalid sceneId', 'params');
+        next.sceneId = params.sceneId;
+      }
+      if (params.afterSceneId !== undefined) {
+        if (typeof params.afterSceneId !== 'string' || SCENE_ID.test(params.afterSceneId) === false) fail('E_PARAMS', 'Invalid afterSceneId', 'params');
+        next.afterSceneId = params.afterSceneId;
+      }
+      next.template = sceneTemplate(params.template, true);
+    } else if (method === 'scene.update') {
+      if (typeof params.sceneId !== 'string' || SCENE_ID.test(params.sceneId) === false) fail('E_PARAMS', 'Invalid sceneId', 'params');
+      next.sceneId = params.sceneId;
+      next.template = sceneTemplate(params.template, false);
+    } else if (method === 'scene.remove') {
+      if (typeof params.sceneId !== 'string' || SCENE_ID.test(params.sceneId) === false) fail('E_PARAMS', 'Invalid sceneId', 'params');
+      next.sceneId = params.sceneId;
+    } else {
+      if (Array.isArray(params.order) === false || params.order.length < 1 || params.order.length > 12) fail('E_PARAMS', 'Invalid scene order', 'params');
+      if (new Set(params.order).size !== params.order.length) fail('E_PARAMS', 'Scene order has duplicates', 'params');
+      next.order = params.order.map((id) => {
+        if (typeof id !== 'string' || SCENE_ID.test(id) === false) fail('E_PARAMS', 'Invalid scene id in order', 'params');
+        return id;
+      });
+    }
+    return next;
+  }
+  if (method === 'project.revise') {
+    if (typeof params.sceneId !== 'string' || SCENE_ID.test(params.sceneId) === false) fail('E_PARAMS', 'Invalid sceneId', 'params');
+    return {
+      projectId: allowedProject(config, params.projectId),
+      baseRevision: revision(params.baseRevision),
+      expectedRevision: revision(params.expectedRevision),
+      operationId: operationId(params.operationId),
+      sceneId: params.sceneId,
+      template: sceneTemplate(params.template, false),
+    };
+  }
+  if (method === 'history') {
+    const next = { projectId: allowedProject(config, params.projectId) };
+    if (params.limit !== undefined) {
+      if (Number.isInteger(params.limit) === false || params.limit < 1 || params.limit > 64) fail('E_PARAMS', 'Invalid history limit', 'params');
+      next.limit = params.limit;
+    }
+    return next;
+  }
+  if (method === 'undo' || method === 'redo') {
+    return {
+      projectId: allowedProject(config, params.projectId),
+      expectedRevision: revision(params.expectedRevision),
+      operationId: operationId(params.operationId),
+    };
+  }
+  if (method === 'preview.snapshot') {
+    const next = { projectId: allowedProject(config, params.projectId), revision: revision(params.revision) };
+    if (params.ttlMs !== undefined) {
+      if (Number.isInteger(params.ttlMs) === false || params.ttlMs < 100 || params.ttlMs > 1800000) fail('E_PARAMS', 'Invalid snapshot TTL', 'params');
+      next.ttlMs = params.ttlMs;
+    }
+    return next;
+  }
+  if (method === 'preview.release') {
+    if (typeof params.snapshotId !== 'string' || SNAPSHOT_ID.test(params.snapshotId) === false) fail('E_PARAMS', 'Invalid snapshotId', 'params');
+    return { snapshotId: params.snapshotId };
+  }
   return fail('E_METHOD', 'Unknown video action', 'params');
 }
 
@@ -267,6 +483,29 @@ function parseRegistry(textValue) {
     throw configurationError('The worker registry is not valid JSON');
   }
   if (isPlainObject(registry) === false) throw configurationError('The worker registry must be an object');
+  if (Object.prototype.hasOwnProperty.call(registry, 'projectsRoot')) {
+    const managedAllowed = ['projectsRoot', 'registryPath', 'outputRoot', 'assetInboxRoot', 'browserPath'];
+    for (const key of Object.keys(registry)) {
+      if (managedAllowed.includes(key) === false) throw configurationError(`Unknown managed worker config key "${key}"`);
+    }
+    if (typeof registry.projectsRoot !== 'string' || isAbsolute(registry.projectsRoot) === false) throw configurationError('managed projectsRoot must be absolute');
+    if (typeof registry.registryPath !== 'string' || isAbsolute(registry.registryPath) === false) throw configurationError('managed registryPath must be absolute');
+    if (typeof registry.outputRoot !== 'string' || isAbsolute(registry.outputRoot) === false) throw configurationError('managed outputRoot must be absolute');
+    if (registry.assetInboxRoot !== undefined && (typeof registry.assetInboxRoot !== 'string' || isAbsolute(registry.assetInboxRoot) === false)) {
+      throw configurationError('managed assetInboxRoot must be absolute when present');
+    }
+    if (registry.browserPath !== undefined && (typeof registry.browserPath !== 'string' || isAbsolute(registry.browserPath) === false)) {
+      throw configurationError('managed browserPath must be absolute when present');
+    }
+    return {
+      managed: true,
+      root: registry.projectsRoot,
+      managedRegistryPath: registry.registryPath,
+      outputRoot: registry.outputRoot,
+      assetInboxRoot: registry.assetInboxRoot,
+      browserPath: registry.browserPath,
+    };
+  }
   const allowed = ['root', 'projects', 'outputRoot', 'browserPath'];
   for (const key of Object.keys(registry)) {
     if (allowed.includes(key) === false) throw configurationError(`Unknown worker registry key "${key}"`);
@@ -283,7 +522,7 @@ function parseRegistry(textValue) {
   if (registry.browserPath !== undefined && (typeof registry.browserPath !== 'string' || isAbsolute(registry.browserPath) === false)) {
     throw configurationError('registry.browserPath must be an absolute path when present');
   }
-  return registry;
+  return { managed: false, ...registry };
 }
 
 const MIN_EXPLICIT_SPAWN_CLIENT = Object.freeze([0, 1, 1]);
@@ -328,6 +567,33 @@ function publicResult(limit, result, source) {
   return result;
 }
 
+async function readManagedProjectMap(registryPath, projectsRoot, idPattern) {
+  let parsed;
+  try {
+    parsed = JSON.parse(await readFile(registryPath, 'utf8'));
+  } catch (_error) {
+    throw configurationError('The managed project registry is not valid JSON');
+  }
+  if (isPlainObject(parsed) === false || isPlainObject(parsed.projects) === false) {
+    throw configurationError('The managed project registry has no projects object');
+  }
+  const projects = new Map();
+  for (const [id, value] of Object.entries(parsed.projects)) {
+    if (idPattern.test(id) === false) throw configurationError('The managed registry contains an invalid project id');
+    if (typeof value !== 'string' || isAbsolute(value) === false) throw configurationError('Managed project paths must be absolute');
+    let real;
+    try {
+      real = await realpath(value);
+      if ((await stat(real)).isDirectory() === false) throw new Error('not a directory');
+    } catch (_error) {
+      throw configurationError(`Managed project "${id}" is unavailable`);
+    }
+    if (inside(projectsRoot, real) === false) throw configurationError(`Managed project "${id}" escapes projectsRoot`);
+    projects.set(id, real);
+  }
+  return projects;
+}
+
 export class VideoBridge {
   /**
    * @param options.ctx - Host plugin context with connection/tools/subprocess and logger.
@@ -360,6 +626,61 @@ export class VideoBridge {
       config: this.config,
       configError: this.configError,
     });
+    this.managedProjects = null;
+    this.snapshots = new SnapshotRoutes(this.ctx !== undefined && this.ctx !== null ? this.ctx.connection : undefined);
+    this.assets = new AssetInbox({
+      connection: this.ctx !== undefined && this.ctx !== null ? this.ctx.connection : undefined,
+      root: this.config !== null && this.config.assetInboxRoot !== undefined ? this.config.assetInboxRoot : undefined,
+      maxBytes: this.config !== null ? this.config.maxAssetBytes : undefined,
+    });
+  }
+
+  /** Register the authenticated asset upload route from the plugin effect. */
+  installAssetRoute() {
+    this.assets.install();
+    return () => this.assets.dispose();
+  }
+
+  /** Exact route handler for the authenticated asset upload. */
+  async uploadAsset(request) {
+    return this.assets.handle(request);
+  }
+
+  /** Re-read the worker-managed project registry and add trusted ids to the allowlist. */
+  async discoverManagedProjects() {
+    const config = this.requireConfig();
+    if (config.projectsRoot === undefined && this.runtime?.managed === null) return null;
+    let managedConfig;
+    try {
+      managedConfig = parseRegistry(await readFile(config.registryPath, 'utf8'));
+    } catch (_error) {
+      return null;
+    }
+    if (managedConfig.managed !== true) return null;
+    const projectsRoot = await canonicalDirectory(managedConfig.root, 'registry.projectsRoot');
+    const registryPath = await canonicalFile(managedConfig.managedRegistryPath, 'registry.registryPath');
+    const projects = await readManagedProjectMap(registryPath, projectsRoot, PROJECT_ID);
+    for (const id of projects.keys()) config.projectIds.add(id);
+    const next = { ...managedConfig, projectsRoot, registryPath, projects };
+    if (managedConfig.assetInboxRoot !== undefined) {
+      next.assetInboxRoot = await canonicalDirectory(managedConfig.assetInboxRoot, 'assetInboxRoot');
+    }
+    this.managedProjects = next;
+    if (this.runtime !== null) this.runtime.managed = next;
+    return next;
+  }
+
+  /** Trusted managed project ids, or the static allowlist in legacy mode. */
+  listProjects() {
+    const config = this.requireConfig();
+    return [...config.projectIds].sort();
+  }
+
+  /** Root directory the worker writes private preview snapshots under. */
+  previewRoot() {
+    const runtime = this.runtime;
+    if (runtime === null) return null;
+    return join(runtime.artifactRoot, 'previews');
   }
 
   /** Bounded diagnostic state; never includes paths, environment values or stderr. */
@@ -414,35 +735,61 @@ export class VideoBridge {
     const registryStat = await stat(registryPath);
     if (registryStat.size > MAX_REGISTRY_BYTES) throw configurationError('The worker registry exceeds the size limit');
     const registry = parseRegistry(await readFile(registryPath, 'utf8'));
-    const registryRoot = await canonicalDirectory(registry.root, 'registry.root');
-    const outputRoot = await canonicalDirectory(registry.outputRoot, 'registry.outputRoot');
     const artifactRoot = await canonicalDirectory(config.artifactRoot, 'artifactRoot');
-    if (outputRoot !== artifactRoot) {
-      throw configurationError('"artifactRoot" must resolve to the worker registry outputRoot');
-    }
-
-    for (const allowed of config.allowedProjects) {
-      const projectPath = registry.projects[allowed];
-      if (typeof projectPath !== 'string') {
-        throw configurationError(`Allowed project "${allowed}" is not present in the worker registry`);
+    let managed = null;
+    let outputRoot;
+    if (registry.managed === true) {
+      const projectsRoot = await canonicalDirectory(registry.root, 'registry.projectsRoot');
+      const managedRegistryPath = await canonicalFile(registry.managedRegistryPath, 'registry.registryPath');
+      const managedProjects = await readManagedProjectMap(managedRegistryPath, projectsRoot, PROJECT_ID);
+      if (config.projectsRoot !== undefined) {
+        const configuredRoot = await canonicalDirectory(config.projectsRoot, 'projectsRoot');
+        if (configuredRoot !== projectsRoot) throw configurationError('"projectsRoot" must resolve to the managed projectsRoot');
       }
-      let projectReal;
-      try {
-        projectReal = await realpath(projectPath);
-        if ((await stat(projectReal)).isDirectory() === false) throw new Error('not a directory');
-      } catch (_error) {
-        throw configurationError(`Allowed project "${allowed}" is unavailable in the trusted registry`);
+      let assetInboxRoot = null;
+      if (registry.assetInboxRoot !== undefined) {
+        assetInboxRoot = await canonicalDirectory(registry.assetInboxRoot, 'assetInboxRoot');
+        if (config.assetInboxRoot !== undefined) {
+          const configuredInbox = await canonicalDirectory(config.assetInboxRoot, 'assetInboxRoot');
+          if (configuredInbox !== assetInboxRoot) throw configurationError('"assetInboxRoot" must resolve to the managed assetInboxRoot');
+        }
+      } else if (config.assetInboxRoot !== undefined) {
+        assetInboxRoot = await canonicalDirectory(config.assetInboxRoot, 'assetInboxRoot');
       }
-      if (inside(registryRoot, projectReal) === false) {
-        throw configurationError(`Allowed project "${allowed}" escapes the trusted registry root`);
+      outputRoot = await canonicalDirectory(registry.outputRoot, 'registry.outputRoot');
+      if (outputRoot !== artifactRoot) throw configurationError('"artifactRoot" must resolve to the worker registry outputRoot');
+      for (const [id, projectPath] of managedProjects) config.projectIds.add(id);
+      managed = { projectsRoot, registryPath: managedRegistryPath, assetInboxRoot, projects: managedProjects };
+      if (registry.browserPath !== undefined) await stat(registry.browserPath).catch(() => {});
+    } else {
+      const registryRoot = await canonicalDirectory(registry.root, 'registry.root');
+      outputRoot = await canonicalDirectory(registry.outputRoot, 'registry.outputRoot');
+      if (outputRoot !== artifactRoot) {
+        throw configurationError('"artifactRoot" must resolve to the worker registry outputRoot');
       }
-    }
-    if (registry.browserPath !== undefined) {
-      try {
-        await stat(registry.browserPath);
-      } catch (_error) {
-        // The worker doctor reports an unavailable browser; a missing configured
-        // browser path must not make the shell unusable before the first request.
+      for (const allowed of config.allowedProjects) {
+        const projectPath = registry.projects[allowed];
+        if (typeof projectPath !== 'string') {
+          throw configurationError(`Allowed project "${allowed}" is not present in the worker registry`);
+        }
+        let projectReal;
+        try {
+          projectReal = await realpath(projectPath);
+          if ((await stat(projectReal)).isDirectory() === false) throw new Error('not a directory');
+        } catch (_error) {
+          throw configurationError(`Allowed project "${allowed}" is unavailable in the trusted registry`);
+        }
+        if (inside(registryRoot, projectReal) === false) {
+          throw configurationError(`Allowed project "${allowed}" escapes the trusted registry root`);
+        }
+      }
+      if (registry.browserPath !== undefined) {
+        try {
+          await stat(registry.browserPath);
+        } catch (_error) {
+          // The worker doctor reports an unavailable browser; a missing configured
+          // browser path must not make the shell unusable before the first request.
+        }
       }
     }
 
@@ -466,6 +813,7 @@ export class VideoBridge {
       workerCwd,
       registryPath,
       artifactRoot,
+      managed,
       WorkerClient: engine.WorkerClient,
       workerVersion: engine.workerVersion,
       clientVersion: engine.clientVersion,
@@ -573,7 +921,66 @@ export class VideoBridge {
     if (this.closing || this.disposed) {
       throw new BridgeError('E_WORKER_DISPOSED', 'The video service is stopping', { stage: 'lifecycle' });
     }
+    const config = this.requireConfig();
+    if (config.projectsRoot !== undefined) {
+      try {
+        await this.discoverManagedProjects();
+      } catch (error) {
+        if (error instanceof BridgeError) throw error;
+        throw new BridgeError('E_CONFIGURATION', 'The managed project registry could not be read', { stage: 'project' });
+      }
+    }
     const normalized = this.validate(method, params);
+    if (method === 'project.list') {
+      if (settings.source === 'tool') throw new BridgeError('E_METHOD', 'Project listing is a UI-only action', { stage: 'params' });
+      return { projects: this.listProjects().map((projectId) => ({ projectId })) };
+    }
+    if (method === 'project.create') {
+      if (settings.source === 'tool') throw new BridgeError('E_METHOD', 'Project creation is a UI-only action', { stage: 'params' });
+      const created = await this.callClient('project.create', normalized);
+      await this.discoverManagedProjects();
+      if (this.config === null || this.config.projectIds.has(created.projectId) === false) {
+        throw new BridgeError('E_PROJECT', 'The created project was not published to the trusted registry', { stage: 'project' });
+      }
+      return publicResult(this.requireConfig().maxResultBytes, created, settings.source);
+    }
+    if (method === 'asset.import') {
+      if (settings.source === 'tool') throw new BridgeError('E_METHOD', 'Asset import is a UI-only action', { stage: 'params' });
+      const { receiptId, ...request } = normalized;
+      const receipt = this.assets.take(normalized.projectId, receiptId);
+      const imported = await this.callClient('asset.import', {
+        ...request,
+        sourceName: receipt.sourceName,
+        name: receipt.originalName,
+        mediaType: receipt.mediaType,
+      });
+      await this.assets.finish(receipt);
+      return publicResult(this.requireConfig().maxResultBytes, imported, settings.source);
+    }
+    if (method === 'preview.snapshot') {
+      if (settings.source === 'tool') throw new BridgeError('E_METHOD', 'Preview snapshot is a UI-only action', { stage: 'params' });
+      const snapshot = await this.callClient('preview.snapshot', normalized);
+      const root = this.previewRoot();
+      if (root === null) throw new BridgeError('E_WORKER_START', 'The preview root is unavailable before worker startup', { stage: 'preview' });
+      try {
+        const registered = await this.snapshots.register(normalized.projectId, snapshot, root);
+        return publicResult(this.requireConfig().maxResultBytes, { ...snapshot, ...registered, routeBase: SNAPSHOT_ROUTE_BASE }, settings.source);
+      } catch (error) {
+        if (error instanceof BridgeError) throw error;
+        try {
+          await this.callClient('preview.release', { snapshotId: snapshot.snapshotId });
+        } catch (_ignored) {
+          /* the failed registration must still surface */
+        }
+        throw new BridgeError('E_SNAPSHOT', 'The worker preview snapshot could not be published', { stage: 'preview', cause: error });
+      }
+    }
+    if (method === 'preview.release') {
+      if (settings.source === 'tool') throw new BridgeError('E_METHOD', 'Preview release is a UI-only action', { stage: 'params' });
+      const released = await this.callClient('preview.release', normalized);
+      this.snapshots.revoke(normalized.snapshotId);
+      return publicResult(this.requireConfig().maxResultBytes, released, settings.source);
+    }
     if (method === 'preview') {
       if (settings.source === 'tool') {
         throw new BridgeError('E_METHOD', 'Preview is a UI-only action, not a model tool action', { stage: 'params' });
@@ -635,6 +1042,9 @@ export class VideoBridge {
         if (result !== null && typeof result === 'object' && result.projectId !== undefined && result.projectId !== record.projectId) {
           throw new BridgeError('E_JOB_NOT_FOUND', 'Unknown video job', { stage: 'job' });
         }
+      }
+      if (method === 'close' && result !== null && typeof result === 'object' && result.closed === true) {
+        this.snapshots.revokeProject(normalized.projectId);
       }
       return publicResult(this.requireConfig().maxResultBytes, result, settings.source);
     })();
@@ -823,6 +1233,16 @@ export class VideoBridge {
         await this.sessions.dispose();
       } catch (error) {
         this.log(error, 'session dispose');
+      }
+      try {
+        this.snapshots.dispose();
+      } catch (error) {
+        this.log(error, 'preview routes dispose');
+      }
+      try {
+        this.assets.dispose();
+      } catch (error) {
+        this.log(error, 'asset inbox dispose');
       }
       this.disposed = true;
     })();

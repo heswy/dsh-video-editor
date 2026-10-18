@@ -55,6 +55,9 @@ const RUNTIME_PATHS = [
   'host/sessions.js',
   'host/session-state.js',
   'host/preview.js',
+  'host/snapshot.js',
+  'host/asset-inbox.js',
+  'host/canvas-runtime.js',
   'README.md',
 ];
 const DEFAULT_OUT = resolve(ROOT, '..', 'artifacts', 'p2-b', 'staging');
@@ -218,11 +221,14 @@ async function main() {
     await cp(join(work, ENGINE_WORKER), workerRoot, { recursive: true });
     const clientPackage = JSON.parse(await readFile(join(clientRoot, 'package.json'), 'utf8'));
     const workerPackage = JSON.parse(await readFile(join(workerRoot, 'package.json'), 'utf8'));
-    for (const [name, manifest, expected] of [
-      ['client', clientPackage, '0.1.1'],
-      ['worker', workerPackage, '0.1.1'],
-    ]) {
-      if (manifest.version !== expected) throw new Error(`engine ${name} version is ${manifest.version}, expected reviewed ${expected}`);
+    const reviewed = [
+      { client: '0.1.1', worker: '0.1.1' },
+      { client: '0.3.0', worker: '0.3.0' },
+    ].find((pair) => pair.client === clientPackage.version && pair.worker === workerPackage.version);
+    if (reviewed === undefined) {
+      throw new Error(`engine versions ${clientPackage.version}/${workerPackage.version} are not the reviewed 0.1.1 or 0.3.0 pair`);
+    }
+    for (const [name, manifest] of [['client', clientPackage], ['worker', workerPackage]]) {
       if (manifest.private !== true) throw new Error(`engine ${name} package must stay private in the snapshot`);
     }
     for (const [name, manifest] of [['client', clientPackage], ['worker', workerPackage]]) {
@@ -267,10 +273,42 @@ async function main() {
       if (args.browser !== undefined) fixtureEnv.VIDEO_BROWSER_PATH = args.browser;
       run(['npm', 'run', 'prepare-fixture'], { cwd: workerRoot, env: fixtureEnv });
     }
-    const registryPath = join(workerRoot, 'artifacts', 'registry.json');
+    let registryPath = join(workerRoot, 'artifacts', 'registry.json');
     if (existsSync(registryPath) === false) throw new Error(`fixture registry not found at ${registryPath}; run without --skip-fixture`);
     const registry = JSON.parse(await readFile(registryPath, 'utf8'));
     await mkdir(registry.outputRoot, { recursive: true });
+    let managed = null;
+    if (clientPackage.version === '0.3.0') {
+      const projectsRoot = join(out, 'projects');
+      const assetInboxRoot = join(out, 'asset-inbox');
+      const managedDir = join(out, 'managed');
+      const restoreRoot = join(out, 'restore');
+      await mkdir(managedDir, { recursive: true });
+      await mkdir(projectsRoot, { recursive: true });
+      await mkdir(assetInboxRoot, { recursive: true });
+      await mkdir(restoreRoot, { recursive: true });
+      const fixtureProject = join(workerRoot, 'artifacts', 'projects', 'demo');
+      await cp(fixtureProject, join(projectsRoot, 'demo'), { recursive: true });
+      await cp(fixtureProject, join(restoreRoot, 'demo'), { recursive: true });
+      const innerRegistryPath = join(managedDir, 'projects.json');
+      await writeFile(innerRegistryPath, JSON.stringify({ projects: { demo: join(projectsRoot, 'demo') } }, null, 2) + '\n');
+      registryPath = join(managedDir, 'registry.json');
+      const managedConfig = {
+        projectsRoot,
+        registryPath: innerRegistryPath,
+        outputRoot: registry.outputRoot,
+        assetInboxRoot,
+        ...(args.browser === undefined ? {} : { browserPath: args.browser }),
+      };
+      await writeFile(registryPath, JSON.stringify(managedConfig, null, 2) + '\n');
+      managed = {
+        projectsRoot,
+        assetInboxRoot,
+        innerRegistryPath,
+        managedConfigPath: registryPath,
+        restoreRoot,
+      };
+    }
 
     // 6. Development-only Host config with snapshot-absolute paths.
     const sessionCwd = join(out, 'session-cwd');
@@ -283,6 +321,7 @@ async function main() {
       allowedProjects: Object.keys(registry.projects),
       sessionStatePath: join(out, 'session-state.json'),
       sessionCwd,
+      ...(managed === null ? {} : { projectsRoot: managed.projectsRoot, assetInboxRoot: managed.assetInboxRoot }),
     };
     const configPath = join(out, 'config.json');
     await writeFile(configPath, JSON.stringify(config, null, 2) + '\n');
@@ -340,6 +379,17 @@ async function main() {
       workerDependencies: { installedWith: 'npm ci --ignore-scripts', esbuildAvailable },
       files: { bundle: bundleFiles, engineClient: clientFiles, engineWorker: workerFiles },
       config: { path: configPath, sha256: sha256(await readFile(configPath)) },
+      ...(managed === null ? {} : {
+        managed: {
+          projectsRoot: managed.projectsRoot,
+          assetInboxRoot: managed.assetInboxRoot,
+          registryPath: managed.managedConfigPath,
+          registrySha256: sha256(await readFile(managed.managedConfigPath)),
+          innerRegistryPath: managed.innerRegistryPath,
+          innerRegistrySha256: sha256(await readFile(managed.innerRegistryPath)),
+          restoreRoot: managed.restoreRoot,
+        },
+      }),
       stagedBundlePatch: { path: patchPath, sha256: patchSha, note: 'staging-only config injected into the copied patch; the committed root patch keeps config: {}' },
     };
     await writeFile(join(out, 'INTEGRITY.json'), JSON.stringify(integrity, null, 2) + '\n');

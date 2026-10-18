@@ -171,7 +171,7 @@ check('entrypoints and exports resolve to shipped files', () => {
 
 check('package files list covers every shipped artifact', () => {
   assert(Array.isArray(pkg.files) && pkg.files.length > 0, 'package.json needs a files list for a reproducible install');
-  const required = ['index.js', 'client.js', 'cordis.patch.yml', 'icon.svg', 'locale/en.json', 'locale/zh.json', 'README.md', 'host/bridge.js', 'host/routes.js', 'host/tool.js', 'host/config.js', 'host/env.js', 'host/errors.js', 'host/engine.js', 'host/limits.js', 'host/sessions.js', 'host/session-state.js', 'host/preview.js'];
+  const required = ['index.js', 'client.js', 'cordis.patch.yml', 'icon.svg', 'locale/en.json', 'locale/zh.json', 'README.md', 'host/bridge.js', 'host/routes.js', 'host/tool.js', 'host/config.js', 'host/env.js', 'host/errors.js', 'host/engine.js', 'host/limits.js', 'host/sessions.js', 'host/session-state.js', 'host/preview.js', 'host/snapshot.js', 'host/asset-inbox.js', 'host/canvas-runtime.js'];
   for (const artifact of required) {
     const covered = pkg.files.some((pattern) => listMatchingFiles(pattern).includes(artifact));
     assert(covered, `files list does not cover required artifact "${artifact}"`);
