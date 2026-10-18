@@ -65,6 +65,7 @@
 | 旧 demo Host→engine 兼容链 | ok=true | `artifacts/p2-b/evidence/engine-run-2026-10-18T04-52-17-006Z.json`，SHA `241d42c3…48b36c` |
 | 受控新工程全链 | ok=true | `artifacts/p2-b/evidence/canvas-chain-2026-10-18T04-52-42-038Z.json`，SHA `41d77dc2…f76536` |
 | 真浏览器 runtime | ok=true | `artifacts/p2-b/evidence/canvas-browser-2026-10-18T04-52-47-580Z.json`，SHA `398c2fbf…ceb1c` |
+| 真实帧/渲染产物 | frame 14,970 B/`e9538abb…`；MP4 161,844 B/`0e0d6333…` | `artifacts/p2-b/evidence/p3-008-artifacts/frame-yellow-1.5s.png`、`render-15s.mp4`；与 canvas-chain 证据一致 |
 
 ### 受控新工程链关键数据（canvas-chain）
 

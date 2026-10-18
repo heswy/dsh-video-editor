@@ -67,6 +67,7 @@
 | 真实 Host→engine 链（旧 demo 兼容） | **ok=true** | `artifacts/p2-b/evidence/engine-run-2026-10-18T04-52-17-006Z.json`（SHA `241d42c3…48b36c`），帧/MP4/cancel/close 不变 |
 | 受控新工程全链 | **ok=true** | `artifacts/p2-b/evidence/canvas-chain-2026-10-18T04-52-42-038Z.json`（SHA `41d77dc2…1f76536`）：project.create→Session 绑定→3 Scene/15s→换黄 revision→人工 text+layout+style→undo/redo→PNG asset.import→shot→snapshot 路由/CSP/字节→frame（背景像素 `255,212,0`）→MP4 161,844 B/`0e0d6333…` 450 帧/15s→history 6 条→close/reopen revision 不变 |
 | 真浏览器 runtime | **ok=true** | `artifacts/p2-b/evidence/canvas-browser-2026-10-18T04-52-47-580Z.json`（SHA `398c2fbf…ceb1c`）：Chrome 155 加载沙箱 iframe，ready 1280×720/5s，seek 3s 命中 `scene-1-title`，播放 0.43s 推进，外部网络 0，console error 0 |
+| 真实帧/渲染产物 | PNG 14,970 B/`e9538abb…`；MP4 161,844 B/`0e0d6333…`（H.264 1280×720/450 帧/15s） | 本地证据 `artifacts/p2-b/evidence/p3-008-artifacts/frame-yellow-1.5s.png`、`render-15s.mp4` |
 | C 候选保留 | alpha.2 包/staging 未覆盖 | `artifacts/p2-b/3310280/...`、`artifacts/p2-b/staging-54f4671-3310280` 未动 |
 
 ### 未测 / 边界
