@@ -1116,6 +1116,21 @@ async function main() {
       return { state, geometry, releaseCount: release.count, screenshot };
     }
 
+    // Establish a READY genre B (720x1280/5s) baseline deterministically: the
+    // preceding flow differs between normal and stress modes, so publish one when
+    // the active composition is not already the expected genre-B geometry.
+    const r2fEntry = await r2fState();
+    const r2fEntryFrame = activeFrameOf(r2fEntry);
+    const r2fEntryIsGenreB = r2fEntryFrame !== null && r2fEntryFrame.elementWidth === '720px' && r2fEntryFrame.elementHeight === '1280px';
+    if (r2fEntryIsGenreB === false) {
+      const r2fSetupStart = Date.now();
+      const r2fSetupPublish = await composeThroughTool(tool, sessionId, projectId, r2fEntry.revision, genreB().html, 'r2f-setup-baseline-b');
+      const r2fSetupReady = await r2fWaitSwitch(r2fSetupPublish.publishedRevision, r2fSetupStart);
+      checks.check('R2F setup: a ready genre B 720x1280/5s composition is established before the metadata probes', r2fSetupReady.ok === true, { ok: r2fSetupReady.ok, revision: r2fSetupReady.state.revision, expected: r2fSetupPublish.publishedRevision });
+    } else {
+      checks.check('R2F setup: the active composition is already the expected genre B 720x1280/5s baseline', true, { revision: r2fEntry.revision, elementWidth: r2fEntryFrame.elementWidth, elementHeight: r2fEntryFrame.elementHeight });
+    }
+
     // (a) Injected preview.snapshot failure for a 1280x720/6s candidate while a
     // ready 720x1280/5s genre-B composition is displayed.
     const r2fBaseA = await r2fState();
