@@ -41,7 +41,7 @@
 import { randomUUID } from 'node:crypto';
 import { createServer } from 'node:http';
 import { createRequire } from 'node:module';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { loadStagedHost } from './lib/staged-host.mjs';
 import {
@@ -158,7 +158,7 @@ try{
 /** Validate the exact compose result shape required by PROTOCOL.md 3.1. */
 function assertComposeResult(checks, label, call, expectedHtml, meta) {
   const result = call.value !== null && typeof call.value === 'object' ? call.value.result : null;
-  const fields = ['projectId', 'revision', 'publishedRevision', 'written', 'unchanged', 'entry', 'width', 'height', 'duration', 'bytes', 'assets', 'elements', 'files', 'preview'];
+  const fields = ['projectId', 'revision', 'publishedRevision', 'written', 'unchanged', 'entry', 'width', 'height', 'duration', 'bytes', 'assets', 'elements', 'files', 'preview', 'history'];
   const missing = result === null || typeof result !== 'object' ? fields : fields.filter((field) => Object.prototype.hasOwnProperty.call(result, field) === false);
   checks.check(label + ': compose succeeded and returns every required result field', call.ok === true && missing.length === 0, { ok: call.ok, code: call.code, missing, keys: result === null ? null : Object.keys(result) });
   if (result === null || typeof result !== 'object') return null;
@@ -184,6 +184,8 @@ function assertComposeResult(checks, label, call, expectedHtml, meta) {
   checks.check(label + ': preview proof is mode=snapshot/status=ready for this revision', preview !== null && typeof preview === 'object'
     && preview.mode === 'snapshot' && preview.status === 'ready' && preview.revision === result.revision
     && typeof preview.checked === 'string' && preview.checked.includes('composition') && preview.checked.includes('snapshot'), { preview });
+  const history = result.history;
+  checks.check(label + ': history settlement is recorded with an integer cursor', history !== null && typeof history === 'object' && history.status === 'recorded' && Number.isInteger(history.historyCursor), { history });
   const sessionProject = result.projectId;
   checks.check(label + ': compose result projectId is the bound project', sessionProject === meta.projectId, { expected: meta.projectId, actual: sessionProject });
   return result;
@@ -403,6 +405,7 @@ async function main() {
     paramChecks: [],
     promptContext: null,
     chrome: null,
+    r1: null,
     reopen: null,
     teardown: null,
     stagingReadOnly: null,
@@ -693,7 +696,8 @@ async function main() {
     const inspectAfterUnchanged = await invokeHttp(bridge, 'inspect', { projectId });
     checks.check('identical html returns unchanged:true, written:false, same revision, no history entry', unchangedCall.ok === true && unchangedResult !== null
       && unchangedResult.unchanged === true && unchangedResult.written === false && unchangedResult.revision === revB3
-      && inspectAfterUnchanged.revision === revB3, { ok: unchangedCall.ok, unchanged: unchangedResult?.unchanged, written: unchangedResult?.written, revision: unchangedResult?.revision, expectedRevision: revB3 });
+      && unchangedResult.history !== null && typeof unchangedResult.history === 'object' && unchangedResult.history.status === 'unchanged'
+      && inspectAfterUnchanged.revision === revB3, { ok: unchangedCall.ok, unchanged: unchangedResult?.unchanged, written: unchangedResult?.written, revision: unchangedResult?.revision, expectedRevision: revB3, history: unchangedResult?.history ?? null });
     const historyAfterUnchanged = await invokeHttp(bridge, 'history', { projectId, limit: 64 });
     checks.check('unchanged publish records no history entry', historyAfterUnchanged.entries.length === historyAfterReplay.entries.length, { before: historyAfterReplay.entries.length, after: historyAfterUnchanged.entries.length });
 
@@ -836,6 +840,138 @@ async function main() {
     });
     evidence.reopen = { revision: reopenedInspect.revision, sourceBytes: reopenedSource === null ? null : reopenedSource.bytes, sourceEqual: reopenedSource !== null ? reopenedSource.html === finalHtml : null };
     await invokeHttp(bridge, 'close', { projectId });
+
+    // ─── 15. R1: publish settlement when the history stage fails ────────────
+    // Separate temp project on the same real staged bridge/worker/Tool so the
+    // normal-chain content assertions above stay untouched.
+    console.log('[phase] R1 history-settlement regressions (separate temp project)');
+    const r1Evidence = { projectId: null, sessionId: null, baselineRevision: null, historyEntriesBytes: null, degraded: null, recovered: null, steps: [] };
+    evidence.r1 = r1Evidence;
+    const r1Project = await invokeHttp(bridge, 'project.create', { templateId: 'product-launch-v1', title: 'P3-012 R1 Settlement' });
+    const r1ProjectId = r1Project.projectId;
+    const r1Session = await invokeHttp(bridge, 'session.create', { projectId: r1ProjectId, requestId: opId('r1-bind') });
+    const r1SessionId = r1Session.sessionId;
+    r1Evidence.projectId = r1ProjectId;
+    r1Evidence.sessionId = r1SessionId;
+    const r1Dir = join(stateRoot.directories.projects, r1ProjectId);
+    const r1HistoryDir = join(r1Dir, '.dsh-video', 'history');
+    const r1EntriesPath = join(r1HistoryDir, 'entries.jsonl');
+    const r1EntryPath = join(r1Dir, 'index.html');
+    let r1Inspect = await invokeHttp(bridge, 'inspect', { projectId: r1ProjectId });
+    r1Evidence.baselineRevision = r1Inspect.revision;
+    const r1FixtureA = genreA();
+    const r1ComposeA = await callTool(tool, { action: 'project.compose', projectId: r1ProjectId, expectedRevision: r1Inspect.revision, operationId: opId('r1-compose-a'), html: r1FixtureA.html }, r1SessionId);
+    const r1ResultA = r1ComposeA.ok === true ? r1ComposeA.value.result : null;
+    checks.check('R1: baseline compose publishes normally with history recorded', r1ComposeA.ok === true && r1ResultA !== null && r1ResultA.history !== null && typeof r1ResultA.history === 'object' && r1ResultA.history.status === 'recorded' && Number.isInteger(r1ResultA.history.historyCursor), { ok: r1ComposeA.ok, code: r1ComposeA.code, history: r1ResultA?.history ?? null });
+    if (r1ResultA === null) throw new Error('R1 baseline compose failed: ' + String(r1ComposeA.message || r1ComposeA.code));
+    const r1RevA = r1ResultA.revision;
+    const r1EntriesOriginal = await readFile(r1EntriesPath);
+    r1Evidence.historyEntriesBytes = r1EntriesOriginal.length;
+    checks.check('R1: baseline publish initialized the project history stage', r1EntriesOriginal.length > 0, { bytes: r1EntriesOriginal.length });
+    // Break the history READ stage: entries.jsonl becomes a directory (EISDIR).
+    await rm(r1EntriesPath, { force: true });
+    await mkdir(r1EntriesPath, { recursive: true });
+    r1Evidence.steps.push('history-entries-replaced-by-directory');
+    const r1FixtureB = genreB();
+    const r1DegradedOp = 'r1-degraded-op-' + randomUUID().replace(/-/g, '').slice(0, 10);
+    const r1ComposeB = await callTool(tool, { action: 'project.compose', projectId: r1ProjectId, expectedRevision: r1RevA, operationId: r1DegradedOp, html: r1FixtureB.html }, r1SessionId);
+    const r1ResultB = r1ComposeB.ok === true ? r1ComposeB.value.result : null;
+    r1Evidence.degraded = { ok: r1ComposeB.ok, code: r1ComposeB.code ?? null, message: String(r1ComposeB.message || '').slice(0, 300), history: r1ResultB?.history ?? null, revision: r1ResultB?.revision ?? null, publishedRevision: r1ResultB?.publishedRevision ?? null };
+    checks.check('R1: compose succeeds when the history stage fails (not an ordinary not-published failure)', r1ComposeB.ok === true && r1ResultB !== null, { code: r1ComposeB.code ?? null, message: r1Evidence.degraded.message, history: r1Evidence.degraded.history });
+    checks.check('R1: degraded publish returns a real new publishedRevision (no stale marker)', r1ResultB !== null && typeof r1ResultB.publishedRevision === 'string' && SHA256.test(r1ResultB.publishedRevision) && r1ResultB.publishedRevision === r1ResultB.revision && r1ResultB.revision !== r1RevA, { revision: r1ResultB?.revision ?? null, publishedRevision: r1ResultB?.publishedRevision ?? null, previous: r1RevA });
+    checks.check('R1: degraded settlement is structured (history.status=degraded + bounded stable code)', r1ResultB !== null && r1ResultB.history !== null && typeof r1ResultB.history === 'object' && r1ResultB.history.status === 'degraded' && typeof r1ResultB.history.code === 'string' && /^E_[A-Z0-9_]+$/.test(r1ResultB.history.code) && r1ResultB.history.code.length <= 64, { history: r1ResultB?.history ?? null });
+    checks.check('R1: degraded result keeps truthful publish markers (written/unchanged/preview)', r1ResultB !== null && r1ResultB.written === true && r1ResultB.unchanged === false && r1ResultB.preview !== null && typeof r1ResultB.preview === 'object' && r1ResultB.preview.status === 'ready' && r1ResultB.preview.revision === r1ResultB.revision, { written: r1ResultB?.written ?? null, unchanged: r1ResultB?.unchanged ?? null, preview: r1ResultB?.preview ?? null });
+    const r1InspectAfterDegraded = await invokeHttp(bridge, 'inspect', { projectId: r1ProjectId });
+    const r1SourceAfterDegraded = await sourceThroughTool(tool, r1SessionId, r1ProjectId);
+    const r1DegradedRevision = r1ResultB !== null && typeof r1ResultB.revision === 'string' ? r1ResultB.revision : r1InspectAfterDegraded.revision;
+    checks.check('R1: after degraded publish inspect/source expose the real new revision and exact bytes', r1InspectAfterDegraded.revision === r1DegradedRevision && r1SourceAfterDegraded.ok === true && r1SourceAfterDegraded.value.result.html === r1FixtureB.html && r1SourceAfterDegraded.value.result.revision === r1DegradedRevision, { inspectRevision: r1InspectAfterDegraded.revision, expectedRevision: r1DegradedRevision, sourceOk: r1SourceAfterDegraded.ok, sourceEqual: r1SourceAfterDegraded.ok === true ? r1SourceAfterDegraded.value.result.html === r1FixtureB.html : null });
+    const r1DiskAfterDegraded = await readFile(r1EntryPath);
+    checks.check('R1: degraded publish actually wrote the new entry bytes to disk', sha256(r1DiskAfterDegraded) === sha256(Buffer.from(r1FixtureB.html, 'utf8')), { diskBytes: r1DiskAfterDegraded.length, expectedBytes: Buffer.byteLength(r1FixtureB.html, 'utf8') });
+    // Pre-commit failures keep their normal classification even while the history
+    // stage is broken (three-state semantics: clear failure preserves old state).
+    const r1StaleWhileBroken = await callTool(tool, { action: 'project.compose', projectId: r1ProjectId, expectedRevision: r1RevA, operationId: opId('r1-stale-broken'), html: r1FixtureA.html }, r1SessionId);
+    checks.check('R1: stale expectedRevision while history is broken is still E_REVISION_CONFLICT (not a degraded success)', r1StaleWhileBroken.ok === false && r1StaleWhileBroken.code === 'E_REVISION_CONFLICT', { actualCode: r1StaleWhileBroken.code ?? null });
+    const r1InvalidWhileBroken = await callTool(tool, { action: 'project.compose', projectId: r1ProjectId, expectedRevision: r1DegradedRevision, operationId: opId('r1-invalid-broken'), html: '<div id="main" data-composition-id="x" data-width="320" data-height="180" data-duration="1">no timeline</div>' }, r1SessionId);
+    checks.check('R1: invalid composition while history is broken is still E_COMPOSE_INVALID (not a degraded success)', r1InvalidWhileBroken.ok === false && r1InvalidWhileBroken.code === 'E_COMPOSE_INVALID', { actualCode: r1InvalidWhileBroken.code ?? null });
+    const r1InspectAfterPreCommit = await invokeHttp(bridge, 'inspect', { projectId: r1ProjectId });
+    checks.check('R1: pre-commit failures while history is broken leave the published revision/bytes untouched', r1InspectAfterPreCommit.revision === r1DegradedRevision, { revision: r1InspectAfterPreCommit.revision, expectedRevision: r1DegradedRevision });
+    // Same operationId retry: identical payload -> identical cached result, no second write.
+    const r1Retry = await callTool(tool, { action: 'project.compose', projectId: r1ProjectId, expectedRevision: r1RevA, operationId: r1DegradedOp, html: r1FixtureB.html }, r1SessionId);
+    const r1RetryResult = r1Retry.ok === true ? r1Retry.value.result : null;
+    const r1RetryInspect = await invokeHttp(bridge, 'inspect', { projectId: r1ProjectId });
+    const r1RetryDisk = await readFile(r1EntryPath);
+    checks.check('R1: same-operationId retry after a degraded publish returns the identical cached result (deep-equal)', r1Retry.ok === true && r1RetryResult !== null && JSON.stringify(r1RetryResult) === JSON.stringify(r1ResultB), { retryOk: r1Retry.ok, retryCode: r1Retry.code ?? null, history: r1RetryResult?.history ?? null });
+    checks.check('R1: degraded retry performs no second write (revision and on-disk content unchanged)', r1RetryInspect.revision === r1DegradedRevision && sha256(r1RetryDisk) === sha256(r1DiskAfterDegraded), { revision: r1RetryInspect.revision, expectedRevision: r1DegradedRevision });
+    const r1Reuse = await callTool(tool, { action: 'project.compose', projectId: r1ProjectId, expectedRevision: r1RevA, operationId: r1DegradedOp, html: r1FixtureA.html }, r1SessionId);
+    checks.check('R1: a different payload on the degraded operationId is still E_OPERATION_REUSED', r1Reuse.ok === false && r1Reuse.code === 'E_OPERATION_REUSED', { actualCode: r1Reuse.code ?? null });
+    // Restore history: the next publish must record again.
+    await rm(r1EntriesPath, { recursive: true, force: true });
+    await writeFile(r1EntriesPath, r1EntriesOriginal);
+    const r1RestoredEntries = await readFile(r1EntriesPath);
+    checks.check('R1: history entries restored byte-identically for the recovery probe', sha256(r1RestoredEntries) === sha256(r1EntriesOriginal), { bytes: r1RestoredEntries.length });
+    const r1FixtureA2 = genreAModified();
+    const r1RecoveredCall = await callTool(tool, { action: 'project.compose', projectId: r1ProjectId, expectedRevision: r1DegradedRevision, operationId: opId('r1-compose-recovered'), html: r1FixtureA2.html }, r1SessionId);
+    const r1ResultRecovered = r1RecoveredCall.ok === true ? r1RecoveredCall.value.result : null;
+    const r1RecordedHistory = r1ResultRecovered?.history ?? null;
+    checks.check('R1: after history restore the next compose records history again (status=recorded)', r1RecoveredCall.ok === true && r1ResultRecovered !== null && r1RecordedHistory !== null && typeof r1RecordedHistory === 'object' && r1RecordedHistory.status === 'recorded' && Number.isInteger(r1RecordedHistory.historyCursor), { ok: r1RecoveredCall.ok, code: r1RecoveredCall.code ?? null, history: r1RecordedHistory });
+    checks.check('R1: recovered publish returns a fresh real revision with publishedRevision marker', r1ResultRecovered !== null && typeof r1ResultRecovered.revision === 'string' && SHA256.test(r1ResultRecovered.revision) && r1ResultRecovered.revision !== r1DegradedRevision && r1ResultRecovered.publishedRevision === r1ResultRecovered.revision, { revision: r1ResultRecovered?.revision ?? null, previous: r1DegradedRevision });
+    const r1SourceRecovered = await sourceThroughTool(tool, r1SessionId, r1ProjectId);
+    const r1InspectRecovered = await invokeHttp(bridge, 'inspect', { projectId: r1ProjectId });
+    checks.check('R1: recovered source/inspect are consistent with the recorded publish', r1SourceRecovered.ok === true && r1SourceRecovered.value.result.html === r1FixtureA2.html && r1InspectRecovered.revision === (r1ResultRecovered === null ? null : r1ResultRecovered.revision), { inspectRevision: r1InspectRecovered.revision, expectedRevision: r1ResultRecovered?.revision ?? null, sourceEqual: r1SourceRecovered.ok === true ? r1SourceRecovered.value.result.html === r1FixtureA2.html : null });
+    r1Evidence.recovered = { revision: r1ResultRecovered?.revision ?? null, history: r1RecordedHistory };
+    r1Evidence.steps.push('degraded-success', 'retry-cached-deep-equal', 'restore-history', 'recovered-recorded');
+
+    // Adversarial R1 follow-up: the OTHER history stages must also settle as a
+    // degraded success (never an ordinary not-published failure), and restoring
+    // each stage must let the next publish record history again.
+    const r1StageCases = [];
+    const r1StageDocs = {
+      snapshot: { degraded: genreB().html, recovered: genreA().html },
+      entries: { degraded: modifyGenreB(genreB().html).html, recovered: genreAModified().html },
+      ops: { degraded: modifyGenreBAgain(modifyGenreB(genreB().html).html).html, recovered: genreB().html },
+    };
+    let r1StageCurrentHtml = r1FixtureA2.html;
+    let r1StageCurrentRevision = r1ResultRecovered !== null && typeof r1ResultRecovered.revision === 'string' ? r1ResultRecovered.revision : r1InspectRecovered.revision;
+    async function r1HistoryStageCase(label, breakStage, restoreStage, docs) {
+      const expectedRevision = (await invokeHttp(bridge, 'inspect', { projectId: r1ProjectId })).revision;
+      const degradedOp = 'r1-stage-' + label + '-' + randomUUID().replace(/-/g, '').slice(0, 10);
+      await breakStage();
+      let degradedCall;
+      try {
+        degradedCall = await callTool(tool, { action: 'project.compose', projectId: r1ProjectId, expectedRevision, operationId: degradedOp, html: docs.degraded }, r1SessionId);
+      } finally {
+        await restoreStage();
+      }
+      const degradedResult = degradedCall.ok === true ? degradedCall.value.result : null;
+      const inspectAfter = await invokeHttp(bridge, 'inspect', { projectId: r1ProjectId });
+      const sourceAfter = await sourceThroughTool(tool, r1SessionId, r1ProjectId);
+      const newRevision = degradedResult !== null && typeof degradedResult.revision === 'string' ? degradedResult.revision : inspectAfter.revision;
+      checks.check('R1 stage ' + label + ': history-stage write failure settles as degraded success (not ordinary failure)', degradedCall.ok === true && degradedResult !== null && degradedResult.history !== null && typeof degradedResult.history === 'object' && degradedResult.history.status === 'degraded', { code: degradedCall.code ?? null, message: String(degradedCall.message || '').slice(0, 200), history: degradedResult?.history ?? null });
+      checks.check('R1 stage ' + label + ': degraded publish really committed the new revision and source is consistent', inspectAfter.revision === newRevision && sourceAfter.ok === true && sourceAfter.value.result.html === docs.degraded, { inspectRevision: inspectAfter.revision, expectedRevision: newRevision, sourceEqual: sourceAfter.ok === true ? sourceAfter.value.result.html === docs.degraded : null });
+      const recoveredCall = await callTool(tool, { action: 'project.compose', projectId: r1ProjectId, expectedRevision: newRevision, operationId: opId('r1-stage-recover-' + label), html: docs.recovered }, r1SessionId);
+      const recoveredResult = recoveredCall.ok === true ? recoveredCall.value.result : null;
+      checks.check('R1 stage ' + label + ': after restoring the history stage the next compose records history again', recoveredCall.ok === true && recoveredResult !== null && recoveredResult.history !== null && typeof recoveredResult.history === 'object' && recoveredResult.history.status === 'recorded', { code: recoveredCall.code ?? null, history: recoveredResult?.history ?? null });
+      if (recoveredResult !== null && typeof recoveredResult.revision === 'string') {
+        r1StageCurrentRevision = recoveredResult.revision;
+        r1StageCurrentHtml = docs.recovered;
+      }
+      r1StageCases.push({ label, degradedRevision: newRevision, degradedHistory: degradedResult?.history ?? null, recoveredHistory: recoveredResult?.history ?? null });
+    }
+    try {
+      await r1HistoryStageCase('snapshot-dir-write', async () => { await chmod(join(r1HistoryDir, 'snapshots'), 0o555); }, async () => { await chmod(join(r1HistoryDir, 'snapshots'), 0o755); }, r1StageDocs.snapshot);
+      await r1HistoryStageCase('entries-write', async () => { await chmod(r1HistoryDir, 0o555); }, async () => { await chmod(r1HistoryDir, 0o755); }, r1StageDocs.entries);
+      await r1HistoryStageCase('ops-append', async () => { await chmod(join(r1HistoryDir, 'ops.jsonl'), 0o444); }, async () => { await chmod(join(r1HistoryDir, 'ops.jsonl'), 0o644); }, r1StageDocs.ops);
+    } finally {
+      // Never leave the temp project dirs unwritable for teardown/report.
+      try { await chmod(join(r1HistoryDir, 'snapshots'), 0o755); } catch (_error) { /* best effort */ }
+      try { await chmod(r1HistoryDir, 0o755); } catch (_error) { /* best effort */ }
+      try { await chmod(join(r1HistoryDir, 'ops.jsonl'), 0o644); } catch (_error) { /* best effort */ }
+    }
+    r1Evidence.stageCases = r1StageCases;
+    r1Evidence.steps.push('history-stage-failures-degraded', 'history-stage-restored-recorded');
+    await invokeHttp(bridge, 'close', { projectId: r1ProjectId });
+    console.log('[phase] R1 history-settlement regressions done');
+
     console.log('[phase] all assertions done; building evidence');
 
     checks.check('every recorded acceptance check passed', true, { checks: checks.checks.length });
@@ -895,6 +1031,7 @@ async function main() {
       failures: evidence.failureMatrix.length,
       composeRounds: evidence.composeRounds.map((round) => ({ round: round.round, genre: round.genre, revision: round.revision, width: round.width, height: round.height, duration: round.duration })),
       chrome: evidence.chrome === null ? null : evidence.chrome.snapshots.map((entry) => ({ label: entry.label, ready: entry.ready, seekTime: entry.seek && entry.seek.time, stateAfterPlay: entry.stateAfterPlay && entry.stateAfterPlay.time, assertions: entry.assertions })),
+      r1: evidence.r1 === null ? null : evidence.r1.degraded,
       engineCommit: evidence.engineCommit,
       rootCommit: evidence.rootCommit,
     }, null, 2));

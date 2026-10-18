@@ -139,6 +139,36 @@
         if (injection.remaining > 0 && injection.method === method) {
           injection.remaining -= 1;
           injection.hits += 1;
+          if (injection.kind === 'fake-snapshot') {
+            // R2 candidate-runtime-error probe: answer the snapshot request with a
+            // synthetic SUCCESS whose entry document loads but whose fixed runtime
+            // reports an error (the harness server serves that entry). This keeps
+            // the failure at the runtime boundary, not at the transport boundary.
+            entry.injected = 'FAKE_SNAPSHOT';
+            entry.kind = 'fake-snapshot';
+            fetchLog.push(entry);
+            var requestedRevision = params !== null && typeof params === 'object' && typeof params.revision === 'string' ? params.revision : null;
+            var requestedProject = params !== null && typeof params === 'object' && typeof params.projectId === 'string' ? params.projectId : null;
+            return Promise.resolve({
+              ok: true,
+              status: 200,
+              json: function json() {
+                return Promise.resolve({
+                  ok: true,
+                  result: {
+                    projectId: requestedProject,
+                    snapshotId: 'f'.repeat(32),
+                    revision: requestedRevision,
+                    entry: 'index.html',
+                    entryUrl: injection.entryUrl,
+                    routeBase: '/api/dsh-video/preview',
+                    files: [{ path: 'index.html', bytes: 1, sha256: '0'.repeat(64) }],
+                  },
+                });
+              },
+              text: function text() { return Promise.resolve(''); },
+            });
+          }
           entry.injected = injection.code;
           entry.kind = 'host-shaped-error';
           fetchLog.push(entry);
@@ -248,14 +278,53 @@
     return { text: (node.textContent || '').trim(), rect: rectOf(node), disabled: node.disabled === true };
   }
 
+  function frameSnapshotId(src) {
+    var match = typeof src === 'string' ? /\/preview\/([a-f0-9]{32})\//.exec(src) : null;
+    return match !== null ? match[1] : null;
+  }
+
+  function describeFrame(node) {
+    if (node === null || node === undefined) return null;
+    var style = window.getComputedStyle(node);
+    var rect = rectOf(node);
+    return {
+      className: typeof node.className === 'string' ? node.className : '',
+      src: node.getAttribute('src'),
+      snapshotId: frameSnapshotId(node.getAttribute('src')),
+      visibility: style.visibility,
+      display: style.display,
+      pointerEvents: style.pointerEvents,
+      ariaHidden: node.getAttribute('aria-hidden'),
+      rect,
+      visible: style.visibility !== 'hidden' && style.display !== 'none' && rect !== null && rect.width > 0 && rect.height > 0,
+      loadedAt: node.__harnessLoadedAt || null,
+    };
+  }
+
+  /** Active = the visible last-ready frame; candidate = hidden preloading frame. */
+  function classifyFrames() {
+    var nodes = Array.prototype.slice.call(document.querySelectorAll('.dv-stage-frame, .dv-stage-frame-candidate'));
+    var active = [];
+    var candidate = [];
+    for (var index = 0; index < nodes.length; index += 1) {
+      var node = nodes[index];
+      var isCandidate = typeof node.className === 'string' && node.className.split(/\s+/).indexOf('dv-stage-frame-candidate') !== -1;
+      (isCandidate ? candidate : active).push(describeFrame(node));
+    }
+    return { active, candidate };
+  }
+
   function readState() {
     var rootNode = document.querySelector('.dv-root');
     var shell = document.querySelector('.dv-canvas-shell');
-    var iframe = document.querySelector('.dv-stage-frame');
-    var iframeSrc = iframe !== null ? iframe.getAttribute('src') : null;
-    var snapshotMatch = typeof iframeSrc === 'string' ? /\/preview\/([a-f0-9]{32})\//.exec(iframeSrc) : null;
+    var frames = classifyFrames();
+    var iframe = frames.active.length > 0 ? frames.active[0] : null;
+    var iframeSrc = iframe !== null ? iframe.src : null;
+    var snapshotMatch = iframe !== null && iframe.snapshotId !== null ? [null, iframe.snapshotId] : null;
     var errorNodes = Array.prototype.slice.call(document.querySelectorAll('[role="alert"], .dv-error, .dv-canvas-status[role="alert"]'));
-    var retryNodes = Array.prototype.slice.call(document.querySelectorAll('.dv-canvas-status button, button.dv-canvas-retry, .dv-canvas-bar button'));
+    var retryNodes = Array.prototype.slice.call(document.querySelectorAll('.dv-canvas-status button, button.dv-canvas-retry, .dv-canvas-bar button, .dv-preview-notice button'));
+    var noticeNodes = Array.prototype.slice.call(document.querySelectorAll('.dv-preview-notice'));
+    var statusNodes = Array.prototype.slice.call(document.querySelectorAll('.dv-canvas-status[role="alert"]'));
     return {
       at: Date.now(),
       mountedAt: mountedAt,
@@ -265,10 +334,30 @@
       sessionActive: rootNode !== null ? rootNode.getAttribute('data-session-active') : null,
       phase: shell !== null ? shell.getAttribute('data-canvas-phase') : null,
       revision: shell !== null ? shell.getAttribute('data-canvas-revision') : null,
+      targetRevision: shell !== null ? shell.getAttribute('data-canvas-target-revision') : null,
+      previewOnly: shell !== null ? shell.getAttribute('data-preview-only') : null,
       shellPresent: shell !== null,
       snapshotId: snapshotMatch !== null ? snapshotMatch[1] : null,
       iframeSrc: iframeSrc,
-      iframe: iframe === null ? null : { rect: rectOf(iframe), clientWidth: iframe.clientWidth, clientHeight: iframe.clientHeight },
+      activeFrames: frames.active,
+      candidateFrames: frames.candidate,
+      activeFrameCount: frames.active.length,
+      candidateFrameCount: frames.candidate.length,
+      activeVisibleFrames: frames.active.filter(function visible(frame) { return frame.visible === true; }).length,
+      notices: noticeNodes.map(function describeNotice(node) {
+        var button = node.querySelector('button');
+        return { text: (node.textContent || '').trim().slice(0, 300), role: node.getAttribute('role'), rect: rectOf(node), retry: button === null ? null : { text: (button.textContent || '').trim(), rect: rectOf(button) } };
+      }),
+      noticeVisible: noticeNodes.length > 0,
+      noticeTexts: noticeNodes.map(function text(node) { return (node.textContent || '').trim().slice(0, 300); }),
+      fullErrorTexts: statusNodes.map(function text(node) { return (node.textContent || '').trim().slice(0, 300); }),
+      fullErrorVisible: statusNodes.length > 0,
+      canvasStatusRetry: (function retryRect() {
+        if (statusNodes.length === 0) return null;
+        var button = statusNodes[0].querySelector('button');
+        return button === null ? null : { text: (button.textContent || '').trim(), rect: rectOf(button) };
+      })(),
+      iframe: iframe === null ? null : { rect: iframe.rect, clientWidth: iframe.rect === null ? 0 : iframe.rect.width, clientHeight: iframe.rect === null ? 0 : iframe.rect.height },
       stage: querySelectorRect('.dv-stage'),
       wrap: querySelectorRect('.dv-canvas-wrap'),
       canvasBar: querySelectorRect('.dv-canvas-bar'),
@@ -298,13 +387,32 @@
       last = readState();
       var phaseOk = expected.phase === undefined || last.phase === expected.phase;
       var revisionOk = expected.revision === undefined || last.revision === expected.revision;
+      var targetOk = expected.targetRevision === undefined || last.targetRevision === expected.targetRevision;
       var snapshotDifferent = expected.snapshotDifferentFrom === undefined || (last.snapshotId !== null && last.snapshotId !== expected.snapshotDifferentFrom);
-      if (phaseOk && revisionOk && snapshotDifferent) {
+      var noticeOk = expected.notice === undefined || last.noticeVisible === expected.notice;
+      var minActive = expected.minActiveFrames === undefined || last.activeFrameCount >= expected.minActiveFrames;
+      var maxCandidate = expected.maxCandidateFrames === undefined || last.candidateFrameCount <= expected.maxCandidateFrames;
+      var fullErrorOk = expected.fullError === undefined || last.fullErrorVisible === expected.fullError;
+      if (phaseOk && revisionOk && targetOk && snapshotDifferent && noticeOk && minActive && maxCandidate && fullErrorOk) {
         return { ok: true, elapsedMs: Date.now() - started, state: last };
       }
       await sleep(50);
     }
     return { ok: false, elapsedMs: Date.now() - started, state: last || readState(), expectation: expected };
+  }
+
+  /** Wait for the compact retention notice + retry affordance. */
+  async function waitNotice(timeoutMs) {
+    var started = Date.now();
+    var last = null;
+    while (Date.now() - started < (timeoutMs || 20000)) {
+      last = readState();
+      if (last.noticeVisible === true && last.notices.length > 0 && last.notices[0].retry !== null) {
+        return { ok: true, elapsedMs: Date.now() - started, state: last };
+      }
+      await sleep(50);
+    }
+    return { ok: false, elapsedMs: Date.now() - started, state: last || readState() };
   }
 
   async function waitError(timeoutMs) {
@@ -348,7 +456,7 @@
   }
   if (typeof MutationObserver === 'function') {
     var frameObserver = new MutationObserver(function observeFrames() {
-      var frames = document.querySelectorAll('.dv-stage-frame');
+      var frames = document.querySelectorAll('.dv-stage-frame, .dv-stage-frame-candidate');
       for (var index = 0; index < frames.length; index += 1) bindFrameLoad(frames[index]);
     });
     frameObserver.observe(document.documentElement, { childList: true, subtree: true });
@@ -362,17 +470,23 @@
     var started = Date.now();
     var deadline = started + (timeoutMs || 8000);
     while (Date.now() < deadline) {
-      var frames = document.querySelectorAll('.dv-stage-frame');
-      var frame = frames.length > 0 ? frames[frames.length - 1] : null;
-      if (frame !== null) {
-        bindFrameLoad(frame);
-        if (frame.__harnessLoadedAt !== undefined && frame.__harnessLoadedAt >= since) {
-          return { ok: true, elapsedMs: Date.now() - started, loadedAt: frame.__harnessLoadedAt, loadCount: frameLoadCount };
+      var state = readState();
+      var active = state.activeFrames;
+      var frameNode = null;
+      if (active.length > 0) {
+        var nodes = document.querySelectorAll('.dv-stage-frame');
+        for (var index = 0; index < nodes.length; index += 1) {
+          var candidateClass = typeof nodes[index].className === 'string' && nodes[index].className.split(/\s+/).indexOf('dv-stage-frame-candidate') !== -1;
+          if (!candidateClass) frameNode = nodes[index];
         }
+        if (frameNode !== null) bindFrameLoad(frameNode);
+      }
+      if (frameNode !== null && frameNode.__harnessLoadedAt !== undefined && frameNode.__harnessLoadedAt >= since) {
+        return { ok: true, elapsedMs: Date.now() - started, loadedAt: frameNode.__harnessLoadedAt, loadCount: frameLoadCount, state };
       }
       await sleep(40);
     }
-    return { ok: false, elapsedMs: Date.now() - started, loadCount: frameLoadCount };
+    return { ok: false, elapsedMs: Date.now() - started, loadCount: frameLoadCount, state: readState() };
   }
 
   function seekTo(value) {
@@ -387,6 +501,8 @@
   function inject(spec) {
     injections.push({
       method: spec.method,
+      kind: typeof spec.kind === 'string' ? spec.kind : 'host-shaped-error',
+      entryUrl: typeof spec.entryUrl === 'string' ? spec.entryUrl : null,
       code: spec.code || 'E_PREVIEW_NOT_FOUND',
       message: spec.message || 'Injected preview failure',
       uncertain: spec.uncertain === true,
@@ -396,9 +512,13 @@
     return injections.length - 1;
   }
 
+  function clearInjections() {
+    injections = [];
+  }
+
   function injectionState() {
     return injections.map(function describe(item) {
-      return { method: item.method, code: item.code, remaining: item.remaining, hits: item.hits };
+      return { method: item.method, kind: item.kind, code: item.code, entryUrl: item.entryUrl, remaining: item.remaining, hits: item.hits };
     });
   }
 
@@ -472,7 +592,9 @@
     if (root !== null) root.unmount();
     mountedAt = Date.now();
     fetchLog = [];
-    injections = [];
+    // Injections are intentionally NOT cleared here: the initial-failure probe
+    // arms one before the remount. Tests that need a clean slate call
+    // clearInjections() explicitly.
     pageErrors = [];
     eventLog = [];
     retained = [];
@@ -518,9 +640,11 @@
       waitError: waitError,
       waitTime: waitTime,
       waitFrameLoad: waitFrameLoad,
+      waitNotice: waitNotice,
       seekTo: seekTo,
       rect: querySelectorRect,
       inject: inject,
+      clearInjections: clearInjections,
       injectionState: injectionState,
       mark: mark,
       requestsSince: requestsSince,
