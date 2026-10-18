@@ -50,8 +50,8 @@ v1 固定 index.html、30fps、H.264；frame 精确时间 PNG。项目根、入�
 |---|---|---|
 | `doctor` | {} | 启动时实际 Node/SDK/CLI/GSAP、Chrome、FFmpeg/ffprobe 版本；缺工具显示 unavailable |
 | `open` | projectId | 已注册工程的 inspect；未知映射拒绝，无 path/URL 参数 |
-| `inspect` | projectId | revision、尺寸、时长、stableId、文本、原生 timing、capabilities、路径/字节/hash 清单 |
-| `edit` | projectId, expectedRevision, operationId, ops | 保存/读回成功后的 revision；ops 限 text 与 timing，最多32项 |
+| `inspect` | projectId | revision、尺寸、时长、stableId、文本、原生 timing、规范化 layout/style、capabilities、路径/字节/hash 清单 |
+| `edit` | projectId, expectedRevision, operationId, ops | 保存/读回成功后的 revision；ops 支持 text/timing/layout/style，最多32项（P3-006-B） |
 | `frame` | projectId, revision, time, timeoutMs? | 立即返回异步 PNG job；time 位于 [0,duration−1/30] |
 | `render` | projectId, revision, timeoutMs? | 立即返回异步 MP4 job，queued；不等待渲染完成 |
 | `status` | jobId | 当前状态、阶段、进度、projectId/revision/jobId、工具版本；成功时 artifact |
@@ -83,7 +83,7 @@ operationId 以 projectId 为作用域：同一规范化请求（JSON 对象键�
 
 stdin EOF、shutdown、SIGINT/SIGTERM、未捕获异常路径均尝试排空并清理。EOF 和信号是真实行为测试；无法在 SIGKILL 或机器断电后执行用户态清理，P2 需父进程监督与重启恢复策略。采样式进程跟踪、路径 confinement 和独立进程均不是安全沙箱，不允许扩大到任意 Agent 生成代码。
 
-错误码：E_JSON/E_LINE_LIMIT/E_OUTPUT_LIMIT/E_VERSION/E_DUPLICATE_ID/E_METHOD/E_PARAMS/E_LIMIT、E_PROJECT_NOT_FOUND/E_PROJECT_NOT_OPEN/E_PROJECT_CLOSING/E_PROJECT/E_PATH/E_ASSET_MISSING、E_REVISION_CONFLICT/E_OPERATION_REUSED/E_UNSUPPORTED_EDIT/E_PERSIST、E_JOB_NOT_FOUND/E_SHUTDOWN/E_SNAPSHOT/E_SNAPSHOT_NOT_FOUND/E_RENDER/E_METADATA/E_CLEANUP/E_INTERNAL。状态 failed 的 error 有 stage；cancelled/timed_out 为明确终态。
+错误码：E_JSON/E_LINE_LIMIT/E_OUTPUT_LIMIT/E_VERSION/E_DUPLICATE_ID/E_METHOD/E_PARAMS/E_LIMIT/E_OVERRIDE_CONFLICT、E_PROJECT_NOT_FOUND/E_PROJECT_NOT_OPEN/E_PROJECT_CLOSING/E_PROJECT/E_PATH/E_ASSET_MISSING、E_REVISION_CONFLICT/E_OPERATION_REUSED/E_UNSUPPORTED_EDIT/E_PERSIST、E_JOB_NOT_FOUND/E_SHUTDOWN/E_SNAPSHOT/E_SNAPSHOT_NOT_FOUND/E_RENDER/E_METADATA/E_CLEANUP/E_INTERNAL。状态 failed 的 error 有 stage；cancelled/timed_out 为明确终态。
 
 ## 测试与证据
 
@@ -154,3 +154,29 @@ worker 新配置模式（管理工程，Host 不直接改这些文件）：
 - TTL：默认 10 分钟，上限 30 分钟，最小 100 ms（测试/短会话）；`ttlMs` 必须是整数。到期后由 worker 清理，`preview.release` 对未知或过期 snapshotId 返回 `E_SNAPSHOT_NOT_FOUND`（重复 release 不会重复删除，返回同一错误码）。
 - 生命周期：`close` 清理该工程全部快照；`shutdown`/stdin EOF/SIGINT/SIGTERM/未捕获异常路径清理全部快照；worker 启动时丢弃上一进程遗留的整个 `previews/` 私有目录。清理失败不发布半成品、只记固定阶段诊断（stderr 不写路径或内容）。
 - 未来 Host 是唯一读取者；本 worker 没有预览内容读取或执行新方法，快照也不是安全沙箱。
+
+## P3-006-B：布局/样式持久化（0.3.0）
+
+两包升 **0.3.0**；JSONL 协议仍为 v1，原有方法/结果与 P2/P3-003/P3-004 语义保持。统一 `edit.ops` 新增两类受控操作，无需新方法：
+
+```json
+{"type":"layout","target":"scene-1-title","unit":"composition-px","box":{"left":120,"top":240}}
+{"type":"layout","target":"scene-1-shot","unit":"composition-px","box":{"width":600,"height":320}}
+{"type":"style","target":"scene-1-title","styles":{"color":"#ff0000","fontSize":48,"fontWeight":600,"textAlign":"center"}}
+```
+
+### 取值与能力
+
+- `layout.box` 是非空 patch，仅 `left/top/width/height`，有限数字；单位固定 `composition-px`。以 Scene 静态布局基座（全幅 composition CSS px）为准，**不是**动画帧 `getBoundingClientRect`，不写 `transform`。数字按 1/1000 px 规范化；`left/top ≥ 0`，`width/height ≥ 1px` 且不超过画布；已知宽高时校验 `left+width`/`top+height` 不越界（auto 尺寸不伪造）。
+- `style.styles` 是非空受控 patch：`color`（#RRGGBB，存小写）、`fontSize`（8–256，px）、`fontWeight`（100–900 的 100 整数倍）、`textAlign`（left/center/right）。拒绝未知键、任意 CSS 字符串、url/expression/脚本、transform/animation/zIndex；字体族/旋转/多选/层级暂不支持。
+- 能力按受控模板叶子判定：`sceneId-title/subtitle/badge/rule/logo/shot` 且 tag 匹配、父节点必须是该 Scene section。`layout` 覆盖文字/图片/线；`style` 仅文字类（title/subtitle/badge）。root/section/未知/嵌套元素返回 `E_UNSUPPORTED_EDIT`；旧 P2 fixture 无 layout/style 能力，旧 text/timing 路径不变。
+- `inspect` 的元素额外返回 `layout` 与 `style`（不支持为 `null`；auto 尺寸/未设置属性为 `null`，不伪装计算矩形），`capabilities` 追加 `layout`/`style`；`scenes[].elements` 同步。client 保持通透，无新方法。
+- layout/style 与 text/timing 可同一原子批次；整批先校验后一次写入，任一非法不写盘。operationId 幂等、expectedRevision 冲突、单写者队列不变。
+
+### 单一权威与重生成
+
+- **工程 HTML 的 inline style 是唯一真相**：不引入第二份覆盖数据库或隐藏元数据；revision 覆盖 HTML 字节，history 快照、preview snapshot、frame/render 均直接反映写入结果。
+- `scene.create/update/reorder/remove` 与 `project.revise` 重生成文档时，会把当前文档中相对模板默认值的**人工 layout/style 差量**移植到保留 stableId 上（不丢人工位置/字号）；重排保持覆盖归属 stableId。
+- `scene.update` 若模板删除了带人工 layout/style 的对象 → `E_OVERRIDE_CONFLICT`（不静默恢复模板默认）；`scene.remove` 是显式整 Scene 删除，允许执行并在 `changeSummary.droppedOverrides` 报告影响。
+- `project.revise` 三方合并按 **text / timing.start / timing.duration / attributes / class / layout.* / style.* / 其余 inline style** 逐字段比较：人工改位置/样式而 AI 只改文案时可合并、两者都保留；相同字段两边改不同 → `written:false + conflicts[{field,human,ai,humanValue,aiValue}]`；AI 候选删除人工改过或 base 已有人工覆盖的对象 → `AI_DELETE_HUMAN_MODIFY`。其它 Scene 保持逐字节不变。
+- layout/style 不修改 GSAP timeline：inline left/top/宽高是静态基座，动画 `y/scaleX/opacity` 继续相对运行；场景时序重生成仍按原规则改 timeline。不支持清除覆盖（无 null 语义）、删除单个元素、字体族/旋转/层级；`scene.*` 重生成仍会重置元素级 timing（沿用既有行为，本轮不扩展）。

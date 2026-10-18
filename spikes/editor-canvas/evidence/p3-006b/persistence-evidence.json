@@ -1,0 +1,240 @@
+{
+  "kind": "p3-006b-persistence-evidence",
+  "startedAt": "2026-10-18T03:23:44.966Z",
+  "independence": "real worker/client + Chrome frames + FFmpeg render; not a mocked canvas",
+  "engine": {
+    "worker": "dsh-video-engine-worker@0.3.0",
+    "client": "0.3.0",
+    "versions": {
+      "node": "v24.14.0",
+      "platform": "darwin",
+      "hyperframes": "0.8.167",
+      "sdk": "0.8.167",
+      "gsap": "3.15.0",
+      "fps": 30,
+      "browser": "Google Chrome 155.0.8059.84",
+      "ffmpeg": "ffmpeg version 8.0.1 Copyright (c) 2000-2025 the FFmpeg developers",
+      "ffprobe": "ffprobe version 8.0.1 Copyright (c) 2007-2025 the FFmpeg developers",
+      "templates": [
+        "product-launch-v1"
+      ]
+    }
+  },
+  "frames": {
+    "before": {
+      "0.5": {
+        "sha256": "c4aefc76a174706d7fa34b520e280e70d2bca254c6e1394ef1e63a2080a5836a",
+        "width": 1280,
+        "height": 720
+      },
+      "1.5": {
+        "sha256": "94d1811d666f7fc3e16f95f4b0ad681e8881758d30505fe2257908aa324c1e9a",
+        "width": 1280,
+        "height": 720
+      }
+    },
+    "after": {
+      "0.5": {
+        "sha256": "5f96d5a7dcd4fd8591522da5de3c67bab220762e89578225107290c0228855c0",
+        "width": 1280,
+        "height": 720
+      },
+      "1.5": {
+        "sha256": "2fe082f1f3a0e3f07c4757ffbaeb41f183c283b8b4b9a169f2529a73ad95aba5",
+        "width": 1280,
+        "height": 720
+      }
+    },
+    "comparison": {
+      "0.5": {
+        "diff": {
+          "changedPct": 0.11904947916666667,
+          "mae": 24.773433159722224,
+          "bbox": {
+            "minX": 90,
+            "minY": 88,
+            "maxX": 1169,
+            "maxY": 539,
+            "width": 1080,
+            "height": 452
+          }
+        },
+        "redTitleBBox": {
+          "minX": 403,
+          "minY": 208,
+          "maxX": 971,
+          "maxY": 296,
+          "width": 569,
+          "height": 89,
+          "count": 18686
+        }
+      },
+      "1.5": {
+        "diff": {
+          "changedPct": 0.11912000868055556,
+          "mae": 25.384097222222223,
+          "bbox": {
+            "minX": 90,
+            "minY": 88,
+            "maxX": 1169,
+            "maxY": 539,
+            "width": 1080,
+            "height": 452
+          }
+        },
+        "redTitleBBox": {
+          "minX": 403,
+          "minY": 205,
+          "maxX": 971,
+          "maxY": 293,
+          "width": 569,
+          "height": 89,
+          "count": 18980
+        }
+      }
+    },
+    "animationTransform": {
+      "baseXStableAcrossTimes": [
+        403,
+        403
+      ],
+      "earlyMinY": 208,
+      "settledMinY": 205,
+      "note": "static left is stable; the GSAP intro y offset remains a relative animation"
+    }
+  },
+  "render": {
+    "mp4Sha256": "0da1be28f71c162693b510c65907d04e980768b61a5817a97ecdde0ee7aa7053",
+    "mp4Bytes": 211685,
+    "ffprobe": {
+      "codec": "h264",
+      "width": 1280,
+      "height": 720,
+      "fps": "30/1",
+      "frames": 330,
+      "duration": 11
+    },
+    "renderedFrame": {
+      "file": "rendered-1.5s.png",
+      "redTitleBBox": {
+        "minX": 404,
+        "minY": 204,
+        "maxX": 971,
+        "maxY": 293,
+        "width": 568,
+        "height": 90,
+        "count": 18888
+      },
+      "workerFrameRedTitleBBox": {
+        "minX": 403,
+        "minY": 205,
+        "maxX": 971,
+        "maxY": 293,
+        "width": 569,
+        "height": 89,
+        "count": 18980
+      }
+    }
+  },
+  "sceneRegeneration": {
+    "revision": "361d816ad559264e5b58f6f9b4053167f27403f453760f1109c184d0a0b7e64c",
+    "title": {
+      "text": "改名后仍然保留布局",
+      "layout": {
+        "left": 400,
+        "top": 196,
+        "width": 700,
+        "height": null
+      },
+      "style": {
+        "color": "#ff0000",
+        "fontSize": 96,
+        "fontWeight": 700,
+        "textAlign": "left"
+      }
+    },
+    "logo": {
+      "layout": {
+        "left": 900,
+        "top": 300,
+        "width": 240,
+        "height": 240
+      }
+    },
+    "preserved": true
+  },
+  "merge": {
+    "written": true,
+    "text": "AI 续改文案",
+    "layout": {
+      "left": 400,
+      "top": 260,
+      "width": 700,
+      "height": null
+    },
+    "style": {
+      "color": "#ff0000",
+      "fontSize": 104,
+      "fontWeight": 700,
+      "textAlign": "left"
+    },
+    "stepRevisions": {
+      "base": "361d816ad559264e5b58f6f9b4053167f27403f453760f1109c184d0a0b7e64c",
+      "humanLayout": "3aa58a2a4b1e7372e5644a078ffb508e037ef16021fd5b4664d0a8f55725de32",
+      "merged": "2880fb4417cc8549fbb55d8d5f0b185a8f8db4a9c6c54bad34b5dc1b431e1a25"
+    }
+  },
+  "history": {
+    "undoRevision": "3aa58a2a4b1e7372e5644a078ffb508e037ef16021fd5b4664d0a8f55725de32",
+    "undoTitle": {
+      "text": "改名后仍然保留布局",
+      "layout": {
+        "left": 400,
+        "top": 260,
+        "width": 700,
+        "height": null
+      }
+    },
+    "redoRevision": "2880fb4417cc8549fbb55d8d5f0b185a8f8db4a9c6c54bad34b5dc1b431e1a25",
+    "redoTitle": {
+      "text": "AI 续改文案",
+      "layout": {
+        "left": 400,
+        "top": 260,
+        "width": 700,
+        "height": null
+      }
+    },
+    "undoEntryRevision": "3aa58a2a4b1e7372e5644a078ffb508e037ef16021fd5b4664d0a8f55725de32",
+    "redoEntryRevision": "2880fb4417cc8549fbb55d8d5f0b185a8f8db4a9c6c54bad34b5dc1b431e1a25"
+  },
+  "failures": [],
+  "inspectAfterEdit": {
+    "revision": "ab4e79bcaa7ff8d35502ad2324d467f9aa69f809196c8c7820c5806e85821024",
+    "title": {
+      "text": "人工布局标题",
+      "layout": {
+        "left": 400,
+        "top": 196,
+        "width": 700,
+        "height": null
+      },
+      "style": {
+        "color": "#ff0000",
+        "fontSize": 96,
+        "fontWeight": 700,
+        "textAlign": "left"
+      }
+    },
+    "logo": {
+      "layout": {
+        "left": 900,
+        "top": 300,
+        "width": 240,
+        "height": 240
+      }
+    }
+  },
+  "finishedAt": "2026-10-18T03:24:21.378Z",
+  "evidenceFile": "evidence/p3-006b/persistence-evidence.json"
+}

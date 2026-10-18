@@ -47,6 +47,21 @@ import {
 } from "./history.mjs";
 import { mergeSceneDocuments } from "./merge.mjs";
 import { DEFAULT_PREVIEW_TTL_MS, Previews } from "./previews.mjs";
+import {
+  LAYOUT_PROPS,
+  STYLE_PROPS,
+  collectManualOverrides,
+  formatNumber,
+  layoutToSdkStyles,
+  managedValues,
+  mergedLayout,
+  overrideSummary,
+  styleToSdkStyles,
+  templateElementInfo,
+  validateLayoutBounds,
+  validateLayoutPatch,
+  validateStylePatch,
+} from "./layout.mjs";
 
 const packageRoot = fileURLToPath(new URL("../", import.meta.url));
 export const sha = (value) => createHash("sha256").update(value).digest("hex");
@@ -71,6 +86,101 @@ function localName(p) {
     );
   return p;
 }
+function managedInfo(element) {
+  return templateElementInfo({
+    stableId: element.stableId,
+    tag: element.tag,
+    parentId: element.parentId,
+    sceneId: element.sceneId,
+  });
+}
+
+/** Managed layout/style + merged capability list for a parsed template leaf. */
+function managedView(element) {
+  const info = managedInfo(element);
+  const managed = managedValues(element.inlineStyles, info);
+  return { info, layout: managed.layout, style: managed.style };
+}
+
+function withManagedCapabilities(baseCapabilities, info) {
+  if (!info) return baseCapabilities;
+  const capabilities = [...baseCapabilities];
+  for (const capability of info.capabilities)
+    if (!capabilities.includes(capability)) capabilities.push(capability);
+  return capabilities;
+}
+
+/** The same document regenerated from its parsed scene model (template defaults). */
+function templateDefaultParsed(parsed) {
+  return parseDocument(
+    buildDocumentHtml({
+      width: parsed.width,
+      height: parsed.height,
+      scenes: parsed.scenes,
+    }),
+  );
+}
+
+/**
+ * Apply manual managed overrides to a freshly generated document by using the
+ * SDK's typed setStyle. Returns the new HTML plus the overrides that could not
+ * be transplanted (element dropped or lost layout/style capability).
+ */
+async function transplantManagedOverrides({ currentParsed, nextHtml }) {
+  const overrides = collectManualOverrides(
+    currentParsed,
+    templateDefaultParsed(currentParsed),
+  );
+  if (!overrides.size) return { html: nextHtml, applied: 0, dropped: [] };
+  const nextParsed = parseDocument(nextHtml);
+  const nextById = new Map(nextParsed.elements.map((element) => [element.stableId, element]));
+  const updates = new Map();
+  const dropped = [];
+  for (const [stableId, entry] of overrides) {
+    const nextElement = nextById.get(stableId);
+    const nextInfo = nextElement ? managedInfo(nextElement) : null;
+    const styles = {
+      ...(nextInfo?.layout ? layoutToSdkStyles(entry.layout) : {}),
+      ...(nextInfo?.style ? styleToSdkStyles(entry.style) : {}),
+    };
+    if (!Object.keys(styles).length) {
+      dropped.push({
+        stableId,
+        sceneId: entry.info.sceneId,
+        layout: Object.keys(entry.layout),
+        style: Object.keys(entry.style),
+      });
+      continue;
+    }
+    updates.set(stableId, styles);
+  }
+  if (!updates.size) return { html: nextHtml, applied: 0, dropped };
+  const comp = await openComposition(nextHtml);
+  try {
+    comp.batch(() => {
+      for (const [stableId, styles] of updates) comp.setStyle(stableId, styles);
+    });
+    const html = comp.serialize();
+    return { html, applied: updates.size, dropped };
+  } finally {
+    comp.dispose();
+  }
+}
+
+function overrideConflict(entry, reason = "AI_DELETE_HUMAN_MODIFY") {
+  return {
+    sceneId: entry.sceneId,
+    stableId: entry.stableId,
+    reason,
+    field: entry.layout.length
+      ? `layout.${entry.layout.join("|")}`
+      : `style.${entry.style.join("|")}`,
+    human: { present: true, layout: entry.layout, style: entry.style },
+    ai: { present: false },
+    hint: "AI/scene rewrite would drop human layout/style overrides",
+  };
+}
+
 function capabilities(e) {
   const caps = [];
   if (
@@ -245,38 +355,49 @@ export class Projects {
       } catch (error) {
         if (error.code !== "E_TEMPLATE") throw error;
       }
-      const sceneByStableId = new Map(
-        (parsed?.elements ?? []).map((element) => [
-          element.stableId,
-          element.sceneId,
-        ]),
+      const parsedByStableId = new Map(
+        (parsed?.elements ?? []).map((element) => [element.stableId, element]),
       );
-      const elements = comp.getElements().map((e) => ({
-        stableId: e.scopedId,
-        sceneId: sceneByStableId.get(e.scopedId) ?? null,
-        text: e.text,
-        timing: {
-          start: e.start,
-          duration:
-            e.attributes["data-duration"] !== undefined
-              ? Number(e.attributes["data-duration"])
-              : e.duration,
-        },
-        capabilities: capabilities(e),
-      }));
+      const elements = comp.getElements().map((e) => {
+        const parsedElement = parsedByStableId.get(e.scopedId);
+        const managed = parsedElement ? managedView(parsedElement) : null;
+        return {
+          stableId: e.scopedId,
+          sceneId: parsedElement?.sceneId ?? null,
+          text: e.text,
+          timing: {
+            start: e.start,
+            duration:
+              e.attributes["data-duration"] !== undefined
+                ? Number(e.attributes["data-duration"])
+                : e.duration,
+          },
+          layout: managed?.layout ?? null,
+          style: managed?.style ?? null,
+          capabilities: withManagedCapabilities(capabilities(e), managed?.info),
+        };
+      });
       const doc = buildDocument(comp.serialize());
       const scenes = parsed ? sceneSummaries(parsed) : [];
       for (const scene of scenes) {
         scene.elements = parsed.elements
           .filter((element) => element.sceneId === scene.sceneId)
-          .map((element) => ({
-            stableId: element.stableId,
-            sceneId: scene.sceneId,
-            tag: element.tag,
-            text: element.text,
-            timing: element.timing,
-            capabilities: element.capabilities,
-          }));
+          .map((element) => {
+            const managed = managedView(element);
+            return {
+              stableId: element.stableId,
+              sceneId: scene.sceneId,
+              tag: element.tag,
+              text: element.text,
+              timing: element.timing,
+              layout: managed.layout,
+              style: managed.style,
+              capabilities: withManagedCapabilities(
+                element.capabilities,
+                managed.info,
+              ),
+            };
+          });
       }
       return {
         projectId: id,
@@ -320,38 +441,105 @@ export class Projects {
       const current = await this.read(id);
       if (current.revision !== p.expectedRevision)
         fail("E_REVISION_CONFLICT", "Project changed before edit", "edit");
-      const comp = await openComposition(
-        current.files.get(current.manifest.entry).toString(),
-        {
-          persist: createFsAdapter({ root: current.dir }),
-          persistPath: current.manifest.entry,
-        },
+      const html = current.files.get(current.manifest.entry).toString();
+      const layoutStyleOps = p.ops.filter(
+        (op) => op.type === "layout" || op.type === "style",
       );
+      let parsed = null;
+      let parsedById = null;
+      if (layoutStyleOps.length) {
+        try {
+          parsed = parseDocument(html);
+        } catch {
+          fail(
+            "E_UNSUPPORTED_EDIT",
+            "layout/style edits require the controlled template",
+            "edit",
+          );
+        }
+        parsedById = new Map(
+          parsed.elements.map((element) => [element.stableId, element]),
+        );
+      }
+      const comp = await openComposition(html, {
+        persist: createFsAdapter({ root: current.dir }),
+        persistPath: current.manifest.entry,
+      });
       const errors = [];
       comp.on("persist:error", (e) => errors.push(e));
       try {
         const duration = buildDocument(comp.serialize()).compositionDuration;
         const timing = new Map();
+        const layoutPatches = new Map();
+        const stylePatches = new Map();
+        const counts = { text: 0, timing: 0, layout: 0, style: 0 };
         for (const op of p.ops) {
           const el = comp.getElement(op.target);
-          if (!el || !capabilities(el).includes(op.type))
+          if (!el)
             fail(
               "E_UNSUPPORTED_EDIT",
-              "Element does not support this edit",
+              "Target element does not exist",
               "edit",
             );
-          if (op.type === "timing") {
-            const current = timing.get(op.target) || {
-              start: el.start,
-              duration: Number(el.attributes["data-duration"]),
-            };
-            const next = {
-              start: op.start ?? current.start,
-              duration: op.duration ?? current.duration,
-            };
-            if (next.start + next.duration > duration)
-              fail("E_PARAMS", "Timing extends beyond composition", "edit");
-            timing.set(op.target, next);
+          if (op.type === "text" || op.type === "timing") {
+            if (!capabilities(el).includes(op.type))
+              fail(
+                "E_UNSUPPORTED_EDIT",
+                "Element does not support this edit",
+                "edit",
+              );
+            if (op.type === "timing") {
+              const currentTiming = timing.get(op.target) || {
+                start: el.start,
+                duration: Number(el.attributes["data-duration"]),
+              };
+              const next = {
+                start: op.start ?? currentTiming.start,
+                duration: op.duration ?? currentTiming.duration,
+              };
+              if (next.start + next.duration > duration)
+                fail("E_PARAMS", "Timing extends beyond composition", "edit");
+              timing.set(op.target, next);
+            }
+            counts[op.type] += 1;
+            continue;
+          }
+          const parsedElement = parsed?.elements
+            ? parsedById.get(op.target)
+            : undefined;
+          const info = parsedElement ? managedInfo(parsedElement) : null;
+          if (!info || !(op.type === "layout" ? info.layout : info.style))
+            fail(
+              "E_UNSUPPORTED_EDIT",
+              "Element does not support this layout/style edit",
+              "edit",
+            );
+          if (op.type === "layout") {
+            if (op.unit !== "composition-px")
+              fail("E_PARAMS", "layout.unit must be composition-px");
+            const patch = validateLayoutPatch(op.box);
+            const previous = layoutPatches.get(op.target) ?? {};
+            const currentManaged = managedValues(
+              parsedElement.inlineStyles,
+              info,
+            );
+            const effective = mergedLayout(
+              { ...(currentManaged.layout ?? {}), ...previous },
+              patch,
+            );
+            validateLayoutBounds(effective, {
+              width: parsed.width,
+              height: parsed.height,
+            });
+            layoutPatches.set(op.target, { ...previous, ...patch });
+            counts.layout += 1;
+          } else {
+            const patch = validateStylePatch(op.styles);
+            stylePatches.set(op.target, {
+              ...(stylePatches.get(op.target) ?? {}),
+              ...patch,
+            });
+            counts.style += 1;
           }
         }
         if ((await this.read(id)).revision !== current.revision)
@@ -363,12 +551,16 @@ export class Projects {
         comp.batch(() => {
           for (const op of p.ops) {
             if (op.type === "text") comp.setText(op.target, op.text);
-            else
+            else if (op.type === "timing")
               comp.setTiming(op.target, {
                 start: op.start,
                 duration: op.duration,
               });
           }
+          for (const [target, patch] of layoutPatches)
+            comp.setStyle(target, layoutToSdkStyles(patch));
+          for (const [target, patch] of stylePatches)
+            comp.setStyle(target, styleToSdkStyles(patch));
         });
         await comp.flush();
         if (errors.length)
@@ -381,14 +573,11 @@ export class Projects {
           fail("E_PERSIST", "Persisted HTML failed readback", "persist");
         const dir = this.handles.get(id);
         await recordWrite(dir, {
-          before: {
-            revision: current.revision,
-            html: current.files.get(current.manifest.entry).toString(),
-          },
+          before: { revision: current.revision, html },
           after: { revision: saved.revision, html: saved.files.get(saved.manifest.entry).toString() },
           actor: "human",
           kind: "edit",
-          summary: `typed edit (${p.ops.length} ops)`,
+          summary: `typed edit (${p.ops.length} ops: text ${counts.text}, timing ${counts.timing}, layout ${counts.layout}, style ${counts.style})`,
           operationId: p.operationId,
         });
         const result = {
@@ -655,11 +844,27 @@ export class Projects {
       const html = current.files.get(current.manifest.entry).toString();
       const parsed = parseDocument(html);
       const mutated = mutate(parsed);
-      const nextHtml = buildDocumentHtml({
+      const generatedHtml = buildDocumentHtml({
         width: parsed.width,
         height: parsed.height,
         scenes: mutated.scenes,
       });
+      // Regeneration must not silently discard manual element layout/style.
+      const transplant = await transplantManagedOverrides({
+        currentParsed: parsed,
+        nextHtml: generatedHtml,
+      });
+      const allowDrops = kind === "scene.remove";
+      if (!allowDrops && transplant.dropped.length)
+        fail(
+          "E_OVERRIDE_CONFLICT",
+          `Scene operation would drop manual layout/style overrides: ${transplant.dropped
+            .map((entry) => entry.stableId)
+            .slice(0, 8)
+            .join(",")}`,
+          kind,
+        );
+      const nextHtml = transplant.html;
       validateDocumentHtml(nextHtml, {
         expectedScenes: mutated.scenes.map((scene) => scene.sceneId),
       });
@@ -677,6 +882,7 @@ export class Projects {
         summary: mutated.summary ?? kind,
         operationId: p.operationId,
       });
+      const nextParsed = parseDocument(nextHtml);
       return this.rememberOperation(
         p.projectId,
         p.operationId,
@@ -684,8 +890,12 @@ export class Projects {
         {
           projectId: p.projectId,
           revision: after.revision,
-          scenes: sceneSummaries(parseDocument(nextHtml)),
-          changeSummary: mutated.changeSummary,
+          scenes: sceneSummaries(nextParsed),
+          changeSummary: {
+            ...mutated.changeSummary,
+            preservedOverrides: transplant.applied,
+            droppedOverrides: allowDrops ? transplant.dropped : [],
+          },
           historyCursor: history.historyCursor,
         },
       );
@@ -858,11 +1068,27 @@ export class Projects {
         const scenes = humanParsed.scenes.map((scene, index) =>
           index === humanIndex ? { ...spec, sceneId: p.sceneId } : scene,
         );
-        const nextHtml = buildDocumentHtml({
+        const generatedHtml = buildDocumentHtml({
           width: humanParsed.width,
           height: humanParsed.height,
           scenes,
         });
+        const transplant = await transplantManagedOverrides({
+          currentParsed: humanParsed,
+          nextHtml: generatedHtml,
+        });
+        if (transplant.dropped.length)
+          return this.rememberOperation(
+            p.projectId,
+            p.operationId,
+            signature,
+            this.conflictResult(
+              p.projectId,
+              current.revision,
+              transplant.dropped.map((entry) => overrideConflict(entry)),
+            ),
+          );
+        const nextHtml = transplant.html;
         validateDocumentHtml(nextHtml, {
           expectedScenes: scenes.map((scene) => scene.sceneId),
         });
@@ -922,19 +1148,31 @@ export class Projects {
       const aiScenes = baseParsed.scenes.map((scene, index) =>
         index === baseIndex ? { ...spec, sceneId: p.sceneId } : scene,
       );
-      const aiHtml = buildDocumentHtml({
+      const generatedAiHtml = buildDocumentHtml({
         width: baseParsed.width,
         height: baseParsed.height,
         scenes: aiScenes,
       });
+      const baseTransplant = await transplantManagedOverrides({
+        currentParsed: baseParsed,
+        nextHtml: generatedAiHtml,
+      });
+      const aiHtml = baseTransplant.html;
       validateDocumentHtml(aiHtml, {
         expectedScenes: aiScenes.map((scene) => scene.sceneId),
       });
+      const baseOverriddenIds = new Set(
+        collectManualOverrides(
+          baseParsed,
+          templateDefaultParsed(baseParsed),
+        ).keys(),
+      );
       const merged = mergeSceneDocuments({
         sceneId: p.sceneId,
         baseHtml,
         humanHtml,
         aiHtml,
+        baseOverriddenIds,
       });
       if (!merged.ok)
         return this.rememberOperation(
@@ -971,7 +1209,10 @@ export class Projects {
           revision: after.revision,
           written: true,
           conflicts: [],
-          changeSummary: merged.changeSummary,
+          changeSummary: {
+            ...merged.changeSummary,
+            preservedOverrides: baseTransplant.applied,
+          },
           scenes: sceneSummaries(parseDocument(merged.html)),
           historyCursor: history.historyCursor,
         },
@@ -1070,6 +1311,19 @@ export function validateEdit(p) {
         fail("E_PARAMS", "Timing change missing");
       if (op.start !== undefined) number(op.start, 0, 3600);
       if (op.duration !== undefined) number(op.duration, 1 / 240, 3600);
+    } else if (op?.type === "layout") {
+      keys(op, ["type", "target", "unit", "box"], [
+        "type",
+        "target",
+        "unit",
+        "box",
+      ]);
+      if (op.unit !== "composition-px")
+        fail("E_PARAMS", "layout.unit must be composition-px");
+      validateLayoutPatch(op.box);
+    } else if (op?.type === "style") {
+      keys(op, ["type", "target", "styles"], ["type", "target", "styles"]);
+      validateStylePatch(op.styles);
     } else fail("E_PARAMS", "Unsupported edit type");
     string(op.target, 256);
   }

@@ -351,10 +351,15 @@ export function parseDocument(html) {
   if (sections.length < 1 || sections.length > MAX_SCENES)
     fail("E_TEMPLATE", "Unsupported scene count");
   const elements = [];
-  const collect = (element, sceneId, depth) => {
-    for (const child of element.children) {
+  const collect = (parent, sceneId, depth) => {
+    for (const child of parent.children) {
+      elements.push({
+        element: child,
+        sceneId,
+        depth,
+        parentId: parent.scopedId,
+      });
       collect(child, sceneId, depth + 1);
-      elements.push({ element: child, sceneId, depth });
     }
   };
   const sceneTemplates = sections.map((section) => {
@@ -371,10 +376,14 @@ export function parseDocument(html) {
     fps: FPS,
     duration: document.compositionDuration,
     scenes: sceneTemplates,
-    elements: elements.map(({ element, sceneId }) => ({
+    elements: elements.map(({ element, sceneId, depth, parentId }) => ({
       stableId: element.scopedId,
       sceneId,
       tag: element.tag,
+      depth,
+      parentId,
+      inlineStyles: { ...element.inlineStyles },
+      attributes: { ...element.attributes },
       text: element.text,
       timing: {
         start: element.start,

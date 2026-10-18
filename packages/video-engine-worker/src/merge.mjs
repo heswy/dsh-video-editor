@@ -1,6 +1,15 @@
 import { buildDocument } from "@hyperframes/sdk";
 import { fail } from "./errors.mjs";
 import { validateDocumentHtml } from "./scenes.mjs";
+import {
+  LAYOUT_PROPS,
+  STYLE_PROPS,
+  formatNumber,
+  formatPx,
+  managedValues,
+  round3,
+  templateElementInfo,
+} from "./layout.mjs";
 
 function snapshot(element, parentId, depth, sceneId, order) {
   return {
@@ -57,14 +66,168 @@ function signature(element) {
   });
 }
 
+function infoOf(element) {
+  return templateElementInfo({
+    stableId: element.stableId,
+    tag: element.tag,
+    parentId: element.parentId,
+    sceneId: element.sceneId,
+  });
+}
+
 function summary(element) {
   if (!element) return { present: false };
+  const managed = managedValues(element.inlineStyles, infoOf(element));
   return {
     present: true,
     text: element.text,
-    timing: { start: element.start, duration: element.duration },
+    timing: {
+      start: attributeNumber(element.attributes["data-start"]),
+      duration: attributeNumber(element.attributes["data-duration"]),
+    },
     tag: element.tag,
+    layout: managed.layout,
+    style: managed.style,
   };
+}
+
+function attributeNumber(value) {
+  if (value === undefined || value === null || value === "") return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? round3(number) : String(value);
+}
+
+function sameValue(left, right) {
+  return JSON.stringify(left ?? null) === JSON.stringify(right ?? null);
+}
+
+/**
+ * Field-level view of one element. Text, timing, attributes, class names,
+ * managed layout/style properties and any remaining inline styles are separate
+ * fields so that "human moved the title while AI changed its text" merges
+ * instead of conflicting at object granularity.
+ */
+function fieldsOf(element) {
+  const info = infoOf(element);
+  const managed = managedValues(element.inlineStyles, info);
+  const fields = new Map();
+  fields.set("text", element.text ?? null);
+  fields.set("timing.start", attributeNumber(element.attributes["data-start"]));
+  fields.set("timing.duration", attributeNumber(element.attributes["data-duration"]));
+  fields.set("classNames", element.classNames.join(" "));
+  for (const [name, value] of Object.entries(element.attributes)) {
+    if (
+      ["id", "class", "style", "data-start", "data-duration"].includes(name) ||
+      name.startsWith("data-hf-")
+    )
+      continue;
+    fields.set(`attributes.${name}`, value ?? null);
+  }
+  if (info?.layout)
+    for (const key of LAYOUT_PROPS)
+      fields.set(`layout.${key}`, managed.layout[key] ?? null);
+  if (info?.style)
+    for (const key of STYLE_PROPS)
+      fields.set(`style.${key}`, managed.style[key] ?? null);
+  for (const [name, value] of Object.entries(element.inlineStyles)) {
+    if (info?.layout && LAYOUT_PROPS.includes(name)) continue;
+    if (info?.style && STYLE_PROPS.includes(name)) continue;
+    fields.set(`inlineStyles.${name}`, value ?? null);
+  }
+  return fields;
+}
+
+function fieldsDiffer(left, right) {
+  const leftFields = fieldsOf(left);
+  const rightFields = fieldsOf(right);
+  const keys = new Set([...leftFields.keys(), ...rightFields.keys()]);
+  for (const key of keys)
+    if (!sameValue(leftFields.get(key), rightFields.get(key))) return true;
+  return false;
+}
+
+function mergeFields(baseFields, humanFields, aiFields) {
+  const merged = new Map();
+  const conflicts = [];
+  const keys = new Set([
+    ...baseFields.keys(),
+    ...humanFields.keys(),
+    ...aiFields.keys(),
+  ]);
+  for (const field of keys) {
+    const base = baseFields.get(field);
+    const human = humanFields.get(field);
+    const ai = aiFields.get(field);
+    const humanChanged = !sameValue(human, base);
+    const aiChanged = !sameValue(ai, base);
+    if (humanChanged && aiChanged) {
+      if (sameValue(human, ai)) merged.set(field, human);
+      else conflicts.push({ field, human: human ?? null, ai: ai ?? null });
+    } else if (humanChanged) merged.set(field, human);
+    else if (aiChanged) merged.set(field, ai);
+    else merged.set(field, base);
+  }
+  return { fields: merged, conflicts };
+}
+
+/** Build a full merge-model element from the human side + merged field values. */
+function buildMergedElement(humanElement, mergedFields) {
+  const info = infoOf(humanElement);
+  const element = {
+    ...humanElement,
+    attributes: { ...humanElement.attributes },
+    classNames: [...humanElement.classNames],
+    inlineStyles: { ...humanElement.inlineStyles },
+  };
+  element.text = mergedFields.get("text") ?? null;
+  const start = mergedFields.get("timing.start");
+  const duration = mergedFields.get("timing.duration");
+  if (typeof start === "number") {
+    element.start = start;
+    element.attributes["data-start"] = formatNumber(start);
+  } else if (start === null || start === undefined) {
+    delete element.attributes["data-start"];
+  } else element.attributes["data-start"] = String(start);
+  if (typeof duration === "number") {
+    element.duration = duration;
+    element.attributes["data-duration"] = formatNumber(duration);
+  } else if (duration === null || duration === undefined) {
+    delete element.attributes["data-duration"];
+  } else element.attributes["data-duration"] = String(duration);
+  const classNames = mergedFields.get("classNames");
+  element.classNames =
+    typeof classNames === "string" && classNames.length
+      ? classNames.split(" ").filter(Boolean)
+      : [];
+  for (const [field, value] of mergedFields) {
+    if (!field.startsWith("attributes.")) continue;
+    const name = field.slice("attributes.".length);
+    if (value === null || value === undefined) delete element.attributes[name];
+    else element.attributes[name] = String(value);
+  }
+  if (info?.layout) {
+    for (const key of LAYOUT_PROPS) {
+      const value = mergedFields.get(`layout.${key}`);
+      if (typeof value === "number") element.inlineStyles[key] = formatPx(value);
+      else delete element.inlineStyles[key];
+    }
+  }
+  if (info?.style) {
+    for (const key of STYLE_PROPS) {
+      const value = mergedFields.get(`style.${key}`);
+      if (value === null || value === undefined) delete element.inlineStyles[key];
+      else if (key === "fontSize") element.inlineStyles.fontSize = formatPx(value);
+      else if (key === "fontWeight") element.inlineStyles.fontWeight = String(value);
+      else element.inlineStyles[key] = String(value);
+    }
+  }
+  for (const [field, value] of mergedFields) {
+    if (!field.startsWith("inlineStyles.")) continue;
+    const name = field.slice("inlineStyles.".length);
+    if (value === null || value === undefined) delete element.inlineStyles[name];
+    else element.inlineStyles[name] = String(value);
+  }
+  return element;
 }
 
 function sectionOf(model, sceneId) {
@@ -213,7 +376,13 @@ function replaceSection(html, sceneId, replacement) {
   return html.replace(pattern, replacement);
 }
 
-export function mergeSceneDocuments({ sceneId, baseHtml, humanHtml, aiHtml }) {
+export function mergeSceneDocuments({
+  sceneId,
+  baseHtml,
+  humanHtml,
+  aiHtml,
+  baseOverriddenIds = new Set(),
+}) {
   const base = modelOf(baseHtml);
   const human = modelOf(humanHtml);
   const ai = modelOf(aiHtml);
@@ -342,54 +511,70 @@ export function mergeSceneDocuments({ sceneId, baseHtml, humanHtml, aiHtml }) {
           });
           continue;
         }
-        const humanChanged = signature(humanElement) !== signature(baseElement);
-        const aiChanged = signature(aiElement) !== signature(baseElement);
-        if (humanChanged && aiChanged) {
-          if (signature(humanElement) === signature(aiElement)) result.set(id, humanElement);
-          else
+        const merged = mergeFields(
+          fieldsOf(baseElement),
+          fieldsOf(humanElement),
+          fieldsOf(aiElement),
+        );
+        if (merged.conflicts.length) {
+          for (const fieldConflict of merged.conflicts)
             conflicts.push({
               sceneId,
               stableId: id,
               reason: "BOTH_MODIFIED",
+              field: fieldConflict.field,
               human: summary(humanElement),
               ai: summary(aiElement),
+              humanValue: fieldConflict.human,
+              aiValue: fieldConflict.ai,
+              hint: `Field ${fieldConflict.field} was changed by both sides`,
             });
-        } else if (humanChanged) result.set(id, humanElement);
-        else if (aiChanged) result.set(id, aiElement);
-        else result.set(id, humanElement);
+          continue;
+        }
+        result.set(id, buildMergedElement(humanElement, merged.fields));
       } else if (humanElement && !aiElement) {
-        if (signature(humanElement) === signature(baseElement)) {
-          // AI deletion accepted
-        } else
+        // AI deletion: protected when the human side changed the object or when
+        // the base revision already carried manual layout/style overrides.
+        if (fieldsDiffer(humanElement, baseElement) || baseOverriddenIds.has(id))
           conflicts.push({
             sceneId,
             stableId: id,
             reason: "AI_DELETE_HUMAN_MODIFY",
+            field: "element",
             human: summary(humanElement),
             ai: summary(aiElement),
+            hint: "AI candidate removed an object with human content/layout",
           });
       } else if (!humanElement && aiElement) {
-        if (signature(aiElement) === signature(baseElement)) {
-          // human deletion wins
-        } else
+        if (fieldsDiffer(aiElement, baseElement))
           conflicts.push({
             sceneId,
             stableId: id,
             reason: "HUMAN_DELETE_AI_MODIFY",
+            field: "element",
             human: summary(humanElement),
             ai: summary(aiElement),
           });
       }
     } else if (humanElement && aiElement) {
-      if (signature(humanElement) === signature(aiElement)) result.set(id, humanElement);
-      else
-        conflicts.push({
-          sceneId,
-          stableId: id,
-          reason: "ADD_ADD",
-          human: summary(humanElement),
-          ai: summary(aiElement),
-        });
+      const merged = mergeFields(
+        new Map(),
+        fieldsOf(humanElement),
+        fieldsOf(aiElement),
+      );
+      if (merged.conflicts.length) {
+        for (const fieldConflict of merged.conflicts)
+          conflicts.push({
+            sceneId,
+            stableId: id,
+            reason: "ADD_ADD",
+            field: fieldConflict.field,
+            human: summary(humanElement),
+            ai: summary(aiElement),
+            humanValue: fieldConflict.human,
+            aiValue: fieldConflict.ai,
+          });
+      } else result.set(id, humanElement);
     } else if (humanElement) result.set(id, humanElement);
     else if (aiElement) result.set(id, aiElement);
   }
@@ -438,10 +623,10 @@ export function mergeSceneDocuments({ sceneId, baseHtml, humanHtml, aiHtml }) {
     const aiElement = aiMap.get(id);
     if (!baseElement) continue;
     const humanChanged = humanElement
-      ? signature(humanElement) !== signature(baseElement)
+      ? fieldsDiffer(humanElement, baseElement)
       : true;
     const aiChanged = aiElement
-      ? signature(aiElement) !== signature(baseElement)
+      ? fieldsDiffer(aiElement, baseElement)
       : true;
     if (aiChanged && humanChanged) changes.kept.push(id);
     else if (aiChanged) changes.adopted.push(id);

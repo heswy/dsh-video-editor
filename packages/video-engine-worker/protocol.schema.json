@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:dsh-video-engine-worker:v1",
   "title": "JSON Lines request and response frames; byte limits specified in README",
-  "$comment": "The response envelope carries no method field, so x-methods maps every method to its request and result definition; contract tests validate both directions against this file. Result definitions describe the worker's published result shape for Version 1 (0.2.1). Params schemas enforce structure, keys, types, ranges and path/name shape; checks that depend on disk or referenced file state (inbox existence, image signature, duplicate assets, content size, revision currency) remain worker-side and can still reject a schema-valid request with E_ASSET_MISSING/E_PARAMS/E_REVISION_CONFLICT/E_LIMIT.",
+  "$comment": "The response envelope carries no method field, so x-methods maps every method to its request and result definition; contract tests validate both directions against this file. Result definitions describe the worker's published result shape for Version 1 (0.3.0). Params schemas enforce structure, keys, types, ranges and path/name shape (edit ops include text/timing/layout/style); checks that depend on disk or referenced file state (inbox existence, image signature, duplicate assets, content size, revision currency) remain worker-side and can still reject a schema-valid request with E_ASSET_MISSING/E_PARAMS/E_REVISION_CONFLICT/E_LIMIT.",
   "x-methods": {
     "doctor": {
       "request": "#/$defs/request_doctor",
@@ -148,13 +148,15 @@
     },
     "capabilities": {
       "type": "array",
-      "maxItems": 2,
+      "maxItems": 4,
       "uniqueItems": true,
       "items": {
         "type": "string",
         "enum": [
           "text",
-          "timing"
+          "timing",
+          "layout",
+          "style"
         ]
       }
     },
@@ -184,6 +186,12 @@
         },
         "capabilities": {
           "$ref": "#/$defs/capabilities"
+        },
+        "layout": {
+          "$ref": "#/$defs/managedLayout"
+        },
+        "style": {
+          "$ref": "#/$defs/managedStyle"
         }
       },
       "required": [
@@ -191,7 +199,9 @@
         "sceneId",
         "text",
         "timing",
-        "capabilities"
+        "capabilities",
+        "layout",
+        "style"
       ]
     },
     "sceneElement": {
@@ -225,6 +235,12 @@
         },
         "capabilities": {
           "$ref": "#/$defs/capabilities"
+        },
+        "layout": {
+          "$ref": "#/$defs/managedLayout"
+        },
+        "style": {
+          "$ref": "#/$defs/managedStyle"
         }
       },
       "required": [
@@ -233,7 +249,9 @@
         "tag",
         "text",
         "timing",
-        "capabilities"
+        "capabilities",
+        "layout",
+        "style"
       ]
     },
     "sceneSummary": {
@@ -814,7 +832,14 @@
         "hint": {
           "type": "string",
           "maxLength": 512
-        }
+        },
+        "field": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "humanValue": {},
+        "aiValue": {}
       },
       "required": [
         "sceneId",
@@ -936,6 +961,155 @@
               ]
             }
           ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "target",
+            "unit",
+            "box"
+          ],
+          "properties": {
+            "type": {
+              "const": "layout"
+            },
+            "target": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "unit": {
+              "const": "composition-px"
+            },
+            "box": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "left": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 3840
+                },
+                "top": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 2160
+                },
+                "width": {
+                  "type": "number",
+                  "minimum": 1,
+                  "maximum": 3840
+                },
+                "height": {
+                  "type": "number",
+                  "minimum": 1,
+                  "maximum": 2160
+                }
+              },
+              "anyOf": [
+                {
+                  "required": [
+                    "left"
+                  ]
+                },
+                {
+                  "required": [
+                    "top"
+                  ]
+                },
+                {
+                  "required": [
+                    "width"
+                  ]
+                },
+                {
+                  "required": [
+                    "height"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "target",
+            "styles"
+          ],
+          "properties": {
+            "type": {
+              "const": "style"
+            },
+            "target": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "styles": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "color": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-fA-F]{6}$"
+                },
+                "fontSize": {
+                  "type": "number",
+                  "minimum": 8,
+                  "maximum": 256
+                },
+                "fontWeight": {
+                  "type": "integer",
+                  "enum": [
+                    100,
+                    200,
+                    300,
+                    400,
+                    500,
+                    600,
+                    700,
+                    800,
+                    900
+                  ]
+                },
+                "textAlign": {
+                  "type": "string",
+                  "enum": [
+                    "left",
+                    "center",
+                    "right"
+                  ]
+                }
+              },
+              "anyOf": [
+                {
+                  "required": [
+                    "color"
+                  ]
+                },
+                {
+                  "required": [
+                    "fontSize"
+                  ]
+                },
+                {
+                  "required": [
+                    "fontWeight"
+                  ]
+                },
+                {
+                  "required": [
+                    "textAlign"
+                  ]
+                }
+              ]
+            }
+          }
         }
       ]
     },
@@ -2684,6 +2858,95 @@
           ]
         }
       ]
+    },
+    "managedLayout": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": false,
+      "required": [
+        "left",
+        "top",
+        "width",
+        "height"
+      ],
+      "properties": {
+        "left": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 3840
+        },
+        "top": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 2160
+        },
+        "width": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 3840
+        },
+        "height": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 2160
+        }
+      }
+    },
+    "managedStyle": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": false,
+      "required": [
+        "color",
+        "fontSize",
+        "fontWeight",
+        "textAlign"
+      ],
+      "properties": {
+        "color": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^#[0-9a-f]{6}$"
+        },
+        "fontSize": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 4096
+        },
+        "fontWeight": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "textAlign": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
     }
   }
 }

@@ -8,13 +8,27 @@
 
 | 项 | 值 |
 |---|---|
-| 引擎固定功能 | `df4b74f`（交付 head `e364017`），两包 **0.2.1**；`preview.snapshot`/`preview.release` 来自 P3-004 |
+| 引擎固定功能 | P3-005-B 历史证据：`df4b74f`（head `e364017`），两包 **0.2.1**；P3-006-B 新证据：两包 **0.3.0**（layout/style typed ops） |
 | 运行 | Node **v24.14.0**、Chrome **155.0.8059.84**、puppeteer-core **25.14.0**（复用 `packages/video-engine-worker/node_modules`，本 spike 无独立依赖、无安装脚本） |
 | SDK 探测 | `@hyperframes/sdk` **0.8.167**（同一 node_modules，仅用于 Host 自有副本的 API 探测） |
 | 合约/运行版本 | message contract **v1**、preview runtime **p3-005b-runtime.1** |
 | 受控工程 | `product-launch-v1` 3 Scene（5+4+2s，1280×720/30fps，含 logo/shot 图片），由真实 worker/client 创建 |
 
 ## 运行
+
+### P3-006-B 持久化证据（0.3.0，当前引擎）
+
+```sh
+# worker/协议能力矩阵：layout/style 已持久化、scene 重生成保留、字段级合并冲突、SDK 旁路边界
+node spikes/editor-canvas/scripts/capability-probe.mjs           # 输出 evidence/p3-006b/capability-evidence.json
+
+# 真实帧/MP4：改位置/颜色/字号后视觉变化、两个动画时刻基座+transform 分离、H.264 元数据、undo/redo
+node spikes/editor-canvas/scripts/persistence-evidence.mjs       # 输出 evidence/p3-006b/persistence-evidence.json + PNG
+```
+
+新证据目录为 `evidence/p3-006b/`，**不覆盖** 0.2.1 的历史证据（`evidence/*.json`、`evidence/*.png`）。旧的 `run-canvas.mjs` 与其 41 项证据是 P3-005-B（0.2.1）的历史交付：其中“layout 提交被 E_PARAMS 拒绝”的缺口断言正是当时要证明的状态，**不要用 0.3.0 重跑并覆盖**；新能力以 `persistence-evidence.mjs`/`capability-probe.mjs` 为准。
+
+### P3-005-B 历史证据（0.2.1，勿覆盖）
 
 在仓库根目录：
 
@@ -49,12 +63,13 @@ scripts/
   lib/host-server.mjs      试验 Host：session、快照 manifest 精确路由、逐文件
                            byte/sha256 校验、CSP+inline hash、runtime 注入、请求日志
   lib/worker-harness.mjs   真实 worker/client：受控工程、快照、edit、frame、重开/重启
-  run-canvas.mjs           真实 Chrome 证据 runner（41 项断言）
-  capability-probe.mjs     worker 写入路径 vs SDK setStyle 的能力矩阵与缺口
+  run-canvas.mjs           0.2.1 历史真实 Chrome 证据 runner（41 项断言）
+  capability-probe.mjs     0.3.0 写入能力矩阵（layout/style 已持久化、合并/重生成/SDK 边界）
+  persistence-evidence.mjs 0.3.0 真实帧/MP4 持久化与 undo/redo 证据
 test/
   contract.test.mjs        消息严格性/违规序列/迟到响应/跨实例/坐标/编辑守卫
   host-server.test.mjs     快照路由、逐文件校验、篡改 409、撤销 404、CSP/hash
-evidence/                  提交的 JSON 证据与截图（约 0.6 MB）
+evidence/                  0.2.1 历史 JSON/截图 + 0.3.0 的 `p3-006b/` 新证据（均提交）
 ```
 
 ## 已证明的行为
