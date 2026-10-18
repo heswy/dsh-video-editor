@@ -19,6 +19,7 @@ import { loadEngine } from './engine.js';
 import { TOOL_RESULT_BYTES } from './limits.js';
 import { SessionService } from './sessions.js';
 import { SESSION_ID_PATTERN } from './session-state.js';
+import { readPreviewFile } from './preview.js';
 
 export const REQUEST_METHODS = Object.freeze([
   'doctor',
@@ -34,6 +35,7 @@ export const REQUEST_METHODS = Object.freeze([
   'session.create',
   'session.select',
   'session.diagnose',
+  'preview',
 ]);
 
 const METHOD_PARAMS = Object.freeze({
@@ -50,6 +52,7 @@ const METHOD_PARAMS = Object.freeze({
   'session.create': ['projectId', 'requestId'],
   'session.select': ['projectId', 'sessionId'],
   'session.diagnose': [],
+  preview: ['projectId', 'sessionId', 'path'],
 });
 
 const SESSION_METHODS = Object.freeze(['session.list', 'session.create', 'session.select', 'session.diagnose']);
@@ -199,6 +202,15 @@ export function validateParams(config, method, params) {
     const limit = timeoutMs(params.timeoutMs);
     if (limit !== undefined) next.timeoutMs = limit;
     return next;
+  }
+  if (method === 'preview') {
+    const sessionId = params.sessionId;
+    if (typeof sessionId !== 'string' || SESSION_ID_PATTERN.test(sessionId) === false) fail('E_PARAMS', 'Invalid sessionId', 'params');
+    return {
+      projectId: allowedProject(config, params.projectId),
+      sessionId,
+      path: text(params.path, 'path', 4096),
+    };
   }
   if (method === 'session.diagnose') return {};
   if (method === 'session.list') return { projectId: allowedProject(config, params.projectId) };
@@ -562,6 +574,33 @@ export class VideoBridge {
       throw new BridgeError('E_WORKER_DISPOSED', 'The video service is stopping', { stage: 'lifecycle' });
     }
     const normalized = this.validate(method, params);
+    if (method === 'preview') {
+      if (settings.source === 'tool') {
+        throw new BridgeError('E_METHOD', 'Preview is a UI-only action, not a model tool action', { stage: 'params' });
+      }
+      const previewTask = (async () => {
+        const config = this.requireConfig();
+        const ownerProject = await this.sessions.projectForSession(normalized.sessionId);
+        if (ownerProject === null) {
+          throw new BridgeError('E_SESSION_NOT_BOUND', 'This Session is not bound to a video project', { stage: 'scope' });
+        }
+        if (ownerProject !== normalized.projectId) {
+          throw new BridgeError('E_PROJECT_SCOPE', 'The preview targets a Session outside this project', { stage: 'scope' });
+        }
+        return readPreviewFile({
+          sessionCwd: config.sessionCwd,
+          artifactRoot: config.artifactRoot,
+          path: normalized.path,
+          maxBytes: config.maxPreviewBytes,
+        });
+      })();
+      this.inFlight.add(previewTask);
+      try {
+        return await previewTask;
+      } finally {
+        this.inFlight.delete(previewTask);
+      }
+    }
     if (SESSION_METHODS.includes(method)) {
       if (settings.source === 'tool') throw new BridgeError('E_METHOD', 'Session management is not a model tool action', { stage: 'params' });
       this.requireConfig();

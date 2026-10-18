@@ -54,6 +54,7 @@ const RUNTIME_PATHS = [
   'host/tool.js',
   'host/sessions.js',
   'host/session-state.js',
+  'host/preview.js',
   'README.md',
 ];
 const DEFAULT_OUT = resolve(ROOT, '..', 'artifacts', 'p2-b', 'staging');

@@ -836,6 +836,23 @@ function sessionFetch(options) {
     if (method === 'session.diagnose') {
       return Promise.resolve({ ok: true, result: { enabled: true, contract: 1 } });
     }
+    if (method === 'preview') {
+      config.previewCalls = (config.previewCalls || []).concat([request.body.params]);
+      const response = config.preview || {
+        ok: true,
+        result: {
+          fileName: 'frame.png',
+          mediaType: 'image/png',
+          size: 4,
+          sha256: 'a'.repeat(64),
+          dataUrl: 'data:image/png;base64,AAAA',
+        },
+      };
+      if ((config.previewDelay || 0) > 0) {
+        return new Promise((resolve) => setTimeout(() => resolve(response), config.previewDelay));
+      }
+      return Promise.resolve(response);
+    }
     return Promise.resolve({ ok: false, error: { code: 'E_METHOD', message: 'unexpected ' + method } });
   });
   fetchFunction.config = config;
@@ -2066,6 +2083,143 @@ test('P3-006-A: history lists mapped Sessions and a superseded switch cannot win
   const businessCalls = hostFetch.calls.filter((call) => !call.body.method.startsWith('session.'));
   assert(businessCalls.length === 0, 'switching Sessions issued a project business request');
 });
+
+
+//#region tests: P3-006-C local preview
+
+function interactiveTarget(options) {
+  const settings = options || {};
+  const attributes = settings.attributes || {};
+  return {
+    closest(selector) {
+      if (settings.selector === selector) {
+        return {
+          getAttribute(name) {
+            return Object.prototype.hasOwnProperty.call(attributes, name) ? attributes[name] : null;
+          },
+        };
+      }
+      return null;
+    },
+  };
+}
+
+function clickCaptureNode(tree) {
+  const aside = findNode(tree, (node) => node.props && typeof node.props.className === 'string' && node.props.className.split(' ').includes('dv-ai'));
+  assert(aside !== null, 'the embedded AI surface is missing');
+  return aside;
+}
+
+test('P3-006-C: a presented image card opens the local preview without the host sidebar', async () => {
+  const sessions = makeSessionsService({ list: ['session-preview'], titles: { 'session-preview': '工程 · 预览' } });
+  const hostFetch = sessionFetch({ activeSessionId: 'session-preview', sessions: ['session-preview'] });
+  const kit = makeSessionKit();
+  const editor = mountSessionEditor(hostFetch, { sessions, kit });
+  await settle();
+  editor.rerender();
+  await settle();
+  const aside = clickCaptureNode(editor.tree());
+  const target = interactiveTarget({ selector: 'button[title]', attributes: { title: '/tmp/output/frame.png' } });
+  let prevented = 0;
+  let stopped = 0;
+  aside.props.onClickCapture({
+    target,
+    preventDefault() { prevented += 1; },
+    stopPropagation() { stopped += 1; },
+  });
+  await settle();
+  const tree = editor.rerender();
+  const dialog = findNode(tree, (node) => node.props && node.props.className === 'dv-preview');
+  assert(dialog !== null, 'the local preview dialog was not rendered');
+  const image = findNode(tree, (node) => node.props && node.props.className === 'dv-preview-image');
+  assert(image !== null && image.props.src === 'data:image/png;base64,AAAA', 'the preview image did not use the bounded Host data URL');
+  assert(prevented === 1 && stopped === 1, 'the native file opener was not intercepted');
+  assert(hostFetch.config.previewCalls.length === 1, 'the preview request was not issued exactly once');
+  const call = hostFetch.config.previewCalls[0];
+  assert(call.projectId === 'demo' && call.sessionId === 'session-preview' && call.path === '/tmp/output/frame.png', `unexpected preview params: ${JSON.stringify(call)}`);
+  assert(findNode(tree, (node) => node.props && node.props.className === 'dv-left') !== null, 'opening a preview replaced the left project surface');
+  const close = findNode(tree, (node) => node.props && node.props.className === 'dv-preview-close');
+  assert(close !== null, 'preview close control missing');
+  close.props.onClick();
+  const closedTree = editor.rerender();
+  assert(findNode(closedTree, (node) => node.props && node.props.className === 'dv-preview') === null, 'closing the preview did not return to the AI surface');
+  const root = findNode(closedTree, (node) => node.props && node.props['data-session-active'] !== undefined);
+  assert(root !== null && root.props['data-session-active'] === 'session-preview', 'closing the preview changed the active Session');
+});
+
+test('P3-006-C: non-file clicks and unsupported files keep their native or explicit states', async () => {
+  const sessions = makeSessionsService({ list: ['session-preview'] });
+  const hostFetch = sessionFetch({
+    activeSessionId: 'session-preview',
+    sessions: ['session-preview'],
+    preview: { ok: false, error: { code: 'E_PREVIEW_UNSUPPORTED', message: 'unsupported' } },
+  });
+  const editor = mountSessionEditor(hostFetch, { sessions, kit: makeSessionKit() });
+  await settle();
+  editor.rerender();
+  await settle();
+  const aside = clickCaptureNode(editor.tree());
+  let prevented = 0;
+  aside.props.onClickCapture({
+    target: interactiveTarget({ selector: null }),
+    preventDefault() { prevented += 1; },
+    stopPropagation() {},
+  });
+  assert(prevented === 0 && (hostFetch.config.previewCalls || []).length === 0, 'a normal chat click was intercepted');
+
+  aside.props.onClickCapture({
+    target: interactiveTarget({ selector: 'button[title]', attributes: { title: '/tmp/output/notes.txt' } }),
+    preventDefault() {},
+    stopPropagation() {},
+  });
+  await settle();
+  const tree = editor.rerender();
+  const status = findNode(tree, (node) => node.props && node.props.className === 'dv-preview-status');
+  assert(status !== null && textOf(status) === translateFor(editor.env)('video.preview.unsupported'), 'unsupported preview did not show the accurate local message');
+  closePreviewTree(tree);
+});
+
+test('P3-006-C: Markdown file links use the same bounded preview and a late Session result cannot win', async () => {
+  const sessions = makeSessionsService({ list: ['session-one', 'session-two'] });
+  const hostFetch = sessionFetch({
+    activeSessionId: 'session-one',
+    sessions: ['session-one', 'session-two'],
+    previewDelay: 40,
+  });
+  const kit = makeSessionKit();
+  const editor = mountSessionEditor(hostFetch, { sessions, kit });
+  await settle();
+  editor.rerender();
+  await settle();
+  const aside = clickCaptureNode(editor.tree());
+  aside.props.onClickCapture({
+    target: interactiveTarget({ selector: 'a[href]', attributes: { href: 'file:///tmp/output/photo.png' } }),
+    preventDefault() {},
+    stopPropagation() {},
+  });
+  assert(hostFetch.config.previewCalls[0].path === 'file:///tmp/output/photo.png', 'the Markdown link address was not forwarded unchanged');
+  const toggle = findNode(editor.tree(), (node) => node.type === 'button' && typeof node.props.className === 'string' && node.props.className.includes('dv-history-toggle'));
+  toggle.props.onClick();
+  const menuTree = editor.rerender();
+  const items = findNodes(menuTree, (node) => node.type === 'button' && typeof node.props.className === 'string' && node.props.className === 'dv-history-item');
+  const targetSession = items.find((item) => textOf(item).includes('session-two')) || items[1];
+  targetSession.props.onClick();
+  await settle();
+  await new Promise((resolve) => setTimeout(resolve, 70));
+  const tree = editor.rerender();
+  await settle();
+  const finalTree = editor.rerender();
+  const root = findNode(finalTree, (node) => node.props && node.props['data-session-active'] !== undefined);
+  assert(root !== null && root.props['data-session-active'] === 'session-two', 'the Session switch did not complete');
+  assert(findNode(finalTree, (node) => node.props && node.props.className === 'dv-preview') === null, 'a late preview from the previous Session appeared after the switch');
+});
+
+function closePreviewTree(tree) {
+  const close = findNode(tree, (node) => node.props && node.props.className === 'dv-preview-close');
+  assert(close !== null, 'preview close control missing');
+  close.props.onClick();
+}
+
 
 //#endregion
 

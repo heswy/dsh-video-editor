@@ -131,8 +131,8 @@ check('bundle manifest declares patch and client', () => {
   return `platform=web, inject=[${pkg.dsh.client.inject.join(', ')}]`;
 });
 
-check('package version advanced for the P3-006-A native creation candidate', () => {
-  assert(pkg.version === '0.3.0-alpha.1', `expected version 0.3.0-alpha.1, found "${pkg.version}"`);
+check('package version advanced for the P3-006-C file preview candidate', () => {
+  assert(pkg.version === '0.3.0-alpha.2', `expected version 0.3.0-alpha.2, found "${pkg.version}"`);
   return pkg.version;
 });
 
@@ -171,7 +171,7 @@ check('entrypoints and exports resolve to shipped files', () => {
 
 check('package files list covers every shipped artifact', () => {
   assert(Array.isArray(pkg.files) && pkg.files.length > 0, 'package.json needs a files list for a reproducible install');
-  const required = ['index.js', 'client.js', 'cordis.patch.yml', 'icon.svg', 'locale/en.json', 'locale/zh.json', 'README.md', 'host/bridge.js', 'host/routes.js', 'host/tool.js', 'host/config.js', 'host/env.js', 'host/errors.js', 'host/engine.js', 'host/limits.js', 'host/sessions.js', 'host/session-state.js'];
+  const required = ['index.js', 'client.js', 'cordis.patch.yml', 'icon.svg', 'locale/en.json', 'locale/zh.json', 'README.md', 'host/bridge.js', 'host/routes.js', 'host/tool.js', 'host/config.js', 'host/env.js', 'host/errors.js', 'host/engine.js', 'host/limits.js', 'host/sessions.js', 'host/session-state.js', 'host/preview.js'];
   for (const artifact of required) {
     const covered = pkg.files.some((pattern) => listMatchingFiles(pattern).includes(artifact));
     assert(covered, `files list does not cover required artifact "${artifact}"`);
@@ -462,7 +462,7 @@ check('P2-002-B: the editor exposes only the real controlled-project loop', () =
   for (const needle of ['video.open', 'openSample', 'hostRequest', 'REQUEST_ROUTE', 'E_CONFIGURATION', 'video.update', 'video.export', 'video.cancel', 'video.save']) {
     assert(clientSource.includes(needle), `client.js is missing real editor wiring "${needle}"`);
   }
-  const forbidden = ['创建工程', '时间线', '预览', 'AI 生成', '演示数据', '假进度', '自动生成'];
+  const forbidden = ['创建工程', '时间线', 'AI 生成', '演示数据', '假进度', '自动生成'];
   for (const needle of forbidden) assert(clientSource.includes(needle) === false, `client.js advertises unsupported or fake capability "${needle}"`);
   assert(clientSource.includes("const DEMO_PROJECT_ID = 'demo'"), 'the controlled example id must be a fixed configured id, not a path');
   assert(clientSource.includes("'video.empty': '尚无工程'"), 'the no-project state must stay a quiet real state');
@@ -519,6 +519,23 @@ check('P3-006-A: Host session state is versioned, trusted and atomically written
   assert(sessions.includes('this.store.addSession(projectId, sessionId, true)'), 'the returned Session id is not persisted before success');
   assert(state.includes('E_SESSION_ALREADY_BOUND'), 'cross-project binding rejection is missing');
   return 'sessionStatePath/sessionCwd, v1 atomic store, controller creation, mapping write-back';
+});
+
+check('P3-006-C: embedded file preview is local, Session-scoped and byte-bounded', () => {
+  const bridge = read('host/bridge.js');
+  const preview = read('host/preview.js');
+  const config = read('host/config.js');
+  const routes = read('host/routes.js');
+  assert(clientSource.includes('onClickCapture: capturePreviewClick'), 'the embedded AI surface does not intercept file preview clicks locally');
+  assert(clientSource.includes("hostRequest('preview'"), 'the client does not call the bounded preview route');
+  assert(clientSource.includes('sidebarRight') === false, 'the client must not patch or call the global sidebarRight service');
+  assert(clientSource.includes('dv-preview-image') && clientSource.includes("'video.preview.denied'"), 'preview overlay or explicit error copy is missing');
+  assert(bridge.includes("'preview'") && bridge.includes('readPreviewFile') && bridge.includes('E_PROJECT_SCOPE'), 'Host preview route is not Session/project scoped');
+  assert(bridge.includes("settings.source === 'tool'") && bridge.includes('Preview is a UI-only action'), 'preview must stay out of the model Tool surface');
+  assert(preview.includes('IMAGE_EXTENSIONS') && preview.includes('sniffImageMediaType') && preview.includes('realpath('), 'preview does not validate image bytes and canonical roots');
+  assert(config.includes("'maxPreviewBytes'"), 'the trusted preview byte limit is missing');
+  assert(routes.includes('E_PREVIEW_DENIED') && routes.includes('E_PREVIEW_UNSUPPORTED') && routes.includes('E_PREVIEW_LIMIT'), 'preview error statuses are missing');
+  return 'local capture, session/project scope, realpath roots, magic-byte validation, byte limit';
 });
 
 for (const [name, detail] of passes) console.log(`PASS  ${name}${detail === 'ok' ? '' : `  [${detail}]`}`);

@@ -29,6 +29,7 @@ export const CONFIG_KEYS = Object.freeze([
   'maxRequestBytes',
   'maxArtifactBytes',
   'maxResultBytes',
+  'maxPreviewBytes',
 ]);
 
 const DEFAULT_LIMITS = Object.freeze({
@@ -42,6 +43,7 @@ const DEFAULT_LIMITS = Object.freeze({
   maxRequestBytes: 65536,
   maxArtifactBytes: 64 * 1024 * 1024,
   maxResultBytes: 1024 * 1024,
+  maxPreviewBytes: 8 * 1024 * 1024,
 });
 
 const NUMBER_RULES = Object.freeze({
@@ -55,6 +57,7 @@ const NUMBER_RULES = Object.freeze({
   maxRequestBytes: { min: 1024, max: 1024 * 1024 },
   maxArtifactBytes: { min: 1024, max: 256 * 1024 * 1024 },
   maxResultBytes: { min: 4096, max: 8 * 1024 * 1024 },
+  maxPreviewBytes: { min: 1024, max: 8 * 1024 * 1024 },
 });
 
 const MAX_PATH = 4096;

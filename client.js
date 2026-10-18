@@ -123,6 +123,14 @@ window.__ModuleLoader__.load({
       'video.error.session': '创作会话暂不可用。',
       'video.error.sessionConfig': '创作会话尚未配置。',
       'video.error.sessionState': '创作会话记录无法读取，请检查 Host 存储。',
+      'video.preview.title': '文件预览',
+      'video.preview.loading': '正在打开预览…',
+      'video.preview.close': '关闭预览',
+      'video.preview.unsupported': '此文件类型暂不支持内嵌预览。',
+      'video.preview.tooLarge': '文件过大，无法内嵌预览。',
+      'video.preview.denied': '无法预览该文件：不在本会话允许的范围内。',
+      'video.preview.notFound': '文件不存在或已被移动。',
+      'video.preview.failed': '预览失败，请重试。',
     };
 
     const EN = {
@@ -193,6 +201,14 @@ window.__ModuleLoader__.load({
       'video.error.session': 'Creation conversations are temporarily unavailable.',
       'video.error.sessionConfig': 'Creation conversations are not configured.',
       'video.error.sessionState': 'The creation conversation record could not be read. Check the Host storage.',
+      'video.preview.title': 'File preview',
+      'video.preview.loading': 'Opening preview…',
+      'video.preview.close': 'Close preview',
+      'video.preview.unsupported': 'Inline preview does not support this file type yet.',
+      'video.preview.tooLarge': 'This file is too large for an inline preview.',
+      'video.preview.denied': 'This file cannot be previewed: it is outside the allowed Session scope.',
+      'video.preview.notFound': 'The file no longer exists or has moved.',
+      'video.preview.failed': 'The preview failed. Try again.',
     };
     //#endregion
 
@@ -409,6 +425,72 @@ window.__ModuleLoader__.load({
   overflow:hidden;
 }
 .dv-ai-body > *{min-width:0;min-height:0;}
+.dv-preview{
+  position:absolute;
+  inset:0;
+  z-index:6;
+  display:flex;
+  flex-direction:column;
+  min-width:0;
+  min-height:0;
+  background:var(--dsw-alias-bg-layer-1, #232327);
+}
+.dv-preview-head{
+  display:flex;
+  flex:none;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  padding:10px 12px;
+  border-bottom:1px solid color-mix(in srgb, var(--dsw-alias-border-l1, rgba(127,127,140,.28)) 62%, transparent);
+}
+.dv-preview-title{
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  color:var(--dsw-alias-label-primary, #f2f2f5);
+  font-size:.86em;
+}
+.dv-preview-close{
+  flex:none;
+  min-height:28px;
+  padding:0 9px;
+  border:1px solid color-mix(in srgb, var(--dsw-alias-border-l1, rgba(127,127,140,.32)) 82%, transparent);
+  border-radius:8px;
+  background:transparent;
+  color:var(--dsw-alias-label-primary, #f2f2f5);
+  font:inherit;
+  font-size:.8em;
+  cursor:pointer;
+}
+.dv-preview-close:hover{background:var(--dsw-alias-interactive-bg-hover, rgba(127,127,140,.14));}
+.dv-preview-body{
+  display:flex;
+  flex:1;
+  align-items:center;
+  justify-content:center;
+  min-width:0;
+  min-height:0;
+  padding:12px;
+  overflow:auto;
+}
+.dv-preview-image{
+  display:block;
+  max-width:100%;
+  max-height:100%;
+  object-fit:contain;
+  border-radius:6px;
+  background:var(--dsw-alias-bg-base, #1a1a1c);
+}
+.dv-preview-status{
+  margin:0;
+  padding:12px;
+  color:var(--dsw-alias-label-secondary, #a4a4ad);
+  font-size:.84em;
+  text-align:center;
+}
+.dv-preview-status[data-error="true"]{color:var(--dsw-alias-state-error-primary, #e06c75);}
 .dv-ai-loading,.dv-ai-hint,.dv-ai-notice{
   margin:0;
   padding:14px;
@@ -1205,6 +1287,63 @@ window.__ModuleLoader__.load({
       return error !== null && typeof error === 'object' && error.code === 'E_PARAMS' && typeof error.message === 'string' && /Timing extends beyond composition/i.test(error.message);
     }
 
+    // A preview click is intercepted only inside this plugin's embedded AI
+    // surface. File cards and Markdown file links keep their native content; the
+    // local handler routes only path-like targets to the Host-supported preview
+    // route, so the global right sidebar never has to be mounted.
+    const PREVIEW_PATH_EXTENSION = /\.[A-Za-z0-9]{1,12}(?:$|[?#])/;
+    const PREVIEW_EXTERNAL_PREFIX = /^(?:https?:|mailto:|tel:|javascript:|data:|#)/i;
+
+    function localPathFromTarget(target) {
+      if (target === null || typeof target !== 'object' || typeof target.closest !== 'function') return null;
+      try {
+        const button = target.closest('button[title]');
+        if (button !== null && button !== undefined && typeof button.getAttribute === 'function') {
+          const title = button.getAttribute('title');
+          if (localPathLike(title)) return title;
+        }
+        const dataNode = target.closest('[data-file-path],[data-path]');
+        if (dataNode !== null && dataNode !== undefined && typeof dataNode.getAttribute === 'function') {
+          const value = dataNode.getAttribute('data-file-path') || dataNode.getAttribute('data-path');
+          if (localPathLike(value)) return value;
+        }
+        const anchor = target.closest('a[href]');
+        if (anchor !== null && anchor !== undefined && typeof anchor.getAttribute === 'function') {
+          const href = anchor.getAttribute('href');
+          if (localPathLike(href)) return href;
+        }
+      } catch (_error) {
+        return null;
+      }
+      return null;
+    }
+
+    function localPathLike(value) {
+      if (typeof value !== 'string' || value.length === 0 || value.length > 4096) return false;
+      if (PREVIEW_EXTERNAL_PREFIX.test(value) === true) return false;
+      if (value.indexOf('\n') !== -1) return false;
+      if (value.startsWith('file://')) return true;
+      if (value.startsWith('/') && value.length > 1) return true;
+      if (/^[A-Za-z]:[\\/]/.test(value) === true) return true;
+      return PREVIEW_PATH_EXTENSION.test(value);
+    }
+
+    function previewFileName(path) {
+      if (typeof path !== 'string') return '';
+      const withoutQuery = path.split('?')[0].split('#')[0];
+      const parts = withoutQuery.split(/[\\/]/);
+      return parts.length === 0 ? '' : parts[parts.length - 1];
+    }
+
+    function previewErrorText(error, t) {
+      const code = error !== null && typeof error === 'object' ? error.code : null;
+      if (code === 'E_PREVIEW_UNSUPPORTED') return t('video.preview.unsupported');
+      if (code === 'E_PREVIEW_LIMIT') return t('video.preview.tooLarge');
+      if (code === 'E_PREVIEW_DENIED') return t('video.preview.denied');
+      if (code === 'E_PREVIEW_NOT_FOUND') return t('video.preview.notFound');
+      return t('video.preview.failed');
+    }
+
     function stateText(state, t) {
       return typeof state === 'string' && state.length > 0 ? t('video.state.' + state) : '';
     }
@@ -1434,6 +1573,10 @@ window.__ModuleLoader__.load({
       const [hostConversationOpen, setHostConversationOpen] = React.useState(false);
       const [retryTick, setRetryTick] = React.useState(0);
       const [sessionDiagnostic, setSessionDiagnostic] = React.useState(null);
+      const [preview, setPreview] = React.useState(null);
+      const previewToken = React.useRef(0);
+      const activeSessionIdRef = React.useRef(null);
+      activeSessionIdRef.current = activeSessionId;
       const sessionListToken = React.useRef(0);
       const sessionSwitchToken = React.useRef(0);
       const sessionCreatePending = React.useRef(false);
@@ -1963,6 +2106,8 @@ window.__ModuleLoader__.load({
           if (!aliveRef.current) return;
           const items = Array.isArray(listResult.sessions) ? listResult.sessions : [];
           setSessionState({ status: 'ready', items: items, activeSessionId: listResult.activeSessionId || result.sessionId, error: null, contract: listResult.contract || null });
+          previewToken.current += 1;
+          setPreview(null);
           setActiveSessionId(result.sessionId);
           setHistoryOpen(false);
         } catch (requestError) {
@@ -1983,12 +2128,64 @@ window.__ModuleLoader__.load({
         try {
           const result = await hostRequest('session.select', { projectId: DEMO_PROJECT_ID, sessionId: sessionId });
           if (token !== sessionSwitchToken.current || !aliveRef.current) return;
+          previewToken.current += 1;
+          setPreview(null);
           setActiveSessionId(typeof result.activeSessionId === 'string' ? result.activeSessionId : sessionId);
         } catch (requestError) {
           if (token === sessionSwitchToken.current && aliveRef.current) setError(hostError(requestError));
         } finally {
           if (token === sessionSwitchToken.current && aliveRef.current) setSessionBusy(null);
         }
+      }
+
+      function closePreview() {
+        previewToken.current += 1;
+        setPreview(null);
+      }
+
+      // Open a file card or local image link in a plugin-owned overlay. The Host
+      // route validates the owned Session, the trusted roots and the image bytes;
+      // this surface never navigates to the conversation or mounts a third column.
+      function openPreview(path) {
+        const token = ++previewToken.current;
+        const sessionId = activeSessionId;
+        const fileName = previewFileName(path);
+        if (typeof sessionId !== 'string' || sessionId.length === 0) {
+          setPreview({ phase: 'error', sessionId: null, fileName: fileName, message: t('video.preview.denied') });
+          return;
+        }
+        setPreview({ phase: 'loading', sessionId: sessionId, fileName: fileName });
+        hostRequest('preview', { projectId: DEMO_PROJECT_ID, sessionId: sessionId, path: path }).then(
+          function previewReady(result) {
+            if (token !== previewToken.current || !aliveRef.current || activeSessionIdRef.current !== sessionId) return;
+            if (result === null || typeof result !== 'object' || typeof result.dataUrl !== 'string' || typeof result.mediaType !== 'string') {
+              setPreview({ phase: 'error', sessionId: sessionId, fileName: fileName, message: t('video.preview.failed') });
+              return;
+            }
+            setPreview({
+              phase: 'ready',
+              sessionId: sessionId,
+              fileName: typeof result.fileName === 'string' && result.fileName.length > 0 ? result.fileName : fileName,
+              mediaType: result.mediaType,
+              dataUrl: result.dataUrl,
+              size: Number(result.size) || 0,
+              sha256: typeof result.sha256 === 'string' ? result.sha256 : '',
+            });
+          },
+          function previewFailed(error) {
+            if (token !== previewToken.current || !aliveRef.current || activeSessionIdRef.current !== sessionId) return;
+            setPreview({ phase: 'error', sessionId: sessionId, fileName: fileName, message: previewErrorText(error, t) });
+          }
+        );
+      }
+
+      function capturePreviewClick(event) {
+        if (event === null || typeof event !== 'object') return;
+        const path = localPathFromTarget(event.target);
+        if (path === null) return;
+        if (typeof event.preventDefault === 'function') event.preventDefault();
+        if (typeof event.stopPropagation === 'function') event.stopPropagation();
+        openPreview(path);
       }
 
       function retrySession() {
@@ -2026,6 +2223,63 @@ window.__ModuleLoader__.load({
                   meta === '' ? null : h('span', { className: 'dv-history-state' }, meta)
                 );
               })
+        );
+      }
+
+      function previewOverlay() {
+        if (preview === null) return null;
+        if (preview.sessionId !== activeSessionId) return null;
+        const title = typeof preview.fileName === 'string' && preview.fileName.length > 0 ? preview.fileName : t('video.preview.title');
+        const head = h(
+          'div',
+          { className: 'dv-preview-head', key: 'head' },
+          h('span', { className: 'dv-preview-title', title: title, key: 'title' }, title),
+          h(
+            'button',
+            {
+              type: 'button',
+              className: 'dv-preview-close',
+              key: 'close',
+              'aria-label': t('video.preview.close'),
+              onClick: closePreview,
+            },
+            t('video.preview.close')
+          )
+        );
+        let body;
+        if (preview.phase === 'loading') {
+          body = h('p', { className: 'dv-preview-status', role: 'status', key: 'loading' }, t('video.preview.loading'));
+        } else if (preview.phase === 'error') {
+          body = h(
+            'p',
+            { className: 'dv-preview-status', role: 'alert', 'data-error': 'true', key: 'error' },
+            preview.message || t('video.preview.failed')
+          );
+        } else {
+          body = h('img', {
+            className: 'dv-preview-image',
+            src: preview.dataUrl,
+            alt: title,
+            key: 'image',
+          });
+        }
+        return h(
+          'div',
+          {
+            className: 'dv-preview',
+            role: 'dialog',
+            'aria-modal': 'true',
+            'aria-label': t('video.preview.title'),
+            key: 'preview',
+            onKeyDown: function previewKeyDown(event) {
+              if (event !== null && typeof event === 'object' && event.key === 'Escape') {
+                if (typeof event.preventDefault === 'function') event.preventDefault();
+                closePreview();
+              }
+            },
+          },
+          head,
+          h('div', { className: 'dv-preview-body', key: 'body' }, body)
         );
       }
 
@@ -2087,7 +2341,7 @@ window.__ModuleLoader__.load({
         }
         return h(
           'aside',
-          { className: 'dv-ai', 'aria-label': t('video.ai.title'), key: 'ai' },
+          { className: 'dv-ai', 'aria-label': t('video.ai.title'), key: 'ai', onClickCapture: capturePreviewClick },
           h(
             'header',
             { className: 'dv-ai-head' },
@@ -2131,7 +2385,8 @@ window.__ModuleLoader__.load({
             )
           ),
           historyOpen ? historyMenu() : null,
-          h('div', { className: 'dv-ai-body' }, body)
+          h('div', { className: 'dv-ai-body' }, body),
+          previewOverlay()
         );
       }
 

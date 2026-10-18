@@ -35,7 +35,7 @@ import { apply } from '../index.js';
 const PROJECT = 'demo';
 const REVISION = 'a'.repeat(64);
 const JOB_ID = '11111111-2222-4333-8444-555555555555';
-const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x01, 0x02]);
+const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2nXQAAAAASUVORK5CYII=', 'base64');
 const PNG_HASH = createHash('sha256').update(PNG).digest('hex');
 
 let passes = 0;
@@ -791,6 +791,79 @@ async function main() {
     assert(disabled.code === 'E_SESSION_CONFIG', `unconfigured session feature did not report E_SESSION_CONFIG: ${disabled.code}`);
     const doctor = await bridge.invoke('doctor', {}, { source: 'http' });
     assert(doctor !== null && typeof doctor === 'object', 'preview/doctor path must keep working without session config');
+  });
+
+
+  await run('P3-006-C: preview reads only a registered Session\'s bounded image roots without starting the worker', async () => {
+    const workspace = await makeWorkspace();
+    const bag = makeCtx(workspace);
+    const { bridge, engine } = makeBridge(workspace, { handler: () => ({}) }, bag.ctx);
+    const sessionId = await createBoundSession(bridge);
+    const artifactFile = join(workspace.outputRoot, 'frame.png');
+    await writeFile(artifactFile, PNG);
+    const artifactPreview = await bridge.invoke('preview', { projectId: PROJECT, sessionId, path: artifactFile }, { source: 'http' });
+    assert(artifactPreview.mediaType === 'image/png', `artifact preview media type is ${artifactPreview.mediaType}`);
+    assert(artifactPreview.fileName === 'frame.png', `preview filename is ${artifactPreview.fileName}`);
+    assert(artifactPreview.size === PNG.length && artifactPreview.sha256 === PNG_HASH, 'preview bytes/hash do not match the file');
+    assert(typeof artifactPreview.dataUrl === 'string' && artifactPreview.dataUrl.startsWith('data:image/png;base64,'), 'preview dataUrl missing');
+    assert(artifactPreview.dataUrl.includes(artifactFile) === false, 'preview leaked an absolute Host path into the data URL');
+
+    const localFile = join(workspace.sessionCwd, 'manual.png');
+    await writeFile(localFile, PNG);
+    const relativePreview = await bridge.invoke('preview', { projectId: PROJECT, sessionId, path: 'manual.png' }, { source: 'http' });
+    assert(relativePreview.fileName === 'manual.png' && relativePreview.sha256 === PNG_HASH, 'relative session preview did not resolve under sessionCwd');
+    assert(engine.instances.length === 0, 'preview started the video worker');
+  });
+
+  await run('P3-006-C: preview denies escapes, unsupported/mismatched files and over-limit bytes', async () => {
+    const workspace = await makeWorkspace({ config: { maxPreviewBytes: 1024 } });
+    const bag = makeCtx(workspace);
+    const { bridge } = makeBridge(workspace, { handler: () => ({}) }, bag.ctx);
+    const sessionId = await createBoundSession(bridge);
+
+    const outside = join(workspace.root, 'secret.png');
+    await writeFile(outside, PNG);
+    const denied = await rejects(() => bridge.invoke('preview', { projectId: PROJECT, sessionId, path: outside }, { source: 'http' }));
+    assert(denied.code === 'E_PREVIEW_DENIED', `outside root was not denied: ${denied.code}`);
+    const escape = await rejects(() => bridge.invoke('preview', { projectId: PROJECT, sessionId, path: '../../secret.png' }, { source: 'http' }));
+    assert(escape.code === 'E_PREVIEW_DENIED', `relative traversal was not denied: ${escape.code}`);
+
+    const textFile = join(workspace.outputRoot, 'notes.txt');
+    await writeFile(textFile, 'not an image');
+    const unsupported = await rejects(() => bridge.invoke('preview', { projectId: PROJECT, sessionId, path: textFile }, { source: 'http' }));
+    assert(unsupported.code === 'E_PREVIEW_UNSUPPORTED', `text preview was not unsupported: ${unsupported.code}`);
+
+    const fakeImage = join(workspace.outputRoot, 'fake.png');
+    await writeFile(fakeImage, '<!doctype html><script>alert(1)</script>');
+    const mismatched = await rejects(() => bridge.invoke('preview', { projectId: PROJECT, sessionId, path: fakeImage }, { source: 'http' }));
+    assert(mismatched.code === 'E_PREVIEW_UNSUPPORTED', `renamed non-image was not rejected: ${mismatched.code}`);
+
+    const large = join(workspace.outputRoot, 'large.png');
+    await writeFile(large, Buffer.concat([PNG, Buffer.alloc(2048)]));
+    const limit = await rejects(() => bridge.invoke('preview', { projectId: PROJECT, sessionId, path: large }, { source: 'http' }));
+    assert(limit.code === 'E_PREVIEW_LIMIT', `over-limit preview was not typed: ${limit.code}`);
+  });
+
+  await run('P3-006-C: preview is Session-scoped and is not a model tool action', async () => {
+    const OTHER = 'other';
+    const workspace = await makeWorkspace({ projects: { [OTHER]: 'projects-other/other' } });
+    const bag = makeCtx(workspace);
+    const { bridge } = makeBridge(workspace, { handler: () => ({}) }, bag.ctx);
+    const sessionId = await createBoundSession(bridge);
+    const otherSession = await createBoundSession(bridge, OTHER);
+    const file = join(workspace.outputRoot, 'frame.png');
+    await writeFile(file, PNG);
+
+    const unregistered = await rejects(() => bridge.invoke('preview', { projectId: PROJECT, sessionId: 'session-unregistered', path: file }, { source: 'http' }));
+    assert(unregistered.code === 'E_SESSION_NOT_BOUND', `unregistered Session preview was not rejected: ${unregistered.code}`);
+    const crossProject = await rejects(() => bridge.invoke('preview', { projectId: OTHER, sessionId: sessionId, path: file }, { source: 'http' }));
+    assert(crossProject.code === 'E_PROJECT_SCOPE', `cross-project preview was not rejected: ${crossProject.code}`);
+    const toolPreview = await rejects(() => bridge.invoke('preview', { projectId: PROJECT, sessionId, path: file }, { source: 'tool', agentSessionId: sessionId }));
+    assert(toolPreview.code === 'E_METHOD', `tool preview was not rejected: ${toolPreview.code}`);
+    const invalid = await rejects(() => bridge.invoke('preview', { projectId: PROJECT, sessionId, path: 5 }, { source: 'http' }));
+    assert(invalid.code === 'E_PARAMS', 'invalid preview path was not rejected');
+    const otherPreview = await bridge.invoke('preview', { projectId: OTHER, sessionId: otherSession, path: file }, { source: 'http' });
+    assert(otherPreview.sha256 === PNG_HASH, 'other project preview did not read its own registered Session');
   });
 
   await run('tool scope: cross-project actions and foreign jobs are refused from the trusted mapping', async () => {

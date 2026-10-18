@@ -26,6 +26,7 @@ export function statusForError(error) {
     case 'E_RESULT_LIMIT':
     case 'E_ARTIFACT_LIMIT':
     case 'E_LIMIT':
+    case 'E_PREVIEW_LIMIT':
       return 413;
     case 'E_PARAMS':
     case 'E_METHOD':
@@ -34,7 +35,12 @@ export function statusForError(error) {
       return 415;
     case 'E_PROJECT_NOT_FOUND':
     case 'E_JOB_NOT_FOUND':
+    case 'E_PREVIEW_NOT_FOUND':
       return 404;
+    case 'E_PREVIEW_DENIED':
+      return 403;
+    case 'E_PREVIEW_UNSUPPORTED':
+      return 415;
     case 'E_ARTIFACT_NOT_READY':
     case 'E_PROJECT_CLOSING':
     case 'E_PROJECT_NOT_OPEN':

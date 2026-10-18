@@ -4,7 +4,7 @@
 
 用户确定的入口（P0-005，延续到本阶段）：DSH 左侧原生导航中，在「上下文洞察」之后、「工作区」分组之前，单行 **Vedio Editor** + 细线条视频图标。原顶部「普通｜视频」胶囊已移除。入口是产品工作区导航，不改变 Agent preset、模型或权限。
 
-当前阶段：**P3-006-A** 接入右侧原生创作会话（原生 Conversation/Composer/模型 seat/历史）与 Host 工程会话映射，开发候选版本 **0.3.0-alpha.1**；本机安装仍是上一受控候选，本轮**未安装、未启停、未改 profile、未创建真实用户会话、未调用模型**。运行时契约基线为 DSH Desktop **0.2.1-rc.2**（应用包与运行 Host 已分别核对，见 `docs/research/P3-005A-native-conversation-contract.md`）。
+当前阶段：**P3-006-C** 修复嵌入创作会话中的 PNG/本地图片预览，开发候选版本 **0.3.0-alpha.2**（引擎仍固定 `54f4671` / 两包 `0.1.1`）；本机安装仍是上一受控候选，本轮**未安装、未启停、未改 profile、未创建真实用户会话、未调用模型**。运行时契约基线为 DSH Desktop **0.2.1-rc.2**（应用包与运行 Host 已分别核对，见 `docs/research/P3-005A-native-conversation-contract.md`）。
 
 - [当前状态与下一步](docs/STATUS.md)
 - [开发与协作规则](docs/DEVELOPMENT.md)
@@ -16,20 +16,20 @@
 - [P2-002 Host 契约调查](docs/research/P2-002-host-bridge-contract.md)
 - [P3-005-A 原生会话契约调查](docs/research/P3-005A-native-conversation-contract.md)
 
-## 本版交付（0.3.0-alpha.1，本地开发候选）
+## 本版交付（0.3.0-alpha.2，本地开发候选）
 
 | 项 | 值 |
 |---|---|
 | 包名 / Loader 行 id / Client 模块 id | `dsh-video` |
-| Bundle 版本 | `0.3.0-alpha.1` |
+| Bundle 版本 | `0.3.0-alpha.2` |
 | Host 路由 | `POST /api/dsh-video/request`、`GET/HEAD /api/dsh-video/artifact?jobId=…` |
-| Host 请求方法 | doctor/open/inspect/edit/frame/render/status/cancel/close，以及面板专用的 session.list/session.create/session.select/session.diagnose |
+| Host 请求方法 | doctor/open/inspect/edit/frame/render/status/cancel/close，以及面板专用的 session.list/session.create/session.select/session.diagnose 与仅限 UI 的 preview（嵌入会话图片预览） |
 | Tool | `video_engine`（同一 dispatcher；非 doctor action 必须来自绑定工程的受信 Agent Session） |
 | 侧栏入口 | `sidebar.panellist`，`id: dsh-video`、`order: 30`、label `Vedio Editor` |
 | 面板 key | `main` keyed slot 的 `dsh-video`；另声明私有 session child，仅用于取得原生 `SessionProvider` kit |
 | 引擎依赖 | 独立 `dsh-video-engine-client` / `dsh-video-engine-worker`，仅开发 staging 快照内解析；本任务仍固定已审 `54f4671` / 两包 `0.1.1` |
 
-`index.js` 是 Host half：一个 plugin-local `VideoBridge` 同时服务精确 Fetch 路由和 Tool；`host/` 保存校验、错误映射、环境清理、worker 适配、产物发布，以及插件自有的会话映射（`host/sessions.js`、`host/session-state.js`）。`client.js` 是手写浏览器半（`window.__ModuleLoader__.load` 格式），只 `require('react')`，通过文档相对 `fetch('api/dsh-video/request')` 调用 Host；右侧 AI 直接渲染宿主原生 `conversation.content` Factory，不自建聊天。
+`index.js` 是 Host half：一个 plugin-local `VideoBridge` 同时服务精确 Fetch 路由和 Tool；`host/` 保存校验、错误映射、环境清理、worker 适配、产物发布，以及插件自有的会话映射（`host/sessions.js`、`host/session-state.js`）与局部图片预览（`host/preview.js`）。`client.js` 是手写浏览器半（`window.__ModuleLoader__.load` 格式），只 `require('react')`，通过文档相对 `fetch('api/dsh-video/request')` 调用 Host；右侧 AI 直接渲染宿主原生 `conversation.content` Factory，不自建聊天。
 
 ### Host 可信配置（由安装/部署提供）
 
@@ -48,7 +48,7 @@
     sessionStatePath: /absolute/private/session-state.json   # 插件自有的工程↔会话映射（原子写）
     sessionCwd: /absolute/private/creation-cwd                # Host 创建创作会话的受信 cwd
     # 可选上限：startupTimeoutMs/requestTimeoutMs/shutdownTimeoutMs/maxRequestBytes/
-    # maxArtifactBytes/maxResultBytes/maxPending 等，见 host/config.js
+    # maxArtifactBytes/maxResultBytes/maxPreviewBytes/maxPending 等，见 host/config.js
 ```
 
 - `workerNode` 经 `ctx.subprocess.resolveExecutable` 验证后才启动 worker；Host 构造**完整、清理后的子进程环境**（去掉 `ELECTRON_*`、`NODE_*`、`DSH_*`、`npm_*` 等继承项，不修改 `process.env`），并显式传 `cwd`。
@@ -63,6 +63,15 @@
 - 绑定期间 Host 通过受支持的 `systemPrompt.context` 为对应 Agent 提供实时工程 id、最近 revision 与可用目标能力摘要；上下文不是授权，每个 Tool 操作仍按持久映射检查。
 - `video_engine` 的工程/作业操作从**可信 `exec.agent`** 提取 Session 身份（`agent.session.id`，与 `agent.id` 同时存在时必须一致），按映射校验 projectId 与 job 归属；无 Agent、未绑定、跨工程分别返回 `E_AGENT_REQUIRED` / `E_SESSION_NOT_BOUND` / `E_PROJECT_SCOPE`。`doctor` 不受绑定限制；UI Fetch 路径保持自身连接与工程边界。
 - 工程会话允许被宿主搜索/历史发现，不创建独立 Workspace，不通过归档隐藏。模型选择复用原生 Composer seat，下一次请求生效。
+
+### 嵌入会话图片预览（P3-006-C）
+
+全局主面板中宿主右侧栏没有挂载会话 surface，原生会话的文件打开事件不能走 `ctx.sidebarRight`。本版不修改宿主/不猴补全局服务，而是在插件自己的嵌入 AI 区域内按需打开局部预览：
+
+- 点击原生文件卡、内联文件 mention 或 Markdown 本地文件链接时，插件只在该面板的捕获阶段识别路径类目标并拦截；其他点击与宿主原生行为不变。
+- 路径交给 Host 受信 `preview` 路由：调用必须携带已登记 `sessionId`，Host 用持久映射校验工程归属，`realpath` 后只允许落在受信 `sessionCwd` 或 worker `artifactRoot`；拒绝任意绝对路径、目录逃逸与未支持类型。
+- 只按**实际文件字节**嗅探 PNG/JPEG/GIF/WebP 并核对扩展名，不接受重命名为图片的 HTML；超过 `maxPreviewBytes`（默认 8 MiB）直接拒绝。返回有界 data URL，不把 Host 绝对路径作为浏览器 URL。
+- 图片显示在右 AI 区域的局部 dialog 中，关闭即回到原会话；不导航普通对话、不占第三列、不替换左工程预览。当前只支持图片内嵌预览；PDF/Office/视频等明确显示“暂不支持内嵌预览”，不假装已支持全部原生文件类型。
 
 ### Host 请求与 Tool
 
@@ -86,13 +95,13 @@
 node scripts/stage-dev.mjs   --engine-commit <reviewed-P2-003-sha>   --bundle-version <reviewed-bundle-version>   --node /absolute/real/node   --browser /absolute/chrome   [--font /absolute/font] [--out /absolute/staging-dir]
 ```
 
-`--bundle-version` 必须显式给出，且与所固定提交根 `package.json` 的版本（当前 **0.3.0-alpha.1**）完全一致；非法 semver 或不一致会在创建输出目录、安装依赖之前失败，脚本不会猜测或隐式接受任意版本。后续升级根版本时同步传入新版本，不删除这项校验。
+`--bundle-version` 必须显式给出，且与所固定提交根 `package.json` 的版本（当前 **0.3.0-alpha.2**）完全一致；非法 semver 或不一致会在创建输出目录、安装依赖之前失败，脚本不会猜测或隐式接受任意版本。后续升级根版本时同步传入新版本，不删除这项校验。
 
 脚本要求根 worktree 干净、引擎包版本为复审的 `0.1.1` 且暴露 `./worker` / `./package.json` 导出；用该提交的 client/worker 快照 + `npm ci --ignore-scripts` 准备依赖闭包与受控 fixture，生成：
 
 ```text
 <staging>/
-  bundle/                  # 0.3.0-alpha.1 根 bundle；仅此快照内加本地依赖与 node_modules 链接
+  bundle/                  # 0.3.0-alpha.2 根 bundle；仅此快照内加本地依赖与 node_modules 链接
   engine-client/           # 固定 engine commit 快照
   engine-worker/           # 固定 engine commit 快照 + 依赖闭包 + artifacts fixture/registry/output
   config.json              # 仅此快照的绝对路径 Host 配置（含 sessionStatePath/sessionCwd）
@@ -112,7 +121,7 @@ node scripts/test-host-engine.mjs --staging /absolute/staging-dir
 
 ## 安装（需用户明确授权；由 DSH 界面执行）
 
-本仓库未做 profile 修改，0.3.0-alpha.1 未安装。复审通过并完成 staging 后：
+本仓库未做 profile 修改，0.3.0-alpha.2 未安装。复审通过并完成 staging 后：
 
 1. 侧栏 **Plugins → Add plugin**，填入 staging 的 `bundle/` 绝对路径（开发 link）或审阅通过的固定包；
 2. **Install**，完成后 **Enable now**；
@@ -131,7 +140,7 @@ node scripts/test-host-engine.mjs --staging /absolute/staging-dir
 
 - **停用**：Plugins 页面关闭 `dsh-video`。Host 停止接受新请求并 `await` 一次 worker dispose；UI/侧栏/路由/Tool/会话引用与 prompt context 随 fiber 释放。worker 只在插件停用/移除时收尾，切换视频面板或返回对话不会停止共享 worker。
 - **重新启用**：再次打开开关；worker 在第一次业务请求时惰性启动，不随面板挂载启动；历史与映射从 `sessionStatePath` 恢复，草稿由宿主会话保留。
-- **回滚**：保留并恢复当前已安装的受控候选；移除 0.3.0-alpha.1 bundle 后重新安装上一固定 tarball，或按 Plugin Manager 历史选择回退。浏览器偏好可删除 `localStorage['dsh-video.ui.v1']`；如需清理插件映射，可在插件停用后按运维流程删除 `sessionStatePath`（不会删除 DSH Session）。
+- **回滚**：保留并恢复当前已安装的受控候选；移除 0.3.0-alpha.2 bundle 后重新安装上一固定 tarball，或按 Plugin Manager 历史选择回退。浏览器偏好可删除 `localStorage['dsh-video.ui.v1']`；如需清理插件映射，可在插件停用后按运维流程删除 `sessionStatePath`（不会删除 DSH Session）。
 - **数据影响**：本插件不写 DSH session 事件、不写 profile；工程内容只由受控 worker 写入其配置的 registry 工程目录；云不可用或映射文件损坏时不会静默删除任何会话或工程。
 
 ## 本地检查（零构建，无安装）
