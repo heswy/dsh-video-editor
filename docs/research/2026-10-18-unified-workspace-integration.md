@@ -24,3 +24,5 @@
 合码没有修复用户报告的鹈鹕左画布空白、demo改色空转。已只读核实实际安装alpha.3、项目无Scene标记、前端Scene条件/轮询门禁及legacy球缺style能力。整体创作验收仍FAIL，统一会话按P3-011修复；候选测试数不能替代真实创作。
 
 后续由用户在DSH打开video-studio并新建一个会话、转发当前handoff启动。不是由总调度自动创建/联系开发Agent。安装/真实模型/重启授权独立，不因合码自动执行。
+
+统一分支已推送origin/codex/video-studio。草稿PR创建请求在GitHub API超时，结果未确认；后续先按head=codex/video-studio查询并复用，避免重复创建。此状态不影响打开统一工作区开发，原PR#1/#2/#3未关闭。
