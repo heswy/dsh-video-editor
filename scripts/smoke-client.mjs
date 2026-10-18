@@ -3259,6 +3259,66 @@ test('R5: Escape closes the inline editor without sending any write', async () =
   }
 });
 
+test('R5 wiring: a pointer-capture retargeted overlay double-click opens the inline editor', async () => {
+  const hostFetch = canvasFetch({});
+  const editor = await mountCanvasReady({ fetch: hostFetch });
+  try {
+    // Real gesture sequence: pointer capture on the overlay retargets
+    // pointerup/click/dblclick to the overlay (nearest common ancestor), so the
+    // selection node's own dblclick never fires in a real browser.
+    canvasOverlay(editor.tree()).props.onClick({ clientX: 640, clientY: 246 });
+    const selectCommand = takeCanvasCommand(editor, 'hitTest');
+    assert(selectCommand !== null, 'the selection click did not request a hit test');
+    canvasDispatch(editor, { reference: selectCommand, type: 'hit', payload: { hit: canvasHitPayload() } });
+    await settle();
+    editor.rerender();
+    await settle();
+    const selection = findNode(editor.tree(), (node) => node.props && node.props.className === 'dv-selection');
+    assert(selection !== null, 'selection missing before the retargeted double click');
+    const overlayNode = canvasOverlay(editor.tree());
+    const retargeted = { clientX: 640, clientY: 246, target: overlayNode, currentTarget: overlayNode };
+    overlayNode.props.onDoubleClick(retargeted);
+    const pause = takeCanvasCommand(editor, 'pause');
+    if (pause !== null) canvasDispatch(editor, { reference: pause, type: 'paused', payload: { time: 0 } });
+    await settle();
+    editor.rerender();
+    await settle();
+    let textarea = findNode(editor.tree(), (node) => node.props && node.props.className === 'dv-inline-editor');
+    assert(textarea !== null, 'the retargeted overlay double-click did not open the inline editor');
+    assert(textarea.props.value === 'Scene 1', `the editor value came from the wrong source: ${textarea.props.value}`);
+    assert(canvasMethodCalls(hostFetch, 'edit').length === 0, 'opening the inline editor sent an edit request');
+    textarea.props.onKeyDown({ key: 'Escape', preventDefault() {} });
+    await settle();
+    editor.rerender();
+    await settle();
+    assert(findNode(editor.tree(), (node) => node.props && node.props.className === 'dv-inline-editor') === null, 'Escape did not close the editor');
+
+    // A double-click on a not-yet-selected text element goes through the
+    // hit-test fallback and still opens the editor on the real target.
+    canvasOverlay(editor.tree()).props.onClick({ clientX: 320, clientY: 240 });
+    const clearCommand = takeCanvasCommand(editor, 'hitTest');
+    assert(clearCommand !== null, 'the clearing click did not request a hit test');
+    canvasDispatch(editor, { reference: clearCommand, type: 'hit', payload: { hit: null } });
+    await settle();
+    editor.rerender();
+    await settle();
+    assert(findNode(editor.tree(), (node) => node.props && node.props.className === 'dv-selection') === null, 'selection did not clear');
+    canvasOverlay(editor.tree()).props.onDoubleClick({ clientX: 640, clientY: 246 });
+    const fallbackCommand = takeCanvasCommand(editor, 'hitTest');
+    assert(fallbackCommand !== null, 'the double-click fallback did not request a hit test');
+    canvasDispatch(editor, { reference: fallbackCommand, type: 'hit', payload: { hit: canvasHitPayload() } });
+    const fallbackPause = takeCanvasCommand(editor, 'pause');
+    if (fallbackPause !== null) canvasDispatch(editor, { reference: fallbackPause, type: 'paused', payload: { time: 0 } });
+    await settle();
+    editor.rerender();
+    await settle();
+    textarea = findNode(editor.tree(), (node) => node.props && node.props.className === 'dv-inline-editor');
+    assert(textarea !== null && textarea.props.value === 'Scene 1', 'the double-click hit-test fallback did not open the editor');
+  } finally {
+    editor.interactive.unmount();
+  }
+});
+
 test('R5: a successful save closes the editor first and then reloads the new revision', async () => {
   const hostFetch = canvasFetch({});
   const editor = await mountCanvasReady({ fetch: hostFetch });

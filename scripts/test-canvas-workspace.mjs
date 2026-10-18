@@ -838,11 +838,12 @@ async function runResizeRuleCase(ctx) {
   check(caseResult, 'committed left/top unchanged for a se drag', committed !== null && near(committed.left, base.left, 1e-6) && near(committed.top, base.top, 1e-6), { expectedLeft: base.left, expectedTop: base.top, actualLeft: committed !== null ? committed.left : null, actualTop: committed !== null ? committed.top : null });
   check(caseResult, 'resize did not bake the rendered animated width', committed !== null && Math.abs(committed.width - (startRect.width + compositionDelta.x)) > 5, { animatedPreviewWidth: startRect.width + compositionDelta.x, committedWidth: committed !== null ? committed.width : null });
 
-  const ratio = committed !== null && committed.width > 0 ? expectedWidth / committed.width : scaleFactor;
+  // The rule's scaleX=0.5 transform is still applied after reload, so the
+  // rendered rect is the new static box scaled about its center.
   const expectedPost = committed !== null ? {
-    x: committed.left + (committed.width - committed.width * ratio) / 2,
+    x: committed.left + (committed.width - committed.width * scaleFactor) / 2,
     y: committed.top,
-    width: committed.width * ratio,
+    width: committed.width * scaleFactor,
     height: committed.height,
   } : null;
   const located = expectedPost !== null ? await locateSelection(page, expectedPost, 1.5, 8) : { selection: null };
@@ -1243,6 +1244,16 @@ async function main() {
     const rendererSource = rendererPageSource(rendererModuleSource);
     const pageHtml = await readFile(join(LIB_DIR, 'canvas-harness-page.html'), 'utf8');
     const pageGlue = await readFile(join(LIB_DIR, 'canvas-harness-page.js'), 'utf8');
+    const harnessScriptBytes = await readFile(fileURLToPath(import.meta.url));
+    evidence.harness = {
+      note: 'sha256 of the harness files actually executed (working tree; scripts-only follow-up may differ from the staged root commit).',
+      files: {
+        'scripts/test-canvas-workspace.mjs': sha256(harnessScriptBytes),
+        'scripts/lib/react-dom-lite.mjs': sha256(Buffer.from(rendererModuleSource, 'utf8')),
+        'scripts/lib/canvas-harness-page.js': sha256(Buffer.from(pageGlue, 'utf8')),
+        'scripts/lib/canvas-harness-page.html': sha256(Buffer.from(pageHtml, 'utf8')),
+      },
+    };
     assert(pageHtml.includes('/harness/page.js'), 'harness page HTML is missing its scripts');
 
     stateRoot = await prepareStateRoot(stagingRoot, staged.config);

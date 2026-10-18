@@ -920,6 +920,7 @@ window.__ModuleLoader__.load({
   background:var(--dsw-alias-bg-base,#1a1a1c);
 }
 .dv-stage{position:relative;overflow:hidden;background:#000;box-shadow:0 12px 32px -24px rgba(0,0,0,.65);}
+.dv-stage.dv-canvas-stage{display:block;flex:none;padding:0;}
 .dv-stage-frame{position:absolute;inset:0;width:100%;height:100%;border:0;background:#000;}
 .dv-overlay{position:absolute;inset:0;cursor:default;touch-action:none;}
 .dv-selection{
@@ -2343,6 +2344,7 @@ window.__ModuleLoader__.load({
       const overlayRef = React.useRef(null);
       const ledgerRef = React.useRef(null);
       const pendingRef = React.useRef(new Map());
+      const editorRef = React.useRef(null);
       const timeRef = React.useRef(0);
       const selectedRef = React.useRef(null);
       const readyRef = React.useRef(false);
@@ -2359,6 +2361,7 @@ window.__ModuleLoader__.load({
 
       timeRef.current = time;
       selectedRef.current = selected;
+      editorRef.current = editor;
 
       function setSelectedSafe(next) {
         selectedRef.current = next;
@@ -3054,20 +3057,77 @@ window.__ModuleLoader__.load({
         void postCommand('seek', { time: value });
       }
 
-      function openTextEditor() {
-        if (selected === null || isTextSelected() === false) return;
+      // Open the in-place text editor for one inspected text-capable element.
+      // `hit` is a runtime hit (or the current selection): the text content is
+      // authoritative from the runtime, the element only proves the capability.
+      function openEditorForHit(hit) {
+        if (canvasPlainObject(hit) === false || typeof hit.stableId !== 'string' || hit.stableId.length === 0) return;
+        if (editorRef.current !== null) return;
+        const element = elements.find(function same(item) {
+          return item.stableId === hit.stableId;
+        });
+        const capabilities = element !== null && Array.isArray(element.capabilities) ? element.capabilities : [];
+        if (capabilities.includes('text') === false) return;
+        const rect = canvasValidRect(hit.rect);
+        if (rect === null) return;
+        setSelectedSafe(hit);
         setPlaying(false);
         void postCommand('pause');
         setEditorNotice(null);
         setEditor({
-          stableId: selected.stableId,
-          value: typeof selected.text === 'string' ? selected.text : '',
-          rect: selected.rect,
+          stableId: hit.stableId,
+          value: typeof hit.text === 'string' ? hit.text : element !== null && typeof element.text === 'string' ? element.text : '',
+          rect: rect,
           // One operationId for this editor lifetime: retries reuse it so the
           // worker can replay an uncertain write idempotently.
           operationId: operationId(),
           error: null,
           refreshRequired: false,
+        });
+      }
+
+      function openTextEditor() {
+        if (selected === null || isTextSelected() === false) return;
+        openEditorForHit(selected);
+      }
+
+      function pointInsideRect(point, rect) {
+        return (
+          point !== null &&
+          point.x >= rect.x &&
+          point.x <= rect.x + rect.width &&
+          point.y >= rect.y &&
+          point.y <= rect.y + rect.height
+        );
+      }
+
+      // A real double-click cannot rely on the selection node as its target:
+      // beginDrag sets pointer capture on the overlay, so pointerup (and per
+      // spec click/dblclick) retarget to the nearest common ancestor, the
+      // overlay. Handle the gesture there; keep the selection-node handler as a
+      // compatibility path for synthetic events and capture-less browsers.
+      function onOverlayDoubleClick(event) {
+        if (editorRef.current !== null || drag !== null) return;
+        if (
+          event !== null &&
+          typeof event === 'object' &&
+          event.target !== undefined &&
+          event.currentTarget !== undefined &&
+          event.target !== event.currentTarget
+        ) {
+          return;
+        }
+        const point = stagePoint(event);
+        if (point === null) return;
+        const current = selected;
+        const currentRect = current !== null ? canvasValidRect(current.rect) : null;
+        if (current !== null && isTextSelected() && currentRect !== null && pointInsideRect(point, currentRect)) {
+          openEditorForHit(current);
+          return;
+        }
+        void postCommand('hitTest', point).then(function openOnHit(payload) {
+          if (editorRef.current !== null || drag !== null) return;
+          openEditorForHit(payload !== null && typeof payload === 'object' && payload.hit ? payload.hit : null);
         });
       }
 
@@ -3104,7 +3164,7 @@ window.__ModuleLoader__.load({
         return h(
           'div',
           {
-            className: 'dv-stage',
+            className: 'dv-stage dv-canvas-stage',
             ref: stageRef,
             style: { width: displayWidth + 'px', height: displayHeight + 'px' },
           },
@@ -3127,6 +3187,7 @@ window.__ModuleLoader__.load({
               className: 'dv-overlay',
               ref: overlayRef,
               onClick: onOverlayClick,
+              onDoubleClick: onOverlayDoubleClick,
               onPointerMove: onOverlayPointerMove,
               onPointerUp: onOverlayPointerUp,
               onPointerCancel: function cancelPointer() {
