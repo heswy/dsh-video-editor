@@ -1,10 +1,10 @@
 # DSH Video
 
-运行在 DeepSeek Harness 内的 AI 视频创作与编辑插件。目标是让 AI 创建可编辑的视频工程，用户直接修改后，AI 能继续编辑同一份工程并导出 MP4。
+运行在 DeepSeek Harness 内的 AI 视频创作与编辑插件。当前目标是用户通过右侧对话生成视频，左侧自动预览/播放，再通过对话持续修改同一作品；用户手动编辑后续再加。
 
 用户确定的入口（P0-005，延续到本阶段）：DSH 左侧原生导航中，在「上下文洞察」之后、「工作区」分组之前，单行 **Vedio Editor** + 细线条视频图标。原顶部「普通｜视频」胶囊已移除。入口是产品工作区导航，不改变 Agent preset、模型或权限。
 
-当前开发已统一到 **video-studio / codex/video-studio**，一个DSH会话负责Client/Host/engine。根基线 **0.3.0-alpha.3**、引擎 **0.3.2**；历史P3-008受控回归通过，但用户实测“鹈鹕生成后左侧空白、demo球改色未完成”，**整体创作闭环尚未验收**。本轮仅整合代码，未替换安装或修复上述功能。当前任务与实际版本统一读取[STATUS](docs/STATUS.md)和[交接](docs/handoffs/video-studio.md)。
+当前唯一开发线为 **video-studio / codex/video-studio**。当前任务 **P3-012：对话生成→左侧自动预览/播放→对话续改→自动更新同一作品**；选中、拖拽、原位文字、属性表单等用户手动编辑延期。鹈鹕/球是旧故障回归，功能验收采用通用闭环及不同题材。代码基线根0.3.0-alpha.3、引擎0.3.2；整体创作仍未通过实际验收。最新事实和交接读[STATUS](docs/STATUS.md)、[video-studio](docs/handoffs/video-studio.md)。
 
 - [当前状态与下一步](docs/STATUS.md)
 - [开发与协作规则](docs/DEVELOPMENT.md)
