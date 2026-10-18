@@ -59,13 +59,13 @@
 ### 起点、范围与提交
 
 - 工作树：`/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/p1-engine`，分支 `codex/p1-engine-spike-b4bf`（PR #2）。
-- 开工 HEAD **`ea2d1a4`**；引擎功能基线 **`df4b74f`** / 两包 0.2.1。实现提交 **`0296781`**（两包 0.3.0 + 测试 + schema/README + spike 必要适配与新证据）；本记录与研究记录另以 docs 提交。
+- 开工 HEAD **`ea2d1a4`**；引擎功能基线 **`df4b74f`** / 两包 0.2.1。第一版实现 **`0296781`**，独立复核后由 **`4c087ef`** 修正（显式覆盖标记、渲染证据披露、打包可复现性），最终交付以 **`4c087ef`** 为准；本记录与研究记录另以 docs 提交。
 - 范围：只改 `packages/video-engine-worker/**`、`packages/video-engine-client/**`、`spikes/editor-canvas/**` 的必要能力探针/新证据、本任务/研究记录；未改根插件/Host/其它 spike/全局规则/profile；未安装/启停/重启、未调模型、未 merge、未新 tree/PR；HyperFrames 固定 0.8.167，未加运行时依赖。
 - 两包版本 0.3.0；JSONL v1 与全部原有方法保持；旧无覆盖工程可打开。
 
 ### 规范化与覆盖模型（选择与理由）
 
-- **inline style 是唯一工程真相**：layout/style 写入受控模板叶子的行内样式；revision=HTML 字节 hash，history 快照/preview snapshot/frame/render/close/reopen/worker 重启天然一致；不引入 Host 第二份工程状态或用户不可见元数据。
+- **inline style 是唯一工程真相 + 受控覆盖标记**：layout/style 写入受控模板叶子的行内样式，并在元素上写 `data-dv-managed="<props>"` 区分“人工显式选择”与“模板默认”（覆盖值等于默认、后续 accent 改色/删除保护场景）；revision=HTML 字节 hash，history 快照/preview snapshot/frame/render/close/reopen/worker 重启天然一致；不引入 Host 第二份工程状态或隐藏元数据。无标记的外部手改按“与当前模板默认值差异”回退识别。
 - 写入走统一 `edit.ops` 单写者路径：整批先做结构/能力/范围/精度/累计 box 边界校验，再一次 SDK 受控写入（layout/style 用 SDK `setStyle`，text/timing 原有路径），flush/readback 成功后记录 history；layout/style 不修改 GSAP timeline 字节，动画 transform 保持相对。
 - 重生成：用“当前 Scene 模型生成的默认文档”对比当前 HTML 得到人工差量，移植到新文档保留 stableId（scene.create/update/reorder、revise 的 AI 候选）；`scene.update` 删除带差量对象 → `E_OVERRIDE_CONFLICT`；`scene.remove` 显式执行并报告 `changeSummary.droppedOverrides`。
 - 合并：`merge.mjs` 改为逐字段三方（text、timing.start/duration、attributes、class、layout.*、style.*、其余 inline style）；人工 layout/style + AI 文案合并保留双方；同字段双改不同 → `written:false + conflicts[{field,humanValue,aiValue}]`（保留旧 human/ai 摘要字段）；AI 删除人工修改或 base 已有人工覆盖对象 → `AI_DELETE_HUMAN_MODIFY`；其它 Scene 逐字节不变。
@@ -73,19 +73,19 @@
 
 ### 验证与真实证据（自述，待独立复审）
 
-- worker 单元/协议 **36/36**（16.4s）；真实链 **11/11**（133.3s，含新增布局/样式真实帧+MP4）；client **20 项：19 pass + 1 opt-in skip**（21.0s）。
-- 真实视觉（`spikes/editor-canvas/evidence/p3-006b/persistence-evidence.json`）：改 title left=400/width=700/color=#ff0000/fontSize=96、logo 240×240 后，0.5s/1.5s 帧变化 11.90%/11.91%；红色标题基座 x=403/403（稳定），入场 y 仍相对（minY 208/205）；渲染帧红字 bbox minX=404 与 worker 抽帧 403 一致；11s MP4 H.264 1280×720/30fps/330 帧/11.000s。
+- worker 单元/协议 **38/38**（24.5s，含覆盖标记/回退 2 项）；真实链 **11/11**（133.8s，含新增布局/样式真实帧+MP4）；client **20 项：19 pass + 1 opt-in skip**（单独运行 18.6s；与真实链并跑时协议超时用例可能受负载影响，单独复跑通过）。
+- 真实视觉（`spikes/editor-canvas/evidence/p3-006b/persistence-evidence.json`）：改 title left=400/width=700/color=#ff0000/fontSize=96、logo 240×240 后，0.5s/1.5s 帧变化 11.90%/11.91%；红色标题基座 x=403/403（稳定），入场 y 仍相对（minY 208/205）；渲染帧红字 bbox minX=404 与 worker 抽帧 403 一致；11s MP4 H.264 1280×720/30fps/330 帧/11.000s。**既有问题：** 管理模板 720p MP4 底部 86 行为黑（baseline 同样存在、worker 抽帧正常），与 layout/style 无关，证据已记录 `knownIssue`，需另立 ticket；不声称 MP4 整帧 parity。
 - `scene.update` 改名/改时长保留 title 位置/颜色/字号与 logo 尺寸；人工位置/字号 + AI 文案 revise 合并成功（文案 AI、布局/字号人工）；undo→中间 revision、redo→合并 revision；close/reopen 与 worker 重启后从 revision/HTML 恢复一致。
 - 能力探针（`evidence/p3-006b/capability-evidence.json`）：文字/timing/位置/尺寸/颜色字号字重对齐/人工+AI 合并持久；move/resize/color 形状、旋转/任意 CSS、字体族/多选/清除覆盖仍不支持（E_PARAMS/E_UNSUPPORTED_EDIT/README 限制）。
 
-### 固定包（`artifacts/engine/0296781/`，ignored）
+### 固定包（`artifacts/engine/4c087ef/`，ignored）
 
 | 包 | 文件数 | bytes | SHA-256 |
 |---|---|---|---|
 | dsh-video-engine-client-0.3.0.tgz | 3 | 7408 | `718de70fadbdf1c725695606efa4f599cdbd072b802b6eb60dd8bedd49b64d62` |
-| dsh-video-engine-worker-0.3.0.tgz | 14 | 52738 | `a85e5ea741748ce76fc4b2ea69f3d4ce96c4bab3e2f29852171ef4baca8a36be` |
+| dsh-video-engine-worker-0.3.0.tgz | 14 | 53734 | `5518bf7ec0991af13eb7b5cb16466ff03cfd242558a84e1b79f95bcf1bf59b62` |
 
-`package-verify.json`：逐文件与 `0296781` 字节一致、重复 pack 一致；未安装、未发布；旧 `artifacts/engine/df4b74f/` 未覆盖。
+`package-verify.json`：逐文件与 `4c087ef` 字节一致、重复 pack 一致，且 `git archive 4c087ef` 干净检出后重新 pack 得到相同 SHA-256（修复首版 0600 模式不可复现）；未安装、未发布；旧 `artifacts/engine/df4b74f/` 未覆盖。
 
 ### 复跑
 
@@ -102,3 +102,5 @@ node spikes/editor-canvas/scripts/persistence-evidence.mjs
 - 未接入真实 DSH/Host/插件；屏幕坐标→composition 静态基座的 Host 逆映射仍是 Host/UI 任务，不宣称最终拖动/缩放 UI 已接通。
 - 仅受控 `product-launch-v1` 模板；任意 HTML/JS、音视频、多用户、非 macOS 未测；不支持清除覆盖/删除单元素/字体族/旋转/层级/任意 CSS。
 - `scene.*` 重生成仍重置元素级 timing（既有行为）；带差量的重生成经 SDK 序列化，HTML 字节形态与 revision 会变化（内容 hash 语义正确）；未做性能与大工程压力验证。
+- 既有渲染底部黑带（管理模板 720p MP4 底部 86 行，worker 抽帧正常，baseline 可复现）与本任务无关，另立 ticket 前不把 MP4 整帧视觉作为验收证据。
+- 无标记的外部手改无法区分“值恰好等于默认”的覆盖；edit op 写入的覆盖有标记，不受影响。

@@ -26,7 +26,9 @@ node spikes/editor-canvas/scripts/capability-probe.mjs           # 输出 eviden
 node spikes/editor-canvas/scripts/persistence-evidence.mjs       # 输出 evidence/p3-006b/persistence-evidence.json + PNG
 ```
 
-新证据目录为 `evidence/p3-006b/`，**不覆盖** 0.2.1 的历史证据（`evidence/*.json`、`evidence/*.png`）。旧的 `run-canvas.mjs` 与其 41 项证据是 P3-005-B（0.2.1）的历史交付：其中“layout 提交被 E_PARAMS 拒绝”的缺口断言正是当时要证明的状态，**不要用 0.3.0 重跑并覆盖**；新能力以 `persistence-evidence.mjs`/`capability-probe.mjs` 为准。
+新证据目录为 `evidence/p3-006b/`，**不覆盖** 0.2.1 的历史证据（`evidence/*.json`、`evidence/*.png`）。**已知既有问题（与本任务无关）：** 管理模板 720p 的 MP4 底部 86 行为黑（worker 抽帧同帧正常，未改 layout/style 的 baseline 同样可复现）；`persistence-evidence.json` 的 `knownIssue` 已记录，需要单独 ticket，不能作为 layout/style 回归，也不声称 MP4 整帧 parity。
+
+旧的 `run-canvas.mjs` 与其 41 项证据是 P3-005-B（0.2.1）的历史交付：其中“layout 提交被 E_PARAMS 拒绝”的缺口断言正是当时要证明的状态，**不要用 0.3.0 重跑并覆盖**；新能力以 `persistence-evidence.mjs`/`capability-probe.mjs` 为准。
 
 ### P3-005-B 历史证据（0.2.1，勿覆盖）
 
