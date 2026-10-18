@@ -1585,6 +1585,169 @@ async function runLostResponseModifiedDraftCase(ctx) {
   return caseResult;
 }
 
+/**
+ * T4C: uncertain attempt + concurrent out-of-band revision change.
+ *
+ * Deterministic real-worker flow (fixed client):
+ *   1. lost response after a real write => frozen attempt (O1, expectedRevision A, text D1),
+ *      worker revision B and draft D1 retained in the UI;
+ *   2. out-of-band write => revision C (title = out-of-band text);
+ *   3. user changes the retained draft to D2 and submits: the fixed client first
+ *      re-sends the frozen attempt (cached success B, applied once), then starts a
+ *      NEW intent (new operationId O2, expectedRevision = settled B, text D2),
+ *      which the real worker rejects with E_REVISION_CONFLICT because C is current;
+ *   4. explicit refresh (inspect only) makes C authoritative and keeps the draft;
+ *   5. explicit submit sends a third attempt (O3, expectedRevision C, text D2) and
+ *      commits revision D. No E_OPERATION_REUSED, no Esc/reopen, no silent overwrite.
+ */
+async function runLostResponseConflictRecoveryCase(ctx) {
+  const caseResult = newCase('T4C', 'write succeeded + response lost -> concurrent revision conflict explicit recovery (t=2)');
+  const setup = await beginLostResponseAttempt(ctx, caseResult, {
+    projectTitle: PROJECT_TITLE + ' lost response conflict',
+    draftSuffix: ' LOST-CONFLICT-DRAFT',
+  });
+  const { page, failureState } = setup;
+  const newDraft = 'P3-008 Harness T4C AFTER-CONFLICT';
+
+  // Real concurrent write through the same staged bridge (AI/session editing).
+  const outOfBandText = 'Out-of-band concurrent edit';
+  const outOfBand = await ctx.bridge.invoke('edit', {
+    projectId: setup.projectId,
+    expectedRevision: setup.revisionB,
+    operationId: 'harness-t4c-out-of-band-1',
+    ops: [{ type: 'text', target: TITLE_ID, text: outOfBandText }],
+  }, { source: 'http' });
+  const revisionC = outOfBand.revision;
+  const afterOutOfBand = await inspectProject(ctx, setup.projectId);
+  const afterOutOfBandTitle = findElement(afterOutOfBand, TITLE_ID);
+  check(caseResult, 'real out-of-band write advanced the project after the lost attempt', revisionC !== setup.revisionB
+    && afterOutOfBandTitle !== null
+    && afterOutOfBandTitle.text === outOfBandText, { revisionB: setup.revisionB, revisionC, title: afterOutOfBandTitle !== null ? afterOutOfBandTitle.text : null });
+
+  const newValue = await retypeRetainedDraft(page, failureState.editor, newDraft);
+  const editorState = await pageState(page);
+  check(caseResult, 'retained draft changed after the uncertain attempt (same editor)', editorState.editor !== null
+    && typeof newValue === 'string'
+    && newValue !== setup.draft
+    && newValue.includes(newDraft)
+    && editorState.editorMountCount === 1, { oldDraft: setup.draft, newValue, editorMountCount: editorState.editorMountCount });
+
+  const submitApiMark = ctx.apiLog.length;
+  const submitPageMark = await page.evaluate(() => window.__CASE__.mark());
+  await page.keyboard.press('Enter');
+  const sawConflict = await waitForErrorOrActions(page, 20000);
+  await sleep(900);
+  const conflictState = await pageState(page);
+  const conflictEdits = editRequestsBetween(ctx, submitApiMark);
+  const conflictPageRequests = await page.evaluate((mark) => window.__CASE__.requestsSince(mark), submitPageMark);
+  const settleRequest = conflictEdits.length > 0 ? conflictEdits[0] : null;
+  const newIntentRequest = conflictEdits.length > 1 ? conflictEdits[1] : null;
+  const conflictInspect = await inspectProject(ctx, setup.projectId);
+  const conflictTitle = findElement(conflictInspect, TITLE_ID);
+
+  check(caseResult, 'submit settles the frozen attempt first, then sends the new intent', conflictEdits.length === 2, { actual: conflictEdits.length, requests: conflictEdits.map(editRequestSummary) });
+  check(caseResult, 'settle request is the IDENTICAL frozen attempt and a real cached success', settleRequest !== null
+    && editRequestSignature(settleRequest) === setup.signature
+    && settleRequest.params.operationId === setup.operationId
+    && settleRequest.params.expectedRevision === setup.revisionA
+    && editTextOf(settleRequest) === setup.draft
+    && settleRequest.responseStatus === 200
+    && settleRequest.responseErrorCode === null
+    && settleRequest.responseRevision === setup.revisionB, { frozenOperationId: setup.operationId, frozenRevision: setup.revisionA, settle: editRequestSummary(settleRequest) });
+  check(caseResult, 'new intent uses a new operationId, the settled revision and the new text', newIntentRequest !== null
+    && newIntentRequest.params.operationId !== setup.operationId
+    && newIntentRequest.params.expectedRevision === setup.revisionB
+    && editTextOf(newIntentRequest) === newValue, { originalOperationId: setup.operationId, settledRevision: setup.revisionB, newIntent: editRequestSummary(newIntentRequest), expectedText: newValue });
+  check(caseResult, 'concurrent revision turns the new intent into a real E_REVISION_CONFLICT', newIntentRequest !== null
+    && newIntentRequest.responseStatus === 409
+    && newIntentRequest.responseErrorCode === 'E_REVISION_CONFLICT', { actual: newIntentRequest !== null ? { responseStatus: newIntentRequest.responseStatus, responseErrorCode: newIntentRequest.responseErrorCode } : null, revisionC });
+  check(caseResult, 'conflict is visible and the changed draft survives', sawConflict && conflictState.errorVisible === true
+    && conflictState.editor !== null && conflictState.editor.value === newValue, { toolErrors: conflictState.toolErrors, editor: conflictState.editor });
+  check(caseResult, 'no silent overwrite of the out-of-band text', conflictTitle !== null && conflictTitle.text === outOfBandText, { expectedText: outOfBandText, actualText: conflictTitle !== null ? conflictTitle.text : null });
+  check(caseResult, 'no automatic replay/refresh after the conflict', conflictEdits.length === 2
+    && conflictPageRequests.filter((request) => request.method === 'edit').length === 2, { editRequests: conflictEdits.length, pageRequests: conflictPageRequests.map((request) => request.method) });
+  check(caseResult, 'no E_OPERATION_REUSED response anywhere in T4C', ctx.apiLog.slice(setup.apiMark).every((request) => request.method !== 'edit' || request.responseErrorCode !== 'E_OPERATION_REUSED'), { editResponses: ctx.apiLog.slice(setup.apiMark).filter((request) => request.method === 'edit').map((request) => ({ operationId: request.params.operationId, expectedRevision: request.params.expectedRevision, responseStatus: request.responseStatus, responseErrorCode: request.responseErrorCode })) });
+
+  // Explicit step 1: refresh only (no write), keep the draft, show the notice.
+  const conflictRetryRect = conflictState.retryRect;
+  check(caseResult, 'conflict exposes the explicit retry affordance', conflictRetryRect !== null && conflictState.retryVisible === true, { retryText: conflictState.retryText });
+  if (conflictRetryRect === null) {
+    caseResult.finishedAt = new Date().toISOString();
+    return caseResult;
+  }
+  const refreshApiMark = ctx.apiLog.length;
+  const refreshPageMark = await page.evaluate(() => window.__CASE__.mark());
+  await page.mouse.click(conflictRetryRect.centerX, conflictRetryRect.centerY);
+  const refreshedRevisionRendered = await waitForCanvasRevision(page, revisionC, 20000);
+  await waitForPhaseReady(page, 20000);
+  await sleep(320);
+  const refreshedState = await pageState(page);
+  const refreshEdits = editRequestsBetween(ctx, refreshApiMark);
+  const refreshPageRequests = await page.evaluate((mark) => window.__CASE__.requestsSince(mark), refreshPageMark);
+  check(caseResult, 'first explicit retry refreshes only (inspect, no edit) to the concurrent revision', refreshedRevisionRendered
+    && refreshEdits.length === 0
+    && refreshPageRequests.some((request) => request.method === 'inspect'), { revisionC, canvasRevision: refreshedState.revision, requests: refreshPageRequests.map((request) => request.method) });
+  check(caseResult, 'refresh keeps the changed draft and clears the conflict error', refreshedState.editor !== null
+    && refreshedState.editor.value === newValue
+    && refreshedState.toolErrors.length === 0
+    && refreshedState.hintVisible === true, { editor: refreshedState.editor, toolErrors: refreshedState.toolErrors, toolHints: refreshedState.toolHints });
+
+  // Explicit step 2: a third, fresh attempt at the refreshed revision commits D2.
+  const saveApiMark = ctx.apiLog.length;
+  const saveRetryRect = refreshedState.retryRect;
+  if (saveRetryRect !== null) await page.mouse.click(saveRetryRect.centerX, saveRetryRect.centerY);
+  else await page.keyboard.press('Enter');
+  const savedClosed = await waitForEditorClosed(page, 25000);
+  const saveEditsProbe = editRequestsBetween(ctx, saveApiMark);
+  const expectedFinalRevision = saveEditsProbe.length > 0 && saveEditsProbe[0].responseRevision !== null && saveEditsProbe[0].responseRevision !== undefined
+    ? saveEditsProbe[0].responseRevision
+    : null;
+  if (expectedFinalRevision !== null) await waitForCanvasRevision(page, expectedFinalRevision, 25000);
+  await waitForPhaseReady(page, 25000);
+  await sleep(320);
+  const savedState = await pageState(page);
+  const savedInspect = await inspectProject(ctx, setup.projectId);
+  const savedTitle = findElement(savedInspect, TITLE_ID);
+  const saveEdits = editRequestsBetween(ctx, saveApiMark);
+  const saveRequest = saveEdits.length > 0 ? saveEdits[0] : null;
+  const allOperationIds = ctx.apiLog.slice(setup.apiMark).filter((request) => request.method === 'edit').map((request) => request.params.operationId);
+
+  check(caseResult, 'explicit submit after refresh closes the editor', savedClosed, { editor: savedState.editor });
+  check(caseResult, 'exactly one final edit request with the refreshed revision and the changed draft', saveEdits.length === 1
+    && saveRequest.params.expectedRevision === revisionC
+    && editTextOf(saveRequest) === newValue, { expectedRevision: revisionC, actual: editRequestSummary(saveRequest), expectedText: newValue });
+  check(caseResult, 'final attempt uses a third distinct operationId and succeeds', saveRequest !== null
+    && saveRequest.params.operationId !== setup.operationId
+    && saveRequest.responseStatus === 200
+    && saveRequest.responseErrorCode === null
+    && saveRequest.responseRevision !== null
+    && saveRequest.responseRevision !== revisionC, { saveRequest: editRequestSummary(saveRequest), revisionC });
+  const uniqueOperationIds = [...new Set(allOperationIds)];
+  check(caseResult, 'three immutable attempts with distinct ids (the frozen replay reuses attempt 1\'s id)', allOperationIds.length === 4
+    && uniqueOperationIds.length === 3
+    && allOperationIds[0] === setup.operationId
+    && allOperationIds[1] === setup.operationId
+    && allOperationIds[2] !== setup.operationId
+    && allOperationIds[3] !== setup.operationId
+    && allOperationIds[2] !== allOperationIds[3], { requests: ctx.apiLog.slice(setup.apiMark).filter((request) => request.method === 'edit').map((request) => ({ operationId: request.params.operationId, expectedRevision: request.params.expectedRevision, responseStatus: request.responseStatus, responseErrorCode: request.responseErrorCode })) });
+  check(caseResult, 'final committed text is the changed draft', savedTitle !== null && savedTitle.text === newValue, { expectedText: newValue, actualText: savedTitle !== null ? savedTitle.text : null });
+  check(caseResult, 'canvas renders the final revision and the editor stays single-lifetime', savedState.revision === savedInspect.revision
+    && savedState.revision !== revisionC
+    && savedState.editorMountCount === 1
+    && savedState.toolErrors.length === 0, { canvasRevision: savedState.revision, hostRevision: savedInspect.revision, editorMountCount: savedState.editorMountCount, toolErrors: savedState.toolErrors });
+
+  caseResult.diagnostics.revisionB = setup.revisionB;
+  caseResult.diagnostics.revisionC = revisionC;
+  caseResult.diagnostics.finalRevision = savedInspect.revision;
+  caseResult.diagnostics.operationIds = allOperationIds;
+  caseResult.diagnostics.settleRequest = editRequestSummary(settleRequest);
+  caseResult.diagnostics.conflictNewIntentRequest = editRequestSummary(newIntentRequest);
+  caseResult.diagnostics.finalRequest = editRequestSummary(saveRequest);
+  caseResult.diagnostics.newDraft = newValue;
+  caseResult.finishedAt = new Date().toISOString();
+  return caseResult;
+}
+
 // ─── main ──────────────────────────────────────────────────────────────────
 
 async function main() {
@@ -1853,6 +2016,7 @@ async function main() {
       { id: 'T3', filter: 'T3', run: () => runTextConflictCase(ctx) },
       { id: 'T4A', filter: 'T4A', run: () => runLostResponseUnchangedRetryCase(ctx) },
       { id: 'T4B', filter: 'T4B', run: () => runLostResponseModifiedDraftCase(ctx) },
+      { id: 'T4C', filter: 'T4C', run: () => runLostResponseConflictRecoveryCase(ctx) },
     ];
 
     for (const runner of caseRunners) {

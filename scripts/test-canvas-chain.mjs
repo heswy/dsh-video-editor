@@ -356,13 +356,13 @@ async function main() {
 
     // R1: change only the Scene background from the authoritative complete
     // template; subtitle/badge and the human layout/style must survive.
-    const templateBeforeColor = sceneTemplateSummary(afterRedo);
+    const templateBeforeColor = sceneTemplateSummary(inspected);
     const colorUpdate = await invoke(bridge, 'scene.update', {
       projectId,
-      expectedRevision: afterRedo.revision,
+      expectedRevision: inspected.revision,
       operationId: opId('scene-color-preserve'),
-      sceneId: afterRedo.scenes[0].sceneId,
-      template: sceneTemplateFor(afterRedo.scenes[0], { color: '#ffcc00' }),
+      sceneId: inspected.scenes[0].sceneId,
+      template: sceneTemplateFor(inspected.scenes[0], { color: '#ffcc00' }),
     });
     inspected = await invoke(bridge, 'inspect', { projectId });
     const afterColorScene = inspected.scenes[0];
