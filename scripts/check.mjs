@@ -578,7 +578,9 @@ check('P3-008 R2: layout writes are inverse-mapped from the inspected static bas
   assert(clientSource.includes('base: base'), 'drag capture does not keep the inspected static layout base');
   assert(clientSource.includes('canvasLayoutPatch({'), 'commitLayout does not use the inverse-mapped helper');
   assert(clientSource.includes('height: Math.round(preview.height * 1000) / 1000') === false, 'commitLayout still bakes the animated rect into the layout box');
-  return 'static base + animation inverse mapping; no animated rect persisted';
+  assert(clientSource.includes("transformOrigin: 'top left'") && clientSource.includes("transform: 'scale(' + scale + ')'"), 'the preview iframe is not kept at composition size and CSS-scaled (runtime hit tests would use a letterboxed viewport)');
+  assert(clientSource.includes('.dv-stage-frame{position:absolute;inset:0;width:100%;height:100%;') === false, 'the iframe stylesheet still stretches the iframe to the letterboxed stage');
+  return 'static base + animation inverse mapping; composition-sized scaled iframe; no animated rect persisted';
 });
 
 check('P3-008 R5: inline text save keeps the draft and target on failure', () => {

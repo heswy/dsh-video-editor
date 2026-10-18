@@ -199,6 +199,14 @@ function extractStagedSource(clientSource) {
     assert(helpers.text.includes(marker), 'host bridge helpers slice is missing: ' + marker);
   }
   for (const marker of [
+    'function canvasStaticBase(',
+    'function canvasLayoutPatch(',
+    'function canvasValidateEvent(',
+    'function canvasValidateCommand(',
+  ]) {
+    assert(helpers.text.includes(marker), 'host bridge helpers slice is missing the layout/message helper: ' + marker);
+  }
+  for (const marker of [
     'function CanvasWorkspace(',
     'const iframeRef = React.useRef(null);',
     'data-canvas-revision',
@@ -206,6 +214,8 @@ function extractStagedSource(clientSource) {
     'function commitLayout(',
     'function submitText(',
     'function openTextEditor(',
+    'function onOverlayDoubleClick(',
+    'dv-canvas-stage',
   ]) {
     assert(canvas.text.includes(marker), 'P3-008 canvas workspace slice is missing: ' + marker);
   }
@@ -432,6 +442,7 @@ const STAGING_EXCLUDED_PREFIXES = [
   'restore/',
   'asset-inbox/',
   'session-cwd/',
+  'session-state.json',
 ];
 
 function stagingSourceExcluded(relativePath) {
@@ -705,6 +716,46 @@ function styleDeclarations(styleText) {
 
 // ─── case runners ──────────────────────────────────────────────────────────
 
+
+function expectedStageScale(wrap) {
+  return Math.min(wrap.width / COMPOSITION_WIDTH, wrap.height / COMPOSITION_HEIGHT);
+}
+
+/**
+ * The component must size the stage to composition x letterbox scale and
+ * centre it in the measured wrap: that is the mapping every gesture uses.
+ */
+function assertStageLetterbox(caseResult, label, state) {
+  const stage = state.stage;
+  const wrap = state.wrap;
+  const mounted = check(caseResult, label + ' stage and wrap are mounted', stage !== null && wrap !== null, { stage, wrap });
+  if (!mounted) return;
+  const scale = expectedStageScale(wrap);
+  const expectedWidth = COMPOSITION_WIDTH * scale;
+  const expectedHeight = COMPOSITION_HEIGHT * scale;
+  check(caseResult, label + ' stage box = composition x letterbox scale', near(stage.width, expectedWidth, 0.6) && near(stage.height, expectedHeight, 0.6), { expectedWidth, expectedHeight, actualWidth: stage.width, actualHeight: stage.height });
+  check(caseResult, label + ' stage is letterbox centred in the wrap', near(stage.left, wrap.left + (wrap.width - expectedWidth) / 2, 1.2) && near(stage.top, wrap.top + (wrap.height - expectedHeight) / 2, 1.2), { expectedLeft: wrap.left + (wrap.width - expectedWidth) / 2, expectedTop: wrap.top + (wrap.height - expectedHeight) / 2, actualLeft: stage.left, actualTop: stage.top });
+  check(caseResult, label + ' composition-to-screen scale matches the letterbox', near(stage.scale, scale, 0.002), { expectedScale: scale, actualScale: stage.scale });
+}
+
+/**
+ * Non-assertive frame diagnostics: the fixed runtime contract says composition
+ * coordinates are CSS pixels in the preview document viewport, so the Host must
+ * render the sandboxed document at composition size (scaling it in CSS). When
+ * that is not the case, hit tests at composition coordinates outside the
+ * iframe's viewport silently miss; the evidence records this per case.
+ */
+function attachFrameDiagnostics(caseResult, state) {
+  if (caseResult.diagnostics === undefined) caseResult.diagnostics = {};
+  const iframe = state.iframe;
+  caseResult.diagnostics.iframe = iframe;
+  caseResult.diagnostics.iframeMapsComposition = iframe !== null
+    && near(iframe.viewportWidth, COMPOSITION_WIDTH, 1)
+    && near(iframe.viewportHeight, COMPOSITION_HEIGHT, 1);
+  caseResult.diagnostics.stage = state.stage;
+  return caseResult.diagnostics;
+}
+
 async function createFreshProject(ctx, title) {
   const created = await ctx.bridge.invoke('project.create', { templateId: 'product-launch-v1', title }, { source: 'http' });
   ctx.projectIds.push(created.projectId);
@@ -716,7 +767,8 @@ async function inspectProject(ctx, projectId) {
 }
 
 async function mountWorkspace(ctx, options) {
-  const state = await ctx.page.evaluate((mountOptions) => window.__CASE__.mount(mountOptions), options);
+  const mountOptions = { ...options, frameScaleProbe: process.env.DSH_CANVAS_PROBE_FRAME_SCALE === '1' };
+  const state = await ctx.page.evaluate((next) => window.__CASE__.mount(next), mountOptions);
   return state;
 }
 
@@ -738,7 +790,9 @@ async function runDragMoveCase(ctx, spec) {
   const base = layoutSnapshot(inspected, TITLE_ID);
   check(caseResult, 'fresh title static base', base !== null && base.left === TITLE_BASE.left && base.top === TITLE_BASE.top && base.width === TITLE_BASE.width && base.height === null, { expected: TITLE_BASE, actual: base });
 
-  await mountWorkspace(ctx, { projectId, inspected, wrap: spec.wrap, t: spec.t });
+  const mountedState = await mountWorkspace(ctx, { projectId, inspected, wrap: spec.wrap, t: spec.t });
+  assertStageLetterbox(caseResult, 'drag-move', mountedState);
+  attachFrameDiagnostics(caseResult, mountedState);
   const selected = await selectTitle(page, inspected, spec.t);
   const stageScale = selected.state.stage !== null ? selected.state.stage.scale : 0;
   const animatedOffset = selected.selection.y - base.top;
@@ -778,7 +832,7 @@ async function runDragMoveCase(ctx, spec) {
 
   const expectedRendered = { x: selected.selection.x + compositionDelta.x, y: selected.selection.y + compositionDelta.y, width: selected.selection.width, height: selected.selection.height };
   const located = await locateSelection(page, expectedRendered, 1.0, 8);
-  check(caseResult, 'rendered title after reload = animated rect + composition delta', located.selection !== null && rectNear(located.selection, expectedRendered, 1.0), { expected: expectedRendered, actual: rectOf(located.selection), attempts: located.attempts });
+  check(caseResult, 'rendered title after reload = animated rect + composition delta', located.selection !== null && rectNear(located.selection, expectedRendered, 1.0), { expected: expectedRendered, actual: rectOf(located.selection), attempts: located.attempts, clickComposition: { x: expectedRendered.x + expectedRendered.width / 2, y: expectedRendered.y + expectedRendered.height / 2 }, iframe: located.state.iframe });
 
   const html = await readProjectHtml(ctx, projectId);
   const titleStyle = styleDeclarations(styleAttributeOf(html, TITLE_ID));
@@ -800,7 +854,9 @@ async function runResizeRuleCase(ctx) {
   const base = layoutSnapshot(inspected, RULE_ID);
   check(caseResult, 'fresh rule static base', base !== null && base.left === RULE_BASE.left && base.top === RULE_BASE.top && base.width === RULE_BASE.width && base.height === RULE_BASE.height, { expected: RULE_BASE, actual: base });
 
-  await mountWorkspace(ctx, { projectId, inspected, wrap, t });
+  const mountedState = await mountWorkspace(ctx, { projectId, inspected, wrap, t });
+  assertStageLetterbox(caseResult, 'resize-rule', mountedState);
+  attachFrameDiagnostics(caseResult, mountedState);
   const selected = await selectRule(page, inspected, t);
   const scale = selected.state.stage !== null ? selected.state.stage.scale : 0;
   check(caseResult, 'stage runs at composition scale 1 for the resize probe', near(scale, 1, 0.002), { actual: scale });
@@ -827,13 +883,16 @@ async function runResizeRuleCase(ctx) {
   const box = editParams !== null && Array.isArray(editParams.ops) && editParams.ops[0] !== undefined ? editParams.ops[0].box : null;
   const startRect = selected.selection;
   const scaleFactor = startRect.width / base.width;
-  const expectedWidth = (startRect.width + compositionDelta.x) / scaleFactor;
+  const unclampedWidth = (startRect.width + compositionDelta.x) / scaleFactor;
+  // The fixed client clamps an east-edge extent to the remaining composition
+  // space after the static left (documented in canvasLayoutPatch).
+  const expectedWidth = Math.min(unclampedWidth, COMPOSITION_WIDTH - base.left);
   const expectedHeight = (startRect.height + compositionDelta.y) / 1;
 
   check(caseResult, 'resize edit succeeded and published a new revision', revised, { beforeRevision: beforeState.revision, afterRevision: afterState.revision });
   check(caseResult, 'exactly one layout edit request', editRequests.length === 1, { actual: editRequests.length });
   check(caseResult, 'se resize patch contains only width/height (left/top untouched)', sameKeys(box, ['height', 'width']), { actual: box });
-  check(caseResult, 'committed width is inverse-scaled from the animated rect', committed !== null && near(committed.width, expectedWidth, 0.8), { expected: expectedWidth, actual: committed !== null ? committed.width : null, scaleFactor, animatedWidth: startRect.width, compositionDx: compositionDelta.x });
+  check(caseResult, 'committed width is inverse-scaled from the animated rect (clamped to composition space)', committed !== null && near(committed.width, expectedWidth, 0.8), { expected: expectedWidth, unclampedWidth, compositionCeiling: COMPOSITION_WIDTH - base.left, actual: committed !== null ? committed.width : null, scaleFactor, animatedWidth: startRect.width, compositionDx: compositionDelta.x });
   check(caseResult, 'committed height is inverse-mapped for the se drag', committed !== null && near(committed.height, expectedHeight, 0.8), { expected: expectedHeight, actual: committed !== null ? committed.height : null, compositionDy: compositionDelta.y });
   check(caseResult, 'committed left/top unchanged for a se drag', committed !== null && near(committed.left, base.left, 1e-6) && near(committed.top, base.top, 1e-6), { expectedLeft: base.left, expectedTop: base.top, actualLeft: committed !== null ? committed.left : null, actualTop: committed !== null ? committed.top : null });
   check(caseResult, 'resize did not bake the rendered animated width', committed !== null && Math.abs(committed.width - (startRect.width + compositionDelta.x)) > 5, { animatedPreviewWidth: startRect.width + compositionDelta.x, committedWidth: committed !== null ? committed.width : null });
@@ -869,8 +928,10 @@ async function runResizeTitleCase(ctx) {
   const inspected = await inspectProject(ctx, projectId);
   const base = layoutSnapshot(inspected, TITLE_ID);
   check(caseResult, 'fresh title static base has auto height', base !== null && base.height === null && base.width === TITLE_BASE.width, { actual: base });
-  await mountWorkspace(ctx, { projectId, inspected, wrap, t });
-  const scale = (await pageState(page)).stage !== null ? (await pageState(page)).stage.scale : 0;
+  const mountedState = await mountWorkspace(ctx, { projectId, inspected, wrap, t });
+  assertStageLetterbox(caseResult, 'resize-title', mountedState);
+  attachFrameDiagnostics(caseResult, mountedState);
+  const scale = mountedState.stage !== null ? mountedState.stage.scale : 0;
   const selected = await selectTitle(page, inspected, t);
   const startRect = selected.selection;
   check(caseResult, 'title selected at settled animation moment', near(startRect.y, base.top, 1.2) && near(startRect.width, base.width, 1.2), { expected: { x: base.left, y: base.top, width: base.width }, actual: rectOf(startRect) });
@@ -917,8 +978,10 @@ async function runDragFailureCase(ctx) {
   const projectId = await createFreshProject(ctx, PROJECT_TITLE + ' drag failure');
   const inspected = await inspectProject(ctx, projectId);
   const base = layoutSnapshot(inspected, TITLE_ID);
-  await mountWorkspace(ctx, { projectId, inspected, wrap, t });
-  const scale = (await pageState(page)).stage !== null ? (await pageState(page)).stage.scale : 0;
+  const mountedState = await mountWorkspace(ctx, { projectId, inspected, wrap, t });
+  assertStageLetterbox(caseResult, 'resize-title', mountedState);
+  attachFrameDiagnostics(caseResult, mountedState);
+  const scale = mountedState.stage !== null ? mountedState.stage.scale : 0;
   const selected = await selectTitle(page, inspected, t);
   const preDragRect = rectOf(selected.selection);
   const beforeState = await pageState(page);
@@ -1239,6 +1302,10 @@ async function main() {
     assert(recordedClient.sha256 === clientSha, 'staged client.js sha256 does not match INTEGRITY.json');
     const extraction = extractStagedSource(clientSource);
     evidence.extraction = { ...extraction.evidence, integrityClientSha256: recordedClient.sha256, clientVerified: true };
+    evidence.testPage = {
+      stageOverride: 'removed — the staged client.js scopes .dv-stage.dv-canvas-stage{display:block;flex:none;padding:0}, so the stage box must equal composition x letterbox scale without test-page compensation',
+      wrapOverride: 'forced explicit .dv-canvas-wrap width/height (letterbox sizes under test) and disabled the panel entrance animation for stable geometry',
+    };
 
     const rendererModuleSource = await readFile(join(LIB_DIR, 'react-dom-lite.mjs'), 'utf8');
     const rendererSource = rendererPageSource(rendererModuleSource);
@@ -1448,14 +1515,29 @@ async function main() {
     // ─── network / console / teardown checks ───────────────────────────────
     const internal = (url) => url.startsWith(origin) || url.startsWith('data:') || url.startsWith('about:') || url.startsWith('blob:');
     const externalRequests = networkRequests.filter((request) => internal(request.url) === false);
+    // A deliberate negative-path case makes the real Host reject a write (HTTP
+    // 409 Conflict). Chrome logs non-2xx resource loads as console errors; that
+    // browser noise is expected exactly when the server log recorded the same
+    // >=400 response for our request route. Everything else is a harness/page
+    // defect and still fails the run.
+    const rawConsoleErrors = consoleMessages.filter((message) => message.type === 'error');
+    const rejectedHostResponses = serverLog.filter((entry) => entry.path === REQUEST_PATH && entry.status >= 400);
+    const expectedConsoleErrors = rawConsoleErrors.filter((message) => {
+      const match = /^Failed to load resource: the server responded with a status of (\d{3})/.exec(message.text);
+      return match !== null && rejectedHostResponses.some((entry) => String(entry.status) === match[1]);
+    });
+    const unexpectedConsoleErrors = rawConsoleErrors.filter((message) => expectedConsoleErrors.includes(message) === false);
     evidence.network = {
       origin,
       totalRequests: networkRequests.length,
       external: externalRequests,
       serverRequests: serverLog.length,
       requestFailures,
+      rejectedHostResponses,
       console: {
-        errors: consoleMessages.filter((message) => message.type === 'error'),
+        errors: rawConsoleErrors,
+        expectedResourceErrors: expectedConsoleErrors,
+        unexpectedErrors: unexpectedConsoleErrors,
         warnings: consoleMessages.filter((message) => message.type === 'warning'),
       },
       pageErrors,
@@ -1468,7 +1550,7 @@ async function main() {
     };
     const globalChecks = {
       noExternalNetwork: externalRequests.length === 0,
-      noConsoleErrors: evidence.network.console.errors.length === 0,
+      noUnexpectedConsoleErrors: unexpectedConsoleErrors.length === 0,
       noPageErrors: pageErrors.length === 0,
       noHarnessPageErrors: evidence.network.harnessPageErrors.length === 0,
     };

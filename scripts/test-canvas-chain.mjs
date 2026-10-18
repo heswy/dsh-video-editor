@@ -313,7 +313,7 @@ async function main() {
       expectedRevision: afterRedo.revision,
       operationId: opId('scene-color-preserve'),
       sceneId: afterRedo.scenes[0].sceneId,
-      template: sceneTemplateFor(afterRedo.scenes[0], { color: '#ffd400' }),
+      template: sceneTemplateFor(afterRedo.scenes[0], { color: '#ffcc00' }),
     });
     inspected = await invoke(bridge, 'inspect', { projectId });
     const afterColorScene = inspected.scenes[0];
@@ -328,7 +328,7 @@ async function main() {
     };
     assert(afterColorTarget.layout && afterColorTarget.layout.left === 120 && afterColorTarget.style && afterColorTarget.style.color === '#112233', 'scene.update color dropped the human layout/style override');
     if (templateBeforeColor.available) {
-      assert(afterColorScene.template.color === '#ffd400', `scene color was not updated: ${JSON.stringify(afterColorScene.template)}`);
+      assert(afterColorScene.template.color === '#ffcc00', `scene color was not updated: ${JSON.stringify(afterColorScene.template)}`);
       assert(afterColorScene.template.subtitle === '保留副标题' && afterColorScene.template.badge === '保留标签', `scene color update dropped optional fields: ${JSON.stringify(afterColorScene.template)}`);
       assert(afterColorScene.template.sceneId === undefined, 'scene.template must not expose sceneId');
       assert(inspected.scenes[1].title === 'Scene 2' && inspected.scenes[2].title === 'Scene 3', 'scene color update changed another Scene');
@@ -369,6 +369,7 @@ async function main() {
       expectedRevision: inspected.revision,
       operationId: opId('scene-shot'),
       sceneId: sceneAfterAsset.sceneId,
+      // Keep the accepted background yellow and accent while setting only the shot.
       template: sceneTemplateFor(sceneAfterAsset, { shot: imported.asset.path, color: '#ffd400', accent: '#111111' }),
     });
     evidence.sceneShot = { revision: useAsset.revision, shot: imported.asset.path };

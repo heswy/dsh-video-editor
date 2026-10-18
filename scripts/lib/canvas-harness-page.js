@@ -152,6 +152,22 @@
     var hintNodes = Array.prototype.slice.call(document.querySelectorAll('.dv-tool-hint'));
     var iframe = document.querySelector('.dv-stage-frame');
     var iframeSrc = iframe !== null ? iframe.getAttribute('src') : null;
+    var iframeInfo = null;
+    if (iframe !== null) {
+      var iframeRect = iframe.getBoundingClientRect();
+      var iframeStyle = window.getComputedStyle(iframe);
+      iframeInfo = {
+        left: iframeRect.left,
+        top: iframeRect.top,
+        width: iframeRect.width,
+        height: iframeRect.height,
+        offsetWidth: iframe.offsetWidth,
+        offsetHeight: iframe.offsetHeight,
+        transform: iframeStyle.transform,
+        viewportWidth: iframe.clientWidth,
+        viewportHeight: iframe.clientHeight,
+      };
+    }
     var snapshotMatch = typeof iframeSrc === 'string' ? /\/preview\/([a-f0-9]{32})\//.exec(iframeSrc) : null;
     var phase = shell !== null ? shell.getAttribute('data-canvas-phase') : null;
     return {
@@ -189,6 +205,8 @@
       errorVisible: errorNodes.length > 0,
       hintVisible: hintNodes.length > 0,
       iframeSrc: iframeSrc,
+      iframe: iframeInfo,
+      frameScaleProbe: frameScaleProbeApplied,
       snapshotId: snapshotMatch !== null ? snapshotMatch[1] : null,
       timeText: (function () {
         var node = document.querySelector('.dv-time');
@@ -217,6 +235,33 @@
     return next;
   }
 
+  /**
+   * Diagnostic-only experiment: the fixed preview runtime contract says
+   * composition coordinates are CSS pixels in the document viewport, so the Host
+   * layer must render the sandboxed document at composition size and scale it
+   * with CSS. This probe applies that Host-side scaling to the iframe after
+   * mount (never used in the evidence run) to prove the root cause of the
+   * scale-dependent hit-test miss; enabled only by the Node orchestrator's
+   * DSH_CANVAS_PROBE_FRAME_SCALE=1 diagnostic environment.
+   */
+  var frameScaleProbeApplied = false;
+  function applyFrameScaleProbe() {
+    var stage = document.querySelector('.dv-stage');
+    var iframe = document.querySelector('.dv-stage-frame');
+    if (stage === null || iframe === null || current === null || current.inspected === null) return false;
+    var stageRect = stage.getBoundingClientRect();
+    var compositionWidth = Number(current.inspected.width) || 1280;
+    var compositionHeight = Number(current.inspected.height) || 720;
+    var scale = stageRect.width / compositionWidth;
+    if (!(scale > 0)) return false;
+    iframe.style.width = compositionWidth + 'px';
+    iframe.style.height = compositionHeight + 'px';
+    iframe.style.transformOrigin = 'top left';
+    iframe.style.transform = 'scale(' + scale + ')';
+    frameScaleProbeApplied = true;
+    return true;
+  }
+
   async function mount(options) {
     if (root !== null) {
       root.unmount();
@@ -224,6 +269,7 @@
     }
     mountSeq += 1;
     onErrors = [];
+    injections = [];
     current = null;
     var wrap = options.wrap || { width: 900, height: 400 };
     document.documentElement.style.setProperty('--harness-wrap-w', wrap.width + 'px');
@@ -253,6 +299,10 @@
         // Give the fixed runtime its post-load handshake a moment, then let the
         // test seek/select; selection helpers retry, so this is only a hint.
         await sleep(220);
+        if (options.frameScaleProbe === true) {
+          applyFrameScaleProbe();
+          await sleep(300);
+        }
         return readState();
       }
       await sleep(40);

@@ -11,11 +11,6 @@
      would translate the stage for its first 160ms) and force exact letterbox
      wrapper sizes so the component's own measured scale is deterministic. */
   .dv-root { animation: none !important; }
-  /* The staged bundle's legacy workspace also styles the shared `.dv-stage`
-     class (flex:1 + padding). The canvas component expects its own inline
-     display width/height to win, so the test page neutralises that collision;
-     otherwise the letterbox scale would not map 1:1 to the rendered stage. */
-  .dv-stage { flex: none !important; padding: 0 !important; }
   .dv-canvas-wrap {
     flex: none !important;
     width: var(--harness-wrap-w, 900px) !important;
