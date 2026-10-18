@@ -432,6 +432,37 @@ check('R2: the last valid preview survives candidate load/failure (dual-instance
   return 'hidden candidate preload, ready-gated promotion, retained active on failure, notice+retry, post-switch release';
 });
 
+check('R2F: preview geometry/duration is per instance, not taken from the latest target props', () => {
+  // Each snapshot instance owns its composition metadata, captured from the
+  // requested revision's inspected metadata and reused by retries.
+  assert(clientSource.includes('function metadataForRevision(revisionId)'), 'per-revision metadata lookup is missing');
+  assert(clientSource.includes('inspectedMetaRef.current.set(inspected.revision, inspectedMeta)'), 'the inspected revision metadata is not recorded per revision');
+  assert(clientSource.includes('function snapshotInstance(next, restore, metadata)'), 'snapshot instances do not capture their own metadata');
+  assert(clientSource.includes("width: canvasNumber(meta.width, 1280)"), 'snapshot instance width is not bound to the requested revision');
+  assert(clientSource.includes("height: canvasNumber(meta.height, 720)"), 'snapshot instance height is not bound to the requested revision');
+  assert(clientSource.includes('duration: Math.max(0, canvasNumber(meta.duration, 0))'), 'snapshot instance duration is not bound to the requested revision');
+  // The visible display derives from the ACTIVE instance; the candidate may only
+  // drive the display while no active composition exists yet.
+  assert(clientSource.includes('const displayMeta = active !== null ? active : candidate !== null ? candidate : inspectedMeta;'), 'display metadata is not derived from the active instance');
+  assert(clientSource.includes('const displayDuration = displayMeta.duration;'), 'display duration is not derived per instance');
+  assert(clientSource.includes('max: String(displayDuration || 1)'), 'seek.max is not driven by the active instance duration');
+  assert(clientSource.includes("formatSeconds(time) + ' / ' + formatSeconds(displayDuration)"), 'the duration label is not driven by the active instance duration');
+  assert(clientSource.includes('Math.min(displayDuration, Number(nextTime) || 0)'), 'seek-time clamp is not driven by the active instance duration');
+  assert(clientSource.includes("width: instance.width + 'px'") && clientSource.includes("height: instance.height + 'px'"), 'the visible candidate iframe is not sized from its own metadata');
+  assert(clientSource.includes('stageSize.width / instance.width, stageSize.height / instance.height'), 'per-instance iframe scaling is missing');
+  assert(clientSource.includes('x > displayWidthPx || y > displayHeightPx'), 'hit-test mapping is not using the active display metadata');
+  assert(clientSource.includes('composition: { width: displayWidthPx, height: displayHeightPx }'), 'manual layout mapping is not using the displayed composition box');
+  // Promotion clamps/restores against the new instance's own duration and swaps
+  // the display metadata in the same state update.
+  assert(clientSource.includes('Math.min(restore.time, instance.duration)') && clientSource.includes('Math.min(timeRef.current, instance.duration)'), 'promotion does not clamp to the new instance duration');
+  assert(clientSource.includes('setTime(clampedTime)'), 'promotion does not switch the time atomically with the display metadata');
+  // Regressions of the old global-prop behaviour must stay gone.
+  assert(clientSource.includes("width: width + 'px'") === false && clientSource.includes("height: height + 'px'") === false, 'the iframe still uses the latest target props geometry');
+  assert(clientSource.includes('max: String(duration || 1)') === false, 'the seek range still uses the latest target props duration');
+  assert(clientSource.includes("formatSeconds(time) + ' / ' + formatSeconds(duration)") === false, 'the duration label still uses the latest target props duration');
+  return 'per-instance metadata map + active-driven display + per-instance candidate sizing + atomic promotion switch';
+});
+
 check('P3-012: first open auto-opens or provisions a working creation conversation', () => {
   assert(clientSource.includes("hostRequest('project.list'"), 'the workspace must list projects on mount');
   assert(clientSource.includes('managedProjectChoices'), 'the managed-project filter is missing');
@@ -663,7 +694,9 @@ check('P3-008 R2: layout writes are inverse-mapped from the inspected static bas
   assert(clientSource.includes('base: base'), 'drag capture does not keep the inspected static layout base');
   assert(clientSource.includes('canvasLayoutPatch({'), 'commitLayout does not use the inverse-mapped helper');
   assert(clientSource.includes('height: Math.round(preview.height * 1000) / 1000') === false, 'commitLayout still bakes the animated rect into the layout box');
-  assert(clientSource.includes("transformOrigin: 'top left'") && clientSource.includes("transform: 'scale(' + scale + ')'"), 'the preview iframe is not kept at composition size and CSS-scaled (runtime hit tests would use a letterboxed viewport)');
+  // R2F: the iframe is still kept at ITS composition size and CSS-scaled, but the
+  // scale is now derived from the instance's own metadata (active vs candidate).
+  assert(clientSource.includes("transformOrigin: 'top left'") && clientSource.includes("transform: 'scale(' + (instanceScale > 0 ? instanceScale : 1) + ')'"), 'the preview iframe is not kept at its composition size and CSS-scaled (runtime hit tests would use a letterboxed viewport)');
   assert(clientSource.includes('.dv-stage-frame{position:absolute;inset:0;width:100%;height:100%;') === false, 'the iframe stylesheet still stretches the iframe to the letterboxed stage');
   return 'static base + animation inverse mapping; composition-sized scaled iframe; no animated rect persisted';
 });

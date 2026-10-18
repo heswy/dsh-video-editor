@@ -2436,13 +2436,31 @@ window.__ModuleLoader__.load({
       const suppressClickRef = React.useRef(false);
       const pollRef = React.useRef(null);
       const unmountEpochRef = React.useRef(0);
+      const inspectedMetaRef = React.useRef(new Map());
       const revision = inspected.revision;
-      const width = canvasNumber(inspected.width, 1280);
-      const height = canvasNumber(inspected.height, 720);
-      const duration = canvasNumber(inspected.duration, 0);
-      const scale = stageSize.width > 0 && stageSize.height > 0 ? Math.min(stageSize.width / width, stageSize.height / height) : 0;
-      const displayWidth = scale > 0 ? width * scale : 0;
-      const displayHeight = scale > 0 ? height * scale : 0;
+      // R2F: geometry/duration belong to each preview instance, never to the
+      // latest target props. The latest inspected metadata only seeds the map
+      // entry for the revision being requested (kept per revision so a retry of a
+      // previously failed target still uses that revision's own geometry).
+      const inspectedMeta = {
+        width: canvasNumber(inspected.width, 1280),
+        height: canvasNumber(inspected.height, 720),
+        duration: Math.max(0, canvasNumber(inspected.duration, 0)),
+      };
+      if (typeof inspected.revision === 'string' && inspected.revision.length > 0) {
+        inspectedMetaRef.current.set(inspected.revision, inspectedMeta);
+        if (inspectedMetaRef.current.size > 64) {
+          const oldest = inspectedMetaRef.current.keys().next();
+          if (oldest.done === false && oldest.value !== inspected.revision) inspectedMetaRef.current.delete(oldest.value);
+        }
+      }
+      const displayMeta = active !== null ? active : candidate !== null ? candidate : inspectedMeta;
+      const displayWidthPx = displayMeta.width;
+      const displayHeightPx = displayMeta.height;
+      const displayDuration = displayMeta.duration;
+      const scale = stageSize.width > 0 && stageSize.height > 0 ? Math.min(stageSize.width / displayWidthPx, stageSize.height / displayHeightPx) : 0;
+      const displayWidth = scale > 0 ? displayWidthPx * scale : 0;
+      const displayHeight = scale > 0 ? displayHeightPx * scale : 0;
 
       timeRef.current = time;
       playingRef.current = playing;
@@ -2614,9 +2632,24 @@ window.__ModuleLoader__.load({
         hostRequest('preview.release', { snapshotId: instance.snapshotId }).catch(function ignoreRelease() {});
       }
 
-      function snapshotInstance(next, restore) {
+      /** Metadata of the revision being requested, independent of later props. */
+      function metadataForRevision(revisionId) {
+        const known = inspectedMetaRef.current.get(revisionId);
+        if (known !== undefined && known !== null) return known;
+        if (inspected.revision === revisionId) return inspectedMeta;
+        if (activeRef.current !== null) {
+          return { width: activeRef.current.width, height: activeRef.current.height, duration: activeRef.current.duration };
+        }
+        if (candidateRef.current !== null) {
+          return { width: candidateRef.current.width, height: candidateRef.current.height, duration: candidateRef.current.duration };
+        }
+        return inspectedMeta;
+      }
+
+      function snapshotInstance(next, restore, metadata) {
         const instanceId = canvasInstanceId();
         const nonce = canvasNonce();
+        const meta = metadata !== null && metadata !== undefined ? metadata : inspectedMeta;
         return {
           snapshotId: next.snapshotId,
           revision: next.revision,
@@ -2626,6 +2659,12 @@ window.__ModuleLoader__.load({
           instanceId: instanceId,
           nonce: nonce,
           restore: restore || null,
+          // R2F: this instance's own composition metadata. The visible display,
+          // seek range and coordinate mapping never read another instance's
+          // values, so a failed/delayed candidate cannot resize the active one.
+          width: canvasNumber(meta.width, 1280),
+          height: canvasNumber(meta.height, 720),
+          duration: Math.max(0, canvasNumber(meta.duration, 0)),
           ledger: canvasMessageLedger({ instanceId: instanceId, nonce: nonce, timeoutMs: 4000 }),
           pending: new Map(),
         };
@@ -2667,9 +2706,12 @@ window.__ModuleLoader__.load({
         const previous = activeRef.current;
         const hiddenIndex = 1 - visibleSlotRef.current;
         const restore = instance.restore;
+        // The restored playback position is clamped to the NEW instance's own
+        // duration; the outgoing instance's duration is no longer authoritative.
         const restoreTime = restore !== null && restore !== undefined && Number.isFinite(restore.time)
-          ? Math.min(restore.time, duration)
-          : Math.min(timeRef.current, duration);
+          ? Math.min(restore.time, instance.duration)
+          : Math.min(timeRef.current, instance.duration);
+        const clampedTime = Math.min(timeRef.current, instance.duration);
         // The preloaded runtime is already ready: carry the playback position (and
         // on the manual path the selection) over before the slot roles swap.
         void postSlotCommand(hiddenIndex, 'seek', { time: restoreTime });
@@ -2696,6 +2738,7 @@ window.__ModuleLoader__.load({
         setPhase('ready');
         setFrameError(null);
         setPreviewNotice(null);
+        setTime(clampedTime);
         readyRef.current = true;
         if (previous !== null) {
           // Release the outgoing instance only after the successful switch.
@@ -2723,6 +2766,10 @@ window.__ModuleLoader__.load({
           return;
         }
         const token = ++snapshotToken.current;
+        // Capture the requested revision's metadata before any async work: later
+        // props.inspected updates for a newer revision must not leak into this
+        // instance (and retries reuse the per-revision map entry).
+        const targetMeta = metadataForRevision(target);
         pendingRequestRef.current = { revision: target, token: token };
         setTargetRevision(target);
         setPreviewNotice(null);
@@ -2758,7 +2805,7 @@ window.__ModuleLoader__.load({
           failCandidate({ code: 'E_SNAPSHOT', message: 'The preview snapshot was invalid' });
           return;
         }
-        const instance = snapshotInstance(next, restore || null);
+        const instance = snapshotInstance(next, restore || null, targetMeta);
         candidateRef.current = instance;
         setCandidate(instance);
       }
@@ -2894,7 +2941,7 @@ window.__ModuleLoader__.load({
         const rect = stage.getBoundingClientRect();
         const x = (event.clientX - rect.left) / scale;
         const y = (event.clientY - rect.top) / scale;
-        if (x < 0 || y < 0 || x > width || y > height) return null;
+        if (x < 0 || y < 0 || x > displayWidthPx || y > displayHeightPx) return null;
         return { x: x, y: y };
       }
 
@@ -2952,21 +2999,21 @@ window.__ModuleLoader__.load({
         const dy = point.y - drag.start.y;
         let next = { x: drag.rect.x, y: drag.rect.y, width: drag.rect.width, height: drag.rect.height };
         if (drag.mode === 'move') {
-          next.x = Math.max(0, Math.min(width - next.width, drag.rect.x + dx));
-          next.y = Math.max(0, Math.min(height - next.height, drag.rect.y + dy));
+          next.x = Math.max(0, Math.min(displayWidthPx - next.width, drag.rect.x + dx));
+          next.y = Math.max(0, Math.min(displayHeightPx - next.height, drag.rect.y + dy));
         } else {
           if (drag.mode.includes('w')) {
             const x = Math.max(0, Math.min(drag.rect.x + dx, drag.rect.x + drag.rect.width - 1));
             next.x = x;
             next.width = drag.rect.x + drag.rect.width - x;
           }
-          if (drag.mode.includes('e')) next.width = Math.max(1, Math.min(width - next.x, drag.rect.width + dx));
+          if (drag.mode.includes('e')) next.width = Math.max(1, Math.min(displayWidthPx - next.x, drag.rect.width + dx));
           if (drag.mode.includes('n')) {
             const y = Math.max(0, Math.min(drag.rect.y + dy, drag.rect.y + drag.rect.height - 1));
             next.y = y;
             next.height = drag.rect.y + drag.rect.height - y;
           }
-          if (drag.mode.includes('s')) next.height = Math.max(1, Math.min(height - next.y, drag.rect.height + dy));
+          if (drag.mode.includes('s')) next.height = Math.max(1, Math.min(displayHeightPx - next.y, drag.rect.height + dy));
         }
         const moved = Math.abs(dx) > 1 || Math.abs(dy) > 1;
         setDrag({ ...drag, preview: next, moved: drag.moved || moved });
@@ -2980,7 +3027,7 @@ window.__ModuleLoader__.load({
           base: current.base,
           animated: current.rect,
           preview: current.preview,
-          composition: { width: width, height: height },
+          composition: { width: displayWidthPx, height: displayHeightPx },
         });
         if (plan.ok === false) {
           // Unknown static origin/scale: refuse loudly instead of persisting the
@@ -3384,7 +3431,7 @@ window.__ModuleLoader__.load({
       }
 
       function seekTo(nextTime) {
-        const value = Math.max(0, Math.min(duration, Number(nextTime) || 0));
+        const value = Math.max(0, Math.min(displayDuration, Number(nextTime) || 0));
         setTime(value);
         void postActiveCommand('seek', { time: value });
       }
@@ -3479,6 +3526,12 @@ window.__ModuleLoader__.load({
         const instance = index === visibleSlot ? active : candidate;
         if (instance === null) return null;
         const visible = index === visibleSlot && active !== null;
+        // R2F: size/scale the iframe from ITS OWN metadata so the hidden
+        // candidate loads at its own composition viewport without touching the
+        // displayed (active) geometry.
+        const instanceScale = stageSize.width > 0 && stageSize.height > 0
+          ? Math.min(stageSize.width / instance.width, stageSize.height / instance.height)
+          : 0;
         return h('iframe', {
           key: 'slot-' + index,
           ref: index === 0 ? iframeRef : slot1Ref,
@@ -3491,10 +3544,10 @@ window.__ModuleLoader__.load({
           // miss composition coordinates beyond it. Keep the element at the
           // composition size and scale the whole element visually instead.
           style: {
-            width: width + 'px',
-            height: height + 'px',
+            width: instance.width + 'px',
+            height: instance.height + 'px',
             transformOrigin: 'top left',
-            transform: 'scale(' + scale + ')',
+            transform: 'scale(' + (instanceScale > 0 ? instanceScale : 1) + ')',
             visibility: visible ? 'visible' : 'hidden',
             pointerEvents: visible ? 'auto' : 'none',
           },
@@ -3696,9 +3749,9 @@ window.__ModuleLoader__.load({
               className: 'dv-seek',
               type: 'range',
               min: '0',
-              max: String(duration || 1),
+              max: String(displayDuration || 1),
               step: '0.01',
-              value: String(Math.min(time, duration || 1)),
+              value: String(Math.min(time, displayDuration || 1)),
               'aria-label': t('video.canvas.timeline'),
               disabled: phase !== 'ready',
               onChange: function seek(event) {
@@ -3706,7 +3759,7 @@ window.__ModuleLoader__.load({
               },
             }
           ),
-          h('span', { className: 'dv-time' }, formatSeconds(time) + ' / ' + formatSeconds(duration)),
+          h('span', { className: 'dv-time' }, formatSeconds(time) + ' / ' + formatSeconds(displayDuration)),
           previewOnly ? null : h('button', { type: 'button', className: 'dv-button dv-button-quiet', onClick: function undo() { void historyStep('undo'); }, disabled: busy !== null, title: t('video.canvas.undo') }, t('video.canvas.undo')),
           previewOnly ? null : h('button', { type: 'button', className: 'dv-button dv-button-quiet', onClick: function redo() { void historyStep('redo'); }, disabled: busy !== null, title: t('video.canvas.redo') }, t('video.canvas.redo')),
           previewOnly ? null : h('button', { type: 'button', className: 'dv-button dv-button-quiet', onClick: function drawer() { setDrawerOpen(!drawerOpen); }, 'aria-expanded': drawerOpen ? 'true' : 'false' }, t('video.canvas.materials')),

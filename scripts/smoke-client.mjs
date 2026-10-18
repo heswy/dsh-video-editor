@@ -1868,6 +1868,198 @@ test('P3-012/R2: an initial preview failure stays a full recoverable error', asy
   assert(shell.props['data-canvas-revision'] === 'c'.repeat(64), 'the retried first composition did not become active');
   assert(shell.props['data-canvas-phase'] === 'ready', 'the retried first composition did not reach the ready phase');
 });
+function inspectGeometry(revisionId, geometry) {
+  return Object.assign(managedInspected(), {
+    revision: revisionId,
+    width: geometry.width,
+    height: geometry.height,
+    duration: geometry.duration,
+  });
+}
+
+function previewGeometry(editor) {
+  const tree = editor.tree();
+  const shell = findNode(tree, (node) => node.props && node.props.className === 'dv-canvas-shell');
+  const stage = findNode(
+    tree,
+    (node) => node.props && typeof node.props.className === 'string' && node.props.className.split(/\s+/).includes('dv-canvas-stage')
+  );
+  const seek = findNode(tree, (node) => node.type === 'input' && node.props && node.props.className === 'dv-seek');
+  const timeLabel = findNode(tree, (node) => node.props && node.props.className === 'dv-time');
+  const activeFrame = activeIframe(editor);
+  return {
+    revision: shell !== null ? shell.props['data-canvas-revision'] : null,
+    targetRevision: shell !== null ? shell.props['data-canvas-target-revision'] : null,
+    phase: shell !== null ? shell.props['data-canvas-phase'] : null,
+    activeWidth: activeFrame !== null ? activeFrame.props.style.width : null,
+    activeHeight: activeFrame !== null ? activeFrame.props.style.height : null,
+    activeSrc: activeFrame !== null ? activeFrame.props.src : null,
+    stageWidth: stage !== null ? stage.props.style.width : null,
+    stageHeight: stage !== null ? stage.props.style.height : null,
+    seekMax: seek !== null ? seek.props.max : null,
+    seekValue: seek !== null ? seek.props.value : null,
+    timeText: timeLabel !== null ? textOf(timeLabel) : null,
+  };
+}
+
+function durationLabelSeconds(text) {
+  const match = /\/\s*([0-9]+(?:\.[0-9]+)?)\s*$/.exec(String(text || ''));
+  return match === null ? null : Number(match[1]);
+}
+
+const GEOMETRY_B = { width: 720, height: 1280, duration: 5 };
+const GEOMETRY_A = { width: 1280, height: 720, duration: 6 };
+const GEOMETRY_B_STAGE = { width: '405px', height: '720px' };
+const GEOMETRY_A_STAGE = { width: '1280px', height: '720px' };
+
+async function waitForSnapshotRequest(hostFetch, revisionId, rounds) {
+  const total = rounds || 40;
+  for (let round = 0; round < total; round += 1) {
+    if ((hostFetch.config.snapshotRequests || []).some((request) => request.revision === revisionId)) return true;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    await settle();
+  }
+  return (hostFetch.config.snapshotRequests || []).some((request) => request.revision === revisionId);
+}
+
+test('P3-012/R2F: a failed candidate with different geometry keeps the active viewport and duration', async () => {
+  const revisionB = 'c'.repeat(64);
+  const revisionA = 'e'.repeat(64);
+  let currentRevision = revisionB;
+  let failRevisionA = true;
+  const sessions = makeSessionsService({ list: ['session-geometry'] });
+  const hostFetch = sessionFetch({ activeSessionId: 'session-geometry', sessions: ['session-geometry'] });
+  hostFetch.config.handler = async (request) => {
+    if (request.body.method === 'inspect') {
+      return { ok: true, result: inspectGeometry(currentRevision, currentRevision === revisionA ? GEOMETRY_A : GEOMETRY_B) };
+    }
+    if (request.body.method === 'preview.snapshot' && request.body.params.revision === revisionA && failRevisionA) {
+      return { ok: false, error: { code: 'E_PERSIST', message: 'geometry-change snapshot failed' } };
+    }
+    return undefined;
+  };
+  const kit = makeSessionKit();
+  const editor = await mountBootedPanel(hostFetch, { sessions: sessions, kit: kit });
+  let geometry = previewGeometry(editor);
+  assert(geometry.revision === revisionB && geometry.phase === 'ready', `initial preview is ${geometry.revision}/${geometry.phase}`);
+  assert(geometry.activeWidth === '720px' && geometry.activeHeight === '1280px', `initial iframe is ${geometry.activeWidth}x${geometry.activeHeight}`);
+  assert(geometry.seekMax === '5', `initial seek.max is ${geometry.seekMax}`);
+  assert(durationLabelSeconds(geometry.timeText) === 5, `initial duration label is ${geometry.timeText}`);
+  assert(geometry.stageWidth === GEOMETRY_B_STAGE.width && geometry.stageHeight === GEOMETRY_B_STAGE.height, `initial letterbox is ${geometry.stageWidth}x${geometry.stageHeight}`);
+  const activeBefore = activeIframe(editor);
+  assert(activeBefore !== null, 'the initial active iframe is missing');
+  // The Agent publishes a different aspect ratio / duration; its snapshot fails.
+  currentRevision = revisionA;
+  await new Promise((resolve) => setTimeout(resolve, 1700));
+  let notice = null;
+  for (let round = 0; round < 24; round += 1) {
+    await settle();
+    editor.rerender();
+    notice = previewNoticeNode(editor.tree());
+    if (notice !== null) break;
+    await new Promise((resolve) => setTimeout(resolve, 120));
+  }
+  assert(notice !== null, 'the compact geometry-change failure notice is missing');
+  geometry = previewGeometry(editor);
+  assert(geometry.revision === revisionB, `active revision marker changed to ${geometry.revision}`);
+  assert(geometry.targetRevision === revisionA, 'the target revision marker does not name the failed candidate');
+  assert(geometry.phase === 'ready', `phase is ${geometry.phase} while the old composition is visible`);
+  assert(geometry.activeWidth === '720px' && geometry.activeHeight === '1280px', `the retained iframe was resized to ${geometry.activeWidth}x${geometry.activeHeight}`);
+  assert(geometry.activeSrc === activeBefore.props.src, 'the retained iframe source changed');
+  assert(geometry.seekMax === '5', `seek.max changed to ${geometry.seekMax} by the failed candidate`);
+  assert(Number(geometry.seekValue) <= 5, `seek value left the retained duration: ${geometry.seekValue}`);
+  assert(durationLabelSeconds(geometry.timeText) === 5, `duration label changed to ${geometry.timeText}`);
+  assert(geometry.stageWidth === GEOMETRY_B_STAGE.width && geometry.stageHeight === GEOMETRY_B_STAGE.height, `the letterbox changed to ${geometry.stageWidth}x${geometry.stageHeight}`);
+  // The retained composition is still the one receiving playback commands.
+  const commandsBefore = editor.loaded.runtime.commands.length;
+  const play = buttonByText(editor.tree(), translateFor(editor.env)('video.canvas.play'));
+  assert(play !== null, 'the play control is missing on the retained preview');
+  play.props.onClick();
+  editor.rerender();
+  const playCommand = editor.loaded.runtime.commands.slice(commandsBefore).find((message) => message.type === 'play');
+  assert(playCommand !== undefined && playCommand.instanceId === contractRefFromFrame(activeBefore).instanceId, 'the retained composition is not playable');
+  // A later successful candidate switches every display value atomically.
+  failRevisionA = false;
+  const retry = findNode(notice, (node) => node.type === 'button' && textOf(node) === translateFor(editor.env)('video.canvas.retry'));
+  assert(retry !== null, 'the preview notice retry button is missing');
+  retry.props.onClick();
+  assert(await waitForCandidate(editor), 'the retry did not preload the geometry-change revision');
+  const candidateFrame = candidateIframe(editor);
+  assert(candidateFrame !== null, 'the hidden candidate iframe is missing');
+  assert(candidateFrame.props.style.width === '1280px' && candidateFrame.props.style.height === '720px', `the candidate iframe is sized ${candidateFrame.props.style.width}x${candidateFrame.props.style.height}`);
+  geometry = previewGeometry(editor);
+  assert(geometry.activeWidth === '720px' && geometry.seekMax === '5', 'candidate preload changed the active display before ready');
+  promoteCanvasCandidate(editor);
+  geometry = previewGeometry(editor);
+  assert(geometry.revision === revisionA, `the switched active revision is ${geometry.revision}`);
+  assert(geometry.activeWidth === '1280px' && geometry.activeHeight === '720px', `the switched iframe is ${geometry.activeWidth}x${geometry.activeHeight}`);
+  assert(geometry.seekMax === '6', `the switched seek.max is ${geometry.seekMax}`);
+  assert(durationLabelSeconds(geometry.timeText) === 6, `the switched duration label is ${geometry.timeText}`);
+  assert(geometry.stageWidth === GEOMETRY_A_STAGE.width && geometry.stageHeight === GEOMETRY_A_STAGE.height, `the switched letterbox is ${geometry.stageWidth}x${geometry.stageHeight}`);
+  assert(candidateIframe(editor) === null, 'the candidate iframe survived the switch');
+});
+
+test('P3-012/R2F: a delayed candidate with different geometry keeps the old display until it is ready', async () => {
+  const revisionB = 'c'.repeat(64);
+  const revisionA = 'e'.repeat(64);
+  const delayMs = 400;
+  let currentRevision = revisionB;
+  const sessions = makeSessionsService({ list: ['session-delay'] });
+  const hostFetch = sessionFetch({ activeSessionId: 'session-delay', sessions: ['session-delay'] });
+  hostFetch.config.handler = async (request) => {
+    if (request.body.method === 'inspect') {
+      return { ok: true, result: inspectGeometry(currentRevision, currentRevision === revisionA ? GEOMETRY_A : GEOMETRY_B) };
+    }
+    if (request.body.method === 'preview.snapshot' && request.body.params.revision === revisionA) {
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+    return undefined;
+  };
+  const kit = makeSessionKit();
+  const editor = await mountBootedPanel(hostFetch, { sessions: sessions, kit: kit });
+  const activeBefore = activeIframe(editor);
+  assert(activeBefore !== null && activeBefore.props.style.width === '720px', 'the initial active iframe is not the genre-B geometry');
+  // Publish the different-geometry revision; the poll requests its snapshot.
+  currentRevision = revisionA;
+  await new Promise((resolve) => setTimeout(resolve, 1700));
+  // One render propagates the new target inspected props and starts the delayed
+  // preload; while it is in flight the visible display must stay the old one.
+  editor.rerender();
+  let geometry = previewGeometry(editor);
+  assert(geometry.revision === revisionB, `active revision marker changed during the wait: ${geometry.revision}`);
+  assert(geometry.phase === 'ready', `phase is ${geometry.phase} while the last ready composition is visible`);
+  assert(geometry.activeWidth === '720px' && geometry.activeHeight === '1280px', `the active iframe was resized to ${geometry.activeWidth}x${geometry.activeHeight} while waiting`);
+  assert(geometry.seekMax === '5', `seek.max changed to ${geometry.seekMax} while waiting`);
+  assert(durationLabelSeconds(geometry.timeText) === 5, `duration label changed to ${geometry.timeText} while waiting`);
+  assert(geometry.stageWidth === GEOMETRY_B_STAGE.width && geometry.stageHeight === GEOMETRY_B_STAGE.height, `the letterbox changed to ${geometry.stageWidth}x${geometry.stageHeight} while waiting`);
+  assert(await waitForSnapshotRequest(hostFetch, revisionA), 'the delayed candidate snapshot was never requested');
+  // Let the delayed snapshot resolve, then mount the hidden candidate.
+  await new Promise((resolve) => setTimeout(resolve, delayMs + 250));
+  await settle();
+  editor.rerender();
+  await settle();
+  editor.rerender();
+  const candidateFrame = candidateIframe(editor);
+  assert(candidateFrame !== null, 'the delayed candidate iframe did not mount');
+  assert(candidateFrame.props.style.width === '1280px' && candidateFrame.props.style.height === '720px', `the candidate iframe is sized ${candidateFrame.props.style.width}x${candidateFrame.props.style.height}`);
+  geometry = previewGeometry(editor);
+  assert(geometry.revision === revisionB, `active revision marker changed while the candidate preloads: ${geometry.revision}`);
+  assert(geometry.targetRevision === revisionA, `target revision marker is ${geometry.targetRevision}`);
+  assert(geometry.activeWidth === '720px' && geometry.seekMax === '5', 'preloading the candidate changed the active display');
+  // Candidate runtime ready → the atomic switch to the candidate's geometry/duration.
+  promoteCanvasCandidate(editor);
+  geometry = previewGeometry(editor);
+  assert(geometry.revision === revisionA, `the switched active revision is ${geometry.revision}`);
+  assert(geometry.activeWidth === '1280px' && geometry.activeHeight === '720px', `the switched iframe is ${geometry.activeWidth}x${geometry.activeHeight}`);
+  assert(geometry.seekMax === '6', `the switched seek.max is ${geometry.seekMax}`);
+  assert(durationLabelSeconds(geometry.timeText) === 6, `the switched duration label is ${geometry.timeText}`);
+  assert(geometry.stageWidth === GEOMETRY_A_STAGE.width && geometry.stageHeight === GEOMETRY_A_STAGE.height, `the switched letterbox is ${geometry.stageWidth}x${geometry.stageHeight}`);
+  assert(candidateIframe(editor) === null, 'the candidate iframe survived the switch');
+  await settle();
+  const oldSnapshotId = snapshotIdFor(hostFetch.config, revisionB);
+  assert((hostFetch.config.releaseCalls || []).filter((snapshotId) => snapshotId === oldSnapshotId).length === 1, `expected one release of the old geometry snapshot, got ${JSON.stringify(hostFetch.config.releaseCalls)}`);
+});
+
 test('P3-012: the rendered product workspace has no manual editing controls', async () => {
   const sessions = makeSessionsService({ list: ['session-clean'], titles: { 'session-clean': '工程 · 干净' } });
   const hostFetch = sessionFetch({ activeSessionId: 'session-clean', sessions: ['session-clean'] });
