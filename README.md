@@ -27,9 +27,9 @@
 | Tool | `video_engine`（同一 dispatcher；非 doctor action 必须来自绑定工程的受信 Agent Session）；P3-012 增加 conversation-first 创作/修改入口 `project.compose`、`project.source` |
 | 侧栏入口 | `sidebar.panellist`，`id: dsh-video`、`order: 30`、label `Vedio Editor` |
 | 面板 key | `main` keyed slot 的 `dsh-video`；另声明私有 session child，仅用于取得原生 `SessionProvider` kit |
-| 引擎依赖 | 独立 `dsh-video-engine-client` / `dsh-video-engine-worker`，仅开发 staging 快照内解析；本候选固定提交 `d84ec5d` / 两包 `0.4.0`（从固定提交重打 tarball：client 8610 B `14b85c39e89e912d6ab0924c88967c85c83c43921420a8b44334f4a5f35ed513`，worker 66733 B `f86b8639280b4c9f9d3dfefc4f11f41767f2912a228bafdb88a29e940ce7863b`） |
+| 引擎依赖 | 独立 `dsh-video-engine-client` / `dsh-video-engine-worker`，仅开发 staging 快照内解析；R1/R2 复审补修后固定 engine 提交 `0deef8f` / 两包 `0.4.0`（重打 tarball：client 8610 B `14b85c39e89e912d6ab0924c88967c85c83c43921420a8b44334f4a5f35ed513` 内容未变，worker 68190 B `b56dba237e0612497caea40cc53e6b1ef22b7b18f7d36be96f8b94e5502e09f8`） |
 
-| 开发 staging | `artifacts/p2-b/staging-p3-012-d84ec5d-d84ec5d`（rootCommit=engineCommit `d84ec5d`，clean；`INTEGRITY.json` sha256 `9b8aff4ba3f9afaec75d603ed5dc6652aac9e987b9c8e43bf5e37de9c15ba199`）；仅开发快照，不随包分发 |
+| 开发 staging | `artifacts/p2-b/staging-p3-012-r1r2-0deef8f-d49be12`（rootCommit=`d49be12` / engineCommit=`0deef8f`，clean；`INTEGRITY.json` sha256 `a71f657878a470874112c1790a38828c13395dde6459f8f21846a31a9939896b`）；仅开发快照，不随包分发 |
 
 `index.js` 是 Host half：一个 plugin-local `VideoBridge` 同时服务精确 Fetch 路由和 Tool；`host/` 保存校验、错误映射、环境清理、worker 适配、产物发布、会话映射、局部图片预览、受控项目/素材收件箱与预览快照路由。`client.js` 是手写浏览器半（`window.__ModuleLoader__.load` 格式），只 `require('react')`，通过文档相对 `fetch('api/dsh-video/request')` 调用 Host；右侧 AI 直接渲染宿主原生 `conversation.content` Factory，不自建聊天。
 
@@ -85,6 +85,7 @@
 - **自动更新**：左面板对任意已载入工程每 1500ms `inspect` 一次，revision 变化自动换新快照，无需刷新/重开；加载中保留最后有效画面；快照失败显示可恢复错误+重试，不再有旧 PNG/表单降级或永久“画面尚未生成”。迟到的旧工程/旧 revision 结果有 projectId/mounted 守卫，不覆盖当前作品。
 - **首开即创作**：`project.list` 返回 `{projects:[{projectId,updatedAt}], defaultProjectId}`；Plugin 自动打开记住的/最近的受管工程并载入其绑定原生 Session，工程无会话时自动创建一次；完全无工程时自动创建一次「空工程+会话」。右侧原生 Conversation/历史/模型/文件预览不变，不常驻第三列、无场景卡片。
 - **产品 UI 只读**：对象点选/描边/拖动/缩放手柄、原位文字编辑、浮动属性、目标下拉/颜色/字号/时间表单、“保存修改”、素材抽屉/场景按钮/导出按钮均不出现在当前产品 UI；底层 typed edit/scene API 与旧手动画布实现保留，后续恢复直接编辑时复用。
+- **失败保护（协调复审 R1/R2 补修，2026-10-18 第二轮）**：R1 = `project.compose` 的权威 commit 点为入口写+回读+快照证明；其后历史写入失败返回**成功**并以 `history:{status:"degraded",code:"E_HISTORY"}` 结构化降级（真实 `publishedRevision` 不丢，不把已发布内容报成失败，同 operationId 重试返回同一结果）。R2 = 左侧失败时**保留最后有效作品**：新 revision 在隐藏 candidate iframe 预加载，只有其 runtime ready 才替换并释放旧快照；snapshot/runtime 失败保留旧画面（仍可播放）并在就近显示可恢复提示+重试，`data-canvas-revision`/`data-canvas-target-revision` 分别表示已显示/请求中的 revision。Host 快照路由按工程有界保留，切换成功后显式释放。独立真 Chrome：chain 261/261（含 R1）、preview 60/60（B1–B5）、R2 压力 68/68、R1 对抗 probe 32/32，R1/R2 均 CLOSED。
 - **独立复审**：独立 verifier 在冻结 staging 上发现 1 项 HIGH availability 缺陷（quote 密集但契约合法的 HTML 经 JSON 转义后可逾 64 KiB JSONL 帧并杀死 worker）与 2 项校验/声言问题；已在 `d84ec5d` 修复：Host+worker 双侧 escaped ≤60 KiB 上限、timeline 只认 inline `<script>` 且拒绝 null/undefined，并用 post-fix probe 闭环。最终 fix staging 上独立 harness A–E 全过（chain 230/230、browser 41/41）。
 - 支持范围由上述 composition 契约决定，不绑定 `product-launch-v1` 模板；首轮采用已验证的 HTML/SVG/GSAP 程序化作品形式，不引入新渲染后端。已知边界：48 KiB（且 JSON-escaped ≤60 KiB）是 AI 编辑路径上限；timeline 暴露是静态必要校验，真正播放由左侧 runtime 证明，静态检查通过但运行时不播放会显示可恢复预览错误而不是假“已完成”；compose 全量替换文档，未要求修改的内容由 AI 保留；真实模型生成质量/长对话效果未在本轮授权内验收。
 
@@ -201,7 +202,7 @@ node scripts/test-conversation-preview.mjs --staging /absolute/staging-dir # P3-
 ## 未验证（复审/安装后按另行授权验收）
 
 - 真实 DSH 激活后的 kit 形状与 SessionProvider 实际渲染、嵌入聊天/焦点/审批/模型切换、HMR/停用/重连与真实模型请求；
-- 本轮 P3-012 固定提交 staging（`artifacts/p2-b/staging-p3-012-*`，engine 0.4.0）的本地链/浏览器证据见 docs/research 与交付消息；真实 DSH 安装点击验收仍需另行授权，不能把本地 staging/浏览器证据当安装验收；
+- 本轮 P3-012 固定提交 staging（R1/R2 后 `artifacts/p2-b/staging-p3-012-r1r2-0deef8f-d49be12`，engine 0.4.0）的本地链/浏览器证据见 docs/research 与交付消息；真实 DSH 安装点击验收仍需另行授权，不能把本地 staging/浏览器证据当安装验收；
 - 真实页面视觉/键盘焦点/明暗/窄窗/草稿保持、真实 worker 启停与产物字节；
 - 真实引擎子进程链只能在复审通过的固定 staging/引擎提交上运行，证据归属以 `INTEGRITY.json`/执行路径为准；
 - Windows/Linux、Chrome/FFmpeg 缺失、用户素材与资产导入（PNG/JPEG 先行，SVG/音视频仍缺口）、多用户权限、OS 沙箱、Range/连续预览均未验证。

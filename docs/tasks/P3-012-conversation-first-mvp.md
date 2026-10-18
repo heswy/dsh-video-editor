@@ -136,3 +136,54 @@ engine-client spawn-context 测试在高负载下的 200ms handshake 预算偶�
    浏览器用例。
 5. `test-canvas-workspace.mjs` 本轮未作为交付证据（任务明确不要求），默认 false 路径由
    `test-canvas-browser`/`smoke-client` 的 runtime 契约与 wiring 用例覆盖。
+
+---
+
+## 复审 R1/R2 补修记录（2026-10-18 第二轮，review `12a7961`）· 自述，待复审
+
+协调复审 [docs/reviews/P3-012-review-01.md]：正常通用闭环通过（基础 174/174+版本 10/10、
+worker 44/compose 5、client 22+skip、真实链 230/230、原浏览器 41/41），要求补 **R1 发布失败结算**
+与 **R2 失败时保留最后有效预览**，候选暂不安装。本轮保持对话优先范围，不新增功能、不恢复手动
+编辑、未安装/未重启/未改 profile/未发模型请求/未 merge main；统一树/分支一次补修并交回 PR#4。
+
+### 实现与固定提交
+
+| 内容 | commit |
+|---|---|
+| R1 engine：compose 历史阶段降级结算（`history:{status:recorded\|degraded\|unchanged}`、真实 publishedRevision、同 operationId 缓存、`recordComposeHistory` seam、schema/README） | `0deef8f` |
+| R2 host：SnapshotRoutes 按工程有界保留（≤4）+ 显式释放/陈旧释放幂等 + prompt context 记录 degraded 语义 | `552b695` |
+| R2 client：双实例预览交接（隐藏 candidate 仅在 runtime ready 后提升、旧 iframe 保留且可播放、notice+retry、truthful revision/target markers、切换后释放旧快照、旧 ledger revoke） | `de7f3ba` |
+| R1/R2 独立 harness 回归（chain R1 结算、preview R2 保留） | `d49be12` |
+| verifier harness-only 释放观察竞态修复（断言未放宽，重冻 bytes） | `bb711d1` |
+
+### 检查结果（本轮实际输出）
+
+| 层 | 命令 | 结果 |
+|---|---|---|
+| Engine worker | `node --test --test-concurrency=1 test/*.test.mjs` | **46 / 46**（+2 R1 settlement 单测） |
+| Engine compose 集成 | `node --test --test-concurrency=1 test/compose.integration.mjs` | **6 / 6**（+1 历史故障/恢复回归） |
+| Engine client | 同命令 | 22 pass / 1 opt-in skip（未改） |
+| Host 契约 | `node scripts/check-host.mjs` | **54 / 54**（+R2 快照保留/上限/陈旧释放） |
+| Client 冒烟 | `node scripts/smoke-client.mjs` | **73 / 73**（2 个旧失败/切换断言按新契约替换 + 2 新用例） |
+| 静态/打包 | `node scripts/check.mjs`、`scripts/test-stage-version.mjs` | **51 / 51**、10 / 10 |
+| staging 现有链回归 | `test-canvas-browser`、`test-canvas-chain`、`test-host-engine`（R1/R2 staging） | 均 ok=true |
+| verifier chain（真 Chrome/真实 Tool） | `scripts/test-conversation-chain.mjs --staging <r1r2 staging>` | **ok=true，261/261**（原 230 全保留 + R1） |
+| verifier preview（真 Chrome/真实 client） | `scripts/test-conversation-preview.mjs --staging <r1r2 staging>` | **ok=true，60/60，B1–B5 全 true**；首预览 329ms、发布→ready 1538/1360ms |
+| verifier R2 压力 | `DSH_R2_STRESS=1 ...preview...` | **68/68**：保留/切换/释放/路由上限/双 retry/卸载无泄漏/旧消息隔离 |
+| verifier R1 对抗 probe | 公共 API 历史故障矩阵 | **32/32**：read/snapshot/entries/ops 故障→degraded+真实 revision+一致性+恢复 recorded；同 id 缓存；三态语义（unknown 臂由 worker 单测 seam 覆盖并如实标注） |
+
+证据：`artifacts/p3-012/evidence/{chain-2026-10-18T09-53-42-555Z, preview-2026-10-18T09-57-58-285Z,
+preview-2026-10-18T09-58-16-890Z, r1-adversarial-2026-10-18T09-56-53-537Z}/`。
+
+### 交付物与结论
+
+- 新固定 engine 提交 `0deef8f`，重打 tarball：client 8610 B `14b85c39…35ed513`（内容未变），
+  worker 68190 B `b56dba237e0612497caea40cc53e6b1ef22b7b18f7d36be96f8b94e5502e09f8`。
+- 新 clean staging：`artifacts/p2-b/staging-p3-012-r1r2-0deef8f-d49be12`（root `d49be12` /
+  engine `0deef8f`，rootDirty=false，INTEGRITY sha256
+  `a71f657878a470874112c1790a38828c13395dde6459f8f21846a31a9939896b`）。
+- **R1、R2 均 CLOSED**（独立 verifier 在 clean fix staging 上复核）：旧正常链 230/230 与浏览器
+  B1–B5 无回归，失败保护有可执行证据；未发现产品缺陷。verifier 仅修复自身 harness 的释放观察
+  竞态（`bb711d1`，断言未放宽）。
+- 仍未验证/未授权：真实 DSH 安装与激活、真实模型对话闭环、真机 UI/主题/窄窗/重启恢复、
+  Windows/Linux；真实模型质量与长对话效果待复审后授权验收。安装/重启/模型请求不在本任务授权内。
