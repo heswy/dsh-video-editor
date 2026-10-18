@@ -1,16 +1,18 @@
 # p0-mode-shell：当前接手
 
-更新：2026-10-18。当前HEAD `7daa039`、分支 `dsh/p0-mode-shell` / PR#3，继续本树。规则/路径读协调分支DEVELOPMENT。
+更新：2026-10-18。当前交付HEAD `eb8d2d8`，分支 `dsh/p0-mode-shell` / PR#3；继续本树。开工fetch后按AGENTS读取协调STATUS/DEVELOPMENT，不merge协调分支。
 
-P2-007与P3-005-A均已验收；A只代表契约调查完成，不代表嵌入真机通过。[评审](../reviews/P3-005A-review-01.md)已收敛产品选择并澄清mainView retain不是可见编辑根。
+## 当前动作：P3-006-A集中修复
 
-## 下一任务（待用户转发启动）
+读取 [P3-006-A复审](../reviews/P3-006A-review-01.md)，按原 [任务指南](../tasks/P3-006A-native-creation-conversation.md) 的白名单一次修复R1–R4：
 
-fetch后通过git show读最新STATUS/DEVELOPMENT/PRODUCT/设计、本handoff和 [P3-006-A](../tasks/P3-006A-native-creation-conversation.md)。**进入实际接线，不再新开一轮调查。** 一次交付右侧原生Conversation/历史/模型、Host工程会话映射、Tool工程范围与上下文、测试和可安装候选。
+1. 映射候选状态写盘成功后才发布，失败不改变history/active/Tool授权；处理失败临时文件。
+2. Session操作加入准入/排空，停用等待已接受create/rename收束，最后再清理store/context。
+3. 损坏/未知版本/上限等已知错误在宿主创建Session前拒绝，不吞读取失败继续创建。
+4. requestId去重隔离工程或明确冲突，不返回另一工程的Session。
 
-- videoView source、hero:false；ready后检查open状态。只有一个可编辑根，既避免抢占也不因mainView引用仍在就永久锁住返回视频页。
-- 不新Workspace、不归档隐藏，允许工程会话被宿主搜索/历史发现。映射在插件Host自有存储，不改worker工程内容。
-- 审批沿用原生takeover/拒绝/取消，首版不另造独立Stop。工具身份取可信exec.agent，不信工具参数sessionId。
-- 候选根0.3.0-alpha.1，本任务保留已审引擎54f4671/0.1.1。左侧暂保持真实PNG，不装假播放/点选；无底部场景卡片，右AI常驻。画布新引擎接线等B后单独合入。
+独立117/117+版本10/10、19文件固定包和staging摘要通过，但故障探针四项复现，候选尚未验收。复现脚本位于同级artifacts/reviews/2026-10-18/P3-006A/repro.mjs，真实候选模块+受控controller，无真实Session。
 
-p1-engine继续B，有进行中的工作，不交叉写。普通commit/push更新PR#3后由用户交回；不安装/启停/重启、不创建用户真实会话或调模型、不merge。先交具体可审阅候选，后做授权安装验收。
+修复、故障回归、原任务/研究记录、新提交目录固定包/staging与Host真实链一并交回；引擎仍固定54f4671/0.1.1，未发布alpha.1可保留版本。不新增调查轮次、不改p1-engine，不覆盖任何旧候选/安装staging。
+
+普通commit/push更新PR#3；不安装/启停/重启、不改profile、不创建用户真实会话、不调模型、不merge。修复复审通过后才进入具体候选安装验收。左画布/右AI/历史/原生模型/素材抽屉、无底部场景卡片的产品方向不变。
