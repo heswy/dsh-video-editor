@@ -280,7 +280,7 @@
         "title": {
           "type": "string",
           "minLength": 1,
-          "maxLength": 200
+          "maxLength": 2048
         },
         "template": {
           "$ref": "#/$defs/sceneTemplate"
@@ -321,7 +321,7 @@
         "title": {
           "type": "string",
           "minLength": 1,
-          "maxLength": 200
+          "maxLength": 2048
         },
         "elements": {
           "type": "array",
@@ -355,15 +355,15 @@
         "title": {
           "type": "string",
           "minLength": 1,
-          "maxLength": 200
+          "maxLength": 2048
         },
         "subtitle": {
           "type": "string",
-          "maxLength": 300
+          "maxLength": 2048
         },
         "badge": {
           "type": "string",
-          "maxLength": 48
+          "maxLength": 2048
         },
         "color": {
           "type": "string",
@@ -403,15 +403,15 @@
         "title": {
           "type": "string",
           "minLength": 1,
-          "maxLength": 200
+          "maxLength": 2048
         },
         "subtitle": {
           "type": "string",
-          "maxLength": 300
+          "maxLength": 2048
         },
         "badge": {
           "type": "string",
-          "maxLength": 48
+          "maxLength": 2048
         },
         "color": {
           "type": "string",

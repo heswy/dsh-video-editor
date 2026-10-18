@@ -476,6 +476,19 @@ export class Projects {
         parsedById = new Map(
           parsed.elements.map((element) => [element.stableId, element]),
         );
+      } else if (p.ops.some((op) => op.type === "text")) {
+        // Text edits on controlled Scene leaves must not break the
+        // scene.template read contract (e.g. an empty required Scene title).
+        // Legacy compositions keep their previous behaviour.
+        try {
+          parsed = parseDocument(html);
+          parsedById = new Map(
+            parsed.elements.map((element) => [element.stableId, element]),
+          );
+        } catch {
+          parsed = null;
+          parsedById = null;
+        }
       }
       const comp = await openComposition(html, {
         persist: createFsAdapter({ root: current.dir }),
@@ -517,6 +530,13 @@ export class Projects {
               if (next.start + next.duration > duration)
                 fail("E_PARAMS", "Timing extends beyond composition", "edit");
               timing.set(op.target, next);
+            } else {
+              // A Scene title is a required template field; allowing an empty
+              // edit would make the read projection invalid scene.update input.
+              const textElement = parsedById?.get(op.target);
+              const textInfo = textElement ? managedInfo(textElement) : null;
+              if (textInfo?.suffix === "title" && op.text.trim().length === 0)
+                fail("E_PARAMS", "Scene title cannot be empty", "edit");
             }
             counts[op.type] += 1;
             continue;

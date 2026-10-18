@@ -218,4 +218,5 @@ worker 新配置模式（管理工程，Host 不直接改这些文件）：
 - `template` 从当前权威 HTML 的受控解析模型生成，形状冻结为 `{title,duration,subtitle?,badge?,color?,accent?,logo?,shot?}`，**可直接作为 `scene.update.template`（及 `project.revise.template`）输入**；不再包含 `sceneId/order/start/elements`、目录或绝对路径。
 - 颜色/资产路径取当前工程真实值；文本包含人工 text 修改；只改色/换素材时，前端复制当次 `inspect` 的 `template` 再修改目标字段即可保留 subtitle/badge/accent/logo/shot 等其它字段，不需要解析 HTML 或维护第二份真相。
 - 可选字段只在当前文档确实存在时出现（subtitle/logo/shot 等不虚构；受控模板的空 badge 元素返回 `badge:""`）。`scene.update` 仍是完整替换语义，**未改成 partial patch**；未设置/清空字段的既有规则不变。无变化提交仍按既有 `E_INTERNAL` 守卫拒绝。
+- 为保证投影始终可往返，Scene 文本字段上限与既有 text edit 边界对齐：title/subtitle/badge 的模板输入/投影上限为 **2048** 字符（原有更短值请求不受影响）；title 是必填模板字段，空/纯空白 title 的 `edit {type:'text'}` 返回 `E_PARAMS`，避免产生无法回写的工程状态。其它元素的 text/timing 行为不变。
 - 旧 P2 legacy 单 composition 仍返回 `scenes: []`；schema 的 `sceneSummary`/`inspectScene` 均要求 `template`，方法集与 v1 协议不变。

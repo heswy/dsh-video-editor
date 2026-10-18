@@ -173,6 +173,78 @@ test("scene.template is complete, valid input and only includes existing optiona
   }
 });
 
+test("long human text remains round-trippable; an empty scene title is rejected", async () => {
+  const f = await managedWithAssets("p3009-longtext");
+  try {
+    const { projectId, revision } = await projectWithScenes(f.c, "长文本模板");
+    const longTitle = "长标题".repeat(100); // 300 chars, above the old template cap
+    const longSubtitle = "副标题".repeat(200); // 600 chars, above the old cap
+    const longBadge = "B".repeat(60); // above the old 48 cap
+    let current = revision;
+    const seed = await f.c.call("scene.update", {
+      projectId,
+      expectedRevision: current,
+      operationId: "template-long-seed",
+      sceneId: "scene-1",
+      template: { title: "初始标题", duration: 5, subtitle: "初始副标题", badge: "INIT" },
+    });
+    assert.equal(seed.ok, true, JSON.stringify(seed));
+    current = seed.result.revision;
+    const edit = await f.c.call("edit", {
+      projectId,
+      expectedRevision: current,
+      operationId: "template-long-text",
+      ops: [
+        { type: "text", target: "scene-1-title", text: longTitle },
+        { type: "text", target: "scene-1-subtitle", text: longSubtitle },
+        { type: "text", target: "scene-1-badge", text: longBadge },
+      ],
+    });
+    assert.equal(edit.ok, true, JSON.stringify(edit));
+    current = edit.result.revision;
+    let inspected = await inspect(f.c, projectId);
+    let template = inspected.scenes[0].template;
+    assert.equal(template.title.length, longTitle.length);
+    assert.equal(template.subtitle.length, longSubtitle.length);
+    assert.equal(template.badge.length, longBadge.length);
+    // The read template is valid scene.update input and schema-valid.
+    assert.deepEqual(normalizedTemplate(template), template);
+    assert.deepEqual(validate(inspected.scenes[0], schema.$defs.inspectScene, schema), []);
+    const roundtrip = await f.c.call("scene.update", {
+      projectId,
+      expectedRevision: current,
+      operationId: "template-long-roundtrip",
+      sceneId: "scene-1",
+      template: { ...template, color: "#445566" },
+    });
+    assert.equal(roundtrip.ok, true, JSON.stringify(roundtrip));
+    assert.deepEqual(validate(roundtrip.result.scenes[0], schema.$defs.sceneSummary, schema), []);
+    inspected = await inspect(f.c, projectId);
+    template = inspected.scenes[0].template;
+    assert.equal(template.title.length, longTitle.length);
+    assert.equal(template.subtitle.length, longSubtitle.length);
+    assert.equal(template.badge.length, longBadge.length);
+    assert.equal(template.color, "#445566");
+
+    // Empty/whitespace Scene titles can never be a valid template, so the text
+    // edit is rejected instead of making the read projection unusable.
+    const before = await inspect(f.c, projectId);
+    for (const [index, text] of ["", "   "].entries()) {
+      const rejected = await f.c.call("edit", {
+        projectId,
+        expectedRevision: before.revision,
+        operationId: `template-empty-title-${index}`,
+        ops: [{ type: "text", target: "scene-1-title", text }],
+      });
+      assert.equal(rejected.ok, false, JSON.stringify(rejected));
+      assert.equal(rejected.error.code, "E_PARAMS");
+    }
+    assert.equal((await inspect(f.c, projectId)).revision, before.revision);
+  } finally {
+    await f.cleanup();
+  }
+});
+
 test("partial color/shot updates keep every other field and scene, human edits, layout and history", async () => {
   const f = await managedWithAssets("p3009-partial");
   try {

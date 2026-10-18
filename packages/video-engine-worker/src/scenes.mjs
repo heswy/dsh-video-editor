@@ -104,15 +104,15 @@ export function validateSceneSpec(value, { sceneId: allowId = false } = {}) {
   const spec = {
     sceneId: allowId && value.sceneId !== undefined ? value.sceneId : undefined,
     duration: Math.round(value.duration * 1000) / 1000,
-    title: text(value.title, "scene title", 1, 200),
+    title: text(value.title, "scene title", 1, 2048),
     subtitle:
       value.subtitle === undefined
         ? undefined
-        : text(value.subtitle, "scene subtitle", 0, 300),
+        : text(value.subtitle, "scene subtitle", 0, 2048),
     badge:
       value.badge === undefined
         ? undefined
-        : text(value.badge, "scene badge", 0, 48),
+        : text(value.badge, "scene badge", 0, 2048),
     color: value.color === undefined ? undefined : color(value.color, "scene color"),
     accent:
       value.accent === undefined ? undefined : color(value.accent, "scene accent"),
