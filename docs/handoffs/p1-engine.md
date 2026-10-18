@@ -1,11 +1,11 @@
 # p1-engine：当前接手
 
-更新：2026-10-18。交付9aebcbc、功能82f6219，两包0.3.1；沿用本树/分支/PR#2。fetch后读协调STATUS/DEVELOPMENT，不merge协调分支。
+更新：2026-10-18。最新交付9aebcbc，已审功能82f6219/两包0.3.1；BUG-001已关闭，R1/R2已验收。沿用原树/分支/PR#2，fetch读协调STATUS/DEVELOPMENT，不merge。
 
-## 当前状态：BUG-001已验收，保持稳定基线
+## 下一任务：P3-009完整Scene读取契约
 
-[BUG-001复审](../reviews/BUG-001-review-01.md)通过：worker40/40、真实画面+渲染生命周期4/4；隔离副本换旧jobs后回归检出86行黑；新包源码字节/摘要一致。黑带在本机受控范围关闭，R1/R2覆盖语义已验收。不要再重做同类调查或自行扩展功能/优化。
+读取[P3-008联合复审R1](../reviews/P3-008-review-01.md)和[P3-009](../tasks/P3-009-scene-template-read-contract.md)。p0已交新画布候选，但scene.update是完整替换，summary不足导致局部换背景真实删除subtitle/logo/shot。你补只读scene.template投影及schema/测试，p0同时修前端/权限/生命周期，不交叉写。
 
-冻结 **82f6219 / client+worker0.3.1** 给p0的P3-008，新staging需明确固定提交和版本，不用移动HEAD。旧包/证据/当前用户安装保留，不能清理。p0继续P3-006-C和画布整合，后续若用户转发明确引擎接口缺口，再依任务处理；当前无需重复返工。
+冻结新增形状template={title,duration,subtitle?,badge?,color?,accent?,logo?,shot?}，从真实受控HTML解析模型生成，不含sceneId/order/start/elements/绝对路径。旧字段/22方法/写入语义保持，legacy scenes=[]。目标两包0.3.2，先基于82f6219保留黑带修复。完整往返只改color/shot、其它Scene和人工布局保持，重开/重启/undo等必要读写回归，详见任务。
 
-不改根Host/插件/p0树，不安装/启停/重启/调模型，不merge、不新tree/PR。保留去重禁用的性能说明；任何恢复dedup必须先证明上游已修复且新回归保护不回退。
+一次实现/验证/新提交目录固定包与完整SHA/方法样例/文档交回PR#2，不单交调查。无需重做黑带定位或大性能优化。不改p0/Host/全局文档、不安装/启停/重启/调模型、不动用户数据、不merge、不自行跨会话联络。p0可按冻结形状并行准备，但新包需总调度复审后才能进入最终staging。

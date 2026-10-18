@@ -1,22 +1,21 @@
 # p0-mode-shell：当前接手
 
-更新：2026-10-18。当前LIVE交付 `2cd718a`，已安装功能 `b382686` / 0.3.0-alpha.1、engine54f4671/0.1.1，沿用本树、分支与PR#3。开工fetch读协调STATUS/DEVELOPMENT，不merge或新建tree。
+更新：2026-10-18。最新交付head8b56304；C功能3310280/alpha.2，008功能8ab5f1a/alpha.3。当前安装仍alpha.1，不覆盖。沿用本树/分支/PR#3，fetch后读协调STATUS/DEVELOPMENT，不merge协调分支。
 
-## 当前动作：先P3-006-C，独立提交后直接P3-008
+## 当前动作：C/008集中修复R1–R5
 
-先读 [LIVE复核](../reviews/P3-006A-live-review-01.md)，再执行 [P3-006-C](../tasks/P3-006C-embedded-file-preview.md)。用户已实测图片卡报“sidebarRight: no session surface is mounted”，不能将嵌入体验标为全PASS。总调度已核源码：sidebarRight全局controller只在普通Conversation主面板设置onScreen，main视频面板下undefined；原生chat openFile仍调该service。
+读取[P3-008联合复审](../reviews/P3-008-review-01.md)，按原C/008白名单一次修复：
 
-一次交付实际可工作的局部图片/文件预览候选和回归，不再完整调查。根alpha.2、engine仍54f4671；C仍不跨升级engine；其后P3-008使用新通过复审的82f6219/两包0.3.1。不要猴补全局服务/抢mainView/替换宿主，不开放任意路径读取、不常驻第三列。具体scope/验收/故障边界见指南。
+1. Scene局部改色/换shot必须保留完整其它字段；当前只传title/duration等会真实删除副标题/Logo/shot。
+2. 拖动/缩放从静态基座与动画逆映射计算patch，不把当前rect直接存HTML；移动不固定原auto尺寸。补真正CanvasWorkspace的浏览器手势回归。
+3. 文件预览验证所读文件属于当前工程/Session，不只验证Session绑定及共享根。
+4. 所有新Host操作/上传参与准入排空；停用后不再发布路由/文件/receipt；上传校验可信工程、过期/失败/停用清临时文件。
+5. 原位保存失败/冲突保留草稿和目标，uncertain不自动重放。
 
-不安装/启停/重启新候选，不新增模型请求，不修改已安装staging、用户图片或工程。保留当前回滚与测试会话。旧验收的用户授权不等于所有后续安装或全局输入权限。不得再用全局键盘/坐标、个人剪贴板或抢前台；无定向通道时给用户短人工步骤。
+独立136/136+版本10/10、候选/摘要一致，但以上场景已复现，两个候选均未验收，不安装。探针在同级artifacts/reviews/2026-10-18/P3-008/，原始探针不改，补修复后断言与正式回归。parent消息形状/序号/销毁pending也按复审说明在实际前端回归中补齐，不能只用runtime脚本冒充UI测试。
 
-当前换黄色失败源于已装旧engine和legacy demo，需后续新engine/受控工程/Host/Tool/画布整合，不引导直接写index.html绕过工程入口，不把调色副产物说成工程修改。p1覆盖语义与BUG-001均已验收，固定82f6219/0.3.1，不交叉写。
+p1并行[P3-009](../tasks/P3-009-scene-template-read-contract.md)，提供冻结形状scene.template（完整合法scene.update输入，不含sceneId）。可按该形状并行开发/测试，不读HTML/本地默认猜场景。最终包要等p1固定新提交复审，再由总调度明确通知采用；当前最新已审为82f6219/0.3.1，不能继续交旧74294e6/0.3.0，也不自动跟随p1 HEAD。
 
-普通commit/push PR#3交回代码/包/新staging/测试和未测项；功能候选审过后再安排安装验收。不要对用户已开始创作的demo执行prepare-fixture重置。
+只在最新alpha.3分支集中解决C和008，不必回旧分支重打一轮alpha.2。保留所有旧候选/staging，最新功能新提交目录打包；未安装的alpha.3可保留根版本。交新staging/完整摘要、真实Host Tool→worker的AI等价续改链和实际CanvasWorkspace浏览器交互证据，一次push PR#3交回。
 
-
-## C提交后直接进入P3-008，不等待额外启动轮次
-
-读取[P3-006-B复审02](../reviews/P3-006B-review-02.md)与[P3-008](../tasks/P3-008-canvas-ai-integration.md)。C的alpha.2固定包独立保留，然后直接继续alpha.3开发：新engine82f6219/0.3.1、Host/Tool方法、受控新工程与持久目录、左实时播放/直接编辑/移动缩放/就近样式、右原生AI、素材抽屉。不能只升版本仍用legacy demo来声称可以换色；验收必须真revision写入、画布刷新、保存重开保留。无底部场景卡片，不保留旧右侧表单主路径。
-
-82f6219包摘要和白名单见指南，不从p1移动HEAD自动安装包。BUG-001已通过独立复审；若已经按74294e6开始，仅替换明确commit/两包完整版本并建新staging、复跑导出链，不重做已完成的UI/Host。当前旧安装并未自动修复，新staging仍需核对实际渲染版本。一次交完整开发候选/新staging/真实受控链与证据；不安装alpha.2/alpha.3或重启、不新增真实模型请求、不改用户数据。C若已进行则继续，避免重新开始。
+不安装/启停/重启、不新增真实模型请求、不改用户工程/个人会话、不merge、不联系或修改p1树。不用全局键盘/坐标/个人剪贴板；不对已供用户创作的demo运行prepare-fixture。无安全定向通道则人工，不重复事故。
