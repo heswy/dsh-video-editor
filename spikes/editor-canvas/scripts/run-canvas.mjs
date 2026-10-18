@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
+import { execFileSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { CanvasHostServer } from "./lib/host-server.mjs";
@@ -116,11 +117,22 @@ async function main() {
         "utf8",
       ),
     );
+    const git = (...args) => {
+      try {
+        return execFileSync("git", ["-C", REPO_ROOT, ...args], {
+          encoding: "utf8",
+        }).trim();
+      } catch {
+        return null;
+      }
+    };
+    const engineDrift = git("diff", "--stat", "df4b74f", "--", "packages");
     evidence.versions.engine = {
       worker: `${workerPackage.name}@${workerPackage.version}`,
       client: `${clientPackage.name}@${clientPackage.version}`,
       reviewedCommit: "df4b74f",
-      deliveryHead: "e364017",
+      headAtEvidenceCapture: git("rev-parse", "HEAD"),
+      packagesUnchangedSinceReviewedCommit: engineDrift === "",
     };
     evidence.project = {
       projectId: harness.project.projectId,
@@ -550,7 +562,8 @@ async function main() {
           const b = canvasOf(previewImage);
           let sum = 0;
           let maxDelta = 0;
-          let identical = 0;
+          let exactEqual = 0;
+          let within2 = 0;
           const pixels = width * height;
           for (let index = 0; index < a.length; index += 4) {
             const delta = Math.max(
@@ -560,7 +573,8 @@ async function main() {
             );
             sum += delta;
             if (delta > maxDelta) maxDelta = delta;
-            if (delta <= 2) identical += 1;
+            if (delta === 0) exactEqual += 1;
+            if (delta <= 2) within2 += 1;
           }
           return {
             width,
@@ -568,7 +582,9 @@ async function main() {
             pixels,
             mae: sum / pixels,
             maxDelta,
-            identicalPct: identical / pixels,
+            exactEqualPct: exactEqual / pixels,
+            within2Pct: within2 / pixels,
+            tolerance: 2,
           };
         },
         {
@@ -586,7 +602,8 @@ async function main() {
       });
       await check(`preview matches worker frame at ${time}s`, async () => {
         assert.ok(!comparison.sizeMismatch, "size mismatch");
-        assert.ok(comparison.identicalPct > 0.85, `identicalPct ${comparison.identicalPct}`);
+        assert.ok(comparison.within2Pct > 0.85, `within2Pct ${comparison.within2Pct}`);
+        assert.ok(comparison.exactEqualPct > 0.85, `exactEqualPct ${comparison.exactEqualPct}`);
         assert.ok(comparison.mae < 4, `mae ${comparison.mae}`);
         return comparison;
       });
@@ -695,6 +712,7 @@ async function main() {
       );
       await page.mouse.click(point.x, point.y);
       await waitSelection("scene-1-title");
+      const selectedAfterClick = (await canvasState()).selection?.stableId ?? null;
       const marginPoint = {
         x: state.stage.stageRect.left + state.stage.stageRect.width / 2,
         y:
@@ -711,12 +729,13 @@ async function main() {
         scale: state.stage.scale,
         letterbox: { left: state.stage.left, top: state.stage.top },
         clickPoint: point,
-        hitStableId: "scene-1-title",
+        selectedStableId: selectedAfterClick,
         marginPoint,
         selectionAfterMargin: afterMargin.selection?.stableId ?? null,
       });
       await check(`letterbox mapping at ${width}×${height}`, async () => {
         assert.ok(Math.abs(state.stage.scale - Math.min(width / 1280, height / 720)) < 1e-6);
+        assert.equal(selectedAfterClick, "scene-1-title");
         assert.equal(afterMargin.selection, null, "letterbox margin must not hit content");
         return evidence.letterbox.at(-1);
       });

@@ -20,7 +20,9 @@ const SDK_FS_ADAPTER = resolve(
   WORKER_ROOT,
   "node_modules/@hyperframes/sdk/dist/adapters/fs.js",
 );
-const OUT = resolve(SPIKE_ROOT, "evidence");
+const defaultOut = resolve(SPIKE_ROOT, "evidence");
+const outIndex = process.argv.indexOf("--out");
+const OUT = outIndex >= 0 ? resolve(process.argv[outIndex + 1]) : defaultOut;
 
 function sha256Hex(bytes) {
   return createHash("sha256").update(bytes).digest("hex");

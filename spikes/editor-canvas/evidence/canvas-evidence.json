@@ -1,6 +1,6 @@
 {
   "kind": "p3-005b-editor-canvas-spike",
-  "startedAt": "2026-10-18T02:26:20.111Z",
+  "startedAt": "2026-10-18T02:31:50.894Z",
   "independence": "standalone test page driven by puppeteer-core; not the DSH plugin and not a real DSH page",
   "versions": {
     "node": "v24.14.0",
@@ -27,12 +27,13 @@
       "worker": "dsh-video-engine-worker@0.2.1",
       "client": "dsh-video-engine-client@0.2.1",
       "reviewedCommit": "df4b74f",
-      "deliveryHead": "e364017"
+      "headAtEvidenceCapture": "1925b822cf57ae8f9be919357466ee0f369f285b",
+      "packagesUnchangedSinceReviewedCommit": true
     },
     "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/155.0.0.0 Safari/537.36"
   },
   "project": {
-    "projectId": "proj-mvd7f0io-4556053d",
+    "projectId": "proj-mvd7m3jd-627170fc",
     "initialRevision": "449648a3af6b644615799c180fe71de7c1f1b097ac2be9971410e7cd20d848b2",
     "duration": 11,
     "width": 1280,
@@ -230,9 +231,9 @@
     ]
   },
   "host": {
-    "url": "http://127.0.0.1:63625/",
-    "origin": "http://127.0.0.1:63625",
-    "entryCachedCsp": "default-src 'none'; script-src http://127.0.0.1:63625 'sha256-MWPMlt9GUx+xu4PPxr6KVDsUPeoLEUlTISvBXaiN44M='; style-src http://127.0.0.1:63625 'unsafe-inline'; img-src http://127.0.0.1:63625 data:; font-src 'none'; connect-src 'none'; frame-src 'none'; media-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'self'",
+    "url": "http://127.0.0.1:49812/",
+    "origin": "http://127.0.0.1:49812",
+    "entryCachedCsp": "default-src 'none'; script-src http://127.0.0.1:49812 'sha256-MWPMlt9GUx+xu4PPxr6KVDsUPeoLEUlTISvBXaiN44M='; style-src http://127.0.0.1:49812 'unsafe-inline'; img-src http://127.0.0.1:49812 data:; font-src 'none'; connect-src 'none'; frame-src 'none'; media-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'self'",
     "inlineScriptHashes": 1,
     "snapshotLifecycle": {
       "staleRevision": {
@@ -241,7 +242,7 @@
         "code": "E_REVISION_CONFLICT"
       },
       "oldSnapshotAfterSwitch": {
-        "snapshotId": "78e4f43c2f0d33e7fa5308070db6c401",
+        "snapshotId": "e548e4754bad3801e5a37ae23415194b",
         "hostRouteStatus": 404,
         "releaseCode": "E_SNAPSHOT_NOT_FOUND"
       }
@@ -311,10 +312,10 @@
     ],
     "playPause": {
       "startTime": 2,
-      "after800ms": 2.7,
+      "after800ms": 2.7000000000000015,
       "playingFlag": true,
-      "pauseReturned": 2.7834000000000003,
-      "afterPause250ms": 2.7834000000000003
+      "pauseReturned": 2.7834000000000017,
+      "afterPause250ms": 2.7834000000000017
     },
     "hiddenObject": {
       "subtitleRect": {
@@ -355,7 +356,9 @@
       "pixels": 921600,
       "mae": 0.35814778645833334,
       "maxDelta": 226,
-      "identicalPct": 0.993017578125
+      "exactEqualPct": 0.9927625868055555,
+      "within2Pct": 0.993017578125,
+      "tolerance": 2
     },
     {
       "time": 5.5,
@@ -366,7 +369,9 @@
       "pixels": 921600,
       "mae": 0.29682291666666666,
       "maxDelta": 240,
-      "identicalPct": 0.9910470920138889
+      "exactEqualPct": 0.9792914496527778,
+      "within2Pct": 0.9910470920138889,
+      "tolerance": 2
     },
     {
       "time": 9,
@@ -377,7 +382,9 @@
       "pixels": 921600,
       "mae": 0.041533203125,
       "maxDelta": 232,
-      "identicalPct": 0.9992621527777777
+      "exactEqualPct": 0.9992371961805555,
+      "within2Pct": 0.9992621527777777,
+      "tolerance": 2
     }
   ],
   "selection": {
@@ -458,7 +465,7 @@
         "x": 519.71875,
         "y": 475.3590087890625
       },
-      "hitStableId": "scene-1-title",
+      "selectedStableId": "scene-1-title",
       "marginPoint": {
         "x": 573,
         "y": 124
@@ -479,7 +486,7 @@
         "x": 366.1875,
         "y": 509.402587890625
       },
-      "hitStableId": "scene-1-title",
+      "selectedStableId": "scene-1-title",
       "marginPoint": {
         "x": 403,
         "y": 124
@@ -502,7 +509,7 @@
       "beforeRevision": "449648a3af6b644615799c180fe71de7c1f1b097ac2be9971410e7cd20d848b2",
       "afterRevision": "876ae63b39680b39d16b0e2ba8a90ebfc3b655aed5ae2ea20a83dc1cd2f2de0f",
       "workerText": "画布原位修改",
-      "snapshotId": "222522441f2707172b471e354999810e",
+      "snapshotId": "af6db3ffc5e1963922f5fca987bcc277",
       "historyCursor": null
     },
     "persistence": {
@@ -652,7 +659,7 @@
       "gapProposalAfterDrag": null,
       "blockedDiagnostics": [
         {
-          "at": "2026-10-18T02:26:42.149Z",
+          "at": "2026-10-18T02:32:08.609Z",
           "type": "drag-blocked-while-playing",
           "detail": {
             "stableId": "scene-1-title"
@@ -670,7 +677,7 @@
     },
     "foreignSourceDelta": 1,
     "revokedInstance": {
-      "oldInstanceId": "inst-cae69bb1cb5d",
+      "oldInstanceId": "inst-53058f3ba35c",
       "result": {
         "ok": false,
         "code": "E_INSTANCE_NOT_FOUND"
@@ -683,7 +690,7 @@
     "destroy": {
       "results": [
         {
-          "instanceId": "inst-067477e71ce0",
+          "instanceId": "inst-ee9bf5bba09a",
           "destroyed": true
         }
       ],
@@ -863,8 +870,8 @@
     }
   ],
   "failures": [],
-  "finishedAt": "2026-10-18T02:26:48.368Z",
-  "elapsedMs": 28255,
+  "finishedAt": "2026-10-18T02:32:14.750Z",
+  "elapsedMs": 23855,
   "summary": {
     "total": 41,
     "passed": 41,

@@ -33,7 +33,7 @@ node spikes/editor-canvas/scripts/capability-probe.mjs
 npm run all --prefix spikes/editor-canvas
 ```
 
-`run-canvas.mjs` 可用 `--out <dir>` 改证据目录、`--headed` 打开可见窗口。运行临时目录在 `artifacts/`（gitignored），结束时删除；证据写入 `evidence/`（提交）。
+`run-canvas.mjs` 可用 `--out <dir>` 改证据目录、`--headed` 打开可见窗口；`capability-probe.mjs --out <dir>` 同样可避免改写已提交证据。运行临时目录在 `artifacts/`（gitignored），结束时删除；默认证据写入 `evidence/`（提交）。
 
 ## 组成
 
