@@ -421,6 +421,9 @@ test("schema params and worker validation agree for every method; results valida
       checked: "composition+snapshot",
       revision: composed.result.revision,
     });
+    // R1 settlement shape: a normal publish records history with a cursor.
+    assert.equal(composed.result.history.status, "recorded");
+    assert.ok(Number.isInteger(composed.result.history.historyCursor));
     state.revision = composed.result.revision;
     const sourceAfter = await sendValid("project.source", {
       projectId: state.projectId,
@@ -437,6 +440,8 @@ test("schema params and worker validation agree for every method; results valida
     assert.equal(unchanged.result.written, false);
     assert.equal(unchanged.result.revision, state.revision);
     assert.equal(unchanged.result.publishedRevision, state.revision);
+    // R1 settlement shape: the unchanged path never writes history.
+    assert.deepEqual(unchanged.result.history, { status: "unchanged" });
 
     await sendValid("close", { projectId: state.projectId });
     for (const method of Object.keys(schema["x-methods"]))

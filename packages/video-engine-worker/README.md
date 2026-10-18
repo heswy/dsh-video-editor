@@ -251,9 +251,15 @@ worker 新配置模式（管理工程，Host 不直接改这些文件）：
   "assets": ["assets/gsap.min.js"],
   "elements": [{"stableId": "hf-abcd", "capabilities": ["text"]}],
   "files": [{"path": "assets/gsap.min.js", "bytes": 72927, "sha256": "<64 hex>"}, {"path": "index.html", "bytes": 653, "sha256": "<64 hex>"}],
-  "preview": {"mode": "snapshot", "status": "ready", "checked": "composition+snapshot", "revision": "<new 64 hex>"}
+  "preview": {"mode": "snapshot", "status": "ready", "checked": "composition+snapshot", "revision": "<new 64 hex>"},
+  "history": {"status": "recorded", "historyCursor": 2}
 }
 ```
+
+`history` 发布结算字段（见下文“发布结算”）：
+- `{"status":"recorded","historyCursor":<int>}`：历史条目已写入；
+- `{"status":"degraded","code":"E_HISTORY"}`：作品已权威提交（入口字节 + 回读 + 快照证明），但历史阶段失败，结果仍为成功并带真实 `publishedRevision`；失败细节只进受限 diagnostic；
+- `{"status":"unchanged"}`：与当前入口字节相同，未发生历史写入。
 
 ### 合成契约（发布前校验，任一不满足返回 E_COMPOSE_INVALID 且不写盘）
 
@@ -272,11 +278,19 @@ worker 新配置模式（管理工程，Host 不直接改这些文件）：
 - operationId 与 `edit` 相同的单写者队列 + 内存幂等：同 projectId 下同一规范化请求返回首次成功结果，不重复写盘；相同 operationId 不同内容 → `E_OPERATION_REUSED`；失败不缓存。
 - 写入路径：`atomicWrite(index.html)` → `read()` 逐字节读回核对；不一致或读取失败则用 `atomicWrite` 恢复旧字节并返回 `E_PERSIST`（stage `persist`）；恢复也失败时错误带 `uncertain: true`。
 - 发布后立即通过既有 `Previews.create` 建立新 revision 的私有快照（TTL 单独用 60s），确认入口文件在快照清单内后 `discard`；失败则恢复旧字节并返回 `E_PERSIST`。`preview.status: "ready"` 只表示“契约校验通过 + 该 revision 可通过既有快照路由服务”，不声称浏览器已播放。
-- 成功后 `recordWrite` 追加 `actor:"ai", kind:"project.compose"` 历史条目（summary 形如 `AI composition (653 bytes, 5s)`）；`close`/worker 重启后 revision 与 HTML 从磁盘恢复。
+
+### 发布结算（权威 commit 点与历史降级）
+
+- **权威 commit 点 = 入口 `atomicWrite` + 逐字节 `read()` 回读 + 新 revision 的 preview snapshot 证明。** 这三步之后作品已确认发布；历史写入是辅助审计，不允许把已发布的新 revision 作为普通失败返回。
+- 历史写入（`recordWrite`：快照/entries/ops/state）抽成实例方法 `recordComposeHistory`，包裹结算：成功 → `history:{status:"recorded",historyCursor}`；任意历史阶段失败 → **成功结果** `history:{status:"degraded",code:"E_HISTORY"}`，`revision`/`publishedRevision`/`preview` 与真实发布一致，不恢复作品、不泄漏路径或原始错误消息（失败只用于受限 diagnostic）。相同 operationId 重试返回缓存的同一结算结果，不重复写盘；不同内容仍 `E_OPERATION_REUSED`。
+- `unchanged` 路径不写历史，返回 `history:{status:"unchanged"}`。
+- 历史阶段失败后可能留下部分历史状态（例如已写快照但未写 entries/state）；下一次成功 compose 的 `recordWrite` 会裁剪/覆盖未完成条目并继续工作，测试覆盖 entries 为目录（读失败）、snapshots 只读、history 目录只读（entries 写失败）、ops.jsonl 只读（append 失败）四种注入及恢复后的记录。
+- commit 点之前的失败语义不变：入口写/回读/preview 证明失败会恢复旧字节并返回 `E_PERSIST`；无法恢复时带 `uncertain: true`（明确失败保留旧状态 / 明确提交返回真实新 revision / 未知显式 uncertain）。
 - `project.source` 只读：返回当前 revision 的完整 HTML 与声明资产；入口 > 48 KiB 或 `JSON.stringify(html)` 转义后 > 60 KiB 返回 `E_LIMIT`（浏览器预览仍可读，Agent 编辑路径拒绝；后者保证 source 结果不会超过 64 KiB Tool 预算）。`source` 不写事实、不产生历史。
 
 ### 测试
 
 - `test/schema.test.mjs`：schema 方法集 == worker switch 方法集（24）、新方法 params/result 双向校验。
-- `test/compose.integration.mjs`（真实 worker 进程）：创建工程 → `project.source` 读回 → `project.compose` 发布（新 revision/history/close 重开/重启持久化）→ 相同内容 `unchanged` → 幂等与 `E_OPERATION_REUSED` → `E_REVISION_CONFLICT` 不改文件 → 各契约失败场景均为 `E_COMPOSE_INVALID` 且 revision/内容不变（含引号密集文档的 JSON 转义上限、HTML 注释里的 `__timelines`、`main: null`）→ 参数错误 `E_PARAMS` → 工程目录只读注入恢复旧内容（`uncertain: true`）→ 预览快照目录只读注入恢复旧版本 → 直接植入引号密集入口后 `project.source` 的转义上限 `E_LIMIT`。
-- 运行：`node --test --test-concurrency=1 test/*.test.mjs`（既有 44 项）与 `node --test --test-concurrency=1 test/compose.integration.mjs`。
+- `test/compose.integration.mjs`（真实 worker 进程）：创建工程 → `project.source` 读回 → `project.compose` 发布（新 revision/`history.status="recorded"`/close 重开/重启持久化）→ 相同内容 `unchanged` + `history.status="unchanged"` → 幂等与 `E_OPERATION_REUSED` → `E_REVISION_CONFLICT` 不改文件 → 各契约失败场景均为 `E_COMPOSE_INVALID` 且 revision/内容不变（含引号密集文档的 JSON 转义上限、HTML 注释里的 `__timelines`、`main: null`）→ 参数错误 `E_PARAMS` → 工程目录只读注入恢复旧内容（`uncertain: true`）→ 预览快照目录只读注入恢复旧版本 → 直接植入引号密集入口后 `project.source` 的转义上限 `E_LIMIT` → 历史读/snapshots/entries/ops 四种故障下发布返回成功且 `history.status="degraded"`，source/inspect/后续 compose 一致，恢复后下一次 compose 记录历史，同 operationId 重试返回缓存结果。
+- `test/compose-settlement.test.mjs`（直接 `Projects` 单元测试）：覆写 `recordComposeHistory` 抛错 → 降级成功结果；覆写 `previews.create` 抛错 + `restoreEntry` 返回 false → `E_PERSIST` stage `persist` 且 `uncertain:true`。
+- 运行：`node --test --test-concurrency=1 test/*.test.mjs`（既有 44 项 + 新结算单元测试）与 `node --test --test-concurrency=1 test/compose.integration.mjs`。

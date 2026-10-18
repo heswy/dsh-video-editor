@@ -1970,6 +1970,31 @@
             "checked",
             "revision"
           ]
+        },
+        "history": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "status": {
+              "enum": [
+                "recorded",
+                "degraded",
+                "unchanged"
+              ]
+            },
+            "historyCursor": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "code": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            }
+          },
+          "required": [
+            "status"
+          ]
         }
       },
       "required": [
@@ -1987,7 +2012,8 @@
         "assets",
         "elements",
         "files",
-        "preview"
+        "preview",
+        "history"
       ]
     },
     "result_project_source": {

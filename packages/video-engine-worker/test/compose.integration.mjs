@@ -10,7 +10,7 @@
 // bits are restored before cleanup.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { chmod, readFile, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { managed } from "./helpers.mjs";
 import {
@@ -129,6 +129,7 @@ test("project.compose publishes validated HTML; source, history, unchanged and p
       "entry",
       "files",
       "height",
+      "history",
       "preview",
       "projectId",
       "publishedRevision",
@@ -167,6 +168,12 @@ test("project.compose publishes validated HTML; source, history, unchanged and p
       checked: "composition+snapshot",
       revision: result.revision,
     });
+    assert.equal(result.history.status, "recorded");
+    assert.ok(
+      Number.isInteger(result.history.historyCursor) &&
+        result.history.historyCursor >= 1,
+      `unexpected history cursor ${JSON.stringify(result.history)}`,
+    );
 
     // The published revision is the real current revision and the exact bytes.
     assert.equal(await inspectRevision(c, projectId), result.revision);
@@ -175,9 +182,11 @@ test("project.compose publishes validated HTML; source, history, unchanged and p
     assert.equal(roundTrip.revision, result.revision);
     assert.equal(roundTrip.bytes, result.bytes);
 
-    // History records the AI publish, not the read.
+    // History records the AI publish, not the read; the settlement cursor is
+    // the same cursor the history read reports.
     const history = await c.call("history", { projectId });
     assert.equal(history.ok, true, JSON.stringify(history));
+    assert.equal(history.result.historyCursor, result.history.historyCursor);
     const composeEntries = history.result.entries.filter(
       (entry) => entry.kind === "project.compose",
     );
@@ -198,6 +207,7 @@ test("project.compose publishes validated HTML; source, history, unchanged and p
     assert.equal(unchanged.result.written, false);
     assert.equal(unchanged.result.revision, result.revision);
     assert.equal(unchanged.result.publishedRevision, result.revision);
+    assert.deepEqual(unchanged.result.history, { status: "unchanged" });
     assert.equal((await source(c, projectId)).html, firstHtml);
     const historyAfterUnchanged = await c.call("history", { projectId });
     assert.equal(
@@ -615,6 +625,158 @@ test("project.compose restores the previous composition on persist and snapshot-
     });
     assert.equal(retriedSnapshot.ok, true, JSON.stringify(retriedSnapshot));
     assert.equal((await source(c, projectId)).html, snapshotHtml);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test("project.compose settles a committed publish when the history stage fails (degraded success)", async () => {
+  const f = await managed("p3012-compose-history");
+  try {
+    const c = f.c;
+    const created = await createProject(c);
+    const projectId = created.projectId;
+    const projectDir = resolve(f.projectsRoot, projectId);
+    const historyDir = resolve(projectDir, ".dsh-video", "history");
+    const entriesPath = resolve(historyDir, "entries.jsonl");
+    const snapshotsDir = resolve(historyDir, "snapshots");
+    const opsPath = resolve(historyDir, "ops.jsonl");
+
+    const baseline = await source(c, projectId);
+    let revision = baseline.revision;
+    let sequence = 0;
+
+    // A publish whose history stage can be broken by a real filesystem fault.
+    // The authoritative commit point (entry + readback + preview proof) has
+    // already succeeded, so the response must be a real success with a
+    // structured degraded history marker and consistent source/inspect.
+    const publishDegraded = async (label) => {
+      sequence += 1;
+      const html = composition({ text: `${label} ${sequence}` });
+      const params = {
+        projectId,
+        expectedRevision: revision,
+        operationId: `history-fail-${sequence}`,
+        html,
+      };
+      const response = await c.call("project.compose", params);
+      assert.equal(response.ok, true, `${label}: ${JSON.stringify(response)}`);
+      const result = response.result;
+      assert.equal(result.written, true, label);
+      assert.equal(result.publishedRevision, result.revision, label);
+      assert.notEqual(result.revision, revision, label);
+      assert.deepEqual(result.preview, {
+        mode: "snapshot",
+        status: "ready",
+        checked: "composition+snapshot",
+        revision: result.revision,
+      });
+      assert.deepEqual(result.history, {
+        status: "degraded",
+        code: "E_HISTORY",
+      });
+      const published = await source(c, projectId);
+      assert.equal(published.revision, result.revision, `${label}: source revision`);
+      assert.equal(published.html, html, `${label}: source html`);
+      assert.equal(
+        await inspectRevision(c, projectId),
+        result.revision,
+        `${label}: inspect revision`,
+      );
+      revision = result.revision;
+      return { result, html, params };
+    };
+
+    const publishRecorded = async (label) => {
+      sequence += 1;
+      const html = composition({ text: `${label} ${sequence}` });
+      const response = await c.call("project.compose", {
+        projectId,
+        expectedRevision: revision,
+        operationId: `history-recorded-${sequence}`,
+        html,
+      });
+      assert.equal(response.ok, true, `${label}: ${JSON.stringify(response)}`);
+      assert.equal(response.result.written, true, label);
+      assert.equal(response.result.history.status, "recorded", label);
+      assert.ok(
+        Number.isInteger(response.result.history.historyCursor),
+        `${label}: ${JSON.stringify(response.result.history)}`,
+      );
+      assert.equal((await source(c, projectId)).html, html, label);
+      revision = response.result.revision;
+      return response.result;
+    };
+
+    // 1) history READ failure: entries.jsonl becomes a directory while the rest
+    // of the history tree (state.json) stays intact.
+    const entriesBackup = await readFile(entriesPath);
+    await rm(entriesPath, { force: true });
+    await mkdir(entriesPath, { recursive: true });
+    const readFailure = await publishDegraded("history-read-failure");
+    await rm(entriesPath, { recursive: true, force: true });
+    await writeFile(entriesPath, entriesBackup);
+    await publishRecorded("history-after-read-restore");
+
+    // The degraded publish stays in the bounded idempotency table: an identical
+    // retry (same payload, including the original expectedRevision) returns the
+    // same settled result without a second write; a different payload is still
+    // refused.
+    const beforeRetry = await source(c, projectId);
+    const retry = await c.call("project.compose", readFailure.params);
+    assert.equal(retry.ok, true, JSON.stringify(retry));
+    assert.deepEqual(retry.result, readFailure.result);
+    const afterRetry = await source(c, projectId);
+    assert.equal(afterRetry.revision, beforeRetry.revision);
+    assert.equal(afterRetry.html, beforeRetry.html);
+    const reused = await c.call("project.compose", {
+      projectId,
+      expectedRevision: revision,
+      operationId: "history-fail-1",
+      html: composition({ text: "different payload" }),
+    });
+    await expectError(reused, "E_OPERATION_REUSED");
+
+    // 2) history SNAPSHOT-dir write failure.
+    await chmod(snapshotsDir, 0o555);
+    try {
+      await publishDegraded("history-snapshot-failure");
+    } finally {
+      await chmod(snapshotsDir, 0o755);
+    }
+    await publishRecorded("history-after-snapshot-restore");
+
+    // 3) history ENTRIES write failure: the snapshot write already happened,
+    // then entries.jsonl cannot be replaced because the history dir is read-only.
+    await chmod(historyDir, 0o555);
+    try {
+      await publishDegraded("history-entries-failure");
+    } finally {
+      await chmod(historyDir, 0o755);
+    }
+    await publishRecorded("history-after-entries-restore");
+
+    // 4) history OPS append failure: snapshots/entries/state were prepared and
+    // entries was replaced, then the ops append fails. The next compose must
+    // tolerate the interrupted entries/state sequence and record history again.
+    await chmod(opsPath, 0o444);
+    try {
+      await publishDegraded("history-ops-failure");
+    } finally {
+      await chmod(opsPath, 0o644);
+    }
+    const afterOpsRestore = await publishRecorded("history-after-ops-restore");
+    const historyAfterAll = await c.call("history", { projectId });
+    assert.equal(historyAfterAll.ok, true, JSON.stringify(historyAfterAll));
+    assert.equal(
+      historyAfterAll.result.historyCursor,
+      afterOpsRestore.history.historyCursor,
+    );
+    assert.equal(historyAfterAll.result.entries.at(-1).kind, "project.compose");
+    assert.equal(
+      historyAfterAll.result.entries.at(-1).revision,
+      afterOpsRestore.revision,
+    );
   } finally {
     await f.cleanup();
   }

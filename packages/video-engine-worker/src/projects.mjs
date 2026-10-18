@@ -75,6 +75,9 @@ const packageRoot = fileURLToPath(new URL("../", import.meta.url));
 // The internal preview-pipeline proof copy of a freshly published revision is
 // discarded in the same request, so a short TTL is enough.
 const COMPOSE_PREVIEW_TTL_MS = 60 * 1000;
+// Stable bounded code for a degraded (post-commit) history write. The concrete
+// failure detail stays in the bounded worker diagnostic, never in the result.
+const HISTORY_DEGRADED_CODE = "E_HISTORY";
 export const sha = (value) => createHash("sha256").update(value).digest("hex");
 const formatSeconds = (value) => String(Number(Number(value).toFixed(3)));
 export function inside(root, path) {
@@ -731,6 +734,7 @@ export class Projects {
             checked: "composition+snapshot",
             revision: current.revision,
           },
+          history: { status: "unchanged" },
         };
         return this.rememberOperation(
           id,
@@ -786,13 +790,26 @@ export class Projects {
           "persist",
         );
       }
-      await recordWrite(dir, {
-        before: { revision: current.revision, html: previousHtml },
-        after: { revision: after.revision, html: p.html },
-        actor: "ai",
-        kind: "project.compose",
-        summary: `AI composition (${validated.bytes} bytes, ${formatSeconds(validated.duration)}s)`,
-      });
+      // ── Settlement ───────────────────────────────────────────────────────
+      // The authoritative commit point is entry atomic write + exact readback
+      // + preview-snapshot proof, all completed above. History is auxiliary: a
+      // history-stage failure must not report the published revision as an
+      // ordinary failure, so it is returned as a bounded degraded-success
+      // marker (detail only in the injected diagnostic). The idempotency cache
+      // stores that same settled result; a retry returns it unchanged.
+      let history;
+      try {
+        const recorded = await this.recordComposeHistory(dir, {
+          before: { revision: current.revision, html: previousHtml },
+          after: { revision: after.revision, html: p.html },
+          operationId: p.operationId,
+          summary: `AI composition (${validated.bytes} bytes, ${formatSeconds(validated.duration)}s)`,
+        });
+        history = { status: "recorded", historyCursor: recorded.historyCursor };
+      } catch {
+        this.diagnostic("compose history degraded");
+        history = { status: "degraded", code: HISTORY_DEGRADED_CODE };
+      }
       const result = {
         projectId: id,
         revision: after.revision,
@@ -814,8 +831,25 @@ export class Projects {
           checked: "composition+snapshot",
           revision: after.revision,
         },
+        history,
       };
       return this.rememberOperation(id, p.operationId, signature, result);
+    });
+  }
+  /**
+   * Persist the history entry for one successfully published composition.
+   * Extracted as an instance method so tests can override it to simulate any
+   * history-stage failure (read, snapshot write, entries write, ops append,
+   * state write) without production fault injection.
+   */
+  async recordComposeHistory(dir, { before, after, operationId, summary }) {
+    return recordWrite(dir, {
+      before,
+      after,
+      actor: "ai",
+      kind: "project.compose",
+      summary,
+      operationId,
     });
   }
   async source(id) {
