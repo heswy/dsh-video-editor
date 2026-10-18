@@ -570,7 +570,15 @@ check('P3-008 R1: destructive Scene writes copy the complete authoritative templ
   assert(clientSource.includes('template.color = color') && clientSource.includes('template.shot = shot'), 'Scene writes do not change only their intended field');
   assert(clientSource.includes("'video.canvas.templateUnavailable'"), 'missing-template refusal copy is missing');
   assert(clientSource.includes('{ title: scene.title, duration: scene.duration, color: sceneColor }') === false, 'the old partial Scene template write is still present');
-  return 'fresh inspect + complete frozen template copy + explicit refusal';
+  // P3-008 review 02 R1: the client copy and the Host validator must accept the
+  // frozen engine 0.3.2 long-text contract (UTF-16 length, title 1..2048,
+  // subtitle/badge 0..2048) instead of the old 200/300/48 projection limits.
+  assert(clientSource.includes('CANVAS_SCENE_TEXT_MAX = 2048') && (clientSource.match(/CANVAS_SCENE_TEXT_MAX/g) || []).length >= 4, 'client Scene template text bound is not the frozen 0.3.2 2048 limit');
+  assert(clientSource.includes('value.title.length > 200') === false && clientSource.includes('value.subtitle.length > 300') === false && clientSource.includes('value.badge.length > 48') === false, 'client still rejects long text with the old 200/300/48 limits');
+  const bridgeSource = read('host/bridge.js');
+  assert(bridgeSource.includes('SCENE_TEXT_MAX = 2048') && (bridgeSource.match(/SCENE_TEXT_MAX/g) || []).length >= 4, 'Host Scene template text bound is not the frozen 0.3.2 2048 limit');
+  assert(bridgeSource.includes('title.length > 200') === false && bridgeSource.includes('subtitle.length > 300') === false && bridgeSource.includes('badge.length > 48') === false, 'Host still rejects long text with the old 200/300/48 limits');
+  return 'fresh inspect + complete frozen template copy + explicit refusal + 0.3.2 long-text limits';
 });
 
 check('P3-008 R2: layout writes are inverse-mapped from the inspected static base', () => {
@@ -583,13 +591,22 @@ check('P3-008 R2: layout writes are inverse-mapped from the inspected static bas
   return 'static base + animation inverse mapping; composition-sized scaled iframe; no animated rect persisted';
 });
 
-check('P3-008 R5: inline text save keeps the draft and target on failure', () => {
+check('P3-008 R5: inline text save binds one immutable attempt and keeps the draft', () => {
   assert(clientSource.includes('dv-editor-retry') && clientSource.includes('dv-editor-actions'), 'explicit retry affordance is missing from the inline editor');
   assert(clientSource.includes('function canvasIsRevisionConflict('), 'revision-conflict classification missing');
   assert(clientSource.includes('refreshRequired'), 'revision conflict does not require an explicit refresh step');
   assert(clientSource.includes('Keep the draft'), 'failure path does not document keeping the draft');
-  assert(clientSource.includes('operationId: operationId()') && clientSource.includes('textOperationId'), 'inline editor does not reuse one operationId across retries');
-  return 'draft/target kept; explicit retry only; one idempotent operationId';
+  // P3-008 review 02 R5: the operationId is bound to one frozen request, so an
+  // exact retry replays the same operationId/expectedRevision/ops and a changed
+  // draft settles the old attempt before a new id is minted.
+  for (const marker of ['function makeTextAttempt(', 'function sendTextAttempt(', 'const frozen = editor.attempt', 'attempt: null', 'settledRevision', 'showAttemptFailure(']) {
+    assert(clientSource.includes(marker), `immutable write-attempt marker missing: ${marker}`);
+  }
+  assert(clientSource.includes('The id is never switched while the old outcome is unknown'), 'immutable attempt comment missing');
+  assert(clientSource.includes('frozen !== null && value !== frozen.value'), 'changed-draft settle branch is missing');
+  assert(/sendTextAttempt\(frozen\)/.test(clientSource), 'exact frozen request is not re-sent before a new intent');
+  assert(clientSource.includes('settledRevision = value') || clientSource.includes('const settledRevision ='), 'new intent does not use the settled revision');
+  return 'frozen attempt id/expectedRevision/ops; exact retry replays it; changed draft settles then new id';
 });
 
 check('P3-008 R6: the parent restores the reviewed strict runtime message contract', () => {

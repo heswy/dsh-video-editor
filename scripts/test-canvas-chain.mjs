@@ -305,6 +305,55 @@ async function main() {
     assert(redoTarget.text === '人工编辑标题', 'redo did not restore the human edit');
     evidence.history = { undoRevision: undo.revision, redoRevision: redo.revision, afterUndo: undoTarget.text, afterRedo: redoTarget.text };
 
+    // R1-follow-up: typed text edits may legitimately exceed the old
+    // 200/300/48 projection limits (engine 0.3.2 allows 2048 each); the full
+    // template must round-trip and later colour/shot/revise writes must keep it.
+    const longTitle = '长'.repeat(300);
+    const longSubtitle = '副'.repeat(400);
+    const longBadge = '标'.repeat(60);
+    const firstSceneId = inspected.scenes[0].sceneId;
+    const subtitleElement = inspected.elements.find((element) => element.stableId === firstSceneId + '-subtitle');
+    const badgeElement = inspected.elements.find((element) => element.stableId === firstSceneId + '-badge');
+    assert(subtitleElement !== undefined && badgeElement !== undefined, 'rich Scene does not expose subtitle/badge leaf elements');
+    const longEdit = await invoke(bridge, 'edit', {
+      projectId,
+      expectedRevision: inspected.revision,
+      operationId: opId('long-text'),
+      ops: [
+        { type: 'text', target: target.stableId, text: longTitle },
+        { type: 'text', target: subtitleElement.stableId, text: longSubtitle },
+        { type: 'text', target: badgeElement.stableId, text: longBadge },
+      ],
+    });
+    inspected = await invoke(bridge, 'inspect', { projectId });
+    const longScene = inspected.scenes[0];
+    const longTarget = inspected.elements.find((element) => element.stableId === target.stableId);
+    evidence.longTemplate = {
+      revision: longEdit.revision,
+      available: hasSceneTemplate(inspected),
+      titleLength: longScene.template !== undefined ? longScene.template.title.length : null,
+      subtitleLength: longScene.template !== undefined && longScene.template.subtitle !== undefined ? longScene.template.subtitle.length : null,
+      badgeLength: longScene.template !== undefined && longScene.template.badge !== undefined ? longScene.template.badge.length : null,
+      humanLayout: longTarget.layout,
+      humanStyleColor: longTarget.style === null ? null : longTarget.style.color,
+    };
+    if (hasSceneTemplate(inspected)) {
+      assert(
+        longScene.template.title === longTitle && longScene.template.subtitle === longSubtitle && longScene.template.badge === longBadge,
+        'long typed text did not round-trip through scene.template'
+      );
+      assert(
+        longScene.template.title.length === 300 && longScene.template.subtitle.length === 400 && longScene.template.badge.length === 60,
+        'long Scene template fields were truncated'
+      );
+    } else {
+      evidence.longTemplate.skipped = '0.3.2-only: scene.template long-text round-trip assertions need the reviewed 0.3.2 staging';
+    }
+    assert(
+      longTarget.layout && longTarget.layout.left === 120 && longTarget.style && longTarget.style.color === '#112233',
+      'long text edit dropped the human layout/style override'
+    );
+
     // R1: change only the Scene background from the authoritative complete
     // template; subtitle/badge and the human layout/style must survive.
     const templateBeforeColor = sceneTemplateSummary(afterRedo);
@@ -329,7 +378,7 @@ async function main() {
     assert(afterColorTarget.layout && afterColorTarget.layout.left === 120 && afterColorTarget.style && afterColorTarget.style.color === '#112233', 'scene.update color dropped the human layout/style override');
     if (templateBeforeColor.available) {
       assert(afterColorScene.template.color === '#ffcc00', `scene color was not updated: ${JSON.stringify(afterColorScene.template)}`);
-      assert(afterColorScene.template.subtitle === '保留副标题' && afterColorScene.template.badge === '保留标签', `scene color update dropped optional fields: ${JSON.stringify(afterColorScene.template)}`);
+      assert(afterColorScene.template.title === longTitle && afterColorScene.template.subtitle === longSubtitle && afterColorScene.template.badge === longBadge, `scene color update dropped long optional/title fields: ${JSON.stringify({ title: afterColorScene.template.title.length, subtitle: afterColorScene.template.subtitle && afterColorScene.template.subtitle.length, badge: afterColorScene.template.badge && afterColorScene.template.badge.length })}`);
       assert(afterColorScene.template.sceneId === undefined, 'scene.template must not expose sceneId');
       assert(inspected.scenes[1].title === 'Scene 2' && inspected.scenes[2].title === 'Scene 3', 'scene color update changed another Scene');
     } else {
@@ -414,11 +463,38 @@ async function main() {
     assert(revisedTarget.layout && revisedTarget.layout.left === 120, 'Tool project.revise dropped the human layout override');
     assert(revisedTarget.style && revisedTarget.style.color === '#112233', 'Tool project.revise dropped the human style override');
     if (hasSceneTemplate(inspected)) {
-      assert(revisedScene.template.subtitle === '保留副标题' && revisedScene.template.badge === '保留标签', `Tool project.revise dropped optional Scene fields: ${JSON.stringify(revisedScene.template)}`);
+      assert(revisedScene.template.title === 'AI 续改标题' && revisedScene.template.subtitle === longSubtitle && revisedScene.template.badge === longBadge, `Tool project.revise dropped long Scene fields: ${JSON.stringify(revisedScene.template)}`);
       assert(revisedScene.template.shot === imported.asset.path, 'Tool project.revise dropped the Scene shot');
     } else {
       evidence.toolRevise.skippedOptionalFields = 'reviewed engine 0.3.1 has no P3-009 scene.template; optional-field preservation assertions activate when the reviewed 0.3.2 staging is frozen';
     }
+
+    // R1-follow-up boundary: 2049-character template fields are rejected by the
+    // Host before the worker; the project revision must not move.
+    const rejected = async (template) => {
+      try {
+        await invoke(bridge, 'scene.update', {
+          projectId,
+          expectedRevision: inspected.revision,
+          operationId: opId('oversize-reject'),
+          sceneId: inspected.scenes[0].sceneId,
+          template,
+        });
+        return 'ACCEPTED';
+      } catch (error) {
+        return error && typeof error.code === 'string' ? error.code : 'E_UNKNOWN';
+      }
+    };
+    const boundaryBase = sceneTemplateFor(inspected.scenes[0], {});
+    evidence.longTemplate.boundary = {
+      title2049: await rejected({ ...boundaryBase, title: 'x'.repeat(2049) }),
+      subtitle2049: await rejected({ ...boundaryBase, subtitle: 'x'.repeat(2049) }),
+      badge2049: await rejected({ ...boundaryBase, badge: 'x'.repeat(2049) }),
+    };
+    for (const [field, code] of Object.entries(evidence.longTemplate.boundary)) {
+      assert(code === 'E_PARAMS', `Host did not reject the 2049-character ${field}: ${code}`);
+    }
+    inspected = await invoke(bridge, 'inspect', { projectId });
 
     // R3 real-wiring: preview ownership. The managed worker project directory is
     // trusted for this project only; a job artifact is trusted through the job
