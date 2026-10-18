@@ -52,6 +52,8 @@ const RUNTIME_PATHS = [
   'host/limits.js',
   'host/routes.js',
   'host/tool.js',
+  'host/sessions.js',
+  'host/session-state.js',
   'README.md',
 ];
 const DEFAULT_OUT = resolve(ROOT, '..', 'artifacts', 'p2-b', 'staging');
@@ -270,12 +272,16 @@ async function main() {
     await mkdir(registry.outputRoot, { recursive: true });
 
     // 6. Development-only Host config with snapshot-absolute paths.
+    const sessionCwd = join(out, 'session-cwd');
+    await mkdir(sessionCwd, { recursive: true });
     const config = {
       workerNode: args.node,
       workerCwd: workerRoot,
       registryPath,
       artifactRoot: registry.outputRoot,
       allowedProjects: Object.keys(registry.projects),
+      sessionStatePath: join(out, 'session-state.json'),
+      sessionCwd,
     };
     const configPath = join(out, 'config.json');
     await writeFile(configPath, JSON.stringify(config, null, 2) + '\n');

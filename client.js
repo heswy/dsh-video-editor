@@ -105,6 +105,24 @@ window.__ModuleLoader__.load({
       'video.state.failed': '失败',
       'video.state.cancelled': '已取消',
       'video.state.timed_out': '超时',
+      'video.ai.title': 'AI 创作',
+      'video.ai.empty': '还没有创作会话',
+      'video.ai.create': '开始创作',
+      'video.ai.creating': '正在创建…',
+      'video.ai.new': '新会话',
+      'video.ai.history': '创作历史',
+      'video.ai.loading': '正在打开创作会话…',
+      'video.ai.unavailable': '宿主未提供原生会话入口。',
+      'video.ai.disabled': '创作会话未配置（Host 缺少 sessionStatePath/sessionCwd）；画面与导出仍可用。',
+      'video.ai.error': '创作会话打开失败。',
+      'video.ai.retry': '重试',
+      'video.ai.hostOpen': '该会话已在宿主对话中打开，请先在宿主中关闭它。',
+      'video.ai.archived': '已归档',
+      'video.ai.missing': '不可用',
+      'video.ai.listEmpty': '当前工程还没有创作会话。',
+      'video.error.session': '创作会话暂不可用。',
+      'video.error.sessionConfig': '创作会话尚未配置。',
+      'video.error.sessionState': '创作会话记录无法读取，请检查 Host 存储。',
     };
 
     const EN = {
@@ -157,6 +175,24 @@ window.__ModuleLoader__.load({
       'video.state.failed': 'Failed',
       'video.state.cancelled': 'Cancelled',
       'video.state.timed_out': 'Timed out',
+      'video.ai.title': 'AI creation',
+      'video.ai.empty': 'No creation conversation yet',
+      'video.ai.create': 'Start creating',
+      'video.ai.creating': 'Starting…',
+      'video.ai.new': 'New conversation',
+      'video.ai.history': 'Conversation history',
+      'video.ai.loading': 'Opening the creation conversation…',
+      'video.ai.unavailable': 'This host does not expose the native conversation entry.',
+      'video.ai.disabled': 'Creation conversations are not configured (the Host has no sessionStatePath/sessionCwd). Preview and export still work.',
+      'video.ai.error': 'The creation conversation could not be opened.',
+      'video.ai.retry': 'Retry',
+      'video.ai.hostOpen': 'This Session is open in the host conversation. Close it there first.',
+      'video.ai.archived': 'Archived',
+      'video.ai.missing': 'Unavailable',
+      'video.ai.listEmpty': 'This project has no creation conversation yet.',
+      'video.error.session': 'Creation conversations are temporarily unavailable.',
+      'video.error.sessionConfig': 'Creation conversations are not configured.',
+      'video.error.sessionState': 'The creation conversation record could not be read. Check the Host storage.',
     };
     //#endregion
 
@@ -307,12 +343,141 @@ window.__ModuleLoader__.load({
 .dv-main{
   display:flex;
   flex:1;
+  flex-direction:row;
+  min-width:0;
+  min-height:0;
+  overflow:hidden;
+}
+.dv-left{
+  display:flex;
+  flex:1;
   flex-direction:column;
   min-width:0;
   min-height:0;
-  padding:0;
   overflow:hidden;
 }
+.dv-ai{
+  display:flex;
+  flex:none;
+  flex-direction:column;
+  width:clamp(320px, 34%, 400px);
+  min-width:0;
+  min-height:0;
+  border-left:1px solid color-mix(in srgb, var(--dsw-alias-border-l1, rgba(127,127,140,.28)) 62%, transparent);
+  background:var(--dsw-alias-bg-layer-1, #232327);
+  position:relative;
+}
+.dv-ai-head{
+  display:flex;
+  flex:none;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  min-height:44px;
+  padding:6px 12px;
+  border-bottom:1px solid color-mix(in srgb, var(--dsw-alias-border-l1, rgba(127,127,140,.28)) 40%, transparent);
+}
+.dv-ai-heading{
+  display:flex;
+  align-items:baseline;
+  gap:8px;
+  min-width:0;
+}
+.dv-ai-title{
+  flex:none;
+  color:var(--dsw-alias-label-primary, #f2f2f5);
+  font-size:.9em;
+  font-weight:600;
+}
+.dv-ai-session{
+  min-width:0;
+  overflow:hidden;
+  color:var(--dsw-alias-label-tertiary, #7f7f88);
+  font-size:.78em;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.dv-ai-actions{display:flex;flex:none;align-items:center;gap:4px;}
+.dv-history-toggle{width:28px;height:28px;}
+.dv-new-session{min-height:28px;padding:0 8px;font-size:.8em;}
+.dv-ai-body{
+  display:flex;
+  flex:1;
+  flex-direction:column;
+  min-width:0;
+  min-height:0;
+  overflow:hidden;
+}
+.dv-ai-body > *{min-width:0;min-height:0;}
+.dv-ai-loading,.dv-ai-hint,.dv-ai-notice{
+  margin:0;
+  padding:14px;
+  color:var(--dsw-alias-label-secondary, #a4a4ad);
+  font-size:.84em;
+  text-align:left;
+}
+.dv-ai-error{
+  display:flex;
+  flex:1;
+  flex-direction:column;
+  align-items:flex-start;
+  gap:10px;
+  padding:14px;
+}
+.dv-ai-error .dv-error{max-width:none;text-align:left;}
+.dv-ai-empty{
+  display:flex;
+  flex:1;
+  flex-direction:column;
+  align-items:flex-start;
+  justify-content:center;
+  gap:12px;
+  padding:18px;
+}
+.dv-history-menu{
+  position:absolute;
+  top:44px;
+  right:10px;
+  z-index:3;
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+  min-width:240px;
+  max-width:calc(100% - 20px);
+  max-height:320px;
+  overflow:auto;
+  padding:6px;
+  border:1px solid color-mix(in srgb, var(--dsw-alias-border-l1, rgba(127,127,140,.28)) 84%, transparent);
+  border-radius:10px;
+  background:var(--dsw-alias-bg-overlay, var(--dsw-alias-bg-layer-1, #232327));
+  box-shadow:0 12px 32px -20px rgba(0,0,0,.5);
+}
+.dv-history-item{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  width:100%;
+  min-height:32px;
+  padding:0 9px;
+  border:0;
+  border-radius:7px;
+  background:transparent;
+  color:var(--dsw-alias-label-primary, #f2f2f5);
+  font:inherit;
+  font-size:.82em;
+  text-align:left;
+  cursor:pointer;
+}
+.dv-history-item:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover, rgba(127,127,140,.14));}
+.dv-history-item[aria-checked="true"]{background:var(--dsw-alias-interactive-bg-hover, rgba(127,127,140,.14));}
+.dv-history-item:disabled{opacity:.55;cursor:default;}
+.dv-history-item:focus-visible{
+  outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-brand-primary, #5b8cff));
+  outline-offset:-2px;
+}
+.dv-history-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.dv-history-state{flex:none;color:var(--dsw-alias-label-tertiary, #7f7f88);font-size:.92em;}
 .dv-emptywrap{
   display:flex;
   flex:1;
@@ -337,14 +502,15 @@ window.__ModuleLoader__.load({
   text-align:center;
 }
 .dv-editor{
-  display:grid;
-  grid-template-columns:minmax(0,1fr) 288px;
+  display:flex;
   flex:1;
+  flex-direction:column;
   min-width:0;
   min-height:0;
 }
 .dv-stage{
   display:flex;
+  flex:1;
   flex-direction:column;
   gap:12px;
   min-width:0;
@@ -400,15 +566,25 @@ window.__ModuleLoader__.load({
   font-size:.86em;
   text-align:center;
 }
-.dv-side{
+.dv-controls{
   display:flex;
-  flex-direction:column;
-  gap:14px;
+  flex:none;
+  flex-wrap:wrap;
+  align-items:flex-end;
+  gap:12px;
+  max-height:44%;
   min-height:0;
   overflow:auto;
-  padding:16px;
-  border-left:1px solid color-mix(in srgb, var(--dsw-alias-border-l1, rgba(127,127,140,.28)) 62%, transparent);
+  padding:12px 16px 16px;
+  border-top:1px solid color-mix(in srgb, var(--dsw-alias-border-l1, rgba(127,127,140,.28)) 62%, transparent);
 }
+.dv-controls > .dv-field{min-width:130px;flex:0 1 180px;}
+.dv-controls > .dv-field-row{flex:1 1 260px;}
+.dv-controls > .dv-field-row .dv-field{min-width:110px;}
+.dv-controls > .dv-actions{width:100%;}
+.dv-controls > .dv-details{width:100%;}
+.dv-controls > .dv-note,.dv-controls > .dv-error{width:100%;}
+.dv-controls > .dv-job{width:100%;}
 .dv-actions{
   display:flex;
   flex-wrap:wrap;
@@ -524,27 +700,33 @@ window.__ModuleLoader__.load({
   text-overflow:ellipsis;
   white-space:nowrap;
 }
-.dv-side .dv-error{
+.dv-controls .dv-error{
   max-width:none;
   text-align:left;
 }
 @media (prefers-reduced-motion: reduce){
   .dv-root{animation:none;}
 }
-@container dsh-video (max-width: 820px){
-  .dv-editor{grid-template-columns:minmax(0,1fr);}
-  .dv-stage{padding-bottom:8px;}
-  .dv-side{
-    max-height:46%;
-    border-top:1px solid color-mix(in srgb, var(--dsw-alias-border-l1, rgba(127,127,140,.28)) 62%, transparent);
+@container dsh-video (max-width: 900px){
+  .dv-ai{width:clamp(280px, 38%, 340px);}
+  .dv-stage{padding:12px;}
+  .dv-controls{padding:10px 12px 12px;}
+}
+@container dsh-video (max-width: 700px){
+  .dv-main{flex-direction:column;}
+  .dv-ai{
+    width:auto;
+    max-height:52%;
     border-left:0;
+    border-top:1px solid color-mix(in srgb, var(--dsw-alias-border-l1, rgba(127,127,140,.28)) 62%, transparent);
   }
+  .dv-stage{padding-bottom:8px;}
 }
 @container dsh-video (max-width: 520px){
   .dv-topbar{padding-left:12px;padding-right:12px;}
   .dv-back{padding:0 8px;}
   .dv-stage{padding:10px;}
-  .dv-side{padding:10px;}
+  .dv-controls{padding:8px 10px 10px;}
 }
 `;
     //#endregion
@@ -825,12 +1007,40 @@ window.__ModuleLoader__.load({
         h('circle', { cx: 6.1, cy: 11.75, r: 1.5 })
       );
     }
+    function HistoryIcon() {
+      return h(
+        'svg',
+        {
+          width: 16,
+          height: 16,
+          viewBox: '0 0 16 16',
+          fill: 'none',
+          xmlns: 'http://www.w3.org/2000/svg',
+          'aria-hidden': 'true',
+          focusable: 'false',
+          stroke: 'currentColor',
+          strokeWidth: 1,
+          strokeLinecap: 'round',
+          strokeLinejoin: 'round',
+        },
+        h('circle', { cx: 8, cy: 8, r: 5.75 }),
+        h('path', { d: 'M8 4.75v3.5l2.35 1.4' })
+      );
+    }
     //#endregion
 
     //#region host bridge helpers
     // The Host-configured controlled fixture id. A request can only reference a
     // project id from the trusted allowlist; this UI never sends a path or URL.
     const DEMO_PROJECT_ID = 'demo';
+    // The plugin-private source key for its owned Session references. It must
+    // never reuse "mainView": the host derives its current conversation from
+    // that retention key (see P3-005-A investigation).
+    const SESSION_SOURCE = 'videoView';
+    // A private session-scope child slot is declared only to receive the
+    // renderer's SessionProvider/renderSlot kit; the conversation Factory is
+    // rendered directly inside the Provider and this slot has no occupant.
+    const SESSION_CHILD_SLOT = 'dsh-video.chat';
     const REQUEST_ROUTE = 'api/dsh-video/request';
     const ARTIFACT_ROUTE = 'api/dsh-video/artifact';
     const TERMINAL_JOB_STATES = ['succeeded', 'failed', 'cancelled', 'timed_out'];
@@ -975,6 +1185,10 @@ window.__ModuleLoader__.load({
       else if (code === 'E_REVISION_CONFLICT' || code === 'E_OPERATION_REUSED' || code === 'E_PROJECT_CLOSING' || code === 'E_PROJECT_NOT_OPEN') friendly = t('video.error.conflict');
       else if (code === 'E_WORKER_START' || code === 'E_WORKER_EXITED' || code === 'E_WORKER_DISPOSED' || code === 'E_TRANSPORT' || code === 'E_STARTUP') friendly = t('video.error.worker');
       else if (code === 'E_ARTIFACT_INTEGRITY' || code === 'E_ARTIFACT_NOT_READY') friendly = t('video.frame.failed');
+      else if (code === 'E_SESSION_CONFIG') friendly = t('video.error.sessionConfig');
+      else if (code === 'E_SESSION_STATE_CORRUPT' || code === 'E_SESSION_STATE_VERSION' || code === 'E_SESSION_STATE_LIMIT' || code === 'E_SESSION_STATE_DISPOSED') friendly = t('video.error.sessionState');
+      else if (code === 'E_SESSION_CREATE' || code === 'E_SESSION_RESPONSE' || code === 'E_SESSION_NOT_BOUND' || code === 'E_SESSION_ALREADY_BOUND' || code === 'E_AGENT_REQUIRED' || code === 'E_PROJECT_SCOPE') friendly = t('video.error.session');
+      else if (code === 'E_SESSION_OPEN' || code === 'E_SESSION_UNAVAILABLE') friendly = t('video.ai.error');
       const detail = error && typeof error.message === 'string' ? error.message : '';
       if (friendly !== null) {
         return detail.length > 0 ? friendly + ' ' + detail : friendly;
@@ -1004,9 +1218,193 @@ window.__ModuleLoader__.load({
       });
     }
 
+    /** Local slot component: the embedded occurrence shows only the Chat view. */
+    function SessionChatView(props) {
+      if (props === null || typeof props !== 'object' || typeof props.renderSlot !== 'function') return null;
+      return props.renderSlot('conversation.session', { view: 'chat' });
+    }
+
+    /**
+     * Render the native Conversation content Factory for the bound Session.
+     * `hero:false` is mandatory: the hero workspace chip navigates the host's
+     * main conversation. `widthControls` is intentionally omitted so the
+     * embedded occurrence has no resize handles.
+     */
+    function SessionConversationContent(props) {
+      if (typeof props.renderFactorySlot !== 'function') return null;
+      return props.renderFactorySlot(
+        'conversation.content',
+        { variant: 'embedded', phase: props.phase === 'active' ? 'active' : 'settling', hero: false },
+        { slots: { views: SessionChatView } }
+      );
+    }
+
+    /** Observe a sessions.list source without requiring the host kit. */
+    function useSessionListSnapshot(sessions) {
+      let source = null;
+      try {
+        source = sessions && sessions.list ? sessions.list : null;
+      } catch (_error) {
+        source = null;
+      }
+      if (source === null || typeof source.getSnapshot !== 'function') return null;
+      const subscribe = typeof source.subscribe === 'function'
+        ? function subscribeSessionList(listener) { return source.subscribe(listener); }
+        : function subscribeNothing() { return function unsubscribeNothing() {}; };
+      const getSnapshot = function getSessionListSnapshot() { return source.getSnapshot(); };
+      try {
+        return React.useSyncExternalStore(subscribe, getSnapshot);
+      } catch (_error) {
+        try {
+          return source.getSnapshot();
+        } catch (_ignored) {
+          return null;
+        }
+      }
+    }
+
+    /** Host-list title projection for one mapped Session, with a stable fallback. */
+    function sessionTitleFromSnapshot(snapshot, sessionId) {
+      try {
+        const record = snapshot && snapshot.projectionsBySession ? snapshot.projectionsBySession[sessionId] : null;
+        const title = record && record.values && typeof record.values.title === 'string' ? record.values.title : '';
+        if (title.length > 0) return title;
+      } catch (_error) {
+        /* fall through to the identity */
+      }
+      return sessionId;
+    }
+
+    /**
+     * One owned SessionReference and the native Conversation occurrence.
+     *
+     * Acquisition and release are deliberately split from the parent panel:
+     * changing `sessionId` re-keys this component, so React unmounts (and the
+     * cleanup releases) the old reference before the new one is created. No
+     * Provider is ever rendered with a released reference.
+     */
+    function SessionConversationHost(props) {
+      const t = props.t;
+      const sessions = props.sessions;
+      const sessionId = props.sessionId;
+      const SessionProvider = props.SessionProvider;
+      const renderFactorySlot = props.renderFactorySlot;
+      const hostConversationOpen = props.hostConversationOpen === true;
+      const onRetry = props.onRetry;
+      const [reference, setReference] = React.useState(null);
+      const [phase, setPhase] = React.useState('loading');
+      const [failure, setFailure] = React.useState(null);
+
+      React.useEffect(function acquireSession() {
+        let cancelled = false;
+        let handle = null;
+        let unsubscribe = null;
+        setReference(null);
+        setFailure(null);
+        setPhase('loading');
+        if (sessions === null || typeof sessions.retain !== 'function') {
+          setFailure({ code: 'E_SESSION_UNAVAILABLE', message: t('video.ai.unavailable') });
+          return function cleanupUnavailable() {};
+        }
+        try {
+          handle = sessions.retain(sessionId, { source: SESSION_SOURCE });
+        } catch (error) {
+          setFailure(hostError(error));
+          return function cleanupFailed() {};
+        }
+        setReference(handle);
+        function readSnapshot() {
+          if (cancelled || handle === null) return;
+          let binding = null;
+          try {
+            binding = handle.binding !== undefined && handle.binding !== null ? handle.binding : null;
+          } catch (_error) {
+            binding = null;
+          }
+          const face = binding !== null && binding.session ? binding.session : null;
+          if (face === null) return;
+          let snapshot = null;
+          try {
+            snapshot = typeof face.getSnapshot === 'function' ? face.getSnapshot() : null;
+          } catch (_error) {
+            snapshot = null;
+          }
+          if (snapshot === null || typeof snapshot !== 'object') return;
+          if (snapshot.openState === 'error') {
+            setPhase('error');
+            setFailure({ code: 'E_SESSION_OPEN', message: '' });
+            return;
+          }
+          if (snapshot.openState === 'open') setPhase('active');
+          else setPhase('settling');
+        }
+        Promise.resolve(handle.ready).then(function sessionReady(binding) {
+          if (cancelled) return;
+          const face = binding !== null && binding !== undefined && binding.session ? binding.session : null;
+          if (face !== null && typeof face.subscribe === 'function') {
+            try {
+              unsubscribe = face.subscribe(readSnapshot);
+            } catch (_error) {
+              unsubscribe = null;
+            }
+          }
+          readSnapshot();
+        }).catch(function sessionFailed(error) {
+          if (cancelled) return;
+          setFailure(hostError(error));
+          setPhase('error');
+        });
+        return function cleanupSession() {
+          cancelled = true;
+          if (typeof unsubscribe === 'function') {
+            try {
+              unsubscribe();
+            } catch (_error) {
+              /* observed source cleanup is best effort */
+            }
+          }
+          if (handle !== null) {
+            try {
+              handle.release();
+            } catch (_error) {
+              /* release is idempotent at the controller boundary */
+            }
+          }
+        };
+      }, [sessionId]);
+
+      if (hostConversationOpen) {
+        return h('p', { className: 'dv-ai-notice', role: 'status' }, t('video.ai.hostOpen'));
+      }
+      if (failure !== null) {
+        return h(
+          'div',
+          { className: 'dv-ai-error', role: 'alert' },
+          h('p', { className: 'dv-error' }, errorText(failure, t)),
+          typeof onRetry === 'function'
+            ? h('button', { type: 'button', className: 'dv-button dv-button-quiet', onClick: onRetry }, t('video.ai.retry'))
+            : null
+        );
+      }
+      if (reference === null) {
+        return h('p', { className: 'dv-ai-loading', role: 'status' }, t('video.ai.loading'));
+      }
+      if (typeof SessionProvider !== 'function' || typeof renderFactorySlot !== 'function') {
+        return h('p', { className: 'dv-ai-error', role: 'alert' }, t('video.ai.unavailable'));
+      }
+      return h(
+        SessionProvider,
+        { session: reference },
+        h(SessionConversationContent, { renderFactorySlot: renderFactorySlot, phase: phase })
+      );
+    }
+
     function VideoWorkspace(props) {
       const t = props.t;
       const onBack = props.onBack;
+      const sessions = props.sessions !== undefined && props.sessions !== null ? props.sessions : null;
+      const layout = props.layout !== undefined && props.layout !== null ? props.layout : null;
+      const sessionKitAvailable = typeof props.SessionProvider === 'function' && typeof props.renderFactorySlot === 'function';
       const ui = usePluginState();
       const [menuOpen, setMenuOpen] = React.useState(false);
       const triggerRef = React.useRef(null);
@@ -1029,6 +1427,17 @@ window.__ModuleLoader__.load({
       const aliveRef = React.useRef(true);
       const jobTokenRef = React.useRef(0);
       const resumedRef = React.useRef(false);
+      const [sessionState, setSessionState] = React.useState(remembered.sessionState || { status: 'idle', items: [], activeSessionId: null, error: null });
+      const [activeSessionId, setActiveSessionId] = React.useState(typeof remembered.activeSessionId === 'string' ? remembered.activeSessionId : null);
+      const [sessionBusy, setSessionBusy] = React.useState(null);
+      const [historyOpen, setHistoryOpen] = React.useState(false);
+      const [hostConversationOpen, setHostConversationOpen] = React.useState(false);
+      const [retryTick, setRetryTick] = React.useState(0);
+      const [sessionDiagnostic, setSessionDiagnostic] = React.useState(null);
+      const sessionListToken = React.useRef(0);
+      const sessionSwitchToken = React.useRef(0);
+      const sessionCreatePending = React.useRef(false);
+      const sessionListSnapshot = useSessionListSnapshot(sessions);
 
       React.useEffect(
         function keepAlive() {
@@ -1036,6 +1445,54 @@ window.__ModuleLoader__.load({
           return function cleanupWorkspace() {
             aliveRef.current = false;
           };
+        },
+        []
+      );
+
+      // The host main conversation is outside this panel; when it is the visible
+      // main panel we must not mount a second editable root for the same
+      // Session. Subscribe instead of checking once: the host panel can change
+      // while the plugin stays mounted in its declaration lifetime.
+      React.useEffect(
+        function watchHostConversation() {
+          if (layout === null || typeof layout !== 'object' || !layout.panelInfo || typeof layout.panelInfo.getSnapshot !== 'function') {
+            return function noPanelInfo() {};
+          }
+          function readPanelInfo() {
+            try {
+              const snapshot = layout.panelInfo.getSnapshot();
+              setHostConversationOpen(Boolean(snapshot && snapshot.activePanelId === 'conversation'));
+            } catch (_error) {
+              /* the host panel source is advisory; embedding still needs the reference */
+            }
+          }
+          readPanelInfo();
+          let unsubscribe = null;
+          if (typeof layout.panelInfo.subscribe === 'function') {
+            try {
+              unsubscribe = layout.panelInfo.subscribe(readPanelInfo);
+            } catch (_error) {
+              unsubscribe = null;
+            }
+          }
+          return function stopPanelInfo() {
+            if (typeof unsubscribe !== 'function') return;
+            try {
+              unsubscribe();
+            } catch (_error) {
+              /* observed source cleanup is best effort */
+            }
+          };
+        },
+        []
+      );
+
+      // Load the Host-owned creation-Session mapping once per panel mount. The
+      // Host is the mapping authority; this list never creates a Session.
+      React.useEffect(
+        function loadCreationSessions() {
+          void refreshSessions();
+          void diagnoseSessions();
         },
         []
       );
@@ -1054,6 +1511,8 @@ window.__ModuleLoader__.load({
           titleDraft: titleDraft,
           startDraft: startDraft,
           durationDraft: durationDraft,
+          sessionState: sessionState,
+          activeSessionId: activeSessionId,
         };
       });
 
@@ -1439,6 +1898,243 @@ window.__ModuleLoader__.load({
         return h('p', { className: 'dv-error', role: 'alert', key: 'navigation-error' }, t('video.error.back'));
       }
 
+      function sessionTitle(sessionId) {
+        return sessionTitleFromSnapshot(sessionListSnapshot, sessionId);
+      }
+
+      // Read-only installation preflight: kit presence is checked locally and
+      // the Host reports only safe status/version facts (no messages, titles or
+      // credentials). It never enables anything; failures stay advisory.
+      async function diagnoseSessions() {
+        if (sessionKitAvailable === false || sessions === null || typeof sessions.retain !== 'function') return;
+        try {
+          const result = await hostRequest('session.diagnose', {});
+          if (aliveRef.current && result !== null && typeof result === 'object') setSessionDiagnostic(result);
+        } catch (_error) {
+          /* diagnosis is advisory; the visible list state already reports failures */
+        }
+      }
+
+      async function refreshSessions() {
+        const token = ++sessionListToken.current;
+        if (sessionKitAvailable === false) {
+          setSessionState({ status: 'unavailable', items: [], activeSessionId: null, error: null });
+          return;
+        }
+        if (sessions === null || typeof sessions.retain !== 'function') {
+          setSessionState({ status: 'unavailable', items: [], activeSessionId: null, error: null });
+          return;
+        }
+        try {
+          const result = await hostRequest('session.list', { projectId: DEMO_PROJECT_ID });
+          if (token !== sessionListToken.current || !aliveRef.current) return;
+          const items = Array.isArray(result.sessions) ? result.sessions : [];
+          const active = typeof result.activeSessionId === 'string' ? result.activeSessionId : null;
+          setSessionState({ status: 'ready', items: items, activeSessionId: active, error: null, contract: result.contract || null });
+          setActiveSessionId(function keepKnown(previous) {
+            if (typeof previous === 'string' && items.some(function known(item) { return item.sessionId === previous; })) return previous;
+            return active;
+          });
+        } catch (requestError) {
+          if (token !== sessionListToken.current || !aliveRef.current) return;
+          const code = requestError && requestError.code;
+          setSessionState({
+            status: code === 'E_SESSION_CONFIG' ? 'disabled' : 'error',
+            items: [],
+            activeSessionId: null,
+            error: hostError(requestError),
+          });
+        }
+      }
+
+      async function createSession() {
+        // A second click may arrive before React re-renders the disabled button;
+        // the synchronous ref keeps creation single-flight in the interim.
+        if (sessionCreatePending.current) return;
+        if (sessionBusy !== null || sessionKitAvailable === false) return;
+        if (sessionState.status !== 'ready') return;
+        sessionCreatePending.current = true;
+        setSessionBusy('create');
+        setError(null);
+        try {
+          const result = await hostRequest('session.create', { projectId: DEMO_PROJECT_ID, requestId: operationId() });
+          if (!aliveRef.current) return;
+          const listResult = await hostRequest('session.list', { projectId: DEMO_PROJECT_ID });
+          if (!aliveRef.current) return;
+          const items = Array.isArray(listResult.sessions) ? listResult.sessions : [];
+          setSessionState({ status: 'ready', items: items, activeSessionId: listResult.activeSessionId || result.sessionId, error: null, contract: listResult.contract || null });
+          setActiveSessionId(result.sessionId);
+          setHistoryOpen(false);
+        } catch (requestError) {
+          if (aliveRef.current) setError(hostError(requestError));
+        } finally {
+          sessionCreatePending.current = false;
+          if (aliveRef.current) setSessionBusy(null);
+        }
+      }
+
+      async function chooseSession(sessionId) {
+        setHistoryOpen(false);
+        if (typeof sessionId !== 'string' || sessionId === activeSessionId) return;
+        if (sessionBusy !== null) return;
+        const token = ++sessionSwitchToken.current;
+        setSessionBusy('select');
+        setError(null);
+        try {
+          const result = await hostRequest('session.select', { projectId: DEMO_PROJECT_ID, sessionId: sessionId });
+          if (token !== sessionSwitchToken.current || !aliveRef.current) return;
+          setActiveSessionId(typeof result.activeSessionId === 'string' ? result.activeSessionId : sessionId);
+        } catch (requestError) {
+          if (token === sessionSwitchToken.current && aliveRef.current) setError(hostError(requestError));
+        } finally {
+          if (token === sessionSwitchToken.current && aliveRef.current) setSessionBusy(null);
+        }
+      }
+
+      function retrySession() {
+        setRetryTick(function bump(value) {
+          return value + 1;
+        });
+      }
+
+      function historyMenu() {
+        const items = sessionState.items || [];
+        return h(
+          'div',
+          { className: 'dv-history-menu', role: 'menu', 'aria-label': t('video.ai.history'), key: 'history' },
+          items.length === 0
+            ? h('p', { className: 'dv-ai-hint' }, t('video.ai.listEmpty'))
+            : items.map(function historyRow(item) {
+                const id = item.sessionId;
+                const status = item.status;
+                const meta = status === 'archived' ? t('video.ai.archived') : status === 'unavailable' ? t('video.ai.missing') : '';
+                const disabled = status === 'archived' || status === 'unavailable' || sessionBusy !== null;
+                return h(
+                  'button',
+                  {
+                    type: 'button',
+                    key: id,
+                    className: 'dv-history-item',
+                    role: 'menuitemradio',
+                    'aria-checked': id === activeSessionId ? 'true' : 'false',
+                    disabled: disabled,
+                    onClick: function selectHistory() {
+                      void chooseSession(id);
+                    },
+                  },
+                  h('span', { className: 'dv-history-title' }, sessionTitle(id)),
+                  meta === '' ? null : h('span', { className: 'dv-history-state' }, meta)
+                );
+              })
+        );
+      }
+
+      function aiPanel() {
+        const status = sessionKitAvailable === false ? 'unavailable' : sessionState.status;
+        let body = null;
+        if (status === 'idle' || status === 'loading') {
+          body = h('p', { className: 'dv-ai-loading', role: 'status' }, t('video.ai.loading'));
+        } else if (status === 'unavailable') {
+          body = h('p', { className: 'dv-ai-hint' }, t('video.ai.unavailable'));
+        } else if (status === 'disabled') {
+          body = h('p', { className: 'dv-ai-hint' }, t('video.ai.disabled'));
+        } else if (status === 'error') {
+          body = h(
+            'div',
+            { className: 'dv-ai-error', role: 'alert' },
+            h('p', { className: 'dv-error' }, errorText(sessionState.error, t)),
+            h(
+              'button',
+              {
+                type: 'button',
+                className: 'dv-button dv-button-quiet',
+                onClick: function retryList() {
+                  void refreshSessions();
+                },
+              },
+              t('video.ai.retry')
+            )
+          );
+        } else if (activeSessionId === null) {
+          body = h(
+            'div',
+            { className: 'dv-ai-empty' },
+            h('p', { className: 'dv-ai-hint' }, t('video.ai.empty')),
+            h(
+              'button',
+              {
+                type: 'button',
+                className: 'dv-button dv-button-primary',
+                disabled: sessionBusy !== null,
+                onClick: function create() {
+                  void createSession();
+                },
+              },
+              sessionBusy === 'create' ? t('video.ai.creating') : t('video.ai.create')
+            )
+          );
+        } else {
+          body = h(SessionConversationHost, {
+            key: activeSessionId + ':' + String(retryTick),
+            sessionId: activeSessionId,
+            sessions: sessions,
+            SessionProvider: props.SessionProvider,
+            renderFactorySlot: props.renderFactorySlot,
+            t: t,
+            hostConversationOpen: hostConversationOpen,
+            onRetry: retrySession,
+          });
+        }
+        return h(
+          'aside',
+          { className: 'dv-ai', 'aria-label': t('video.ai.title'), key: 'ai' },
+          h(
+            'header',
+            { className: 'dv-ai-head' },
+            h(
+              'div',
+              { className: 'dv-ai-heading' },
+              h('span', { className: 'dv-ai-title' }, t('video.ai.title')),
+              activeSessionId === null ? null : h('span', { className: 'dv-ai-session' }, sessionTitle(activeSessionId))
+            ),
+            h(
+              'div',
+              { className: 'dv-ai-actions' },
+              h(
+                'button',
+                {
+                  type: 'button',
+                  className: 'dv-button dv-button-quiet dv-new-session',
+                  disabled: sessionBusy !== null || status === 'disabled' || status === 'unavailable',
+                  onClick: function createNew() {
+                    void createSession();
+                  },
+                },
+                sessionBusy === 'create' ? t('video.ai.creating') : t('video.ai.new')
+              ),
+              h(
+                'button',
+                {
+                  type: 'button',
+                  className: 'dv-icon-button dv-history-toggle',
+                  'aria-haspopup': 'menu',
+                  'aria-expanded': historyOpen ? 'true' : 'false',
+                  'aria-label': t('video.ai.history'),
+                  title: t('video.ai.history'),
+                  disabled: status !== 'ready',
+                  onClick: function toggleHistory() {
+                    setHistoryOpen(!historyOpen);
+                  },
+                },
+                h(HistoryIcon)
+              )
+            )
+          ),
+          historyOpen ? historyMenu() : null,
+          h('div', { className: 'dv-ai-body' }, body)
+        );
+      }
+
       function stageContent() {
         if (project === null) {
           return h(
@@ -1489,8 +2185,8 @@ window.__ModuleLoader__.load({
             )
           ),
           h(
-            'aside',
-            { className: 'dv-side', 'aria-label': t('video.details') },
+            'div',
+            { className: 'dv-controls', role: 'group', 'aria-label': t('video.details') },
             h(
               'div',
               { className: 'dv-actions' },
@@ -1599,6 +2295,12 @@ window.__ModuleLoader__.load({
           className: 'dv-root',
           'data-simplified': ui.simplifiedEffects ? 'true' : 'false',
           'data-panel': PANEL_ID,
+          'data-session': sessionKitAvailable === false ? 'unavailable' : sessionState.status,
+          'data-session-kit': sessionKitAvailable ? 'available' : 'missing',
+          'data-session-active': activeSessionId === null ? '' : activeSessionId,
+          'data-session-contract': sessionDiagnostic !== null && sessionDiagnostic.contract !== undefined ? String(sessionDiagnostic.contract) : '',
+          'data-session-controller': sessionDiagnostic === null ? '' : sessionDiagnostic.controller === true ? 'available' : 'missing',
+          'data-session-context': sessionDiagnostic === null ? '' : sessionDiagnostic.contextRegistered === true ? 'registered' : 'absent',
         },
         h(StyleTag, { key: 'style' }),
         h(
@@ -1672,7 +2374,12 @@ window.__ModuleLoader__.load({
               : null
           )
         ),
-        h('main', { className: 'dv-main', key: 'main' }, stageContent())
+        h(
+          'main',
+          { className: 'dv-main', key: 'main' },
+          h('div', { className: 'dv-left', key: 'left' }, stageContent()),
+          aiPanel()
+        )
       );
     }
     //#endregion
@@ -1688,6 +2395,18 @@ window.__ModuleLoader__.load({
         { simplifiedEffects: initialPrefs.simplifiedEffects === true, navigationError: null },
         reportIssue
       );
+
+      // Browser-owned Session service face used only to retain/release our own
+      // project Sessions. It is optional: a host without it keeps the preview
+      // and export path and shows a localized unavailable state for AI.
+      let clientSessions = null;
+      try {
+        clientSessions = (typeof ctx.get === 'function' ? ctx.get('sessions') : null) || ctx.sessions || null;
+      } catch (error) {
+        clientSessions = null;
+        reportOnce('sessions-service-unavailable', error);
+      }
+      const clientLayout = ctx.layout !== undefined && ctx.layout !== null ? ctx.layout : null;
 
       ctx.effect(
         function registerDictionaries() {
@@ -1743,6 +2462,8 @@ window.__ModuleLoader__.load({
 
       function navigation() {
         return {
+          sessions: clientSessions,
+          layout: clientLayout,
           onBack: function onBack() {
             setNavigationError(null);
             try {
@@ -1857,7 +2578,21 @@ window.__ModuleLoader__.load({
           let sidebarDispose = null;
           try {
             mainDispose = ctx.slots.register(
-              { name: 'main', key: PANEL_ID, locale: NS, inject: navigation },
+              {
+                name: 'main',
+                key: PANEL_ID,
+                locale: NS,
+                // A private session-scope child makes the renderer synthesize
+                // SessionProvider (and renderSlot) into this entry's kit. No
+                // occupant is registered for it: the Conversation Factory is
+                // rendered directly inside the explicit Provider.
+                children: (function () {
+                  const children = {};
+                  children[SESSION_CHILD_SLOT] = { kind: 'single', scope: 'session' };
+                  return children;
+                })(),
+                inject: navigation,
+              },
               VideoWorkspace
             );
           } catch (error) {

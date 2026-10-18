@@ -17,6 +17,8 @@ export const CONFIG_KEYS = Object.freeze([
   'registryPath',
   'artifactRoot',
   'allowedProjects',
+  'sessionStatePath',
+  'sessionCwd',
   'startupTimeoutMs',
   'requestTimeoutMs',
   'shutdownTimeoutMs',
@@ -92,7 +94,9 @@ export function normalizeConfig(raw) {
   const workerCwd = requirePath(raw.workerCwd, 'workerCwd');
   const registryPath = requirePath(raw.registryPath, 'registryPath');
   const artifactRoot = requirePath(raw.artifactRoot, 'artifactRoot');
-  for (const [name, value] of [['workerEntry', workerEntry], ['workerCwd', workerCwd], ['registryPath', registryPath], ['artifactRoot', artifactRoot]]) {
+  const sessionStatePath = optionalPath(raw.sessionStatePath, 'sessionStatePath');
+  const sessionCwd = optionalPath(raw.sessionCwd, 'sessionCwd');
+  for (const [name, value] of [['workerEntry', workerEntry], ['workerCwd', workerCwd], ['registryPath', registryPath], ['artifactRoot', artifactRoot], ['sessionStatePath', sessionStatePath], ['sessionCwd', sessionCwd]]) {
     if (value !== undefined && isAbsolute(value) === false) throw configurationError(`"${name}" must be an absolute path`);
   }
 
@@ -125,6 +129,8 @@ export function normalizeConfig(raw) {
     workerCwd,
     registryPath,
     artifactRoot,
+    ...(sessionStatePath === undefined ? {} : { sessionStatePath }),
+    ...(sessionCwd === undefined ? {} : { sessionCwd }),
     projectIds,
     allowedProjects: Object.freeze([...projectIds]),
     ...limits,

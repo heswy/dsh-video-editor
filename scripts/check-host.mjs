@@ -17,7 +17,7 @@
  */
 
 import { createHash } from 'node:crypto';
-import { mkdtemp, mkdir, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { pathToFileURL } from 'node:url';
@@ -110,9 +110,22 @@ async function makeWorkspace(overrides) {
   await mkdir(projectDir, { recursive: true });
   await mkdir(outputRoot, { recursive: true });
   await mkdir(workerCwd, { recursive: true });
+  const extraProjects = (overrides && overrides.projects) || {};
+  const projectMap = { [PROJECT]: projectDir };
+  const extraAllowed = [];
+  for (const [id, relativePath] of Object.entries(extraProjects)) {
+    const directory = join(projectsRoot, relativePath || id);
+    await mkdir(directory, { recursive: true });
+    projectMap[id] = directory;
+    extraAllowed.push(id);
+  }
+  const sessionDir = join(root, 'session');
+  const sessionCwd = join(sessionDir, 'cwd');
+  await mkdir(sessionCwd, { recursive: true });
+  const sessionStatePath = join(sessionDir, 'state.json');
   const registryPath = join(root, 'registry.json');
   const registry = Object.assign(
-    { root: projectsRoot, projects: { [PROJECT]: projectDir }, outputRoot },
+    { root: projectsRoot, projects: projectMap, outputRoot },
     (overrides && overrides.registry) || {}
   );
   await writeFile(registryPath, JSON.stringify(registry));
@@ -124,7 +137,9 @@ async function makeWorkspace(overrides) {
       workerCwd,
       registryPath,
       artifactRoot: outputRoot,
-      allowedProjects: [PROJECT],
+      allowedProjects: [PROJECT, ...extraAllowed],
+      sessionStatePath,
+      sessionCwd,
       startupTimeoutMs: 1000,
       requestTimeoutMs: 1000,
       shutdownTimeoutMs: 500,
@@ -132,7 +147,40 @@ async function makeWorkspace(overrides) {
     },
     (overrides && overrides.config) || {}
   );
-  return { root, projectDir, outputRoot, workerCwd, registryPath, workerEntry, config, registry };
+  return { root, projectDir, outputRoot, workerCwd, registryPath, workerEntry, sessionDir, sessionCwd, sessionStatePath, config, registry };
+}
+
+function fakeSessionController(options) {
+  const settings = options || {};
+  const created = [];
+  const renamed = [];
+  const inspected = [];
+  let counter = 0;
+  return {
+    created,
+    renamed,
+    inspected,
+    async create(request) {
+      counter += 1;
+      const sessionId = typeof settings.mint === 'function' ? settings.mint(counter, request) : `session-${counter}`;
+      created.push({ request, sessionId });
+      return { sessionId };
+    },
+    async rename(request) {
+      renamed.push(request);
+      return { title: request.title, seq: 1 };
+    },
+    async inspect(sessionId) {
+      inspected.push(sessionId);
+      if (typeof settings.inspect === 'function') return settings.inspect(sessionId);
+      if (Array.isArray(settings.missing) && settings.missing.includes(sessionId)) {
+        const error = new Error('missing session');
+        error.code = 'E_SESSION_MISSING';
+        throw error;
+      }
+      return { meta: { id: sessionId }, events: [] };
+    },
+  };
 }
 
 function fakeEngine(workspace, behavior) {
@@ -169,10 +217,25 @@ function engineWithVersion(workspace, version) {
   };
 }
 
-function makeCtx(workspace) {
+function makeCtx(workspace, options) {
+  const settings = options || {};
   const routes = [];
   const tools = [];
   const cleanups = [];
+  const contextDisposers = [];
+  const contexts = [];
+  const sessionController = settings.sessionController || fakeSessionController(settings.controller);
+  const workspaceRegistry = settings.workspaceRegistry || { archivedSessionIds: [] };
+  const systemPrompt = settings.systemPrompt || {
+    context(contribution) {
+      contexts.push(contribution);
+      return function disposeContext() {
+        contextDisposers.push(contribution);
+      };
+    },
+  };
+  const agentRegistry = settings.agents || { get() { return undefined; } };
+  const services = { sessionController, workspaceRegistry, systemPrompt, agents: agentRegistry };
   const ctx = {
     logger: { warn() {} },
     subprocess: {
@@ -199,8 +262,17 @@ function makeCtx(workspace) {
       cleanups.push(callback());
       return () => {};
     },
+    get(name) {
+      return services[name];
+    },
   };
-  return { ctx, routes, tools, cleanups };
+  return { ctx, routes, tools, cleanups, services, sessionController, systemPrompt, contexts, contextDisposers };
+}
+
+/** Bind a real video project Session through the Host route and return its id. */
+async function createBoundSession(bridge, projectId) {
+  const created = await bridge.invoke('session.create', { projectId: projectId || PROJECT, requestId: 'test-' + Math.random().toString(36).slice(2) }, { source: 'http' });
+  return created.sessionId;
 }
 
 function makeBridge(workspace, behavior, ctx) {
@@ -537,6 +609,7 @@ async function main() {
   await run('Tool uses the same dispatcher and preserves error structure', async () => {
     const workspace = await makeWorkspace();
     let openCalls = 0;
+    const bag = makeCtx(workspace);
     const { bridge, engine } = makeBridge(workspace, {
       handler: (method, params) => {
         if (method === 'open') {
@@ -550,17 +623,25 @@ async function main() {
         }
         return { projectId: params.projectId, revision: REVISION };
       },
-    });
+    }, bag.ctx);
+    const sessionId = await createBoundSession(bridge);
+    const exec = { agent: { session: { id: sessionId } } };
     const tool = createVideoTool(bridge);
     assert(tool.name === TOOL_NAME, 'tool name');
     assert(tool.parameters.additionalProperties === false, 'tool must reject extra params');
-    const first = await tool.execute({ action: 'open', projectId: PROJECT }, {});
+    const doctor = await tool.execute({ action: 'doctor' }, {});
+    assert(doctor.action === 'doctor', 'doctor must stay available without a binding');
+    const first = await tool.execute({ action: 'open', projectId: PROJECT }, exec);
     assert(first.result.revision === REVISION, 'tool result');
-    assert(engine.instances[0].requests[0].method === 'open', 'tool did not use the dispatcher');
-    const error = await rejects(() => tool.execute({ action: 'open', projectId: PROJECT }, {}));
+    assert(engine.instances[0].requests.some((request) => request.method === 'open'), 'tool did not use the dispatcher');
+    const error = await rejects(() => tool.execute({ action: 'open', projectId: PROJECT }, exec));
     assert(error.message.includes('E_REVISION_CONFLICT') && error.message.includes('uncertain=true'), 'tool error lost structure');
-    const bad = await rejects(() => tool.execute({ action: 'open', projectId: PROJECT, path: '/tmp/x' }, {}));
+    const bad = await rejects(() => tool.execute({ action: 'open', projectId: PROJECT, path: '/tmp/x' }, exec));
     assert(bad.message.includes('E_PARAMS'), 'tool accepted an extra path parameter');
+    const anonymous = await rejects(() => tool.execute({ action: 'open', projectId: PROJECT }, {}));
+    assert(anonymous.message.includes('E_AGENT_REQUIRED'), 'unbound Tool execution was not refused');
+    const mismatched = await rejects(() => tool.execute({ action: 'open', projectId: PROJECT }, { agent: { id: 'session-other', session: { id: sessionId } } }));
+    assert(mismatched.message.includes('E_AGENT_IDENTITY'), 'inconsistent Agent identity was not refused');
   });
 
   await run('engine loader resolves the reviewed worker/client entries from the installed bundle context', async () => {
@@ -633,11 +714,141 @@ async function main() {
 
   await run('R2: Bridge rejects an over-budget Tool result before a wrapper can shorten it', async () => {
     const workspace = await makeWorkspace();
+    const bag = makeCtx(workspace);
     const { bridge } = makeBridge(workspace, {
       handler: (method) => (method === 'open' ? { text: 'x'.repeat(70000) } : {}),
-    });
-    const error = await rejects(() => bridge.invoke('open', { projectId: PROJECT }, { source: 'tool' }));
+    }, bag.ctx);
+    const sessionId = await createBoundSession(bridge);
+    const error = await rejects(() => bridge.invoke('open', { projectId: PROJECT }, { source: 'tool', agentSessionId: sessionId }));
     assert(error.code === 'E_RESULT_LIMIT', `unexpected bridge limit error ${error.code}`);
+  });
+
+  await run('sessions: create persists the returned id with trusted cwd and dedupes requests', async () => {
+    const workspace = await makeWorkspace();
+    const bag = makeCtx(workspace);
+    const { bridge } = makeBridge(workspace, { handler: () => ({}) }, bag.ctx);
+    const first = await bridge.invoke('session.create', { projectId: PROJECT, requestId: 'req-create-1' }, { source: 'http' });
+    const repeated = await bridge.invoke('session.create', { projectId: PROJECT, requestId: 'req-create-1' }, { source: 'http' });
+    assert(first.sessionId === repeated.sessionId, 'requestId did not dedupe');
+    assert(bag.sessionController.created.length === 1, 'a duplicate create reached the controller');
+    const [left, right] = await Promise.all([
+      bridge.invoke('session.create', { projectId: PROJECT }, { source: 'http' }),
+      bridge.invoke('session.create', { projectId: PROJECT }, { source: 'http' }),
+    ]);
+    assert(left.sessionId === right.sessionId, 'concurrent creates did not share one single-flight operation');
+    assert(bag.sessionController.created.length === 2, `expected two controller creates, got ${bag.sessionController.created.length}`);
+    const trustedCwd = await realpath(workspace.sessionCwd);
+    assert(bag.sessionController.created[0].request.cwd === trustedCwd, 'creation did not use the trusted sessionCwd');
+    const stored = JSON.parse(await readFile(workspace.sessionStatePath, 'utf8'));
+    assert(stored.version === 1 && stored.projects[PROJECT].sessionIds.includes(first.sessionId), 'mapping did not persist the returned id');
+    assert(stored.sessions[first.sessionId].projectId === PROJECT, 'reverse mapping missing');
+    const list = await bridge.invoke('session.list', { projectId: PROJECT }, { source: 'http' });
+    assert(list.enabled === true && list.activeSessionId === right.sessionId, 'active session was not persisted');
+    assert(list.sessions.length === 2 && list.sessions.every((item) => item.status === 'available'), 'session status list is wrong');
+    const selected = await bridge.invoke('session.select', { projectId: PROJECT, sessionId: first.sessionId }, { source: 'http' });
+    assert(selected.activeSessionId === first.sessionId, 'select did not update the active session');
+    const badRequest = await rejects(() => bridge.invoke('session.create', { projectId: PROJECT, requestId: 'bad id!' }, { source: 'http' }));
+    assert(badRequest.code === 'E_PARAMS', 'invalid requestId was accepted');
+  });
+
+  await run('sessions: mapping survives reload; unregistered ids and corrupt state are rejected without data loss', async () => {
+    const workspace = await makeWorkspace();
+    const firstBag = makeCtx(workspace);
+    const first = makeBridge(workspace, { handler: () => ({}) }, firstBag.ctx).bridge;
+    const created = await first.invoke('session.create', { projectId: PROJECT, requestId: 'reload-1' }, { source: 'http' });
+    await first.dispose();
+    const secondBag = makeCtx(workspace);
+    const second = makeBridge(workspace, { handler: () => ({}) }, secondBag.ctx).bridge;
+    const list = await second.invoke('session.list', { projectId: PROJECT }, { source: 'http' });
+    assert(list.activeSessionId === created.sessionId && list.sessions[0].status === 'available', 'mapping did not survive a reload');
+    const cross = await rejects(() => second.invoke('session.select', { projectId: PROJECT, sessionId: 'session-unregistered' }, { source: 'http' }));
+    assert(cross.code === 'E_SESSION_NOT_BOUND', `unregistered session select was not rejected: ${cross.code}`);
+    await second.dispose();
+
+    const corruptLiteral = '{not json';
+    await writeFile(workspace.sessionStatePath, corruptLiteral);
+    const thirdBag = makeCtx(workspace);
+    const third = makeBridge(workspace, { handler: () => ({}) }, thirdBag.ctx).bridge;
+    const corrupt = await rejects(() => third.invoke('session.list', { projectId: PROJECT }, { source: 'http' }));
+    assert(corrupt.code === 'E_SESSION_STATE_CORRUPT', `corrupt state was not typed: ${corrupt.code}`);
+    assert((await readFile(workspace.sessionStatePath, 'utf8')) === corruptLiteral, 'corrupt state file was rewritten');
+    await third.dispose();
+
+    await writeFile(workspace.sessionStatePath, JSON.stringify({ version: 99, projects: {}, sessions: {} }));
+    const fourthBag = makeCtx(workspace);
+    const fourth = makeBridge(workspace, { handler: () => ({}) }, fourthBag.ctx).bridge;
+    const versionError = await rejects(() => fourth.invoke('session.list', { projectId: PROJECT }, { source: 'http' }));
+    assert(versionError.code === 'E_SESSION_STATE_VERSION', `unknown version was not typed: ${versionError.code}`);
+    await fourth.dispose();
+  });
+
+  await run('sessions: missing session configuration disables only the session features', async () => {
+    const workspace = await makeWorkspace({ config: { sessionStatePath: undefined, sessionCwd: undefined } });
+    const bag = makeCtx(workspace);
+    const { bridge } = makeBridge(workspace, { handler: () => ({}) }, bag.ctx);
+    const disabled = await rejects(() => bridge.invoke('session.list', { projectId: PROJECT }, { source: 'http' }));
+    assert(disabled.code === 'E_SESSION_CONFIG', `unconfigured session feature did not report E_SESSION_CONFIG: ${disabled.code}`);
+    const doctor = await bridge.invoke('doctor', {}, { source: 'http' });
+    assert(doctor !== null && typeof doctor === 'object', 'preview/doctor path must keep working without session config');
+  });
+
+  await run('tool scope: cross-project actions and foreign jobs are refused from the trusted mapping', async () => {
+    const OTHER = 'other';
+    const workspace = await makeWorkspace({ projects: { [OTHER]: 'projects-other/other' } });
+    const bag = makeCtx(workspace);
+    let jobCounter = 0;
+    const foreignJobId = '11111111-2222-4333-8444-999999999999';
+    const { bridge } = makeBridge(workspace, {
+      handler: (method, params) => {
+        if (method === 'open' || method === 'inspect') {
+          return { projectId: params.projectId, revision: REVISION, duration: 5, width: 1280, height: 720, elements: [] };
+        }
+        if (method === 'frame') {
+          jobCounter += 1;
+          const jobId = params.projectId === OTHER ? foreignJobId : `11111111-2222-4333-8444-${String(jobCounter).padStart(12, '0')}`;
+          return { jobId, projectId: params.projectId, revision: params.revision, kind: 'frame', state: 'queued', stage: 'snapshot', progress: 0 };
+        }
+        return {};
+      },
+    }, bag.ctx);
+    const sessionId = await createBoundSession(bridge);
+    const tool = createVideoTool(bridge);
+    const exec = { agent: { session: { id: sessionId } } };
+    const foreignOpen = await rejects(() => tool.execute({ action: 'open', projectId: OTHER }, exec));
+    assert(foreignOpen.message.includes('E_PROJECT_SCOPE'), `cross-project tool open was not refused: ${foreignOpen.message}`);
+    await bridge.invoke('open', { projectId: OTHER }, { source: 'http' });
+    await bridge.invoke('frame', { projectId: OTHER, revision: REVISION, time: 1 }, { source: 'http' });
+    const foreignJob = await rejects(() => tool.execute({ action: 'status', jobId: foreignJobId }, exec));
+    assert(foreignJob.message.includes('E_PROJECT_SCOPE'), `foreign job status was not refused: ${foreignJob.message}`);
+    const own = await tool.execute({ action: 'open', projectId: PROJECT }, { agent: { id: sessionId } });
+    assert(own.action === 'open' && own.result.projectId === PROJECT, 'the id-only Agent shape was not accepted for a bound project');
+  });
+
+  await run('prompt context: bound project facts are contributed and released with the bridge', async () => {
+    const workspace = await makeWorkspace();
+    const bag = makeCtx(workspace);
+    const { bridge } = makeBridge(workspace, {
+      handler: (method, params) => {
+        if (method === 'open' || method === 'inspect') {
+          return { projectId: params.projectId, revision: REVISION, duration: 5, width: 1280, height: 720, elements: [{ stableId: 'hf-title', capabilities: ['text', 'timing'] }] };
+        }
+        return { projectId: params.projectId, revision: REVISION };
+      },
+    }, bag.ctx);
+    const sessionId = await createBoundSession(bridge);
+    await bridge.invoke('inspect', { projectId: PROJECT }, { source: 'http' });
+    assert(bag.contexts.length === 1, `expected one prompt context, got ${bag.contexts.length}`);
+    const contribution = bag.contexts[0];
+    assert(contribution.name === 'dsh-video:project' && contribution.order === 4500, 'prompt context identity/order changed');
+    const text = contribution.text({ agent: { session: { id: sessionId } } });
+    assert(typeof text === 'string' && text.includes(PROJECT) && text.includes(REVISION) && text.includes('hf-title'), 'bound project facts missing from the prompt context');
+    assert(contribution.text({ agent: { session: { id: 'session-unbound' } } }) === '', 'unbound Agent received project context');
+    const diagnose = await bridge.invoke('session.diagnose', {}, { source: 'http' });
+    assert(diagnose.enabled === true && diagnose.controller === true && diagnose.store.version === 1, 'session diagnosis is incomplete');
+    assert(typeof diagnose.bundleVersion === 'string' && diagnose.bundleVersion.startsWith('0.3.'), 'diagnosis lost the bundle version');
+    assert(!JSON.stringify(diagnose).includes('message'), 'diagnosis must not include message text');
+    await bridge.dispose();
+    assert(bag.contextDisposers.length === 1, 'prompt context was not disposed with the bridge');
   });
 
   await run('R3: verifier executes the staged Host bytes and rejects tampered snapshots', async () => {

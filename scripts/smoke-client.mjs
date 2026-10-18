@@ -70,7 +70,20 @@ function createReact() {
     const { type, props } = node;
     if (typeof type === 'function') {
       const previous = currentRuntime;
-      const scope = { hooks: {}, hookIndex: 0, effects: [] };
+      const scopes = context.componentScopes;
+      let scope;
+      if (scopes !== undefined && scopes !== null) {
+        scope = scopes.get(type);
+        if (scope === undefined) {
+          scope = { hooks: {}, hookIndex: 0, effects: [] };
+          scopes.set(type, scope);
+        } else {
+          scope.hookIndex = 0;
+          scope.effects = [];
+        }
+      } else {
+        scope = { hooks: {}, hookIndex: 0, effects: [] };
+      }
       currentRuntime = scope;
       let rendered;
       try {
@@ -135,7 +148,7 @@ function createReact() {
     },
     renderInteractive(component, props) {
       const scope = { hooks: {}, hookIndex: 0, effects: [] };
-      const context = { effects: [], cleanups: [], activeElement: null };
+      const context = { effects: [], cleanups: [], activeElement: null, componentScopes: new WeakMap() };
       let currentTree = null;
       function renderOnce() {
         for (const cleanup of context.cleanups.splice(0).reverse()) {
@@ -169,11 +182,23 @@ function createReact() {
         }
         return currentTree;
       }
+      let disposed = false;
       return {
         render: renderOnce,
         rerender: renderOnce,
         tree: () => currentTree,
         activeElement: () => context.activeElement,
+        unmount() {
+          if (disposed) return;
+          disposed = true;
+          for (const cleanup of context.cleanups.splice(0).reverse()) {
+            try {
+              cleanup();
+            } catch (_error) {
+              /* cleanup is best effort in the shim */
+            }
+          }
+        },
       };
     },
     render(element) {
@@ -258,6 +283,7 @@ function createFakeEnvironment(options) {
     main: (config.mainOccupants || []).slice(),
     [SIDEBAR_SLOT]: (config.sidebarOccupants || []).slice(),
   };
+  const services = config.services || {};
   const events = {
     registrations: [],
     errors: [],
@@ -434,6 +460,9 @@ function createFakeEnvironment(options) {
       },
     },
     slots,
+    get(name) {
+      return services[name];
+    },
   };
 
   return {
@@ -687,6 +716,151 @@ function sampleJob(jobId) {
     state: 'queued',
     stage: 'snapshot',
     progress: 0,
+  };
+}
+
+function makeSessionsService(options) {
+  const config = options || {};
+  const retained = [];
+  const released = [];
+  let retainInfoCalls = 0;
+  const listSnapshot = { ids: (config.list || []).slice(), byId: {}, projectionsBySession: {} };
+  for (const id of listSnapshot.ids) {
+    listSnapshot.byId[id] = { sessionId: id, blank: false };
+    listSnapshot.projectionsBySession[id] = {
+      values: { title: config.titles && config.titles[id] ? config.titles[id] : id },
+      state: 'ready',
+      error: null,
+    };
+  }
+  const list = { getSnapshot: () => listSnapshot, subscribe: () => () => {} };
+  function faceFor(id) {
+    const override = (config.faces && config.faces[id]) || {};
+    const state = Object.assign({ sessionId: id, openState: 'open', openError: null, running: false, blank: false }, override);
+    return { getSnapshot: () => state, subscribe: () => () => {} };
+  }
+  return {
+    list,
+    retained,
+    released,
+    get retainInfoCalls() {
+      return retainInfoCalls;
+    },
+    retain(target, options) {
+      const id = typeof target === 'string' ? target : target.sessionId;
+      const binding = { sessionId: id, session: faceFor(id) };
+      const ref = {
+        sessionId: id,
+        binding,
+        ready: Promise.resolve(binding),
+        released: false,
+        release() {
+          if (ref.released) return;
+          ref.released = true;
+          released.push(id);
+        },
+      };
+      retained.push({ id, options, ref });
+      return ref;
+    },
+    using(target, options, operation) {
+      const ref = this.retain(target, options);
+      return Promise.resolve(operation(ref)).finally(() => ref.release());
+    },
+    retainInfo() {
+      retainInfoCalls += 1;
+      const retainedBy = config.mainViewRetained === true ? { mainView: 1 } : {};
+      return { getSnapshot: () => ({ referenceCount: config.mainViewRetained === true ? 1 : 0, retainedBy }), subscribe: () => () => {} };
+    },
+    binding(id) {
+      const found = retained.find((entry) => entry.id === id && entry.ref.released === false);
+      return found ? found.ref.binding : undefined;
+    },
+  };
+}
+
+function makeSessionKit() {
+  const calls = [];
+  function SessionProvider(props) {
+    calls.push({ type: 'session-provider', session: props.session });
+    return props.children;
+  }
+  function renderFactorySlot(name, input, occurrence) {
+    calls.push({ type: 'factory', name, input, occurrence });
+    let child = null;
+    const views = occurrence && occurrence.slots ? occurrence.slots.views : null;
+    if (typeof views === 'function') {
+      child = views({
+        renderSlot(slot, args) {
+          calls.push({ type: 'chat-view', slot, args });
+          return { type: 'div', props: { 'data-chat-view': slot }, children: null };
+        },
+      });
+    }
+    return { type: 'div', props: { 'data-factory': name }, children: child };
+  }
+  return { SessionProvider, renderFactorySlot, calls };
+}
+
+function sessionFetch(options) {
+  const config = options || {};
+  const fetchFunction = makeHostFetch((request) => {
+    const method = request.body.method;
+    if (method === 'session.list') {
+      return Promise.resolve({
+        ok: true,
+        result: {
+          enabled: true,
+          contract: 1,
+          projectId: 'demo',
+          activeSessionId: config.activeSessionId === undefined ? null : config.activeSessionId,
+          sessions: (config.sessions || []).map((id) => ({ sessionId: id, status: 'available' })),
+        },
+      });
+    }
+    if (method === 'session.create') {
+      config.createCalls = (config.createCalls || 0) + 1;
+      const id = config.newSessionId || 'session-new';
+      config.activeSessionId = id;
+      config.sessions = (config.sessions || []).concat([id]);
+      return Promise.resolve({ ok: true, result: { enabled: true, contract: 1, projectId: 'demo', sessionId: id, activeSessionId: id } });
+    }
+    if (method === 'session.select') {
+      config.selectCalls = (config.selectCalls || []).concat([request.body.params.sessionId]);
+      const id = request.body.params.sessionId;
+      const delay = (config.selectDelays && config.selectDelays[id]) || 0;
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({ ok: true, result: { enabled: true, contract: 1, projectId: 'demo', sessionId: id, activeSessionId: id } }), delay);
+      });
+    }
+    if (method === 'session.diagnose') {
+      return Promise.resolve({ ok: true, result: { enabled: true, contract: 1 } });
+    }
+    return Promise.resolve({ ok: false, error: { code: 'E_METHOD', message: 'unexpected ' + method } });
+  });
+  fetchFunction.config = config;
+  return fetchFunction;
+}
+
+function mountSessionEditor(hostFetch, options) {
+  const config = options || {};
+  const loaded = loadClient({ fetch: hostFetch });
+  const env = createFakeEnvironment({ services: { sessions: config.sessions } });
+  loaded.exports.apply(env.ctx);
+  const main = registrationOf(env, 'main');
+  assert(main !== undefined, 'main panel is not registered');
+  const props = Object.assign({ t: translateFor(env) }, main.options.inject(), config.kit || {});
+  const interactive = loaded.react.renderInteractive(main.component, props);
+  let tree = interactive.render();
+  return {
+    loaded,
+    env,
+    interactive,
+    tree: () => tree,
+    rerender() {
+      tree = interactive.rerender();
+      return tree;
+    },
   };
 }
 //#endregion
@@ -1743,6 +1917,156 @@ test('P2-002-B: configuration errors are shown without breaking the shell', asyn
   assert(textOf(alert).includes('视频服务尚未配置'), `configuration error text was ${textOf(alert)}`);
   assert(buttonByText(tree, '打开示例') !== null, 'shell no longer offers the explicit action after a configuration error');
 });
+test('P3-006-A: embedded native conversation uses videoView, hero:false and the Chat view', async () => {
+  const sessions = makeSessionsService({
+    list: ['session-aaa'],
+    titles: { 'session-aaa': '演示工程 · 创作 1' },
+    mainViewRetained: true,
+  });
+  const hostFetch = sessionFetch({ activeSessionId: 'session-aaa', sessions: ['session-aaa'] });
+  const kit = makeSessionKit();
+  const editor = mountSessionEditor(hostFetch, { sessions, kit });
+  await settle();
+  editor.rerender();
+  await settle();
+  editor.rerender();
+  const retained = sessions.retained[sessions.retained.length - 1];
+  assert(retained !== undefined && retained.id === 'session-aaa', 'the bound Session was not retained');
+  assert(retained.options.source === 'videoView', `retain source was ${retained.options.source}`);
+  const provider = kit.calls.filter((call) => call.type === 'session-provider').pop();
+  assert(provider !== undefined && provider.session.sessionId === 'session-aaa', 'SessionProvider did not receive the owned reference');
+  const factory = kit.calls.filter((call) => call.type === 'factory').pop();
+  assert(factory !== undefined && factory.name === 'conversation.content', 'native conversation Factory was not rendered');
+  assert(factory.input.variant === 'embedded', 'occurrence was not embedded');
+  assert(factory.input.hero === false, 'hero must stay false to avoid host navigation');
+  assert(typeof factory.occurrence.slots.views === 'function', 'Chat view local slot missing');
+  assert(factory.occurrence.slots.widthControls === undefined, 'embedded occurrence must omit width controls');
+  const chatView = kit.calls.filter((call) => call.type === 'chat-view').pop();
+  assert(chatView !== undefined && chatView.slot === 'conversation.session' && chatView.args.view === 'chat', 'the embedded view did not lock Chat');
+  assert(retained.ref.released === false, 'mainView retention must not prevent the hidden-host embedding from retaining');
+  const tree = editor.tree();
+  assert(findNode(tree, (node) => node.props && node.props['data-factory'] === 'conversation.content') !== null, 'factory output missing from the tree');
+  assert(findNode(tree, (node) => node.props && node.props.className === 'dv-model') === null, 'the plugin rendered a custom model control');
+  assert(findNode(tree, (node) => node.props && node.props.className === 'dv-ai-session') !== null, 'the mapped Session title is not shown');
+  assert(textOf(findNode(tree, (node) => node.props && node.props.className === 'dv-ai-session')) === '演示工程 · 创作 1', 'history title projection was not used');
+  assert(hostFetch.calls.some((call) => call.body.method === 'session.list'), 'session history was not loaded from the Host');
+});
+
+test('P3-006-A: ready with an open error shows the failure instead of the editing root', async () => {
+  const sessions = makeSessionsService({
+    list: ['session-err'],
+    faces: { 'session-err': { openState: 'error', openError: { message: 'boom' } } },
+  });
+  const hostFetch = sessionFetch({ activeSessionId: 'session-err', sessions: ['session-err'] });
+  const kit = makeSessionKit();
+  const editor = mountSessionEditor(hostFetch, { sessions, kit });
+  await settle();
+  editor.rerender();
+  await settle();
+  const tree = editor.rerender();
+  assert(kit.calls.filter((call) => call.type === 'factory').length === 0, 'the factory was rendered despite an open error');
+  const alert = findNode(tree, (node) => node.props && node.props.role === 'alert');
+  assert(alert !== null, 'open error was not surfaced');
+  assert(textOf(alert).includes(translateFor(editor.env)('video.ai.error')), `open error text was ${textOf(alert)}`);
+});
+
+test('P3-006-A: a visible host conversation disables the embedded editing root with a notice', async () => {
+  const sessions = makeSessionsService({ list: ['session-host'], titles: { 'session-host': '宿主标题' } });
+  const hostFetch = sessionFetch({ activeSessionId: 'session-host', sessions: ['session-host'] });
+  const kit = makeSessionKit();
+  const editor = mountSessionEditor(hostFetch, { sessions, kit });
+  await settle();
+  editor.rerender();
+  await settle();
+  const factoryBefore = kit.calls.filter((call) => call.type === 'factory').length;
+  editor.env.setActivePanel('conversation');
+  editor.rerender();
+  await settle();
+  const tree = editor.rerender();
+  const notice = findNode(tree, (node) => node.props && node.props.className === 'dv-ai-notice');
+  assert(notice !== null, 'visible host conversation notice missing');
+  assert(textOf(notice) === translateFor(editor.env)('video.ai.hostOpen'), `notice text was ${textOf(notice)}`);
+  assert(findNode(tree, (node) => node.props && node.props['data-factory'] === 'conversation.content') === null, 'a second editing root was mounted while the host conversation was visible');
+  assert(kit.calls.filter((call) => call.type === 'factory').length >= factoryBefore, 'factory calls were lost');
+});
+
+test('P3-006-A: unmounting the panel releases the owned reference (reverse navigation)', async () => {
+  const sessions = makeSessionsService({ list: ['session-leave'] });
+  const hostFetch = sessionFetch({ activeSessionId: 'session-leave', sessions: ['session-leave'] });
+  const kit = makeSessionKit();
+  const editor = mountSessionEditor(hostFetch, { sessions, kit });
+  await settle();
+  editor.rerender();
+  await settle();
+  const retained = sessions.retained[sessions.retained.length - 1];
+  assert(retained !== undefined && retained.ref.released === false, 'reference was not held while mounted');
+  editor.interactive.unmount();
+  assert(retained.ref.released === true, 'reference was not released on unmount');
+  assert(sessions.released.includes('session-leave'), 'release was not owned by the panel lifecycle');
+});
+
+test('P3-006-A: the create action is single-flight and adopts the returned Session id', async () => {
+  const sessions = makeSessionsService({ list: [] });
+  const hostFetch = sessionFetch({ activeSessionId: null, sessions: [], newSessionId: 'session-created' });
+  const kit = makeSessionKit();
+  const editor = mountSessionEditor(hostFetch, { sessions, kit });
+  await settle();
+  editor.rerender();
+  await settle();
+  const tree = editor.rerender();
+  const createLabel = translateFor(editor.env)('video.ai.create');
+  const createButton = buttonByText(tree, createLabel);
+  assert(createButton !== null, 'the real create action is missing');
+  createButton.props.onClick();
+  createButton.props.onClick();
+  await settle();
+  editor.rerender();
+  await settle();
+  const after = editor.rerender();
+  assert(hostFetch.config.createCalls === 1, `create was issued ${hostFetch.config.createCalls} times`);
+  assert(sessions.retained.length > 0 && sessions.retained[sessions.retained.length - 1].id === 'session-created', 'the returned id was not adopted');
+  const provider = kit.calls.filter((call) => call.type === 'session-provider').pop();
+  assert(provider !== undefined && provider.session.sessionId === 'session-created', 'the returned Session was not bound');
+  assert(textOf(findNode(after, (node) => node.props && node.props.className === 'dv-ai-session')) === 'session-created', 'the returned id is not visible in the AI header');
+});
+
+test('P3-006-A: history lists mapped Sessions and a superseded switch cannot win', async () => {
+  const sessions = makeSessionsService({
+    list: ['session-aaa', 'session-bbb', 'session-ccc'],
+    titles: { 'session-aaa': '工程 · 一', 'session-bbb': '工程 · 二', 'session-ccc': '工程 · 三' },
+  });
+  const hostFetch = sessionFetch({
+    activeSessionId: 'session-aaa',
+    sessions: ['session-aaa', 'session-bbb', 'session-ccc'],
+    selectDelays: { 'session-bbb': 50 },
+  });
+  const kit = makeSessionKit();
+  const editor = mountSessionEditor(hostFetch, { sessions, kit });
+  await settle();
+  editor.rerender();
+  await settle();
+  const toggle = findNode(editor.tree(), (node) => node.type === 'button' && typeof node.props.className === 'string' && node.props.className.includes('dv-history-toggle'));
+  assert(toggle !== null, 'history toggle missing');
+  toggle.props.onClick();
+  const tree = editor.rerender();
+  const items = findNodes(tree, (node) => node.type === 'button' && typeof node.props.className === 'string' && node.props.className === 'dv-history-item');
+  assert(items.length === 3, `history listed ${items.length} Sessions instead of the mapped three`);
+  items[1].props.onClick();
+  items[2].props.onClick();
+  await new Promise((resolve) => setTimeout(resolve, 140));
+  editor.rerender();
+  await settle();
+  const finalTree = editor.rerender();
+  const root = findNode(finalTree, (node) => node.props && node.props['data-session-active'] !== undefined);
+  assert(root !== null && root.props['data-session-active'] === 'session-ccc', `superseded switch won: ${root && root.props['data-session-active']}`);
+  const provider = kit.calls.filter((call) => call.type === 'session-provider').pop();
+  assert(provider !== undefined && provider.session.sessionId === 'session-ccc', `superseded switch won: ${provider && provider.session.sessionId}`);
+  assert(textOf(findNode(finalTree, (node) => node.props && node.props.className === 'dv-ai-session')) === '工程 · 三', 'the latest Session title is not visible');
+  assert(hostFetch.config.selectCalls.includes('session-bbb') && hostFetch.config.selectCalls.includes('session-ccc'), 'both switches were not attempted');
+  const businessCalls = hostFetch.calls.filter((call) => !call.body.method.startsWith('session.'));
+  assert(businessCalls.length === 0, 'switching Sessions issued a project business request');
+});
+
 //#endregion
 
 //#endregion

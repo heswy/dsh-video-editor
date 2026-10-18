@@ -17,6 +17,8 @@ import { allowsProject, tryNormalizeConfig } from './config.js';
 import { buildWorkerEnv } from './env.js';
 import { loadEngine } from './engine.js';
 import { TOOL_RESULT_BYTES } from './limits.js';
+import { SessionService } from './sessions.js';
+import { SESSION_ID_PATTERN } from './session-state.js';
 
 export const REQUEST_METHODS = Object.freeze([
   'doctor',
@@ -28,6 +30,10 @@ export const REQUEST_METHODS = Object.freeze([
   'status',
   'cancel',
   'close',
+  'session.list',
+  'session.create',
+  'session.select',
+  'session.diagnose',
 ]);
 
 const METHOD_PARAMS = Object.freeze({
@@ -40,12 +46,19 @@ const METHOD_PARAMS = Object.freeze({
   status: ['jobId'],
   cancel: ['jobId'],
   close: ['projectId'],
+  'session.list': ['projectId'],
+  'session.create': ['projectId', 'requestId'],
+  'session.select': ['projectId', 'sessionId'],
+  'session.diagnose': [],
 });
+
+const SESSION_METHODS = Object.freeze(['session.list', 'session.create', 'session.select', 'session.diagnose']);
 
 const REVISION = /^[a-f0-9]{64}$/;
 const JOB_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const ARTIFACT_NAME = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.(png|mp4)$/;
 const OPERATION_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+const REQUEST_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const PROJECT_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const MEDIA = Object.freeze({ png: 'image/png', mp4: 'video/mp4' });
 const MAX_REGISTRY_BYTES = 1024 * 1024;
@@ -187,6 +200,23 @@ export function validateParams(config, method, params) {
     if (limit !== undefined) next.timeoutMs = limit;
     return next;
   }
+  if (method === 'session.diagnose') return {};
+  if (method === 'session.list') return { projectId: allowedProject(config, params.projectId) };
+  if (method === 'session.create') {
+    const next = { projectId: allowedProject(config, params.projectId) };
+    if (params.requestId !== undefined) {
+      if (typeof params.requestId !== 'string' || REQUEST_ID.test(params.requestId) === false || params.requestId.length > 128) {
+        fail('E_PARAMS', 'Invalid session requestId', 'params');
+      }
+      next.requestId = params.requestId;
+    }
+    return next;
+  }
+  if (method === 'session.select') {
+    const sessionId = params.sessionId;
+    if (typeof sessionId !== 'string' || SESSION_ID_PATTERN.test(sessionId) === false) fail('E_PARAMS', 'Invalid sessionId', 'params');
+    return { projectId: allowedProject(config, params.projectId), sessionId };
+  }
   return fail('E_METHOD', 'Unknown video action', 'params');
 }
 
@@ -310,7 +340,14 @@ export class VideoBridge {
     this.disposePromise = null;
     this.jobs = new Map();
     this.inFlight = new Set();
+    this.projectFactsById = new Map();
     this.environment = buildWorkerEnv(process.env);
+    this.sessions = new SessionService({
+      ctx: this.ctx,
+      bridge: this,
+      config: this.config,
+      configError: this.configError,
+    });
   }
 
   /** Bounded diagnostic state; never includes paths, environment values or stderr. */
@@ -322,6 +359,7 @@ export class VideoBridge {
       closing: this.closing,
       jobs: this.jobs.size,
       inFlight: this.inFlight.size,
+      sessions: this.sessions.diagnose(),
     };
   }
 
@@ -524,15 +562,25 @@ export class VideoBridge {
       throw new BridgeError('E_WORKER_DISPOSED', 'The video service is stopping', { stage: 'lifecycle' });
     }
     const normalized = this.validate(method, params);
+    if (SESSION_METHODS.includes(method)) {
+      if (settings.source === 'tool') throw new BridgeError('E_METHOD', 'Session management is not a model tool action', { stage: 'params' });
+      this.requireConfig();
+      return this.sessions.handle(method, normalized);
+    }
     if (method === 'status' || method === 'cancel') {
       const record = this.jobs.get(normalized.jobId);
       if (record === undefined) throw new BridgeError('E_JOB_NOT_FOUND', 'Unknown video job', { stage: 'job' });
     }
 
     const task = (async () => {
+      if (settings.source === 'tool' && method !== 'doctor') {
+        await this.assertToolScope(method, normalized, settings.agentSessionId);
+      }
       const result = await this.callClient(method, normalized);
       if (method === 'frame' || method === 'render') {
         this.rememberJob(method, normalized, result);
+      } else if (method === 'inspect' || method === 'open') {
+        this.rememberFacts(result);
       } else if (method === 'status' || method === 'cancel') {
         const record = this.jobs.get(normalized.jobId);
         if (record === undefined) throw new BridgeError('E_JOB_NOT_FOUND', 'Unknown video job', { stage: 'job' });
@@ -548,6 +596,67 @@ export class VideoBridge {
     } finally {
       this.inFlight.delete(task);
     }
+  }
+
+  /**
+   * A Tool call may only touch the project bound to the trusted Agent Session.
+   * Doctor is read-only diagnosis and needs no binding; every project or job
+   * action does. The mapping is authoritative on the Host, never in tool args.
+   */
+  async assertToolScope(method, normalized, agentSessionId) {
+    if (typeof agentSessionId !== 'string' || agentSessionId.length === 0) {
+      throw new BridgeError('E_AGENT_REQUIRED', 'This video action needs a trusted Agent Session', { stage: 'scope' });
+    }
+    const projectId = await this.sessions.projectForSession(agentSessionId);
+    if (projectId === null) {
+      throw new BridgeError('E_SESSION_NOT_BOUND', 'This Agent Session is not bound to a video project', { stage: 'scope' });
+    }
+    let targetProject = normalized.projectId;
+    if (targetProject === undefined && (method === 'status' || method === 'cancel')) {
+      const record = this.jobs.get(normalized.jobId);
+      if (record === undefined) throw new BridgeError('E_JOB_NOT_FOUND', 'Unknown video job', { stage: 'job' });
+      targetProject = record.projectId;
+    }
+    if (targetProject !== projectId) {
+      throw new BridgeError('E_PROJECT_SCOPE', 'The video action targets a project outside this Agent Session binding', { stage: 'scope' });
+    }
+    return projectId;
+  }
+
+  /** Bounded, non-sensitive project facts for live prompt context. */
+  rememberFacts(result) {
+    if (result === null || typeof result !== 'object') return;
+    const projectId = result.projectId;
+    if (typeof projectId !== 'string' || this.config === null || this.config.projectIds.has(projectId) === false) return;
+    const revision = typeof result.revision === 'string' && REVISION.test(result.revision) ? result.revision : null;
+    if (revision === null) return;
+    const elements = Array.isArray(result.elements) ? result.elements : [];
+    const targets = [];
+    for (const element of elements.slice(0, 40)) {
+      if (element === null || typeof element !== 'object' || typeof element.stableId !== 'string') continue;
+      const capabilities = Array.isArray(element.capabilities) ? element.capabilities.filter((value) => typeof value === 'string').slice(0, 8) : [];
+      targets.push({ stableId: element.stableId.slice(0, 128), capabilities });
+    }
+    this.projectFactsById.set(projectId, {
+      revision,
+      width: Number.isFinite(Number(result.width)) ? Number(result.width) : null,
+      height: Number.isFinite(Number(result.height)) ? Number(result.height) : null,
+      duration: Number.isFinite(Number(result.duration)) ? Number(result.duration) : null,
+      targets,
+    });
+  }
+
+  /** Read the last inspected project facts; never starts or resumes the worker. */
+  projectFacts(projectId) {
+    const facts = this.projectFactsById.get(projectId);
+    if (facts === undefined) return null;
+    return {
+      revision: facts.revision,
+      width: facts.width,
+      height: facts.height,
+      duration: facts.duration,
+      targets: facts.targets.map((target) => ({ stableId: target.stableId, capabilities: target.capabilities.slice() })),
+    };
   }
 
   rememberJob(method, params, result) {
@@ -661,6 +770,11 @@ export class VideoBridge {
         } catch (error) {
           this.log(error, 'worker dispose');
         }
+      }
+      try {
+        await this.sessions.dispose();
+      } catch (error) {
+        this.log(error, 'session dispose');
       }
       this.disposed = true;
     })();

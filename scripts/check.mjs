@@ -110,10 +110,10 @@ check('host half exports a Cordis plugin body and declares required services', (
   assert(/export\s+function\s+apply\s*\(/.test(hostSource), 'index.js must export function apply()');
   assert(/export\s+const\s+inject\s*=\s*\[\s*'connection'\s*,\s*'tools'\s*,\s*'subprocess'\s*\]/.test(hostSource), 'index.js must declare connection/tools/subprocess injection');
   assert(/@deepseek-ai\//.test(hostSource) === false, 'index.js must not import @deepseek-ai/* (profile path packages cannot resolve them)');
-  for (const module of ['host/bridge.js', 'host/routes.js', 'host/tool.js', 'host/config.js', 'host/env.js', 'host/errors.js', 'host/engine.js', 'host/limits.js']) {
+  for (const module of ['host/bridge.js', 'host/routes.js', 'host/tool.js', 'host/config.js', 'host/env.js', 'host/errors.js', 'host/engine.js', 'host/limits.js', 'host/sessions.js', 'host/session-state.js']) {
     assert(exists(module), `missing Host module ${module}`);
   }
-  return 'apply(), inject, seven Host modules';
+  return 'apply(), inject, nine Host modules';
 });
 
 check('bundle manifest declares patch and client', () => {
@@ -131,8 +131,8 @@ check('bundle manifest declares patch and client', () => {
   return `platform=web, inject=[${pkg.dsh.client.inject.join(', ')}]`;
 });
 
-check('package version advanced for the P2-006 fixed package', () => {
-  assert(pkg.version === '0.2.2', `expected version 0.2.2, found "${pkg.version}"`);
+check('package version advanced for the P3-006-A native creation candidate', () => {
+  assert(pkg.version === '0.3.0-alpha.1', `expected version 0.3.0-alpha.1, found "${pkg.version}"`);
   return pkg.version;
 });
 
@@ -171,7 +171,7 @@ check('entrypoints and exports resolve to shipped files', () => {
 
 check('package files list covers every shipped artifact', () => {
   assert(Array.isArray(pkg.files) && pkg.files.length > 0, 'package.json needs a files list for a reproducible install');
-  const required = ['index.js', 'client.js', 'cordis.patch.yml', 'icon.svg', 'locale/en.json', 'locale/zh.json', 'README.md', 'host/bridge.js', 'host/routes.js', 'host/tool.js', 'host/config.js', 'host/env.js', 'host/errors.js', 'host/engine.js', 'host/limits.js'];
+  const required = ['index.js', 'client.js', 'cordis.patch.yml', 'icon.svg', 'locale/en.json', 'locale/zh.json', 'README.md', 'host/bridge.js', 'host/routes.js', 'host/tool.js', 'host/config.js', 'host/env.js', 'host/errors.js', 'host/engine.js', 'host/limits.js', 'host/sessions.js', 'host/session-state.js'];
   for (const artifact of required) {
     const covered = pkg.files.some((pattern) => listMatchingFiles(pattern).includes(artifact));
     assert(covered, `files list does not cover required artifact "${artifact}"`);
@@ -273,7 +273,7 @@ check('P0-005: sidebar entry registration matches the verified list contract', (
   assert(clientSource.includes('const SIDEBAR_ORDER = 30'), 'sidebar order should sit after the shipped panel rows (0/10/20)');
   assert(clientSource.includes("ctx.slots.inject('sidebar.panellist'"), 'sidebar entry must follow declaration lifetimes through slots.inject');
   assert(clientSource.includes("ctx.slots.inject('main'"), 'main panel declaration hook missing');
-  assert(clientSource.includes("name: 'main', key: PANEL_ID"), 'main panel key must stay dsh-video');
+  assert(clientSource.includes("name: 'main'") && clientSource.includes('key: PANEL_ID'), 'main panel key must stay dsh-video');
   assert(clientSource.includes("'nav.label': 'Vedio Editor'"), 'exact user-requested label spelling missing from locale dictionaries');
   assert(clientSource.indexOf("'nav.label': 'Vedio Editor'") !== clientSource.lastIndexOf("'nav.label': 'Vedio Editor'"), 'label must exist in both shipped dictionaries');
   return 'native sidebar.panellist id/order/label + main key';
@@ -477,6 +477,48 @@ check('P0-005: mode wiring is host-owned and has no local mode source', () => {
   assert(clientSource.includes('usePanelInfo') === false, 'the sidebar row already owns selection; no panel-local mode hook is needed');
   assert(clientSource.includes('sidebar.panellist') === true && clientSource.includes('shell.overlay') === false, 'must use the supported sidebar list, not an overlay');
   return 'host-owned selection, native sidebar list, no local mode boolean';
+});
+
+check('P3-006-A: the panel embeds the native Conversation through a private session child', () => {
+  const bridge = read('host/bridge.js');
+  assert(clientSource.includes("const SESSION_SOURCE = 'videoView'"), 'the plugin must retain with its own videoView source, never mainView');
+  assert(clientSource.includes("const SESSION_CHILD_SLOT = 'dsh-video.chat'"), 'the private session child slot name is missing');
+  assert(clientSource.includes('children[SESSION_CHILD_SLOT] = { kind: \'single\', scope: \'session\' }'), 'the main registration must declare a session-scope private child for the kit');
+  assert(clientSource.includes('renderFactorySlot(\n        \'conversation.content\''), 'the native conversation.content Factory is not rendered');
+  assert(clientSource.includes("variant: 'embedded'"), 'the plugin must render the embedded occurrence');
+  assert(clientSource.includes('hero: false'), 'embedded occurrence must never enable the hero workspace navigation');
+  assert(clientSource.includes("props.renderSlot('conversation.session', { view: 'chat' })"), 'the embedded local view must lock the Chat view');
+  assert(clientSource.includes('hostConversationOpen'), 'the panel must guard a visible host conversation');
+  assert(clientSource.includes('data-session-kit'), 'the read-only session kit preflight marker is missing');
+  assert(bridge.includes("'session.list'") && bridge.includes("'session.diagnose'"), 'the Host bridge does not allowlist the session methods');
+  return 'videoView source, private child, embedded/hero:false/Chat, kit preflight';
+});
+
+check('P3-006-A: Tool scope comes from the trusted Agent, not from tool arguments', () => {
+  const tool = read('host/tool.js');
+  const bridge = read('host/bridge.js');
+  const sessions = read('host/sessions.js');
+  assert(tool.includes('agentSessionIdFromToolExec(exec)'), 'the Tool does not extract the trusted Agent identity');
+  assert(tool.includes("source: 'tool', agentSessionId"), 'the Tool does not pass the trusted identity to the dispatcher');
+  assert(bridge.includes('async assertToolScope('), 'the bridge does not enforce the Session/project mapping');
+  assert(bridge.includes("E_AGENT_REQUIRED") && bridge.includes("E_PROJECT_SCOPE") && bridge.includes("E_SESSION_NOT_BOUND"), 'scope rejection codes are missing');
+  assert(sessions.includes('agentSessionIdFromToolExec') && sessions.includes('agent.session.id'), 'the central Agent identity adapter is missing');
+  assert(bridge.includes('projectFacts(') && sessions.includes('systemPrompt.context('), 'live project context wiring is missing');
+  return 'trusted exec.agent session, mapping check, job owner check, live context';
+});
+
+check('P3-006-A: Host session state is versioned, trusted and atomically written', () => {
+  const state = read('host/session-state.js');
+  const config = read('host/config.js');
+  const sessions = read('host/sessions.js');
+  assert(config.includes("'sessionStatePath'") && config.includes("'sessionCwd'"), 'trusted session configuration keys are missing');
+  assert(state.includes('SESSION_STATE_VERSION = 1'), 'session state is not versioned');
+  assert(state.includes('rename(temporary, this.path)'), 'session state is not written through write-temp + rename');
+  assert(state.includes('E_SESSION_STATE_CORRUPT') && state.includes('E_SESSION_STATE_VERSION'), 'corrupt/unknown-version state is not typed');
+  assert(sessions.includes('controller.create({ cwd })'), 'Session creation does not use the trusted controller/cwd');
+  assert(sessions.includes('this.store.addSession(projectId, sessionId, true)'), 'the returned Session id is not persisted before success');
+  assert(state.includes('E_SESSION_ALREADY_BOUND'), 'cross-project binding rejection is missing');
+  return 'sessionStatePath/sessionCwd, v1 atomic store, controller creation, mapping write-back';
 });
 
 for (const [name, detail] of passes) console.log(`PASS  ${name}${detail === 'ok' ? '' : `  [${detail}]`}`);

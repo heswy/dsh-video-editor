@@ -26,7 +26,7 @@ import { admitBundleVersion, parseBundleVersion } from './lib/stage-version.mjs'
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const STAGE_DEV = join(ROOT, 'scripts', 'stage-dev.mjs');
 const ENGINE_COMMIT = '54f467147ae2f61e118099c4947f55e8da877500';
-const REVIEWED_BUNDLE_VERSION = '0.2.2';
+const REVIEWED_BUNDLE_VERSION = '0.3.0-alpha.1';
 const NODE = process.execPath;
 
 const passes = [];
@@ -83,13 +83,13 @@ function fakeNpm(binDirectory, marker) {
 const work = mkdtempSync(join(tmpdir(), 'dsh-video-stage-version-'));
 
 try {
-  test('committed manifest still pins the reviewed 0.2.2 delivery', () => {
+  test('committed manifest still pins the reviewed delivery version', () => {
     const manifest = committedManifest();
     assert(manifest.version === REVIEWED_BUNDLE_VERSION, `committed root package version is ${JSON.stringify(manifest.version)}, expected ${REVIEWED_BUNDLE_VERSION}; update this regression deliberately with a release`);
     return manifest.version;
   });
 
-  test('manifest 0.2.2 + explicit 0.2.2 passes version admission', () => {
+  test('committed manifest + the same explicit version passes version admission', () => {
     const admitted = admitBundleVersion({ expectedVersion: REVIEWED_BUNDLE_VERSION, manifestVersion: committedManifest().version });
     assert(admitted.expectedVersion === REVIEWED_BUNDLE_VERSION && admitted.manifestVersion === REVIEWED_BUNDLE_VERSION, 'admission did not return the matching version pair');
     return `${admitted.manifestVersion}`;
@@ -175,8 +175,9 @@ try {
     const marker = join(work, 'mismatch-npm-ran');
     const env = fakeNpm(join(work, 'fake-npm-mismatch'), marker);
     const result = runStageDev(stageArgs(out, ['--bundle-version', '9.9.9']), { env });
+    const manifestVersion = committedManifest().version;
     assert(result.status === 1, `expected failure exit 1, got ${result.status}`);
-    assert((result.stderr || '').includes('stage-dev failed: root bundle version is 0.2.2, expected 9.9.9'), `mismatch was not reported at the gate: ${(result.stderr || '').trim()}`);
+    assert((result.stderr || '').includes(`stage-dev failed: root bundle version is ${manifestVersion}, expected 9.9.9`), `mismatch was not reported at the gate: ${(result.stderr || '').trim()}`);
     assert(existsSync(out) === false, 'output directory was created before the mismatch was rejected');
     assert(existsSync(marker) === false, 'npm was invoked despite the rejected version (dependency install started too early)');
     return 'exit 1 before output/npm';

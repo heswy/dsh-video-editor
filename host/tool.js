@@ -10,6 +10,7 @@
 
 import { BridgeError, toPublicError } from './errors.js';
 import { TOOL_RESULT_BYTES } from './limits.js';
+import { agentSessionIdFromToolExec } from './sessions.js';
 
 export const TOOL_NAME = 'video_engine';
 
@@ -142,16 +143,18 @@ export function createVideoTool(bridge) {
         return [{ type: 'text', text: boundedToolValue(value) }];
       },
     },
-    async execute(args, _exec) {
+    async execute(args, exec) {
       const action = args && typeof args === 'object' ? args.action : undefined;
       let params;
+      let agentSessionId = null;
       try {
         params = projectParams(action, args || {});
+        agentSessionId = agentSessionIdFromToolExec(exec);
       } catch (error) {
         throw new Error(formatError(error));
       }
       try {
-        const result = await bridge.invoke(action, params, { source: 'tool' });
+        const result = await bridge.invoke(action, params, { source: 'tool', agentSessionId });
         const value = { action, result };
         // Validate the complete wrapper, not just the inner result: execute must
         // fail loudly before a later renderer could silently shorten it.
