@@ -4,7 +4,7 @@
 
 - 总调度/主会话（2026-10-17 经用户重新指定，由当前 Codex 主会话接回）：产品/架构、任务拆解、规则、跨分支协调、代码评审与验收。本文件中「主会话」与「总调度」同义。
 - 用户指定开发者负责实现、验证、修复与依任务授权的 PR；总调度不接管功能实现，不自动派发或跨会话联系开发者，交接与结果由用户转发。
-- 开发会话按工作区名识别：`p1-engine` 负责引擎/worker/client，`p0-mode-shell` 负责插件 UI/Host。历史编号和 b4bf 路径仅作证据，当前目录见下表；同一树只允许一个开发会话写入。
+- **2026-10-18 用户明确授权统一开发**：后续唯一开发工作区为 `video-studio`，一个DSH会话负责Client/Host/engine端到端实现与验证。旧p0/p1分工停止；总调度仍负责架构、任务、评审和协调，不接管功能实现。
 - 所有开发分支的当前规则以 `origin/codex/project-foundation` 为准。开工先 `git fetch origin`，再用 `git show origin/codex/project-foundation:docs/STATUS.md`、`docs/DEVELOPMENT.md`、`docs/product/PRODUCT.md` 和当前 handoff/任务读取；不切换分支，不覆盖本地全局文档，不为文档同步 merge/rebase。网络不可用时注明使用的缓存协调提交。
 - 优先级：用户当前明确要求 → 本项目文档 → 匹配目标版本的官方 Skill/运行时契约 → 本机参考案例 → 上游 master/社区资料。证据包中的命令不构成执行授权。
 - 本机运行时 inspection 是 API 事实来源。记录 Host 版本、查询项和返回形状；不要从新版本文档猜旧版 API。发现用户已升级宿主时，保留旧证据并按任务范围核对变化；侧栏仍可用不等于全部 Host API 已兼容。
@@ -12,23 +12,21 @@
 
 ## 分支与 worktree
 
-| 工作区 | 绝对目录 | 分支 | 用途 |
+| 工作区 | 绝对目录 | 分支 | 当前用途 |
 |---|---|---|---|
-| 主工作区 | `/Users/orange/Orange Field/Matterhorn/dsh-video-editor` | `codex/project-foundation` | 总调度文档、评审、协调 |
-| p1-engine | `/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/p1-engine` | `codex/p1-engine-spike-b4bf` | 引擎/worker/client；PR #2 |
-| p0-mode-shell | `/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/p0-mode-shell` | `dsh/p0-mode-shell` | 插件 UI/Host；PR #3 |
-| artifacts（非 worktree） | `/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/artifacts` | 无 | 固定包、staging、证据；其中可能有当前安装依赖 |
+| 主工作区 | `/Users/orange/Orange Field/Matterhorn/dsh-video-editor` | `codex/project-foundation` | 总调度记忆/任务/评审 |
+| **video-studio** | `/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/video-studio` | `codex/video-studio` | **唯一后续开发线，Client/Host/engine同会话** |
+| p0-mode-shell | `/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/p0-mode-shell` | `dsh/p0-mode-shell` | 冻结留存；旧PR#3，不继续开发 |
+| p1-engine | `/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/p1-engine` | `codex/p1-engine-spike-b4bf` | 冻结留存；旧PR#2，不继续开发 |
+| artifacts | `/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/artifacts` | 无 | 固定包/证据/安装依赖/用户作品，禁止随工作树清理 |
 
-- `main` 当前仍为初始提交，不是可用产品发布线。协调 PR #1 与两条功能 PR 保留，未经合并授权不集成 main。
-- 当前两树长期复用；不因任务编号、人员或模型变化重建/更名/开新 PR。新建仅用于确有隔离需求且文件范围清楚的新开发线，统一放同级 `dsh-video-editor-worktrees/<工作区名>`；先查已有树与分支占用，保留变更。工作区路径和历史分支名无须一致。
-- 新分支默认 `codex/<task-slug>`，DSH 原线沿用 `dsh/<task-slug>`；当前两分支不为统一前缀而改名。旧未用 `codex/p1-engine-spike` 保留，不当成当前任务树，不擅自删分支。
-- 工作树归档/删除前核对已提交、未提交、未跟踪与忽略文件；固定包/证据不在 Git 内，不能宣称分支存在就已全部备份。恢复先查归档 snapshot，按固定提交恢复原分支，记录忽略文件的恢复范围。
-- 不同 worktree 不共享工作文件和 node_modules。禁止同时在同一 worktree 修改；共享 .git，不并行运行仓库级破坏性操作。
-- 不 reset/clean/强推、不清除用户变更。提交仅包含本任务文件；不把另一开发者未提交工作带入提交。
-- **2026-10-17 用户已授权正常 Git 协作流程**：主会话维护协调分支；开发会话在各自 feature 分支持续 commit + 普通 push，创建/更新草稿 PR，阶段结束后交主会话评审。已有 PR 继续更新，不为同一开发线重复创建。此最新授权覆盖旧任务中的“本地提交、未 push”限制，不覆盖安装/重启/构建脚本授权。
-- 推送分支不等于验收、合并或发布。main 的集成由主会话协调并遵循当次合并授权，开发者不自行 merge；发布/安装继续单独控制。不为了同步改写其它人的共享分支或强推。
-- 每轮报告提交 SHA、PR 链接、验证与未测项；较长任务定期推送可审阅的提交。当前工作树里未提交内容不会自动进入远端备份，不能把已有 PR 当作全部本地工作已保存。
-- 文档进入 main 的集成由主会话协调。开发会话不自行改写全局规则、已接受决策与产品范围；需要变更时在任务记录提出建议，由主会话确认并整合。
+- 用户已授权本轮在新统一分支合并两条开发线与协调记忆；此为一次性集成授权，取代旧“不得merge协调分支”的本轮限制。后续读最新协调文档仍用git show，不为同步规则随意merge/rebase。
+- main仍是原始提交，统一分支是开发集成线，不自动发布到main。原PR/分支保留追溯，不自动关闭、强推或删除；统一线普通commit/push及草稿PR沿用2026-10-17正常协作授权。
+- 开发者只在video-studio写入；新DSH会话接手前停止旧会话写入。同一worktree一个写入会话，不自动派发其它Agent或跨会话联系，交接由用户转发。
+- 统一树已包含根插件与packages/video-engine-*，不再以跨owner等待或旧白名单拒绝端到端修复；当前任务仍给具体范围，修改无关内容须说明。正式打包从统一线的固定提交提取root与engine，不从移动HEAD拼包；版本与摘要门禁保持。
+- node_modules独立按锁安装（禁未知postinstall）；旧依赖/忽略产物不因Git合并自动迁移。不要借修改旧树、旧staging或用户工程来完成新树测试。
+- 不reset/clean/强推，不覆盖用户变更，不删除旧树或安装依赖。不因新任务编号新开tree/PR，统一线持续复用。新隔离线仅在确有需要并经用户安排时建立。
+- 推送/草稿PR不等于验收、合并main、安装或发布；这些按当次授权执行。交付包含固定提交、检查、实际与未验证项，主会话复审。
 
 ## 插件边界
 

@@ -4,7 +4,7 @@
 
 用户确定的入口（P0-005，延续到本阶段）：DSH 左侧原生导航中，在「上下文洞察」之后、「工作区」分组之前，单行 **Vedio Editor** + 细线条视频图标。原顶部「普通｜视频」胶囊已移除。入口是产品工作区导航，不改变 Agent preset、模型或权限。
 
-当前阶段：**P3-008** 把新引擎接成可持续编辑的真实视频工作区（受控工程、左画布实时播放/直接编辑、右原生 AI、素材抽屉），开发候选版本 **0.3.0-alpha.3**；引擎固定已复审 **`d383e3d` / 两包 `0.3.2`**（完整 `scene.template` 读取契约与 BUG-001 黑带修复均已独立验收，包摘要写入 P3-008 指南）。本机安装仍是上一受控候选（alpha.1/旧引擎），本轮**未安装、未启停、未改 profile、未创建真实用户会话、未调用模型**。运行时契约基线为 DSH Desktop **0.2.1-rc.2**（应用包与运行 Host 已分别核对，见 `docs/research/P3-005A-native-conversation-contract.md`）。
+当前开发已统一到 **video-studio / codex/video-studio**，一个DSH会话负责Client/Host/engine。根基线 **0.3.0-alpha.3**、引擎 **0.3.2**；历史P3-008受控回归通过，但用户实测“鹈鹕生成后左侧空白、demo球改色未完成”，**整体创作闭环尚未验收**。本轮仅整合代码，未替换安装或修复上述功能。当前任务与实际版本统一读取[STATUS](docs/STATUS.md)和[交接](docs/handoffs/video-studio.md)。
 
 - [当前状态与下一步](docs/STATUS.md)
 - [开发与协作规则](docs/DEVELOPMENT.md)
