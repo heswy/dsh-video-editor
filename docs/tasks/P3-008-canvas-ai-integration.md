@@ -125,3 +125,53 @@
 - 引擎 `scene.template` 只覆盖受控 `product-launch-v1`；legacy demo 仍无 layout/style/Scene 能力。视频/音频/SVG 仍拒绝。
 - iframe/CSP/精确路由是资源隔离，不是 OS 沙箱；任意 HTML/JS 不支持。
 - 当前安装 alpha.1/旧引擎与全部旧 staging/包未动；本轮未 merge、未改 p1/全局协调文档。
+
+---
+
+## 执行记录（2026-10-18 第二轮复审 R1/R5 补修轮，p0-mode-shell / PR #3）
+
+**结论：仅集中补修 [review-02](../reviews/P3-008-review-02.md) 要求的 R1-follow-up（长模板上限对齐）与 R5-follow-up（不确定写入后的不可变请求重试），R2/R3/R4/parent 等已通过项全部保留。继续固定已复审引擎 `d383e3d` / client·worker `0.3.2`，新提交目录出包、新 staging 一次交回；未安装、未启停/重启、未发真实模型请求、未 merge、未改 p1 树，旧候选/证据/当前 alpha.1 安装未动。**
+
+### 固定源码与候选
+
+| 项 | 值 |
+|---|---|
+| 功能提交 | `c2a1e2b`（Host 长模板上限）；`550516d`（Client 不可变写入尝试）；`9d74f46`（chain/静态门禁）；`d4f3f73`（harness mechanics）；`7d60312`（T4C/chain revision 修正） |
+| 交付头 | `7d60312`（+ 本轮文档提交） |
+| 固定引擎 | `d383e3d53a9401285519ee578d993081c3cb4b51`，client·worker `0.3.2`（与 P3-009 复审包摘要一致，本轮未换） |
+| 固定包 | `artifacts/p2-b/7d60312/dsh-video-0.3.0-alpha.3.tgz`：**104,913 B / 23 files / SHA-256 `7bccb425a926b335d735cc9c57c4288636769ccba73161a063626454c2cd46ab`**；23/23 与提交 `7d60312` 逐字节一致（`package-check.json` SHA-256 `fce3edfd…22d8c71`） |
+| 新 staging | `artifacts/p2-b/staging-d383e3d-7d60312`；INTEGRITY **`b4fadefa…30d0f69a`**、config `b9f90c5c…f7fab361`；root `7d60312` / engine `d383e3d` / bundle `0.3.0-alpha.3` / client+worker `0.3.2` / rootDirty=false；bundle22/client16/worker35 摘要通过，esbuild 可用 |
+
+### R1-follow-up 实现（长模板契约对齐）
+
+- **Client** `canvasCopySceneTemplate` 与 **Host** `sceneTemplate` 的文本上限统一到冻结 0.3.2/typed text 语义：UTF-16 length，`title` 1..2048，`subtitle`/`badge` 0..2048；不截断合法文本，2049 超界拒绝且 Host 在 worker 前返回 `E_PARAMS`；duration/颜色/资产路径/未知键/full-template 等其它校验不变。`host/tool.js` 的 template JSON schema 保持 type-only（Host 是权威校验器；未加可选 `maxLength` 以免形成第二份契约）。
+- **回归**：Client 覆盖 201/300/301/49 旧上限穿越、2048 边界保留、2049 逐字段拒绝、空 title 拒绝、空 subtitle/badge 合法、UTF-16 astral 语义（1024 emoji=2048 units 接受、1025=2050 拒绝）；Host 覆盖三种方法（scene.update/scene.create/project.revise）的 2048 接受/2049 拒绝、多字节、未截断字符串逐字节到达 worker。
+- **真实 Host→worker 链**：typed edit 写入 300 字 title、400 字 subtitle、60 字 badge 后 `inspect.template` 完整往返；随后仅改 color、换 shot、真实 Tool `project.revise`（标题改为 AI 文案）均保留长 subtitle/badge、shot 与人工 layout/style；2049 字模板逐字段被 `E_PARAMS` 拒绝且 project revision 不变。
+
+### R5-follow-up 实现（不可变写入尝试）
+
+- 编辑器状态新增 `attempt: null | {operationId, expectedRevision, ops, value}`；首次显式提交时冻结一次请求（先存后发）。尝试 null：新建 attempt 发送；可恢复错误（E_REVISION_CONFLICT/E_OPERATION_REUSED）→ 清 attempt + 显式 refresh 两阶段；其它失败 → 保留冻结 attempt 与草稿。
+- 草稿未改：显式重试**原样重发**冻结请求（同 operationId/expectedRevision/ops），不读取最新 revision 或变化草稿；若原写已落盘，worker 缓存按同签名返回成功 → 只应用一次并关闭编辑器。
+- 草稿已改：本次显式提交先**结算旧 attempt**（重发冻结请求）；成功则用结算结果 revision + **新 operationId** + 新文案发送；结算冲突（无缓存 ⇒ 旧写未落盘）→ 显式 refresh 路径；结算 uncertain/E_PERSIST → 继续保留旧 attempt，不换 id。
+- 任何 E_OPERATION_REUSED 都进入可恢复 refresh 路径，不再是死路；无需 Esc/重开编辑器。Esc 仍零写，无自动重放/静默覆盖。
+
+### 验证
+
+| 项 | 结果 | 证据 |
+|---|---|---|
+| `npm run check` | **48 静态 + 80 Client + 46 Host = 174/174**（round-1 为 167；+5 Client、+2 Host、静态门禁更新） | 本地实跑，HEAD `7d60312` |
+| 版本门禁 | **10/10** | `node scripts/test-stage-version.mjs` |
+| 旧 demo Host→engine 链 | ok=true | `artifacts/p2-b/evidence/engine-run-2026-10-18T07-36-10-512Z.json`，SHA `8d968506…3e49746` |
+| 受控新工程全链（长模板） | ok=true | `canvas-chain-2026-10-18T07-36-40-021Z.json`，SHA `1f5d37f8…4bc6c6a`：长文案 300/400/60 往返、2049 逐字段 E_PARAMS、仅改 color/换 shot/Tool revise 后长字段+人工 layout/style/shot 保留；跨工程预览拒绝/本工程允许、dispose routes=0、close/reopen revision `bcc195cf…` 不变；frame 像素 255,212,0、MP4 328,275 B |
+| 真浏览器快照 runtime | ok=true | `canvas-browser-2026-10-18T07-36-41-418Z.json`，SHA `832d382a…86975` |
+| 真实 CanvasWorkspace（固定 staging） | **13/13 用例、249/249 断言、ok=true** | `staging-d383e3d-7d60312/evidence/canvas-workspace-2026-10-18T07-36-42-636Z.json`，SHA `66c1c8c5…4a1ec`；staged client.js SHA `ec2ff3ff…68a2c` 与 INTEGRITY 一致；原 10 用例仍 175/175；T4A 20/20、T4B 24/24、T4C 30/30；外部网络 0、非预期 console 0、page error 0、teardown ok、staging 只读审计 75/75 |
+| 真实帧/MP4 完整画面 | ok=true | `artifacts/p2-b/evidence/p3-008-r5/render-check.json`，SHA `b3922dc7…92ca2a`：frame PNG 25,952 B / `f36d6201…423e43884`、像素 (8,8)=RGB 255,212,0；MP4 **328,275 B / SHA `3f464ba1…0c5e389`**、H.264 1280×720/30fps/450 帧/15s；1.5/7.5/13.5s 底部 86 行 darkRatio=0 且有可见内容 |
+
+**R5 真实浏览器关键数据（T4）**：T4A 首写经真实 Host 落盘为 revision B 后响应被丢弃（页面得到 `E_TRANSPORT` uncertain），显式重试发送**完全相同** body（同 operationId/expectedRevision/ops）→ 200 缓存 revision B，编辑器关闭、文案只应用一次、无新 revision、单编辑根。T4B 同场景修改草稿后提交：先发完全相同冻结 settle 请求（200 缓存 B），再用**新 operationId** + 新文案 + expectedRevision B 发送 → revision C，最终文案为新文案，无 E_OPERATION_REUSED、单编辑根。T4C 合并并发 revision 冲突：frozen settle 成功后新意图真实 409；显式 refresh（仅 inspect）后用第三个新 id/新 revision 提交成功；三个不可变尝试 id 互异。
+
+### 未测 / 边界
+
+- 未安装/启停/重启；真实 DSH 页面点击/拖拽/输入、窄窗/主题/reduced-motion 观感仍需安装验收。浏览器证据是真实 Chrome + 真实 staged Host/worker/runtime + 真实 DOM 手势的开发页组件验证，不是 DSH 宿主 React/Slot 激活或安装验收。
+- 未发真实模型请求；AI 续改仍由真实 Host Tool→worker `project.revise`（Session scope）证明。
+- 受控 `product-launch-v1` 之外（legacy demo/任意 HTML/视频/音频/SVG）不支持；iframe/CSP/精确路由不是 OS 沙箱。
+- 旧候选、旧 staging、旧证据与当前 alpha.1 安装全部保留；本轮未 merge、未改 p1/全局协调文档。

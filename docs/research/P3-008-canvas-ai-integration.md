@@ -127,3 +127,39 @@
 - 未安装/启停/重启、未在真实 DSH 页面点击；浏览器证据是真实 Chrome + 真实 staged Host/worker/runtime + 真实 DOM 手势的开发页组件验证，不是真实 DSH 激活或安装验收。
 - 未发真实模型请求；AI 续改链由真实 Host Tool→worker project.revise（Session scope）验证，不冒充模型驱动 UI 闭环。
 - 受控 `product-launch-v1` 之外（legacy demo/任意 HTML/视频/音频/SVG）不支持；iframe/CSP/精确路由不是 OS 沙箱。
+
+## 9. 第二轮复审 R1-follow-up / R5-follow-up 补修（2026-10-18，固定引擎不变 d383e3d/0.3.2）
+
+本节记录 [P3-008 第二轮复审](../reviews/P3-008-review-02.md) 两项补修的最终实现、固定候选与证据；结论与交付清单以 [任务执行记录](../tasks/P3-008-canvas-ai-integration.md) 为准。R2 动画基座/letterbox、R3 归属、R4 准入排空、parent 消息等已通过项保持原实现与回归，不重做调查/黑带定位；未安装、未重启、未发真实模型请求、未 merge、未改 p1。
+
+### 9.1 固定基线（未换引擎）
+
+- 仍固定已复审 `d383e3d53a9401285519ee578d993081c3cb4b51` / client·worker `0.3.2`；包摘要与 P3-009 复审一致。
+- 新 staging `artifacts/p2-b/staging-d383e3d-7d60312`（root `7d60312`、INTEGRITY `b4fadefa…30d0f69a`、rootDirty=false、bundle22/client16/worker35）与固定包 `artifacts/p2-b/7d60312/dsh-video-0.3.0-alpha.3.tgz`（104,913 B / 23 files / SHA-256 `7bccb425…2cd46ab`，23/23 与提交逐字节一致）。
+- 修复提交：`c2a1e2b`（Host 模板文本上限）、`550516d`（Client 不可变写入尝试 + Client 模板上限）、`9d74f46`（chain/静态门禁）、`d4f3f73`/`7d60312`（真实浏览器 T4 用例与 runner）。
+
+### 9.2 R1-follow-up：长模板上限对齐
+
+- 缺陷：Client `canvasCopySceneTemplate` 与 Host `sceneTemplate` 仍用旧投影上限（title 200、subtitle 300、badge 48），而冻结 0.3.2 与 typed text 编辑允许 title/subtitle/badge 各 2048；用户在画布/AI 写入长文案后无法再换 background/shot 或用完整模板 Tool revise。
+- 实现：两处统一为 UTF-16 length（与 worker `validateSceneSpec` 的 `value.length` 一致）：title 1..2048；subtitle/badge 0..2048（空串合法）。保留 duration 0.5..60、color/accent 正则、logo/shot 资产路径、未知键拒绝与 full-template 要求；不截断；2049 在 Host 侧 `E_PARAMS` 于 worker 前拒绝。`host/tool.js` template JSON schema 保持 type-only（Host 为权威校验器，避免第二份契约）。
+- 回归：Client smoke 覆盖旧上限穿越（201/300/301/49）、2048 边界保留、2049 拒绝、空 title 拒绝、空可选字段、UTF-16 astral 语义；Host check 覆盖 scene.update/scene.create/project.revise 三方法的接受/拒绝边界与“未截断字符串逐字节到 worker”。真实 Host→worker 链写入 300/400/60 长文案后 `inspect.template` 完整往返，仅改 color/换 shot/Tool revise 均保留长 subtitle/badge/shot 与人工 layout/style；2049 模板逐字段 `E_PARAMS` 且 revision 不变。
+
+### 9.3 R5-follow-up：不可变写入尝试
+
+- 缺陷：operationId 以编辑器生命周期为单位，而 worker 幂等键是完整请求签名（operationId+expectedRevision+ops）。真实写已落盘但响应丢失后，用户修改保留草稿再提交会复用旧 id → 必然 `E_OPERATION_REUSED`，且可能把变化草稿与陈旧 revision 混在一起；仅靠“保留草稿”不能恢复。
+- 实现：编辑器新增冻结 `attempt {operationId, expectedRevision, ops, value}`，首次显式提交时先冻结后发送。① 草稿未改：显式重试原样重发冻结请求，不读取最新 revision/草稿；若原写已落盘，worker 在 revision 检查前按同签名返回缓存成功 → 只应用一次并关闭。② 草稿已改：先重发旧冻结请求结算旧尝试，成功后用结算结果 revision + 新 operationId + 新文案发送；结算冲突（无缓存 ⇒ 旧写未落盘）走既有显式 refresh 两阶段；结算 uncertain/E_PERSIST 保留旧 attempt，不换 id。③ 任何 E_OPERATION_REUSED 都进入可恢复 refresh 路径，不再死路；Esc 仍零写；不自动重放/静默覆盖，无需 Esc/重开编辑器脱困。
+- 回归：smoke 新增 5 条（写已落盘+丢确认的未改草稿原样重试、改草稿先结算再新 id、settle 也丢确认、冲突 refresh 后新 id、E_OPERATION_REUSED 可恢复）且原 E_PERSIST/network/Esc/成功/冲突两阶段保持。真实浏览器新增 T4A/T4B/T4C：首写经真实 Host 落盘后丢弃响应（页面得到 uncertain），未改草稿精确重试同 body 得到缓存成功、单编辑根且无新 revision；改草稿先同 body settle 再用新 operationId/settled revision 提交新文案；并发 revision 下真实 409 后显式 refresh 再以第三个新 id 提交。证据见 `staging-d383e3d-7d60312/evidence/canvas-workspace-2026-10-18T07-36-42-636Z.json`（13/13 用例、249/249 断言、外部网络 0、非预期 console 0、teardown ok、staging 不可变源文件 75/75 未变）。
+
+### 9.4 验证摘要（固定 staging d383e3d-7d60312）
+
+- `npm run check`：**48 静态 + 80 Client smoke + 46 Host = 174/174**；版本门禁 10/10。
+- 真实链：`engine-run-…07-36-10-512Z.json`（SHA `8d968506…`）ok；`canvas-chain-…07-36-40-021Z.json`（SHA `1f5d37f8…`）ok，含长模板往返/2049 拒绝、仅改 color/换 shot/Tool revise 保留、R3 归属、R4 dispose、frame 像素 255,212,0；`canvas-browser-…07-36-41-418Z.json`（SHA `832d382a…`）ok。
+- 真实 CanvasWorkspace：13/13 用例、249/249 断言、ok=true（原 10 用例 175/175 保持）；staged client.js SHA `ec2ff3ff…` 与 INTEGRITY 一致；T4A/T4B/T4C 关键 operationId/revision 序列见任务记录。
+- MP4：328,275 B / SHA `3f464ba1…`，H.264 1280×720/30fps/450 帧/15s；1.5/7.5/13.5s 底部 86 行非黑；frame PNG 像素 255,212,0；`artifacts/p2-b/evidence/p3-008-r5/render-check.json`（SHA `b3922dc7…`）。
+
+### 9.5 未测 / 边界
+
+- 未安装/启停/重启、未在真实 DSH 页面点击；浏览器证据是真实 Chrome + 真实 staged Host/worker/runtime + 真实 DOM 手势的开发页组件验证，不是 DSH 宿主 React/Slot 激活或安装验收。
+- 未发真实模型请求；AI 续改由真实 Host Tool→worker project.revise（Session scope）证明。
+- 仅受控 `product-launch-v1`；legacy demo、任意 HTML/视频/音频/SVG 不支持；iframe/CSP/精确路由不是 OS 沙箱。
+- 当前安装 alpha.1、旧候选/旧 staging/旧证据保留；未 merge、未改 p1/全局协调文档。
