@@ -1,21 +1,14 @@
 # p0-mode-shell：当前接手
 
-更新：2026-10-18。最新交付head8b56304；C功能3310280/alpha.2，008功能8ab5f1a/alpha.3。当前安装仍alpha.1，不覆盖。沿用本树/分支/PR#3，fetch后读协调STATUS/DEVELOPMENT，不merge协调分支。
+更新：2026-10-18。最新交付head **c1e7aae** / 功能 **5f2df96** / 根alpha.3；最终引擎固定 **d383e3d / 两包0.3.2**。当前安装仍alpha.1，不覆盖。沿用本树/分支/PR#3，fetch读协调STATUS/DEVELOPMENT，不merge协调分支。
 
-## 当前动作：C/008集中修复R1–R5
+## 当前动作：仅集中补修R1/R5两个后续问题
 
-读取[P3-008联合复审](../reviews/P3-008-review-01.md)，按原C/008白名单一次修复：
+读取[P3-008第二轮复审](../reviews/P3-008-review-02.md)。总调度独立167/167+版本10/10，实际CanvasWorkspace浏览器10/10、175/175，包/staging摘要通过；旧跨工程读、慢上传停用、迟到快照已复测修复。R2/R3/R4及parent主要回归保留通过结论，不重做调查。
 
-1. Scene局部改色/换shot必须保留完整其它字段；当前只传title/duration等会真实删除副标题/Logo/shot。
-2. 拖动/缩放从静态基座与动画逆映射计算patch，不把当前rect直接存HTML；移动不固定原auto尺寸。补真正CanvasWorkspace的浏览器手势回归。
-3. 文件预览验证所读文件属于当前工程/Session，不只验证Session绑定及共享根。
-4. 所有新Host操作/上传参与准入排空；停用后不再发布路由/文件/receipt；上传校验可信工程、过期/失败/停用清临时文件。
-5. 原位保存失败/冲突保留草稿和目标，uncertain不自动重放。
+1. **R1-follow-up**：Client canvasCopySceneTemplate、Host sceneTemplate仍旧200/300/48限制。对齐冻结0.3.2的title/subtitle/badge各2048；不截断、不取消上限、不改p1。真实长文案后换color/shot与Tool revise要能保留其它字段，覆盖边界。
+2. **R5-follow-up**：operationId绑定一次不可变请求，不是整个编辑器生命周期。真实worker已写但响应丢失后，用户改草稿再用旧id提交会E_OPERATION_REUSED；同id请求的expectedRevision也必须一致。原样显式重试保持原payload；新意图在旧尝试处理后用新id，不自动重放/覆盖。增加真实写后丢确认的worker与实际组件浏览器回归，保留E_PERSIST/Esc/冲突回归。
 
-独立136/136+版本10/10、候选/摘要一致，但以上场景已复现，两个候选均未验收，不安装。探针在同级artifacts/reviews/2026-10-18/P3-008/，原始探针不改，补修复后断言与正式回归。parent消息形状/序号/销毁pending也按复审说明在实际前端回归中补齐，不能只用runtime脚本冒充UI测试。
+继续固定d383e3d53a9401285519ee578d993081c3cb4b51，两包摘要见P3-008指南及P3-009复审。不跟随移动HEAD、不merge/改p1；只修最新alpha.3，根版本可保留，新提交目录与新staging打包，保留所有旧候选/证据。复跑受影响检查与真实Host/worker链，新增浏览器用例后一次push PR#3交回。
 
-p1的[P3-009](../tasks/P3-009-scene-template-read-contract.md)已通过[独立复审](../reviews/P3-009-review-01.md)。最终引擎明确冻结 **d383e3d53a9401285519ee578d993081c3cb4b51 / client与worker 0.3.2**，采用p1树artifacts/engine/d383e3d/两包：client SHA-256 `0830ab717ac2ef2572faf95aacace0778d5dc379cdfcc4546b48e6fa851311a5`；worker `e4e161418c252e6973760ca20d8aff890eabcf26a0bce5e93e0bfb6bef3716c3`。不再等待引擎提交，不从移动HEAD取包、不merge p1。新scene.template是完整合法scene.update输入；复制当次inspect模板后仅改目标字段，expectedRevision一致；缺template明确拒绝，不读HTML/本地默认猜场景。此验收只解决读取前提，不自动关闭p0 R1。保留黑带修复，新staging仍需完整MP4画面复核。
-
-只在最新alpha.3分支集中解决C和008，不必回旧分支重打一轮alpha.2。保留所有旧候选/staging，最新功能新提交目录打包；未安装的alpha.3可保留根版本。交新staging/完整摘要、真实Host Tool→worker的AI等价续改链和实际CanvasWorkspace浏览器交互证据，一次push PR#3交回。
-
-不安装/启停/重启、不新增真实模型请求、不改用户工程/个人会话、不merge、不联系或修改p1树。不用全局键盘/坐标/个人剪贴板；不对已供用户创作的demo运行prepare-fixture。无安全定向通道则人工，不重复事故。
+不安装/启停/重启、不新增真实模型请求、不改用户工程/个人会话、不merge、不跨会话联络。禁止全局键盘/坐标/个人剪贴板；不对当前供用户创作的demo运行prepare-fixture。候选通过后再安排具体安装验收。
