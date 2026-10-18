@@ -138,3 +138,51 @@ node scripts/stage-dev.mjs --engine-commit 54f4671 \
 | 固定包 | `artifacts/p2-b/26bd4c1/dsh-video-0.3.0-alpha.1.tgz` |
 | staging/INTEGRITY | `artifacts/p2-b/staging-54f4671-26bd4c1/INTEGRITY.json` |
 | 真实链证据 | `artifacts/p2-b/evidence/engine-run-2026-10-18T03-15-52-552Z.json` |
+
+## 9. 复审 R1–R4 修复交付（2026-10-18 复审后）
+
+依据 [P3-006-A 复审](../reviews/P3-006A-review-01.md)。修复提交 **`b38268647bd926c205efcb1067a4eaaeecf93cee`**（`fix(session): publish mappings after durable write and drain session lifecycle`，父 `eb8d2d8`），沿用本树/PR #3、P3-006-A 白名单与固定引擎 `54f4671/0.1.1`；根版本保持 `0.3.0-alpha.1`。改动 4 文件：`host/session-state.js`、`host/sessions.js`、`host/bridge.js`、`scripts/check-host.mjs`；未改 client/UI、engine、全局文档。
+
+### 9.1 R1 写盘失败不再发布内存映射/工具权限
+
+- `SessionStateStore.queueWrite` 改为**候选状态隔离**：从已提交 `this.state` 深拷贝 candidate，`mutate(candidate)` 后先 `write(candidate)`（临时文件 + rename），**rename 成功后才 `this.state = candidate`**。失败时不改变权威内存，读者在写入期间仍看到旧状态；`write()` 失败会删除临时文件。
+- 回归：目标路径为目录制造真实 `EISDIR` → `addSession` 失败、`projectForSession` 为 `null`、project 列表不变、无 `.tmp-*` 残留；移除故障后排队写入可成功；受控延迟 `write` 时读取者看不到 pending candidate，两个排队写正确组合。
+
+### 9.2 R2 Session 准入/排空与停用顺序
+
+- `bridge.invoke` 的 `session.*` 分支不再提前 return：与 worker 请求一样加入同一 `inFlight`，`dispose` 的 `Promise.allSettled([...inFlight])` 会等待已接受的 create/list/select 收束；closing 后新请求仍 `E_WORKER_DISPOSED`。
+- `SessionService` 增加 `closing/disposed` 与幂等 `disposePromise`；`requireActive()` 拒绝关闭后的新工作；`dispose()` 先 `await Promise.allSettled([...creating.values()])`（create 任务包含 controller.create、映射原子写与 rename），**再** dispose store，**最后**释放 prompt context。`ensurePromptContext` 在 closing/disposed 后不再注册。
+- 回归：controller.create 卡住时 `inFlight.size===1`、dispose 不提前完成、closing 后新请求拒绝、放行后 create 成功且映射已持久化、重复 dispose 同 promise；rename 延迟时 dispose 等待、映射在 context 清理前持久化、晚到 create 不再注册第二个 context。
+
+### 9.3 R3 已知映射错误在宿主创建 Session 之前拒绝
+
+- `create` 在调用 controller 前先 `await store.project(projectId)`（触发 `ready` 与完整校验），并检查 `MAX_SESSIONS_PER_PROJECT`；损坏/未知版本/工程归属/数量上限等已知不可恢复错误直接失败，**不再吞掉 ordinal 读取错误**。预检通过后磁盘才故障的情况仍诚实返回 `E_SESSION_STATE_*`，不声称回滚宿主已建 Session。
+- 回归：坏 JSON、未知 version、200 会话上限三种情况下 `controller.create` 调用数均为 **0**，坏文件字节不变，错误码分别为 `E_SESSION_STATE_CORRUPT` / `E_SESSION_STATE_VERSION` / `E_SESSION_STATE_LIMIT`。
+
+### 9.4 R4 requestId 去重按工程隔离
+
+- `created` 缓存键改为 `projectId + "\\u0000" + requestId`；返回前校验缓存 value 的 `projectId`，异构工程不会拿到另一工程结果。同工程重试仍缓存复用，同工程并发仍单飞。
+- 回归：允许工程 `a/b` 时同一 requestId 分别创建 → controller 调用 2 次、返回各自工程的不同 Session；同工程重试不新增 controller 调用；同工程并发 create 仍合并为一次。
+
+### 9.5 自动检查与故障复现（修复提交上）
+
+| 项 | 结果 |
+|---|---|
+| `npm run check` | **123/123**：静态 40/40、Client smoke 52/52、Host 契约 **31/31**（原 25 全保留 + R1×2、R2×2、R3×1、R4×1 故障回归） |
+| 版本门禁 | `test-stage-version.mjs` **10/10**（0.3.0-alpha.1） |
+| 独立故障探针（复刻复审场景、断言修复后行为） | `/tmp` 运行通过：R1 ghost=null/无临时残留/later write committed；R2 `inFlightWhileCreating=1`、accepted create 成功且持久化；R3 corrupt/unknown-version/cap 的 native create 均为 **0**；R4 异工程同 key 返回 b 自己的 session、controllerCalls=2。证据保存于 `artifacts/p2-b/evidence/p3-006a-fix-repro-2026-10-18T11-29-09.json`（SHA-256 `e9ed7f53f9593354f8496ef675e19a6ee102658add3ed77559099dd82166be20`）与同名 `.mjs` |
+
+### 9.6 新固定包与新 staging（不覆盖旧候选/安装）
+
+| 项 | 值 |
+|---|---|
+| 固定包 | `artifacts/p2-b/b382686/dsh-video-0.3.0-alpha.1.tgz`，**56,648 B / 19 files / SHA-256 `61e5743082652bfbd0da01d0a5bbacb6e831b84b72edfa781850cabb969f4a7a`**；解包 19/19 与 `b382686` 逐字节一致 |
+| 新 staging | `artifacts/p2-b/staging-54f4671-b382686`，仓库原脚本 + `--bundle-version 0.3.0-alpha.1` 从干净 `b382686` 生成 |
+| INTEGRITY | SHA-256 **`167f4c419dfc9b2da2d33141845fdd433fca3bff5824160ca4c35a0a3f367ab8`**；rootCommit `b382686…`、rootDirty=false、engine `54f4671…`、bundle/client/worker `0.3.0-alpha.1/0.1.1/0.1.1`、gate expected=manifest=`0.3.0-alpha.1` |
+| config / patch | config SHA `a6b1ca4bfcd245d5ebce0bab255d4072299f2852627cf5b89f7618b54c5fd442`、staged patch SHA `d8c996619be48a124815d516705a4fdda4eb5bdb9e9d668e59b4dc73ab0677c3`；bundle 18/client 12/worker 15 摘要一致；未改 runtime 文件（含两个新 host 文件）与提交一致；engine 27 文件与 `54f4671` 一致；session 配置与 `session-cwd` 目录存在 |
+| 真实链 | Host 变更后复跑：`artifacts/p2-b/evidence/engine-run-2026-10-18T03-30-02-337Z.json`（18,339 B / SHA-256 `b7251329ade019174e9171189b13826bfa178a3f0afc4b3881259602f80768a2`）；ok=true、rootCommit `b382686…`、worktree dirty=false、staged Host sha `c1538aa6…`、integrityVerified=true；PNG 279,463 B/`875b48c6…`、MP4 135,855 B/`fae2687e…`；cancel `cancelled`+cleaned、close/disposed；跑后 demo 恢复（`index.html`=`8080d8b0…`、无 `· Host`）、INTEGRITY 未变 |
+| 旧候选 | `26bd4c1` 的包/staging、安装用旧 staging 与旧 0.2.x 候选均保留未动 |
+
+### 9.7 仍未测
+
+与 §7 相同：未安装/启停/重启、未改 profile、未创建真实用户会话/发模型请求；真实 kit/Provider/Factory 渲染、原生模型/审批/附件/历史、`sessionController.create` 真机直调、HMR/停用/重连、侧栏可见性仍待安装授权验收。本轮故障回归使用受控 controller 与临时目录，不冒充真机；原复审的独立复现脚本断言的是修复前行为，修复验证使用其同场景、断言修复后行为的副本（证据见 9.5）。

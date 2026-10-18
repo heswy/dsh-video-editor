@@ -44,3 +44,16 @@
 - **新 staging**：`artifacts/p2-b/staging-54f4671-26bd4c1`，仓库原脚本 + `--bundle-version 0.3.0-alpha.1` 从干净 `26bd4c1` 生成；INTEGRITY SHA `c282cb11…4ee3af`、config `41e9d5e3…b720fb`、patch `3bc7333d…b827815`；bundle 18/client 12/worker 15 摘要一致，17 个未改 runtime 文件与提交一致，engine 27 文件与 `54f4671` 一致；staging 内含 `sessionStatePath`/`sessionCwd` 与 `session-cwd` 目录；旧 0.2.x 安装/staging 未动。
 - **真实链**：新 staging 上 `test-host-engine.mjs` exit 0，证据 `artifacts/p2-b/evidence/engine-run-2026-10-18T03-15-52-552Z.json`（18,313 B / SHA `ad675cbe…faacac`）；ok=true、hostModuleSha `5a19e216…`、integrityVerified；PNG 279,463 B/`875b48c6…`、MP4 135,855 B/`fae2687e…`；cancel cancelled+cleaned、close/disposed；跑后 demo 恢复干净、INTEGRITY 未变。
 - **未测**：未安装/启停/重启、未改 profile、未创建真实用户会话/发模型请求；真实 kit/Provider 渲染、模型/审批/附件/历史交互、HMR/停用/重连、侧栏可见性与 `sessionController.create` 真机直调均待安装验收。审批中 Stop 隐藏为已接受宿主行为；无独立 Stop。引擎多 Scene/画布/资产导入不在本轮。
+
+## 复审 R1–R4 修复记录（p0-mode-shell）
+
+依据 [P3-006-A 复审](../reviews/P3-006A-review-01.md)，在原任务白名单内一次修复并补故障回归：
+
+- **修复提交**：`b38268647bd926c205efcb1067a4eaaeecf93cee`（`fix(session): publish mappings after durable write and drain session lifecycle`，父 `eb8d2d8`）；只改 `host/session-state.js`、`host/sessions.js`、`host/bridge.js`、`scripts/check-host.mjs`，未改 client/UI、engine、全局文档；引擎仍 `54f4671/0.1.1`，根候选保持 `0.3.0-alpha.1`。
+- **R1**：`queueWrite` 用深拷贝 candidate 修改，`write`（临时文件+rename）成功后才发布权威内存；失败不改变 committed 状态、清理临时文件；读者在 pending 期间看到旧状态。回归：EISDIR 失败/ghost=null/无残留/后续成功；延迟写读取隔离与排队组合。
+- **R2**：bridge 将 `session.*` 加入 `inFlight`，dispose 先排空已接受操作；SessionService 增加 `closing/disposed` 与幂等 dispose，先 drain `creating`（含 rename）、再 store、最后 prompt context；closing 后拒绝新请求且晚到 create 不再注册 context。回归：create 卡住时 inFlight=1 且 dispose 等待、放行后成功并持久化、重复 dispose 同 promise；rename 延迟排空、context 清理在映射持久化后、无重复注册。
+- **R3**：create 在调用 controller 前预检 `store.project` 与 200 会话上限，不再吞 ordinal 读取错误；坏 JSON/未知版本/上限三种情况下 controller.create 调用数为 0，坏文件不变；预检后磁盘故障仍诚实失败。
+- **R4**：requestId 缓存键改为 `projectId + requestId` 并校验返回工程；异工程同 key 各自创建、同工程重试缓存/并发单飞保持。回归覆盖跨工程同 key。
+- **检查**：干净修复提交上 `npm run check` **123/123**（静态 40、Client smoke 52、Host 契约 31；原 25 项全保留 +6 项故障回归），版本门禁 **10/10**。独立故障探针（复刻复审场景、断言修复后行为）通过；证据 `artifacts/p2-b/evidence/p3-006a-fix-repro-2026-10-18T11-29-09.json`（SHA-256 `e9ed7f53…66be20`）。
+- **新候选**：固定包 `artifacts/p2-b/b382686/dsh-video-0.3.0-alpha.1.tgz`，**56,648 B / 19 files / SHA-256 `61e57430…969f4a7a`**（19/19 与提交一致）；新 staging `artifacts/p2-b/staging-54f4671-b382686`，INTEGRITY SHA **`167f4c41…3f367ab8`**、config `a6b1ca4b…c5fd442`、patch `d8c99661…ab0677c3`；真实链证据 `artifacts/p2-b/evidence/engine-run-2026-10-18T03-30-02-337Z.json`（18,339 B / `b7251329…80768a2`），PNG/MP4 确定性摘要一致、cancel/close/dispose 通过、demo 干净、INTEGRITY 未变。旧 `26bd4c1` 包/staging 与安装用旧 staging 未动。
+- **未测**：同前——未安装/启停/重启、未改 profile、未创建真实用户会话/发模型请求；真实 kit/模型/审批/附件/历史、HMR/停用/重连仍待安装授权验收；故障回归使用受控 controller/临时目录，不冒充真机。
