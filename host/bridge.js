@@ -17,7 +17,7 @@ import { BridgeError, configurationError, logSummary, toPublicError } from './er
 import { allowsProject, tryNormalizeConfig } from './config.js';
 import { buildWorkerEnv } from './env.js';
 import { loadEngine } from './engine.js';
-import { TOOL_RESULT_BYTES } from './limits.js';
+import { MAX_COMPOSITION_BYTES, TOOL_RESULT_BYTES } from './limits.js';
 import { SessionService } from './sessions.js';
 import { SESSION_ID_PATTERN } from './session-state.js';
 import { readPreviewFile } from './preview.js';
@@ -40,6 +40,8 @@ export const REQUEST_METHODS = Object.freeze([
   'session.diagnose',
   'preview',
   'project.create',
+  'project.compose',
+  'project.source',
   'project.list',
   'asset.import',
   'scene.create',
@@ -70,6 +72,8 @@ const METHOD_PARAMS = Object.freeze({
   'session.diagnose': [],
   preview: ['projectId', 'sessionId', 'path'],
   'project.create': ['templateId', 'title', 'width', 'height', 'fps'],
+  'project.compose': ['projectId', 'expectedRevision', 'operationId', 'html'],
+  'project.source': ['projectId'],
   'project.list': [],
   'asset.import': ['projectId', 'expectedRevision', 'operationId', 'receiptId'],
   'scene.create': ['projectId', 'expectedRevision', 'operationId', 'sceneId', 'afterSceneId', 'template'],
@@ -148,6 +152,32 @@ function revision(value) {
 function operationId(value) {
   if (typeof value !== 'string' || OPERATION_ID.test(value) === false) {
     fail('E_PARAMS', 'Invalid operationId', 'params');
+  }
+  return value;
+}
+
+/**
+ * One complete HTML composition document submitted for an atomic publish.
+ *
+ * The Host bound is raw UTF-8 bytes because the Worker validates and stores
+ * bytes; a character-count check would let a multibyte document through here
+ * only to be rejected after the worker started. NUL bytes are rejected too, so
+ * the document is a plain text document before it ever reaches the worker.
+ */
+function compositionHtml(value) {
+  if (typeof value !== 'string' || value.length === 0) {
+    fail('E_PARAMS', 'Expected a complete HTML composition document', 'params');
+  }
+  if (value.includes('\0')) {
+    fail('E_PARAMS', 'Composition HTML must not contain NUL bytes', 'params');
+  }
+  const bytes = Buffer.byteLength(value, 'utf8');
+  if (bytes > MAX_COMPOSITION_BYTES) {
+    fail(
+      'E_PARAMS',
+      `Composition HTML is too large (${bytes} UTF-8 bytes); the limit is 48 KiB (${MAX_COMPOSITION_BYTES} bytes)`,
+      'params'
+    );
   }
   return value;
 }
@@ -307,6 +337,17 @@ export function validateParams(config, method, params) {
       ops: validateOps(params.ops),
     };
     return next;
+  }
+  if (method === 'project.compose') {
+    return {
+      projectId: allowedProject(config, params.projectId),
+      expectedRevision: revision(params.expectedRevision),
+      operationId: operationId(params.operationId),
+      html: compositionHtml(params.html),
+    };
+  }
+  if (method === 'project.source') {
+    return { projectId: allowedProject(config, params.projectId) };
   }
   if (method === 'frame') {
     const next = {
@@ -691,6 +732,36 @@ export class VideoBridge {
   listProjects() {
     const config = this.requireConfig();
     return [...config.projectIds].sort();
+  }
+
+  /**
+   * UI-only project picker payload.
+   *
+   * Every trusted project is listed with the modification time of its entry
+   * composition (`index.html`) so the client can auto-open the most recently
+   * updated managed project. Ids outside the trusted allowlist are never
+   * returned; a project whose directory or entry file cannot be stat'ed keeps
+   * updatedAt 0 instead of failing the whole list. The legacy fixture demo
+   * project is included here and filtered by the client.
+   */
+  async projectList() {
+    const directories = await this.projectDirectories();
+    const projects = [];
+    for (const projectId of this.listProjects()) {
+      const directory = directories.get(projectId);
+      let updatedAt = 0;
+      if (typeof directory === 'string') {
+        try {
+          const info = await stat(join(directory, 'index.html'));
+          updatedAt = Number.isFinite(info.mtimeMs) ? info.mtimeMs : 0;
+        } catch (_error) {
+          updatedAt = 0;
+        }
+      }
+      projects.push({ projectId, updatedAt });
+    }
+    projects.sort((left, right) => right.updatedAt - left.updatedAt || (left.projectId < right.projectId ? -1 : left.projectId > right.projectId ? 1 : 0));
+    return { projects, defaultProjectId: projects.length > 0 ? projects[0].projectId : null };
   }
 
   /** Root directory the worker writes private preview snapshots under. */
@@ -1148,7 +1219,7 @@ export class VideoBridge {
     const normalized = this.validate(method, params);
     if (method === 'project.list') {
       if (settings.source === 'tool') throw new BridgeError('E_METHOD', 'Project listing is a UI-only action', { stage: 'params' });
-      return { projects: this.listProjects().map((projectId) => ({ projectId })) };
+      return this.projectList();
     }
     if (method === 'project.create') {
       if (settings.source === 'tool') throw new BridgeError('E_METHOD', 'Project creation is a UI-only action', { stage: 'params' });
@@ -1238,7 +1309,10 @@ export class VideoBridge {
     const result = await this.callClient(method, normalized);
     if (method === 'frame' || method === 'render') {
       this.rememberJob(method, normalized, result);
-    } else if (method === 'inspect' || method === 'open') {
+    } else if (method === 'inspect' || method === 'open' || method === 'project.compose') {
+      // inspect/open and project.compose results both carry the authoritative
+      // revision for the next prompt assembly; a free-form composition project
+      // reports `scenes: []`, which is how the composition mode is detected.
       this.rememberFacts(result);
     } else if (method === 'status' || method === 'cancel') {
       const record = this.jobs.get(normalized.jobId);
@@ -1278,7 +1352,14 @@ export class VideoBridge {
     return projectId;
   }
 
-  /** Bounded, non-sensitive project facts for live prompt context. */
+  /**
+   * Bounded, non-sensitive project facts for live prompt context.
+   *
+   * inspect/open and project.compose results both carry `scenes`; a free-form
+   * composition project reports an empty scene list, which is the composition
+   * mode the prompt context turns into the project.source + project.compose
+   * edit path.
+   */
   rememberFacts(result) {
     if (result === null || typeof result !== 'object') return;
     const projectId = result.projectId;
@@ -1306,6 +1387,9 @@ export class VideoBridge {
           .slice(0, 16)
           .map((file) => file.path.slice(0, 256))
       : [];
+    // A free-form composition is a project whose worker result has an empty
+    // scene list (`scenes: []`), both for inspect and for a compose publish.
+    const mode = Array.isArray(result.scenes) ? (result.scenes.length === 0 ? 'composition' : 'scenes') : null;
     this.projectFactsById.set(projectId, {
       revision,
       width: Number.isFinite(Number(result.width)) ? Number(result.width) : null,
@@ -1314,6 +1398,7 @@ export class VideoBridge {
       targets,
       scenes,
       images,
+      mode,
     });
   }
 
@@ -1329,6 +1414,7 @@ export class VideoBridge {
       targets: facts.targets.map((target) => ({ stableId: target.stableId, capabilities: target.capabilities.slice() })),
       scenes: facts.scenes.map((scene) => ({ ...scene })),
       images: facts.images.slice(),
+      mode: facts.mode,
     };
   }
 

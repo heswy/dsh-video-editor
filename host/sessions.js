@@ -27,6 +27,13 @@ try {
 
 const PROMPT_CONTEXT_NAME = 'dsh-video:project';
 const PROMPT_CONTEXT_ORDER = 4500;
+/**
+ * Hard upper bound for one assembled project context string. The workflow,
+ * composition contract, skeleton and conflict-recovery lines always fit; only
+ * optional heavy fact lines (many scenes/targets/images) are dropped whole once
+ * the budget is reached, so required model-facing instructions are never cut.
+ */
+const PROMPT_CONTEXT_MAX_CHARS = 4000;
 const REQUEST_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const PROJECT_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const MAX_CREATE_DEDUPE = 32;
@@ -392,7 +399,16 @@ export class SessionService {
     }
   }
 
-  /** Fresh, bounded project facts for one assembly; never paths or messages. */
+  /**
+   * Fresh, bounded project facts for one assembly; never paths or messages.
+   *
+   * The workflow + composition-contract block is the model-facing product
+   * contract: it is required for the Agent to know how to create/change a video
+   * without a manual editor, how the whole document is replaced atomically, and
+   * that it must never write project files through shell/file tools. Facts lines
+   * stay exactly as before; free-form composition projects also get the
+   * project.source + project.compose edit path line.
+   */
   contextText(assembly) {
     try {
       const agent = assembly !== null && typeof assembly === 'object' ? assembly.agent : undefined;
@@ -409,28 +425,53 @@ export class SessionService {
       const facts = this.bridge && typeof this.bridge.projectFacts === 'function' ? this.bridge.projectFacts(projectId) : null;
       const lines = [
         `This conversation is bound to the video project "${projectId}".`,
-        'Use video_engine for project reads and writes; the Host checks this Session against the project mapping on every call.',
+        'Use the video_engine Tool for every project read or write; the Host checks this Session against the project mapping on every call.',
+        'To create or change the video:',
+        `1. Call video_engine {"action":"inspect","projectId":"${projectId}"} to read the current revision. Call {"action":"project.source","projectId":"${projectId}"} when you need the current full HTML; it returns that revision, so it is the reliable base for a modification.`,
+        `2. Produce the COMPLETE HTML document for the new version, then submit it once with {"action":"project.compose","projectId":"${projectId}","expectedRevision":"<current revision>","operationId":"<unique id>","html":"<!doctype html>..."}.`,
+        '3. The left preview follows the published revision automatically. Only tell the user the video is updated after project.compose returns publishedRevision; if it returns an error, fix the document and retry. Never claim success from intent alone.',
+        '4. If project.compose returns E_REVISION_CONFLICT, call project.source again, apply your change to that newer HTML, and resubmit with its revision; never retry with the stale revision or overwrite blindly.',
+        'Composition contract (the Host validates before publishing; invalid input is rejected atomically):',
+        '- one complete HTML document of 1..49152 UTF-8 bytes;',
+        '- exactly one #main element carrying data-composition-id plus numeric data-width (320..3840), data-height (180..2160), data-duration (0.1..3600);',
+        '- expose the timeline as window.__timelines = { main: <gsap timeline> }; GSAP is already available at ./assets/gsap.min.js;',
+        '- no <iframe>/<object>/<embed>/<base>/<link>/<video>/<audio>/<source>/<track>, no external http(s)/file/blob/javascript URLs; only relative assets already declared in the project (normally ./assets/gsap.min.js); draw artwork with inline SVG/HTML/CSS;',
+        '- modifications must keep everything the user did not ask to change; the whole document is replaced atomically.',
+        'Minimal skeleton to adapt (keep these markers exact):',
+        '<!doctype html><html><head><script src="./assets/gsap.min.js"></script></head><body><div id="main" data-composition-id="main" data-width="1280" data-height="720" data-fps="30" data-start="0" data-duration="5">...inline SVG/HTML artwork...<script>const tl = gsap.timeline(); /* tweens */ window.__timelines = { main: tl }; tl.seek(0);</script></div></body></html>',
+        'Never write project files (index.html, project.json, assets) with shell or file tools, and never search the plugin source repository to satisfy a normal creative request. If a request cannot be expressed under this contract, say so briefly instead of faking completion.',
       ];
+      const factsLines = [];
       if (facts !== null) {
-        lines.push(`Last known project revision: ${facts.revision}.`);
-        if (Number.isFinite(facts.duration)) lines.push(`Project duration: ${facts.duration}s.`);
-        if (Number.isFinite(facts.width) && Number.isFinite(facts.height)) lines.push(`Frame: ${facts.width}x${facts.height}.`);
+        factsLines.push(`Last known project revision: ${facts.revision}.`);
+        if (Number.isFinite(facts.duration)) factsLines.push(`Project duration: ${facts.duration}s.`);
+        if (Number.isFinite(facts.width) && Number.isFinite(facts.height)) factsLines.push(`Frame: ${facts.width}x${facts.height}.`);
         if (Array.isArray(facts.scenes) && facts.scenes.length > 0) {
           const scenes = facts.scenes.slice(0, 12).map((scene) => `${scene.sceneId} \"${scene.title}\" ${scene.start ?? '?'}-${scene.start !== null && scene.duration !== null ? Math.round((scene.start + scene.duration) * 1000) / 1000 : '?'}s`);
-          lines.push(`Scenes: ${scenes.join('; ')}.`);
+          factsLines.push(`Scenes: ${scenes.join('; ')}.`);
         }
         if (Array.isArray(facts.images) && facts.images.length > 0) {
-          lines.push(`Imported images: ${facts.images.slice(0, 16).join(', ')}.`);
+          factsLines.push(`Imported images: ${facts.images.slice(0, 16).join(', ')}.`);
         }
         if (Array.isArray(facts.targets) && facts.targets.length > 0) {
           const targets = facts.targets.slice(0, 12).map((target) => `${target.stableId} [${target.capabilities.join(',')}]`);
-          lines.push(`Known editable targets: ${targets.join('; ')}.`);
-          lines.push('Prefer typed edit ops on a stableId for text/layout/style so human layout and colors are preserved; use scene.update only for scene-level defaults.');
+          factsLines.push(`Known editable targets: ${targets.join('; ')}.`);
+          factsLines.push('Prefer typed edit ops on a stableId for text/layout/style so human layout and colors are preserved; use scene.update only for scene-level defaults.');
+        }
+        if (facts.mode === 'composition') {
+          factsLines.push('This project is a free-form composition: use project.source to read the current full document and project.compose to replace it when the user asks for a change.');
         }
       } else {
-        lines.push('Inspect the project before editing so the revision and target ids are current.');
+        factsLines.push('Inspect the project before editing so the revision and target ids are current.');
       }
-      return lines.join('\n');
+      // Whole-line budget: the fixed instructions above are never truncated;
+      // optional fact lines are appended in priority order while they fit.
+      let text = lines.join('\n');
+      for (const line of factsLines) {
+        if (text.length + 1 + line.length > PROMPT_CONTEXT_MAX_CHARS) break;
+        text += `\n${line}`;
+      }
+      return text;
     } catch (_error) {
       return '';
     }

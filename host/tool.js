@@ -24,6 +24,8 @@ const ACTIONS = Object.freeze([
   'status',
   'cancel',
   'close',
+  'project.compose',
+  'project.source',
   'scene.create',
   'scene.update',
   'scene.remove',
@@ -106,6 +108,11 @@ const TOOL_PARAMETERS = Object.freeze({
     order: { type: 'array', items: { type: 'string' }, description: 'Complete Scene order (unique ids).' },
     baseRevision: { type: 'string', description: 'AI base revision for project.revise.' },
     limit: { type: 'integer', description: 'History entry limit (1-64).' },
+    html: {
+      type: 'string',
+      description:
+        'Complete HTML composition document for project.compose (1..48 KiB UTF-8): one #main element with data-composition-id and numeric data-width/data-height/data-duration, window.__timelines.main, and no external URLs. The whole document replaces the previous version atomically.',
+    },
     template: {
       type: 'object',
       description: 'Controlled product-launch-v1 Scene template; omitted optional fields fall back to template defaults.',
@@ -137,6 +144,8 @@ const ACTION_FIELDS = Object.freeze({
   status: ['jobId'],
   cancel: ['jobId'],
   close: ['projectId'],
+  'project.compose': ['projectId', 'expectedRevision', 'operationId', 'html'],
+  'project.source': ['projectId'],
   'scene.create': ['projectId', 'expectedRevision', 'operationId', 'sceneId', 'afterSceneId', 'template'],
   'scene.update': ['projectId', 'expectedRevision', 'operationId', 'sceneId', 'template'],
   'scene.remove': ['projectId', 'expectedRevision', 'operationId', 'sceneId'],
@@ -193,7 +202,7 @@ export function createVideoTool(bridge) {
   return {
     name: TOOL_NAME,
     description:
-      'Open, inspect, edit (text/timing/layout/style), frame, render, observe, cancel, close, and operate on Scenes/history of a controlled video project configured by the Host. Accepts only configured project ids; never accepts paths or URLs.',
+      'Open, inspect, edit, publish a complete HTML composition, frame, render, observe, cancel, close, and operate on Scenes/history of a controlled video project configured by the Host. To create or change the video, read the current revision with inspect (and project.source for the current full HTML), then submit the complete document once with project.compose and the current expectedRevision; the left preview follows the published revision automatically. Accepts only configured project ids; never accepts paths or URLs. Never write project files with shell or file tools; report typed errors honestly instead of claiming success.',
     parameters: TOOL_PARAMETERS,
     output: {
       schema: { type: 'object', additionalProperties: true },
