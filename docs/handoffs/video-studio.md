@@ -1,13 +1,12 @@
 # video-studio：唯一当前交接
 
-更新：2026-10-18。**用户最新收敛：先实现对话生成→左预览→对话续改，用户手动编辑延期。** 当前唯一任务[P3-012](../tasks/P3-012-conversation-first-mvp.md)，替代P3-011。鹈鹕/球只是历史故障回归，不是功能定义。
+更新：2026-10-18。当前任务仍[P3-012 对话优先MVP](../tasks/P3-012-conversation-first-mvp.md)，左只读预览/右对话生成续改，用户手动编辑延期。
 
-唯一开发会话在video-studio / codex/video-studio负责Client/Host/engine，路径与规则读协调DEVELOPMENT；基线a2aac95（已整合原p0/p1）。不回旧树，不新分支/tree，不merge协调分支，读文档用git show。旧p0/p1会话停止写入。
+最新交付e4b8a07 / 固定运行时d84ec5d，根alpha.4/引擎0.4.0；统一草稿PR为 **#4**（已确认），旧#1/#2/#3保留。总调度[复审](../reviews/P3-012-review-01.md)：正常链230/230、原浏览器41/41、基础174+版本10、worker44/compose5/client22+skip及包/staging通过；但还需补两项失败保护：
 
-左侧先做只读可播放预览（自动显示、播放/暂停、seek），右侧保留原生对话/历史/模型。暂缓并隐藏选中、拖动、缩放手柄、原位文字、浮动属性及旧目标下拉/编辑表单。底层typed API可保留给AI，不为手动控件继续补协议或测试。
+1. **R1** compose写入新entry后recordWrite失败返回普通E_INTERNAL，真实内容已变且不带uncertain。补权威commit点/历史阶段结算，失败回退或明确已发布/历史降级，不让接口与source/inspect矛盾。增加历史阶段故障+同id恢复回归。
+2. **R2** snapshot失败时canvasBody错误分支卸载了旧iframe。真实Chrome新增断言失败iframes=0。保持最后ready作品直至新runtime ready才换，失败就近提示，显示版本真实；补snapshot/runtime失败、切换资源/旧消息与恢复回归。
 
-先给一份简短计划后直接实现统一生成/修改提交路径与按revision自动预览；首次自然语言创建、同一工程连续两轮修改、不同题材共用同一路径、失败保留最后有效作品。不要局限产品发布模板，也不临时开放任意Node/本机读写。必须有真实组件浏览器证据，模型实际发起与受控模拟分开报告。
+这是原范围补修，不加功能/手动编辑，不重做全部渲染或调查。同一树/分支/PR#4一次交回新固定提交/staging/摘要；源代码与engine一起修，不等其它会话。原正常链和零手动控件验收保持。
 
-旧alpha.3安装及鹈鹕/demo用户作品只读，不prepare-fixture/覆盖。开发及任务副本验证/普通push可执行；安装/启停/重启、真实模型请求、profile和用户工程操作、merge main未授权。禁止全局键盘/坐标/剪贴板。候选交回复审后再安排具体真机验收。
-
-统一PR创建上轮API超时，结果未确认；后续先按head=codex/video-studio查询复用，避免重复创建。原PR保留。总调度继续维护全局记忆，开发会话更新自己的任务/研究记录，交接由用户转发。
+代码路径/权限读DEVELOPMENT，开工fetch后git show协调STATUS与本交接；不要为读文档merge/rebase。更新自己的task/research，普通push允许。旧候选/安装与用户作品只读，不prepare-fixture/覆盖；未授权安装/启停/重启、真实模型请求、profile/用户工程写入、merge main。无安全定向输入时请用户短人工操作，禁止全局坐标/键盘/个人剪贴板。
