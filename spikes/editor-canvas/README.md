@@ -49,7 +49,7 @@ scripts/
   lib/host-server.mjs      试验 Host：session、快照 manifest 精确路由、逐文件
                            byte/sha256 校验、CSP+inline hash、runtime 注入、请求日志
   lib/worker-harness.mjs   真实 worker/client：受控工程、快照、edit、frame、重开/重启
-  run-canvas.mjs           真实 Chrome 证据 runner（40 项断言）
+  run-canvas.mjs           真实 Chrome 证据 runner（41 项断言）
   capability-probe.mjs     worker 写入路径 vs SDK setStyle 的能力矩阵与缺口
 test/
   contract.test.mjs        消息严格性/违规序列/迟到响应/跨实例/坐标/编辑守卫
@@ -66,6 +66,7 @@ evidence/                  提交的 JSON 证据与截图（约 0.6 MB）
 - **原位文字编辑写回**：双击打开覆盖层、Esc 不写回；Enter 经 worker `edit` + `expectedRevision` + `operationId` 提交，revision 变化并加载新快照；close/reopen 与整 worker 重启后文字仍在。旧 revision 提交返回 `E_REVISION_CONFLICT` 且不覆盖外部/AI 文本；刷新后可重试成功。项目目录只读注入 `E_PERSIST`，草稿保留、恢复权限后重试成功。
 - **位置/缩放/样式缺口**：拖动/缩放只移动 Host 编辑层，快照 DOM 不动；提交 `layout` typed op 被 worker 以 `E_PARAMS` 拒绝，revision 不变。播放中拖动被阻止。
 - **写回能力矩阵**（`capability-evidence.json`）：文字、显式 timing、Scene 级颜色/强调色/Logo/截图/时长可由现有协议持久化；元素位置/尺寸/颜色字体等样式、层级/旋转、拖动/缩放均无协议写路径。SDK `setStyle` 可在 Host 自有副本持久化，但随后 `scene.update` 的整 Scene 重生成会把元素级样式覆盖回模板值——正式实现必须把 typed layout/style op 接进生成器、历史与合并路径。
+- **快照生命周期**：旧 revision 快照请求返回 `E_REVISION_CONFLICT`；切换新快照后旧 snapshotId 的 Host 路由 404、worker 释放返回 `E_SNAPSHOT_NOT_FOUND`；worker 退出后 `previews/` 为空。
 - **清理**：销毁实例后无 frame、无新命令/事件；worker 快照释放后 Host 路由 404；`previews/` 为空；运行目录删除；浏览器/服务关闭。
 
 ## 边界（不要外推）

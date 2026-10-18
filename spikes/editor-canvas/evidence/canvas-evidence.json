@@ -1,6 +1,6 @@
 {
   "kind": "p3-005b-editor-canvas-spike",
-  "startedAt": "2026-10-18T02:24:54.666Z",
+  "startedAt": "2026-10-18T02:26:20.111Z",
   "independence": "standalone test page driven by puppeteer-core; not the DSH plugin and not a real DSH page",
   "versions": {
     "node": "v24.14.0",
@@ -32,7 +32,7 @@
     "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/155.0.0.0 Safari/537.36"
   },
   "project": {
-    "projectId": "proj-mvd7d6o5-0d70d86c",
+    "projectId": "proj-mvd7f0io-4556053d",
     "initialRevision": "449648a3af6b644615799c180fe71de7c1f1b097ac2be9971410e7cd20d848b2",
     "duration": 11,
     "width": 1280,
@@ -230,10 +230,22 @@
     ]
   },
   "host": {
-    "url": "http://127.0.0.1:62515/",
-    "origin": "http://127.0.0.1:62515",
-    "entryCachedCsp": "default-src 'none'; script-src http://127.0.0.1:62515 'sha256-MWPMlt9GUx+xu4PPxr6KVDsUPeoLEUlTISvBXaiN44M='; style-src http://127.0.0.1:62515 'unsafe-inline'; img-src http://127.0.0.1:62515 data:; font-src 'none'; connect-src 'none'; frame-src 'none'; media-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'self'",
-    "inlineScriptHashes": 1
+    "url": "http://127.0.0.1:63625/",
+    "origin": "http://127.0.0.1:63625",
+    "entryCachedCsp": "default-src 'none'; script-src http://127.0.0.1:63625 'sha256-MWPMlt9GUx+xu4PPxr6KVDsUPeoLEUlTISvBXaiN44M='; style-src http://127.0.0.1:63625 'unsafe-inline'; img-src http://127.0.0.1:63625 data:; font-src 'none'; connect-src 'none'; frame-src 'none'; media-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'self'",
+    "inlineScriptHashes": 1,
+    "snapshotLifecycle": {
+      "staleRevision": {
+        "requested": "449648a3af6b644615799c180fe71de7c1f1b097ac2be9971410e7cd20d848b2",
+        "current": "876ae63b39680b39d16b0e2ba8a90ebfc3b655aed5ae2ea20a83dc1cd2f2de0f",
+        "code": "E_REVISION_CONFLICT"
+      },
+      "oldSnapshotAfterSwitch": {
+        "snapshotId": "78e4f43c2f0d33e7fa5308070db6c401",
+        "hostRouteStatus": 404,
+        "releaseCode": "E_SNAPSHOT_NOT_FOUND"
+      }
+    }
   },
   "isolation": {
     "sandbox": "allow-scripts",
@@ -299,10 +311,10 @@
     ],
     "playPause": {
       "startTime": 2,
-      "after800ms": 2.699900000000002,
+      "after800ms": 2.7,
       "playingFlag": true,
-      "pauseReturned": 2.7832000000000026,
-      "afterPause250ms": 2.7832000000000026
+      "pauseReturned": 2.7834000000000003,
+      "afterPause250ms": 2.7834000000000003
     },
     "hiddenObject": {
       "subtitleRect": {
@@ -490,7 +502,7 @@
       "beforeRevision": "449648a3af6b644615799c180fe71de7c1f1b097ac2be9971410e7cd20d848b2",
       "afterRevision": "876ae63b39680b39d16b0e2ba8a90ebfc3b655aed5ae2ea20a83dc1cd2f2de0f",
       "workerText": "画布原位修改",
-      "snapshotId": "52bcf5456663bbfc1fa84587f0fb1b3d",
+      "snapshotId": "222522441f2707172b471e354999810e",
       "historyCursor": null
     },
     "persistence": {
@@ -498,7 +510,8 @@
       "reopenText": "画布原位修改",
       "afterWorkerRestart": {
         "revision": "876ae63b39680b39d16b0e2ba8a90ebfc3b655aed5ae2ea20a83dc1cd2f2de0f",
-        "text": "画布原位修改"
+        "text": "画布原位修改",
+        "previewsAfterWorkerExit": []
       }
     },
     "conflict": {
@@ -639,7 +652,7 @@
       "gapProposalAfterDrag": null,
       "blockedDiagnostics": [
         {
-          "at": "2026-10-18T02:25:22.313Z",
+          "at": "2026-10-18T02:26:42.149Z",
           "type": "drag-blocked-while-playing",
           "detail": {
             "stableId": "scene-1-title"
@@ -657,7 +670,7 @@
     },
     "foreignSourceDelta": 1,
     "revokedInstance": {
-      "oldInstanceId": "inst-690425b9ad44",
+      "oldInstanceId": "inst-cae69bb1cb5d",
       "result": {
         "ok": false,
         "code": "E_INSTANCE_NOT_FOUND"
@@ -670,7 +683,7 @@
     "destroy": {
       "results": [
         {
-          "instanceId": "inst-de23270f0252",
+          "instanceId": "inst-067477e71ce0",
           "destroyed": true
         }
       ],
@@ -801,6 +814,10 @@
       "ok": true
     },
     {
+      "name": "snapshot lifecycle rejects stale revisions and invalidated snapshots",
+      "ok": true
+    },
+    {
       "name": "text edit persists across close/reopen and worker restart",
       "ok": true
     },
@@ -846,11 +863,11 @@
     }
   ],
   "failures": [],
-  "finishedAt": "2026-10-18T02:25:28.717Z",
-  "elapsedMs": 34049,
+  "finishedAt": "2026-10-18T02:26:48.368Z",
+  "elapsedMs": 28255,
   "summary": {
-    "total": 40,
-    "passed": 40,
+    "total": 41,
+    "passed": 41,
     "failed": 0,
     "evidence": "evidence/canvas-evidence.json"
   }

@@ -809,6 +809,44 @@ async function main() {
       return evidence.textEdit.commit;
     });
 
+    // Invalid states required by the task: stale revision, released/old
+    // snapshot, and worker-exit cleanup.
+    let stalePreviewCode = null;
+    try {
+      await harness.client.previewSnapshot({
+        projectId: harness.project.projectId,
+        revision: commitFrom.revision,
+      });
+    } catch (error) {
+      stalePreviewCode = error.code;
+    }
+    const oldSnapshotRoute = await fetch(
+      `${started.origin}/preview/${commitFrom.snapshotId}/${currentSession.snapshot.entry}`,
+    );
+    await oldSnapshotRoute.arrayBuffer();
+    const oldSnapshotRelease = await harness.client
+      .previewRelease({ snapshotId: commitFrom.snapshotId })
+      .then(() => ({ code: null }))
+      .catch((error) => ({ code: error.code }));
+    evidence.host.snapshotLifecycle = {
+      staleRevision: {
+        requested: commitFrom.revision,
+        current: afterCommit.revision,
+        code: stalePreviewCode,
+      },
+      oldSnapshotAfterSwitch: {
+        snapshotId: commitFrom.snapshotId,
+        hostRouteStatus: oldSnapshotRoute.status,
+        releaseCode: oldSnapshotRelease.code,
+      },
+    };
+    await check("snapshot lifecycle rejects stale revisions and invalidated snapshots", async () => {
+      assert.equal(stalePreviewCode, "E_REVISION_CONFLICT");
+      assert.equal(oldSnapshotRoute.status, 404);
+      assert.equal(oldSnapshotRelease.code, "E_SNAPSHOT_NOT_FOUND");
+      return evidence.host.snapshotLifecycle;
+    });
+
     // Persistence across close/reopen and a full worker restart.
     await harness.reopenProject();
     let persistenceSession = await harness.currentSession();
@@ -846,10 +884,12 @@ async function main() {
     evidence.textEdit.persistence.afterWorkerRestart = {
       revision: persistenceSession.project.revision,
       text: restartedTitle?.text ?? null,
+      previewsAfterWorkerExit: harness.previewsAfterWorkerExit ?? null,
     };
     await check("text edit persists across close/reopen and worker restart", async () => {
       assert.equal(evidence.textEdit.persistence.reopenText, "画布原位修改");
       assert.equal(evidence.textEdit.persistence.afterWorkerRestart.text, "画布原位修改");
+      assert.deepEqual(evidence.textEdit.persistence.afterWorkerRestart.previewsAfterWorkerExit, []);
       return evidence.textEdit.persistence;
     });
 

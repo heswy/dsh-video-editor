@@ -321,6 +321,8 @@ export class CanvasHarness {
 
   async restartWorker() {
     await this.client.dispose();
+    // Capture the worker-exit cleanup state before starting the new process.
+    this.previewsAfterWorkerExit = await this.previewDirectoryEntries();
     const { WorkerClient } = await loadClientModule();
     this.client = new WorkerClient({
       nodeExecutable: process.execPath,

@@ -41,7 +41,7 @@
 
 ### 真实行为结果（自述，待独立复审）
 
-- 独立试验页 + 真实 Chrome：`spikes/editor-canvas/scripts/run-canvas.mjs` → **40/40 断言通过**（约 21s，含断网阶段）；合约/Host 服务 Node 测试 `npm test --prefix spikes/editor-canvas` → **10/10**（约 1.2s）；能力探针 `capability-probe.mjs` 通过（约 3s）。
+- 独立试验页 + 真实 Chrome：`spikes/editor-canvas/scripts/run-canvas.mjs` → **41/41 断言通过**（约 21s，含断网阶段）；合约/Host 服务 Node 测试 `npm test --prefix spikes/editor-canvas` → **10/10**（约 1.2s）；能力探针 `capability-probe.mjs` 通过（约 3s）。
 - 播放/seek：9 个时间点（含 4.99/5.0/9.0/10.99s）请求=落点；播放 800ms 推进约 0.70s，暂停后保持。与 worker 抽帧 1.5/5.5/9.0s 像素一致 **99.3%/99.1%/99.9%、MAE 0.36/0.30/0.04**。
 - 选择/坐标：真实鼠标命中 `scene-1-title`；选中层只在 Host 编辑层；letterbox 1100×700 与 760×640 映射点击命中一致、留白不命中；Scene 边界/隐藏对象（时间窗）/重叠 stack/结构容器规则明确。
 - 文字原位编辑：Esc 不写回；Enter 经共享 worker `edit`+`expectedRevision`+`operationId` 写回并重载新快照（`449648a3…`→`876ae63b…`），close/reopen 与 worker 重启后持久；旧 revision 冲突 `E_REVISION_CONFLICT` 不覆盖，刷新重试成功；只读目录注入 `E_PERSIST`，草稿保留、恢复后重试成功。
@@ -55,9 +55,10 @@
 
 ### 证据
 
-- `spikes/editor-canvas/evidence/canvas-evidence.json`：40 项断言、播放/seek/命中/letterbox/文字编辑/冲突/失败/缺口/合约探针/清理；截图 `canvas-boot.png`、`selection-title.png`、`text-editor-open.png`、`text-committed.png`、`transient-drag.png`、`letterbox-1100x700.png`、3 组预览/worker 帧 PNG。
+- `spikes/editor-canvas/evidence/canvas-evidence.json`：41 项断言、播放/seek/命中/letterbox/文字编辑/冲突/失败/缺口/合约探针/清理；截图 `canvas-boot.png`、`selection-title.png`、`text-editor-open.png`、`text-committed.png`、`transient-drag.png`、`letterbox-1100x700.png`、3 组预览/worker 帧 PNG。
 - `spikes/editor-canvas/evidence/capability-evidence.json`：worker/SDK 写回矩阵、SDK `setStyle` 持久化与重生成覆盖证据、typed op 提案。
 - 证据中的仓库/试验目录路径已替换为 `<repo>`/`<spike>`，不含个人目录路径。
+- 快照生命周期：旧 revision 请求 `E_REVISION_CONFLICT`；切换后旧 Host 路由 404 + `E_SNAPSHOT_NOT_FOUND`；worker 退出后 `previews/` 为空（证据 `host.snapshotLifecycle`）。
 
 ### 未测项与风险
 
