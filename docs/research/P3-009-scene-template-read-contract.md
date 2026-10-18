@@ -1,6 +1,6 @@
 # P3-009：完整 Scene 读取契约 scene.template
 
-日期：2026-10-18。执行：p1-engine 工作区；分支 `codex/p1-engine-spike-b4bf` / PR #2；开工 HEAD **`9aebcbc`**（BUG-001 修复 `82f6219`、两包 0.3.1 已验收）。协调记忆读取自 `origin/codex/project-foundation` @ **`2400431`**（P3-008 联合复审 R1 指向本任务）。实现提交 **`6861036`**；两包升 **0.3.2**。只改两个 engine 包源码/schema/README/版本/锁根、必要测试/打包与任务/research 文档；未改根插件/Host/client.js/p0 树/spike/全局文档，未安装/启停/重启、未调模型/改用户数据、未 merge、未新 tree/PR；HyperFrames 仍 0.8.167，无新运行时依赖。
+日期：2026-10-18。执行：p1-engine 工作区；分支 `codex/p1-engine-spike-b4bf` / PR #2；开工 HEAD **`9aebcbc`**（BUG-001 修复 `82f6219`、两包 0.3.1 已验收）。协调记忆读取自 `origin/codex/project-foundation` @ **`2400431`**（P3-008 联合复审 R1 指向本任务）。实现提交 **`d383e3d`**（首版 `6861036` 自查长文本往返后修正）；两包升 **0.3.2**。只改两个 engine 包源码/schema/README/版本/锁根、必要测试/打包与任务/research 文档；未改根插件/Host/client.js/p0 树/spike/全局文档，未安装/启停/重启、未调模型/改用户数据、未 merge、未新 tree/PR；HyperFrames 仍 0.8.167，无新运行时依赖。
 
 ## 结论
 
@@ -67,6 +67,8 @@
 
 可选字段语义：subtitle/logo/shot 只在当前文档存在时出现；受控模板始终渲染空 badge 元素，因此 `badge:""` 是真实值；颜色/accent 来自当前 HTML 的真实行内值（受控模板内的模板默认值也如实投影）；不会因为某个字段未设置而补出错误对象。投影可直接通过 `validateSceneSpec`（即 `scene.update` 的校验）并保留全部键值。
 
+**文本边界对齐（自查后补充）**：既有 `edit {type:'text'}` 允许 2048 字符，而旧 Scene 模板 title/subtitle/badge 上限是 200/300/48；若人工长文案超过旧上限，读出的 template 会无法作为 `scene.update.template` 回写，违背“可往返”。因此本轮把 Scene 模板输入/投影的 title/subtitle/badge 上限统一对齐到 **2048**（原有更短范围请求完全兼容，旧工程内容不被拒绝），schema 的 `sceneTemplate`/`sceneCreateTemplate`/`sceneSummary.title`/`inspectScene.title` 同步；同时 title 是必填模板字段，空/纯空白 title 的 text edit 返回 `E_PARAMS`（而不是生成不可用投影）。其它元素 text/timing 与 `scene.update` 完整替换语义不变。
+
 ## 实现
 
 - `packages/video-engine-worker/src/scenes.mjs`：新增 `sceneTemplate(scene)`（从 `parseDocument` 的 `specFromSection` 受控模型取 title/duration/真实 color/accent/logo/shot 与现有 text 值，按冻结顺序组装，可选字段 undefined 时省略）；`sceneSummary`/`sceneSummaries` 在旧字段之后追加 `template`。所有 Scene 结果都经过 `sceneSummaries`，包括 `inspect` 的 `scenes[]`（再补 elements）与 `project.create` 的 opened.scenes。
@@ -78,8 +80,8 @@
 
 | 项 | 命令 | 结果 |
 |---|---|---|
-| worker 单元/契约 | `npm test --prefix packages/video-engine-worker` | **43/43**（含新增 scene-template 3 项；schema 全量方法结果校验通过），约 13.9s |
-| worker 真实链 | `npm run test:real --prefix packages/video-engine-worker` | **12/12**（历史/覆盖/合并/布局/渲染回归保持），约 166.7s |
+| worker 单元/契约 | `npm test --prefix packages/video-engine-worker` | **44/44**（含新增 scene-template 4 项；schema 全量方法结果校验通过），约 16.4s |
+| worker 真实链 | `npm run test:real --prefix packages/video-engine-worker` | **12/12**（历史/覆盖/合并/布局/渲染回归保持） |
 | client | `npm test --prefix packages/video-engine-client` | **21 项：20 pass + 1 opt-in skip**（含新增 client 投影透传测试） |
 
 新增 worker 回归 `test/scene-template.test.mjs` 覆盖：
@@ -90,6 +92,7 @@
 - `project.create`、`scene.create`、`scene.update`、`scene.reorder`、`open` 结果均带模板；close/reopen、worker 重启后模板一致；undo/redo 后读取契约一致。
 - 可选字段缺失不生成对象（只含真实 badge 空值与模板 color/accent）；legacy P2 fixture `scenes: []`。
 - schema 正/负：summary 缺 template、template 缺 title/多 sceneId/坏 color/绝对路径 logo 均拒绝；22 个 `request_*` 定义保持不变。
+- 长文本：title 300 字/subtitle 600 字/badge 60 字的人工 text 编辑后，inspect.template 长度保留、通过 `validateSceneSpec`/schema、可被 `scene.update` 回写；空/纯空白 title 的 text edit 返回 `E_PARAMS` 且不写盘。
 - client 测试验证 `projectCreate`/`inspect`/`sceneUpdate` 透传 `scenes[].template` 并可用其做局部换色。
 
 ## 兼容性与固定包
@@ -100,9 +103,9 @@
 | 包 | 文件数 | bytes | SHA-256 |
 |---|---|---|---|
 | dsh-video-engine-client-0.3.2.tgz | 3 | 7494 | `0830ab717ac2ef2572faf95aacace0778d5dc379cdfcc4546b48e6fa851311a5` |
-| dsh-video-engine-worker-0.3.2.tgz | 14 | 56599 | `eeb76ac76ae2a926dde81e1dbae5f452b51877adf88c12c6e00fa012bdaba969` |
+| dsh-video-engine-worker-0.3.2.tgz | 14 | 57022 | `e4e161418c252e6973760ca20d8aff890eabcf26a0bce5e93e0bfb6bef3716c3` |
 
-`package-verify.json`：每文件与 `6861036` 逐字节一致、重复 pack 一致、`git archive 6861036` 干净检出重新 pack 一致；未安装、未发布。
+`package-verify.json`：每文件与功能提交逐字节一致、重复 pack 一致、干净 `git archive` 检出重新 pack 一致；未安装、未发布。
 
 ## 未测项 / 风险
 
