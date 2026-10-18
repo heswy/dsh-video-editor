@@ -18,29 +18,29 @@
 | 本机应用包 | 只读 app.asar 的 dsh/package.json 为 **0.2.1-rc.2** | [对话复用调查](research/2026-10-17-conversation-embedding-v03.md)；P3-005-A交付了rc.2运行身份/live查询证据，总调度独立核包源码；嵌入已在LIVE有证据且用户实测发现文件预览缺陷，旧rc.1证据保持历史口径 |
 | 最近确认的安装 | 根插件 **0.3.0-alpha.1**，link→`staging-54f4671-b382686/bundle`；引擎54f4671/0.1.1 | 用户截图与p0真机交付2cd718a；[LIVE复核](reviews/P3-006A-live-review-01.md)：原生会话/历史/标题写入有证据，**图片文件打开FAIL**；本轮未再读profile或操作GUI。旧0.2.1回滚保留 |
 | 插件最新交付 | **0.3.0-alpha.1**，原生接线 `26bd4c1`、修复 `b382686`、LIVE head `2cd718a` | [修复复审](reviews/P3-006A-review-02.md) **通过，R1–R4关闭**；独立123/123+版本10/10、四场景探针及包19/19/staging摘要通过；**已按交付记录安装；文件预览缺陷待修**，基础会话链有真机证据。旧候选保留 |
-| 引擎已验收 | 两包 **0.2.1**，已审功能 `df4b74f`、head `e364017`；保留多Scene/合并/历史，新增完整schema和预览快照 | [P3-004复审](reviews/P3-004-review-01.md) 通过；worker29/29、real10/10、client18+1skip，固定包3/3+13/13一致；限本机受控范围 |
-| 引擎最新候选 | 两包 **0.3.0**，功能 `4c087ef`、head `fcb090f` | [P3-006-B复审](reviews/P3-006B-review-01.md) **需修复R1–R2**：旧base显式覆盖意图与首次marker迁移有丢失；暂不冻结为画布接线基线。既有MP4黑带登记BUG-001 |
+| 引擎已验收 | 两包 **0.3.0**，功能74294e6、交付d926d10 | [P3-006-B复审02](reviews/P3-006B-review-02.md) R1–R2关闭；worker40/40、原场景修复探针、新固定包一致。可作Host画布整合接口基线，**黑带未修、非完整产品验收** |
+| 引擎下一任务 | BUG-001导出底部黑带，目标两包0.3.1 | p1-engine下一实施任务，待用户转发；与p0画布开发并行，不阻止以74294e6开始整合 |
 | 新产品体验 | 右侧原生 AI、历史、模型；左侧实时直接编辑；工程素材库 | 设计已确认，**尚未整体实现或验收**；不能把底层方法存在当成用户闭环完成 |
 
 ## 工作区与当前任务
 
-工作树绝对路径和通用规则只维护在 [DEVELOPMENT](DEVELOPMENT.md)。三棵树规划保持，本轮fetch成功并核对p0-mode-shell交付2cd718a（本轮读取交付记录）；本轮另核对p1-engine交付fcb090f后干净（P3-006-B需修复）；开发树不需要新建或重建。
+工作树绝对路径和通用规则只维护在 [DEVELOPMENT](DEVELOPMENT.md)。三棵树规划保持，本轮fetch成功并核对p0-mode-shell交付2cd718a（本轮读取交付记录）；本轮另核对p1-engine交付d926d10后干净（P3-006-B修复通过）；开发树不需要新建或重建。
 
 | 工作区 | 分支 / PR | 最近功能交付 | 当前动作 |
 |---|---|---|---|
-| 主工作区（总调度） | `codex/project-foundation` / [#1](https://github.com/heswy/dsh-video-editor/pull/1) | 当前产品、规则、评审、交接 | A/B调查与spike均已验收；P3-006-A已安装，原生文件预览FAIL，转P3-006-C修复，P3-006-B复审需R1–R2；两线各自推进后集成实际画布 |
-| p1-engine | `codex/p1-engine-spike-b4bf` / [#2](https://github.com/heswy/dsh-video-editor/pull/2) | `4c087ef`；交付head `fcb090f` | [P3-006-B复审](reviews/P3-006B-review-01.md)需集中修复R1–R2；原树/PR#2交回新候选，黑带另登记BUG-001 |
+| 主工作区（总调度） | `codex/project-foundation` / [#1](https://github.com/heswy/dsh-video-editor/pull/1) | 当前产品、规则、评审、交接 | A/B调查与spike均已验收；P3-006-A已安装，原生文件预览FAIL，转P3-006-C修复，P3-006-B修复通过；p1修黑带，p0文件预览独立提交后直接集成实际画布 |
+| p1-engine | `codex/p1-engine-spike-b4bf` / [#2](https://github.com/heswy/dsh-video-editor/pull/2) | 74294e6；交付head d926d10 | [修复复审](reviews/P3-006B-review-02.md)通过；下一任务[BUG-001](tasks/BUG-001-render-bottom-band.md)，原树/PR#2 |
 | p0-mode-shell | `dsh/p0-mode-shell` / [#3](https://github.com/heswy/dsh-video-editor/pull/3) | 功能 `b382686`；LIVE交付 `2cd718a` | [LIVE复核](reviews/P3-006A-live-review-01.md)：基础闭环有证据、文件打开FAIL；下一任务[P3-006-C](tasks/P3-006C-embedded-file-preview.md)实际修复候选 |
 
-本轮核对：`p0-mode-shell@2cd718a`（已push；本轮读取LIVE交付）；p1-engine@fcb090f（已push、干净，B候选待修复）；未合并协调分支。
+本轮核对：`p0-mode-shell@2cd718a`（已push；本轮读取LIVE交付）；p1-engine@d926d10（已push、干净，B修复通过）；未合并协调分支。
 
 当前接手只使用 [p1-engine 交接](handoffs/p1-engine.md)、[p0-mode-shell 交接](handoffs/p0-mode-shell.md)。旧 programmer1/2 文件保留为历史，不重新执行已交付任务。
 
 ## 接下来按这个顺序
 
-1. p0-mode-shell执行P3-006-C修复嵌入会话图片/文件打开，交alpha.2具体候选；不重做完整调查，不覆盖已安装staging。p1-engine按P3-006-B复审集中修复R1–R2，两线独立。P3-006-A已授权LIVE完成基础链，但文件打开FAIL、操作事故另记，不能标整个原生嵌入通过。
+1. p0-mode-shell执行P3-006-C修复嵌入会话图片/文件打开，交alpha.2具体候选；不重做完整调查，不覆盖已安装staging。p1-engine执行BUG-001；p0的C独立提交后直接进入P3-008，以74294e6做真实画布/受控工程/素材接线，两线独立。P3-006-A已授权LIVE完成基础链，但文件打开FAIL、操作事故另记，不能标整个原生嵌入通过。
 2. A调查已通过；采用videoView source、hero:false、工程映射Host持久化，不新Workspace/不归档隐藏。mainView保留计数不等于编辑器可见，接线需避免双根与错误锁定。B已验收：composition CSS px与静态布局基座分离、实例消息/生命周期；toy Host不可原样进生产，需补授权/TTL/精确脚本资源策略。
-3. 会话侧基础接线已装alpha.1、引擎仍54f4671；p0先修图片打开。p1的0.3.0覆盖语义修好验收后，冻结新引擎+受控工程创建/迁移+Host/Tool方法+实际画布整合，不把换版本号或暂态拖动当用户闭环。
+3. 会话侧基础接线已装alpha.1、引擎仍54f4671；p0先修图片打开。p1的0.3.0覆盖语义已验收，P3-008冻结新引擎+受控工程创建+Host/Tool方法+实际画布整合，不把换版本号或暂态拖动当用户闭环。
 4. 保留当前已安装alpha.1与全部旧候选、0.2.1回滚入口；后续新候选需精确包/实际渲染版本核对。link更新本轮曾需用户手动重启，不许通过热改旧staging凑验证。
 5. 后续 P3-006 接通工程创建、上下文、素材归属与冲突处理；P3-007 验收真实“一句话→15s 多场景→人工修改→AI 续改→重开→导出”。[ROADMAP](ROADMAP.md) 为规划，不自动授权实现。
 
@@ -65,6 +65,6 @@
 
 最新会话候选复审：[P3-006-A修复](reviews/P3-006A-review-02.md)，831d275的123项检查与版本10/10、四故障场景修复探针及固定包/staging通过；R1–R4关闭。安装验收指南已准备，用户随后明确回复“我授权。完全授权。”，本任务已获授权并已有LIVE交付；当前文件预览修复另见P3-006-C。原始复现与修复后探针在同级artifacts/reviews/2026-10-18/P3-006A/。
 
-最新引擎候选：[P3-006-B复审](reviews/P3-006B-review-01.md)发现并独立复现两类人工修改丢失；待集中修复，禁止将4c087ef当已验收新画布基线。[BUG-001](tasks/BUG-001-render-bottom-band.md)登记导出底部黑带，后续实现尚未下发，正式导出视觉验收前需关闭。
+最新引擎验收：[P3-006-B复审02](reviews/P3-006B-review-02.md)，74294e6修复通过，冻结为新画布接线基线；4c087ef保留为历史失败候选，不采用。BUG-001已准备为p1下一实施任务，正式导出视觉验收前需关闭。
 
 最新LIVE：[P3-006-A复核](reviews/P3-006A-live-review-01.md)，交付2cd718a的证据摘要吻合；用户实测PNG文件卡报sidebarRight缺session surface，源码根因已独立确认。根插件仍旧引擎/legacy demo，不支持工程换色；后续必须接新引擎+受控工程+Host/Tool/预览，不能用后期调色图片或直接改HTML替代。用户报告的全局输入误发/个人剪贴板使用违反既有边界，后续禁止再用，缺定向通道改人工。
