@@ -30,6 +30,14 @@ node spikes/editor-canvas/scripts/persistence-evidence.mjs       # 输出 eviden
 
 旧的 `run-canvas.mjs` 与其 41 项证据是 P3-005-B（0.2.1）的历史交付：其中“layout 提交被 E_PARAMS 拒绝”的缺口断言正是当时要证明的状态，**不要用 0.3.0 重跑并覆盖**；新能力以 `persistence-evidence.mjs`/`capability-probe.mjs` 为准。
 
+### BUG-001 导出底部黑带证据（0.3.1）
+
+```sh
+node spikes/editor-canvas/scripts/render-band-evidence.mjs   # 输出 evidence/bug-001/（before/after MP4+PNG+JSON）
+```
+
+记录同 revision 下旧 render 路径（默认 static-frame dedup）底部黑 86 行、修复后 0 行，以及 baseline/人工布局/960×720 4:3 的 MP4 与 worker frame 对照。旧 `evidence/p3-006b/` 的失败证据原样保留，不覆盖。
+
 ### P3-005-B 历史证据（0.2.1，勿覆盖）
 
 在仓库根目录：
@@ -68,6 +76,7 @@ scripts/
   run-canvas.mjs           0.2.1 历史真实 Chrome 证据 runner（41 项断言）
   capability-probe.mjs     0.3.0 写入能力矩阵（layout/style 已持久化、合并/重生成/SDK 边界）
   persistence-evidence.mjs 0.3.0 真实帧/MP4 持久化与 undo/redo 证据
+  render-band-evidence.mjs 0.3.1 BUG-001 修复前后导出黑带对照证据
 test/
   contract.test.mjs        消息严格性/违规序列/迟到响应/跨实例/坐标/编辑守卫
   host-server.test.mjs     快照路由、逐文件校验、篡改 409、撤销 404、CSP/hash
