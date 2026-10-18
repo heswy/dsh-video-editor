@@ -588,6 +588,209 @@ test("explicit override markers keep values equal to template defaults and prote
   }
 });
 
+test("old-base revise protects overrides added after base, including defaults and deletions (R1)", async () => {
+  const f = await managed("r1-old-base");
+  const baseSpec = (overrides = {}) => sceneSpec({ ...overrides });
+  try {
+    // R1a: human adds an explicit override whose value equals the base default
+    // after the AI base revision; AI only changes the scene accent default.
+    const first = await created(f.c);
+    const projectId = first.projectId;
+    let revision = await addShotScene(f.c, projectId, first.revision);
+    let current = await inspected(f.c, projectId);
+    const defaultAccent = element(current, "scene-1-subtitle").style.color;
+    const oldBase = current.revision;
+    const human = await f.c.call("edit", {
+      projectId,
+      expectedRevision: oldBase,
+      operationId: "r1a-human",
+      ops: [
+        { type: "style", target: "scene-1-subtitle", styles: { color: defaultAccent } },
+      ],
+    });
+    assert.equal(human.ok, true, JSON.stringify(human));
+    const revised = await f.c.call("project.revise", {
+      projectId,
+      baseRevision: oldBase,
+      expectedRevision: human.result.revision,
+      operationId: "r1a-ai",
+      sceneId: "scene-1",
+      template: baseSpec({ accent: "#ff0000" }),
+    });
+    assert.equal(revised.ok, true, JSON.stringify(revised));
+    assert.equal(revised.result.written, true, JSON.stringify(revised.result.conflicts));
+    assert.deepEqual(revised.result.conflicts, []);
+    current = await inspected(f.c, projectId);
+    // The explicit human color wins even though AI changed the scene default.
+    assert.equal(element(current, "scene-1-subtitle").style.color, defaultAccent);
+    assert.equal(element(current, "scene-1-title").text, "场景标题");
+    // Unmarked defaults still follow the AI scene change.
+    assert.equal(element(current, "scene-1-badge").style.color, "#ff0000");
+
+    // R1b: AI candidate drops the object whose override was added after base.
+    const second = await created(f.c);
+    const pid2 = second.projectId;
+    revision = await addShotScene(f.c, pid2, second.revision);
+    current = await inspected(f.c, pid2);
+    const accent2 = element(current, "scene-1-subtitle").style.color;
+    const oldBase2 = current.revision;
+    const human2 = await f.c.call("edit", {
+      projectId: pid2,
+      expectedRevision: oldBase2,
+      operationId: "r1b-human",
+      ops: [
+        { type: "style", target: "scene-1-subtitle", styles: { color: accent2 } },
+      ],
+    });
+    const drop = await f.c.call("project.revise", {
+      projectId: pid2,
+      baseRevision: oldBase2,
+      expectedRevision: human2.result.revision,
+      operationId: "r1b-ai",
+      sceneId: "scene-1",
+      template: { title: "场景标题", duration: 5, badge: "AI", logo: "assets/logo.png" },
+    });
+    assert.equal(drop.ok, true, JSON.stringify(drop));
+    assert.equal(drop.result.written, false);
+    assert.equal(drop.result.conflicts[0].reason, "AI_DELETE_HUMAN_MODIFY");
+    assert.equal(drop.result.conflicts[0].stableId, "scene-1-subtitle");
+    assert.equal((await inspected(f.c, pid2)).revision, human2.result.revision);
+
+    // R1c: an unchanged AI candidate must not create a false conflict.
+    const third = await created(f.c);
+    const pid3 = third.projectId;
+    revision = await addShotScene(f.c, pid3, third.revision);
+    current = await inspected(f.c, pid3);
+    const accent3 = element(current, "scene-1-subtitle").style.color;
+    const oldBase3 = current.revision;
+    const human3 = await f.c.call("edit", {
+      projectId: pid3,
+      expectedRevision: oldBase3,
+      operationId: "r1c-human",
+      ops: [
+        { type: "style", target: "scene-1-subtitle", styles: { color: accent3 } },
+      ],
+    });
+    const unchanged = await f.c.call("project.revise", {
+      projectId: pid3,
+      baseRevision: oldBase3,
+      expectedRevision: human3.result.revision,
+      operationId: "r1c-ai",
+      sceneId: "scene-1",
+      template: baseSpec(),
+    });
+    assert.equal(unchanged.ok, true, JSON.stringify(unchanged));
+    assert.equal(unchanged.result.written, true);
+    assert.deepEqual(unchanged.result.conflicts, []);
+    current = await inspected(f.c, pid3);
+    assert.equal(element(current, "scene-1-subtitle").style.color, accent3);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test("first typed edit keeps existing marker-less deltas across regeneration and history (R2)", async () => {
+  const f = await managed("r2-markerless-union");
+  try {
+    // R2a: marker-less external layout delta, then a typed style edit, then a
+    // scene regeneration must keep both left=240 and the new color.
+    const first = await created(f.c);
+    const pid = first.projectId;
+    let revision = await addShotScene(f.c, pid, first.revision);
+    const original = await readProjectHtml(f, pid);
+    const withLeft = original.replace(
+      /(<h1[^>]*data-hf-id="scene-1-title"[^>]*style="[^"]*?left:)88px/,
+      "$1240px",
+    );
+    assert.notEqual(withLeft, original, "external left patch did not apply");
+    const { writeFile } = await import("node:fs/promises");
+    await writeFile(resolve(f.projectsRoot, pid, "index.html"), withLeft);
+    let current = await inspected(f.c, pid);
+    assert.equal(element(current, "scene-1-title").layout.left, 240);
+    revision = current.revision;
+    const styleEdit = await f.c.call("edit", {
+      projectId: pid,
+      expectedRevision: revision,
+      operationId: "r2a-style",
+      ops: [{ type: "style", target: "scene-1-title", styles: { color: "#ff0000" } }],
+    });
+    assert.equal(styleEdit.ok, true, JSON.stringify(styleEdit));
+    const regenerated = await f.c.call("scene.update", {
+      projectId: pid,
+      expectedRevision: styleEdit.result.revision,
+      operationId: "r2a-regenerate",
+      sceneId: "scene-1",
+      template: sceneSpec({ title: "重生成标题" }),
+    });
+    assert.equal(regenerated.ok, true, JSON.stringify(regenerated));
+    current = await inspected(f.c, pid);
+    assert.equal(element(current, "scene-1-title").layout.left, 240);
+    assert.equal(element(current, "scene-1-title").style.color, "#ff0000");
+    assert.equal(element(current, "scene-1-title").text, "重生成标题");
+
+    // reopen and undo/redo keep both sources.
+    await f.c.call("close", { projectId: pid });
+    await f.c.call("open", { projectId: pid });
+    current = await inspected(f.c, pid);
+    assert.equal(element(current, "scene-1-title").layout.left, 240);
+    assert.equal(element(current, "scene-1-title").style.color, "#ff0000");
+    const undo = await f.c.call("undo", {
+      projectId: pid,
+      expectedRevision: current.revision,
+      operationId: "r2a-undo",
+    });
+    assert.equal(undo.ok, true, JSON.stringify(undo));
+    current = await inspected(f.c, pid);
+    assert.equal(element(current, "scene-1-title").layout.left, 240);
+    assert.equal(element(current, "scene-1-title").style.color, "#ff0000");
+    const redo = await f.c.call("redo", {
+      projectId: pid,
+      expectedRevision: current.revision,
+      operationId: "r2a-redo",
+    });
+    assert.equal(redo.ok, true, JSON.stringify(redo));
+    current = await inspected(f.c, pid);
+    assert.equal(element(current, "scene-1-title").layout.left, 240);
+    assert.equal(element(current, "scene-1-title").style.color, "#ff0000");
+
+    // R2b reverse: marker-less external style delta + typed layout edit.
+    const second = await created(f.c);
+    const pid2 = second.projectId;
+    revision = await addShotScene(f.c, pid2, second.revision);
+    const html2 = await readProjectHtml(f, pid2);
+    const withColor = html2.replace(
+      /(<h1[^>]*data-hf-id="scene-1-title"[^>]*style="[^"]*?)(")/,
+      "$1;color:#00ff00$2",
+    );
+    assert.notEqual(withColor, html2, "external color patch did not apply");
+    await writeFile(resolve(f.projectsRoot, pid2, "index.html"), withColor);
+    current = await inspected(f.c, pid2);
+    assert.equal(element(current, "scene-1-title").style.color, "#00ff00");
+    const layoutEdit = await f.c.call("edit", {
+      projectId: pid2,
+      expectedRevision: current.revision,
+      operationId: "r2b-layout",
+      ops: [
+        { type: "layout", target: "scene-1-title", unit: "composition-px", box: { left: 240 } },
+      ],
+    });
+    assert.equal(layoutEdit.ok, true, JSON.stringify(layoutEdit));
+    const regenerated2 = await f.c.call("scene.update", {
+      projectId: pid2,
+      expectedRevision: layoutEdit.result.revision,
+      operationId: "r2b-regenerate",
+      sceneId: "scene-1",
+      template: sceneSpec({ title: "反向重生成" }),
+    });
+    assert.equal(regenerated2.ok, true, JSON.stringify(regenerated2));
+    current = await inspected(f.c, pid2);
+    assert.equal(element(current, "scene-1-title").style.color, "#00ff00");
+    assert.equal(element(current, "scene-1-title").layout.left, 240);
+  } finally {
+    await f.cleanup();
+  }
+});
+
 test("marker-less projects edited outside the protocol still keep differing managed values", async () => {
   const f = await managed("layout-legacy-fallback");
   try {

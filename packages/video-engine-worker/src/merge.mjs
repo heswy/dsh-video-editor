@@ -8,6 +8,7 @@ import {
   formatNumber,
   formatPx,
   managedValues,
+  parseOverrideAttribute,
   round3,
   templateElementInfo,
 } from "./layout.mjs";
@@ -141,6 +142,41 @@ function fieldsOf(element) {
   return fields;
 }
 
+/**
+ * Managed properties explicitly declared by an edit op on this element. The
+ * declaration (marker) records human intent even when the chosen value equals
+ * the template default, so a merge against an older base can tell "the human
+ * just created this override" apart from "nothing changed".
+ */
+function declaredFieldsOf(element) {
+  const declared = new Set();
+  const marked = parseOverrideAttribute(element.attributes?.[OVERRIDE_ATTRIBUTE]);
+  if (!marked) return declared;
+  const info = infoOf(element);
+  if (info?.layout)
+    for (const key of LAYOUT_PROPS)
+      if (marked.has(key)) declared.add(`layout.${key}`);
+  if (info?.style)
+    for (const key of STYLE_PROPS)
+      if (marked.has(key)) declared.add(`style.${key}`);
+  return declared;
+}
+
+function analysisOf(element) {
+  return {
+    fields: fieldsOf(element),
+    declared: declaredFieldsOf(element),
+  };
+}
+
+function newDeclarations(baseElement, humanElement) {
+  if (!humanElement) return false;
+  const baseDeclared = baseElement ? declaredFieldsOf(baseElement) : new Set();
+  for (const field of declaredFieldsOf(humanElement))
+    if (!baseDeclared.has(field)) return true;
+  return false;
+}
+
 function fieldsDiffer(left, right) {
   const leftFields = fieldsOf(left);
   const rightFields = fieldsOf(right);
@@ -150,7 +186,10 @@ function fieldsDiffer(left, right) {
   return false;
 }
 
-function mergeFields(baseFields, humanFields, aiFields) {
+function mergeFields(baseAnalysis, humanAnalysis, aiAnalysis) {
+  const baseFields = baseAnalysis.fields;
+  const humanFields = humanAnalysis.fields;
+  const aiFields = aiAnalysis.fields;
   const merged = new Map();
   const conflicts = [];
   const keys = new Set([
@@ -162,8 +201,22 @@ function mergeFields(baseFields, humanFields, aiFields) {
     const base = baseFields.get(field);
     const human = humanFields.get(field);
     const ai = aiFields.get(field);
-    const humanChanged = !sameValue(human, base);
-    const aiChanged = !sameValue(ai, base);
+    const baseDeclared = baseAnalysis.declared.has(field);
+    const humanDeclaredNew = humanAnalysis.declared.has(field) && !baseDeclared;
+    const aiDeclaredNew = aiAnalysis.declared.has(field) && !baseDeclared;
+    if (humanDeclaredNew && !aiDeclaredNew) {
+      // The human explicitly created this override after the base snapshot while
+      // the AI candidate only drifted through a template default (accent, etc.).
+      // The explicit human choice wins; other fields still take AI updates.
+      merged.set(field, human);
+      continue;
+    }
+    if (aiDeclaredNew && !humanDeclaredNew) {
+      merged.set(field, ai);
+      continue;
+    }
+    const humanChanged = !sameValue(human, base) || humanDeclaredNew;
+    const aiChanged = !sameValue(ai, base) || aiDeclaredNew;
     if (humanChanged && aiChanged) {
       if (sameValue(human, ai)) merged.set(field, human);
       else conflicts.push({ field, human: human ?? null, ai: ai ?? null });
@@ -516,9 +569,9 @@ export function mergeSceneDocuments({
           continue;
         }
         const merged = mergeFields(
-          fieldsOf(baseElement),
-          fieldsOf(humanElement),
-          fieldsOf(aiElement),
+          analysisOf(baseElement),
+          analysisOf(humanElement),
+          analysisOf(aiElement),
         );
         if (merged.conflicts.length) {
           for (const fieldConflict of merged.conflicts)
@@ -539,7 +592,11 @@ export function mergeSceneDocuments({
       } else if (humanElement && !aiElement) {
         // AI deletion: protected when the human side changed the object or when
         // the base revision already carried manual layout/style overrides.
-        if (fieldsDiffer(humanElement, baseElement) || baseOverriddenIds.has(id))
+        if (
+          fieldsDiffer(humanElement, baseElement) ||
+          baseOverriddenIds.has(id) ||
+          newDeclarations(baseElement, humanElement)
+        )
           conflicts.push({
             sceneId,
             stableId: id,
@@ -562,9 +619,9 @@ export function mergeSceneDocuments({
       }
     } else if (humanElement && aiElement) {
       const merged = mergeFields(
-        new Map(),
-        fieldsOf(humanElement),
-        fieldsOf(aiElement),
+        { fields: new Map(), declared: new Set() },
+        analysisOf(humanElement),
+        analysisOf(aiElement),
       );
       if (merged.conflicts.length) {
         for (const fieldConflict of merged.conflicts)

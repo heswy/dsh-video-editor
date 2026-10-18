@@ -292,13 +292,17 @@ export function collectManualOverrides(parsed, defaultParsed) {
     const layout = {};
     const style = {};
     let has = false;
+    // An override is either explicitly declared by an edit op (marker) OR it
+    // differs from the current template default (marker-less external/pre-marker
+    // content). The two sources are unioned: creating a marker for one property
+    // must never drop other expressible deltas that were already in the file
+    // (P3-006-B R2), and an explicitly chosen value that happens to equal the
+    // current default stays an override (marker).
     for (const key of LAYOUT_PROPS) {
       const value = current.layout?.[key];
       if (value === null || value === undefined) continue;
-      // With the explicit marker, a property is an override even when its value
-      // equals the current template default. Files without the marker (written
-      // by external tools/older flows) keep the diff-vs-default fallback.
-      const changed = marked ? marked.has(key) : base?.layout?.[key] !== value;
+      const changed =
+        marked?.has(key) === true || base?.layout?.[key] !== value;
       if (changed) {
         layout[key] = value;
         has = true;
@@ -307,7 +311,8 @@ export function collectManualOverrides(parsed, defaultParsed) {
     for (const key of STYLE_PROPS) {
       const value = current.style?.[key];
       if (value === null || value === undefined) continue;
-      const changed = marked ? marked.has(key) : base?.style?.[key] !== value;
+      const changed =
+        marked?.has(key) === true || base?.style?.[key] !== value;
       if (changed) {
         style[key] = value;
         has = true;
