@@ -17,7 +17,7 @@
 |---|---|---|
 | 本机应用包 | 只读 app.asar 的 dsh/package.json 为 **0.2.1-rc.2** | [对话复用调查](research/2026-10-17-conversation-embedding-v03.md)；P3-005-A交付了rc.2运行身份/live查询证据，总调度独立核包源码；嵌入实例尚未激活验证，旧rc.1证据保持历史口径 |
 | 最近确认的安装 | 根插件 **0.2.1**，link 指向 `staging-54f4671-bdcfd72/bundle`；引擎 **54f4671 / 0.1.1** | [真机验收](research/P2-004-live-acceptance.md)；不是本轮重新检查 profile 的结果，安装目录不得清理或覆盖 |
-| 插件最新交付 | **0.3.0-alpha.1**，原生接线 `26bd4c1`、修复 `b382686`、head `831d275` | [修复复审](reviews/P3-006A-review-02.md) **通过，R1–R4关闭**；独立123/123+版本10/10、四场景探针及包19/19/staging摘要通过；**待授权安装，原生交互未验收**。旧候选保留 |
+| 插件最新交付 | **0.3.0-alpha.1**，原生接线 `26bd4c1`、修复 `b382686`、head `831d275` | [修复复审](reviews/P3-006A-review-02.md) **通过，R1–R4关闭**；独立123/123+版本10/10、四场景探针及包19/19/staging摘要通过；**已获安装验收授权，尚未执行；原生交互未验收**。旧候选保留 |
 | 引擎已验收 | 两包 **0.2.1**，已审功能 `df4b74f`、head `e364017`；保留多Scene/合并/历史，新增完整schema和预览快照 | [P3-004复审](reviews/P3-004-review-01.md) 通过；worker29/29、real10/10、client18+1skip，固定包3/3+13/13一致；限本机受控范围 |
 | 新产品体验 | 右侧原生 AI、历史、模型；左侧实时直接编辑；工程素材库 | 设计已确认，**尚未整体实现或验收**；不能把底层方法存在当成用户闭环完成 |
 
@@ -29,7 +29,7 @@
 |---|---|---|---|
 | 主工作区（总调度） | `codex/project-foundation` / [#1](https://github.com/heswy/dsh-video-editor/pull/1) | 当前产品、规则、评审、交接 | A/B调查与spike均已验收；P3-006-A候选修复复审通过、待安装授权，P3-006-B可独立继续，随后集成实际画布 |
 | p1-engine | `codex/p1-engine-spike-b4bf` / [#2](https://github.com/heswy/dsh-video-editor/pull/2) | `df4b74f`；spike head `ea2d1a4` | [P3-005-B复审](reviews/P3-005B-review-01.md) 通过；[P3-006-B](tasks/P3-006B-layout-style-persistence.md) 布局/样式持久化实现指南准备好，待用户转发 |
-| p0-mode-shell | `dsh/p0-mode-shell` / [#3](https://github.com/heswy/dsh-video-editor/pull/3) | `b382686`；交付head `831d275` | [修复复审](reviews/P3-006A-review-02.md)通过；[安装验收指南](tasks/P3-006A-live-validation.md)已准备，等待用户明确授权 |
+| p0-mode-shell | `dsh/p0-mode-shell` / [#3](https://github.com/heswy/dsh-video-editor/pull/3) | `b382686`；交付head `831d275` | [修复复审](reviews/P3-006A-review-02.md)通过；[安装验收指南](tasks/P3-006A-live-validation.md)已准备，用户已明确授权，可执行 |
 
 本轮核对：`p0-mode-shell@831d275`（已push、干净）；p1-engine最近已审head仍为ea2d1a4，本轮未核查其进行中的B实现；未合并协调分支。
 
@@ -37,7 +37,7 @@
 
 ## 接下来按这个顺序
 
-1. P3-006-A的R1–R4已复审关闭；p0-mode-shell下一步按具体候选安装指南验收原生会话/历史/模型/Tool闭环，**等待用户明确授权安装、测试Session与最多两次模型请求**。不重复调查。p1-engine继续P3-006-B，两线独立。
+1. P3-006-A的R1–R4已复审关闭；p0-mode-shell下一步按具体候选安装指南验收原生会话/历史/模型/Tool闭环，**用户已明确授权安装/插件启停、最多两个专用测试Session与两次模型请求，可执行**。不重复调查。p1-engine继续P3-006-B，两线独立。
 2. A调查已通过；采用videoView source、hero:false、工程映射Host持久化，不新Workspace/不归档隐藏。mainView保留计数不等于编辑器可见，接线需避免双根与错误锁定。B已验收：composition CSS px与静态布局基座分离、实例消息/生命周期；toy Host不可原样进生产，需补授权/TTL/精确脚本资源策略。
 3. 会话侧P3-006-A可先实现，不等B；根版本0.3.0-alpha.1候选暂用旧已审引擎54f4671。p1引擎0.3.0补layout/style、场景重生成保留与三方合并；会话侧与引擎完成后下发真正DSH画布整合，不把暂态拖动展示为已保存。
 4. 0.2.2过渡候选已通过但不自动安装；继续保留用户当前0.2.1与全部旧候选。新界面采用引擎df4b74f时需明确更新现有Host/staging版本固定与新方法白名单。
@@ -62,4 +62,4 @@
 
 最新画布spike：[P3-005-B复审](reviews/P3-005B-review-01.md)独立Node10/10、真实Chrome41/41、能力探针通过；播放/选中/文字原位写回已证明，layout/style当前E_PARAMS缺口转P3-006-B。证据在同级artifacts/reviews/2026-10-18/P3-005B-{canvas,capability}/；非真机UI。
 
-最新会话候选复审：[P3-006-A修复](reviews/P3-006A-review-02.md)，831d275的123项检查与版本10/10、四故障场景修复探针及固定包/staging通过；R1–R4关闭。安装验收指南已准备但未获授权。原始复现与修复后探针在同级artifacts/reviews/2026-10-18/P3-006A/。
+最新会话候选复审：[P3-006-A修复](reviews/P3-006A-review-02.md)，831d275的123项检查与版本10/10、四故障场景修复探针及固定包/staging通过；R1–R4关闭。安装验收指南已准备，用户随后明确回复“我授权。完全授权。”，本任务已获授权，等待p0-mode-shell执行。原始复现与修复后探针在同级artifacts/reviews/2026-10-18/P3-006A/。
