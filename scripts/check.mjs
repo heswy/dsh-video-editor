@@ -406,6 +406,32 @@ check('P3-012: an AI publish appears automatically and failures stay recoverable
   return 'revision poll swaps the snapshot; recoverable failure copy + retry';
 });
 
+check('R2: the last valid preview survives candidate load/failure (dual-instance handoff)', () => {
+  // Hidden candidate iframe + visible active iframe, same composition size.
+  assert(clientSource.includes('dv-stage-frame-candidate'), 'hidden candidate iframe class is missing');
+  assert((clientSource.match(/visibility: visible \? 'visible' : 'hidden'/g) || []).length >= 1, 'the candidate iframe is not visually hidden');
+  assert((clientSource.match(/'aria-hidden': visible \? 'false' : 'true'/g) || []).length >= 1, 'the candidate iframe is not aria-hidden');
+  assert(clientSource.includes("'data-canvas-target-revision'"), 'the requested revision marker is missing');
+  assert(clientSource.includes("'data-canvas-revision': active !== null ? active.revision : ''"), 'the revision marker must name only the active displayed composition');
+  assert(clientSource.includes("'data-canvas-phase': phase"), 'the phase marker is missing');
+  // Promotion only on the candidate runtime ready proof; failure keeps the active.
+  assert(clientSource.includes('function promoteCandidate('), 'candidate promotion gate is missing');
+  assert(clientSource.includes("outcome.type === 'ready' || outcome.type === 'state'"), 'the candidate is not promoted on a runtime ready proof');
+  assert(clientSource.includes('function failCandidate('), 'retention failure path is missing');
+  assert(clientSource.includes("if (activeRef.current !== null) {\n          setPreviewNotice(hostError(error));\n          setPhase('ready');"), 'a candidate failure with an active composition does not stay ready with a notice');
+  assert(clientSource.includes("className: 'dv-preview-notice', role: 'alert'"), 'compact candidate-failure notice is missing');
+  assert(clientSource.includes("if (phase === 'error' && active === null)"), 'the first-load full recoverable error path is missing');
+  // Release the outgoing snapshot only after a successful switch.
+  const promoteIndex = clientSource.indexOf('function promoteCandidate(');
+  const promoteBody = clientSource.slice(promoteIndex, clientSource.indexOf('async function loadTarget(', promoteIndex));
+  assert(promoteBody.includes('setActive(instance)') && promoteBody.includes('settleInstance(previous)'), 'the outgoing instance is not released inside the successful switch');
+  assert(promoteBody.indexOf('releaseSnapshot(previous)') > promoteBody.indexOf('setActive(instance)'), 'the outgoing snapshot is released before the successful switch');
+  assert(clientSource.includes("hostRequest('preview.release'"), 'the old Host snapshot is never released');
+  assert(clientSource.includes('function snapshotInstance(') && clientSource.includes('instance.ledger.accept('), 'runtime messages are not routed to their own instance ledger');
+  assert(clientSource.includes("unmountEpochRef"), 'unmount release is not guarded against test/re-render cleanups');
+  return 'hidden candidate preload, ready-gated promotion, retained active on failure, notice+retry, post-switch release';
+});
+
 check('P3-012: first open auto-opens or provisions a working creation conversation', () => {
   assert(clientSource.includes("hostRequest('project.list'"), 'the workspace must list projects on mount');
   assert(clientSource.includes('managedProjectChoices'), 'the managed-project filter is missing');
@@ -603,7 +629,7 @@ check('P3-008: managed canvas is snapshot-bound, sandboxed and Host-authoritativ
   const stage = read('scripts/stage-dev.mjs');
   assert(clientSource.includes('function CanvasWorkspace'), 'canvas workspace component missing');
   assert(clientSource.includes("sandbox: 'allow-scripts'"), 'snapshot iframe must use allow-scripts only');
-  assert(clientSource.includes('postCommand') && clientSource.includes('hitTest'), 'runtime command channel is missing');
+  assert(clientSource.includes('postSlotCommand') && clientSource.includes('postActiveCommand') && clientSource.includes('hitTest'), 'runtime command channel is missing');
   assert(clientSource.includes('preview.snapshot'), 'client does not request worker snapshots');
   assert(clientSource.includes('event.source !== frame.contentWindow'), 'canvas messages are not bound to the iframe WindowProxy');
   assert(clientSource.includes('data-canvas-revision'), 'canvas does not expose its snapshot revision');
@@ -661,11 +687,13 @@ check('P3-008 R5: inline text save binds one immutable attempt and keeps the dra
 });
 
 check('P3-008 R6: the parent restores the reviewed strict runtime message contract', () => {
-  for (const marker of ['function canvasValidateEvent(', 'function canvasValidateCommand(', 'function canvasMessageLedger(', 'function settlePendingCommands(', 'CANVAS_EVENT_TYPES', 'E_STALE_SEQ', 'E_LATE_RESPONSE', 'E_UNCORRELATED']) {
+  for (const marker of ['function canvasValidateEvent(', 'function canvasValidateCommand(', 'function canvasMessageLedger(', 'function settleInstance(instance)', 'CANVAS_EVENT_TYPES', 'E_STALE_SEQ', 'E_LATE_RESPONSE', 'E_UNCORRELATED']) {
     assert(clientSource.includes(marker), `strict runtime message marker missing: ${marker}`);
   }
   assert(clientSource.includes('event.source !== frame.contentWindow'), 'runtime events are not bound to the exact iframe WindowProxy');
-  assert(clientSource.includes('settlePendingCommands();'), 'pending commands are not explicitly settled on instance teardown');
+  assert(clientSource.includes('function settleInstance(instance)') && (clientSource.match(/settleInstance\(/g) || []).length >= 5, 'pending commands are not explicitly settled per runtime instance');
+  assert(clientSource.includes('function settleInstanceWaiter(instance, seq, payload)'), 'correlated waiters are not settled per instance');
+  assert(clientSource.includes('const role = index === visibleSlotRef.current ? \'active\' : \'candidate\''), 'runtime events are not routed to the instance that owns the source iframe');
   return 'v1 envelope/allowlist/payload/seq + correlated replies + explicit pending settlement';
 });
 

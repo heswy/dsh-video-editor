@@ -914,6 +914,7 @@ window.__ModuleLoader__.load({
 .dv-time{color:var(--dsw-alias-label-secondary,#a4a4ad);font-size:.78em;font-variant-numeric:tabular-nums;white-space:nowrap;}
 .dv-export-link{text-decoration:none;display:inline-flex;align-items:center;}
 .dv-canvas-wrap{
+  position:relative;
   display:flex;
   flex:1;
   align-items:center;
@@ -928,6 +929,32 @@ window.__ModuleLoader__.load({
 .dv-stage{position:relative;overflow:hidden;background:#000;box-shadow:0 12px 32px -24px rgba(0,0,0,.65);}
 .dv-stage.dv-canvas-stage{display:block;flex:none;padding:0;}
 .dv-stage-frame{position:absolute;top:0;left:0;border:0;background:#000;}
+.dv-stage-frame-candidate{pointer-events:none;}
+.dv-canvas-status-overlay{
+  position:absolute;
+  inset:0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  margin:0;
+  padding:0;
+  pointer-events:none;
+}
+.dv-preview-notice{
+  display:flex;
+  flex:none;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:8px;
+  padding:6px 10px;
+  border:1px solid color-mix(in srgb, var(--dsw-alias-state-error-primary, #e5484d) 45%, transparent);
+  border-radius:8px;
+  background:var(--dsw-alias-bg-layer-1, #232327);
+  color:var(--dsw-alias-state-error-primary, #e5484d);
+  font-size:.8em;
+}
+.dv-preview-notice-text{min-width:0;overflow:hidden;text-overflow:ellipsis;}
+.dv-preview-notice-retry{min-height:24px;padding:0 8px;font-size:.92em;}
 .dv-overlay{position:absolute;inset:0;cursor:default;touch-action:none;}
 .dv-selection{
   position:absolute;
@@ -2354,9 +2381,21 @@ window.__ModuleLoader__.load({
         return typeof file.path === 'string' && /\.(png|jpe?g)$/i.test(file.path);
       });
 
-      const [snapshot, setSnapshot] = React.useState(null);
+      // R2 retention contract. `active` is the last ready snapshot actually
+      // displayed and playable; `candidate` is a hidden preloading snapshot for
+      // the requested revision; `targetRevision` is the latest requested
+      // revision. `phase` is derived from those: loading (no active yet) / ready
+      // (an active composition is shown, a candidate may be pending) / error (no
+      // active and the load failed). A candidate only replaces the active
+      // composition after its runtime reports ready.
+      const [active, setActive] = React.useState(null);
+      const [candidate, setCandidate] = React.useState(null);
+      const [visibleSlot, setVisibleSlot] = React.useState(0);
+      const [targetRevision, setTargetRevision] = React.useState(inspected.revision);
       const [phase, setPhase] = React.useState('loading');
       const [frameError, setFrameError] = React.useState(null);
+      const [previewNotice, setPreviewNotice] = React.useState(null);
+      const pendingRequestRef = React.useRef(null);
       const [time, setTime] = React.useState(0);
       const [playing, setPlaying] = React.useState(false);
       const [selected, setSelected] = React.useState(null);
@@ -2374,19 +2413,29 @@ window.__ModuleLoader__.load({
       const [styleSize, setStyleSize] = React.useState(64);
       const [exportState, setExportState] = React.useState(null);
 
+      // Two physical, permanently keyed iframe slots: the visible slot renders
+      // `active`, the hidden slot preloads `candidate`. Promotion flips the slot
+      // roles instead of swapping src, so the already-ready candidate DOM iframe
+      // is never reloaded. The old messages are routed only to the instance that
+      // owns the matching slot/ledger.
       const iframeRef = React.useRef(null);
+      const slot1Ref = React.useRef(null);
       const stageRef = React.useRef(null);
       const wrapRef = React.useRef(null);
       const overlayRef = React.useRef(null);
-      const ledgerRef = React.useRef(null);
-      const pendingRef = React.useRef(new Map());
+      const activeRef = React.useRef(null);
+      const candidateRef = React.useRef(null);
+      const visibleSlotRef = React.useRef(0);
+      const slotInstancesRef = React.useRef([null, null]);
       const editorRef = React.useRef(null);
       const timeRef = React.useRef(0);
+      const playingRef = React.useRef(false);
       const selectedRef = React.useRef(null);
       const readyRef = React.useRef(false);
       const snapshotToken = React.useRef(0);
       const suppressClickRef = React.useRef(false);
       const pollRef = React.useRef(null);
+      const unmountEpochRef = React.useRef(0);
       const revision = inspected.revision;
       const width = canvasNumber(inspected.width, 1280);
       const height = canvasNumber(inspected.height, 720);
@@ -2396,8 +2445,16 @@ window.__ModuleLoader__.load({
       const displayHeight = scale > 0 ? height * scale : 0;
 
       timeRef.current = time;
+      playingRef.current = playing;
       selectedRef.current = selected;
       editorRef.current = editor;
+      activeRef.current = active;
+      candidateRef.current = candidate;
+      visibleSlotRef.current = visibleSlot;
+      slotInstancesRef.current = [
+        visibleSlot === 0 ? active : candidate,
+        visibleSlot === 1 ? active : candidate,
+      ];
 
       function setSelectedSafe(next) {
         selectedRef.current = next;
@@ -2408,27 +2465,46 @@ window.__ModuleLoader__.load({
         }
       }
 
-      // Settle every still pending runtime command explicitly: resolve its
-      // promise with null, clear its timeout and drop it from the waiter map.
-      // Never leave a dangling promise when an instance is unbound, replaced or
-      // destroyed (the reviewed P3-005-B contract requirement).
-      function settlePendingCommands() {
-        const pending = pendingRef.current;
-        for (const [seq, entry] of pending) {
-          pending.delete(seq);
-          clearTimeout(entry.timer);
-          entry.resolve(null);
+      // Settle one runtime instance explicitly: resolve every still pending
+      // command promise with null, clear its timers, drop its waiter map and
+      // revoke its ledger. Never leave a dangling promise when an instance is
+      // unbound, replaced or destroyed (the reviewed P3-005-B requirement). The
+      // active and candidate instances own separate ledgers/waiters, so settling
+      // one can never disturb the other.
+      function settleInstance(instance) {
+        if (instance === null || instance === undefined) return;
+        const pending = instance.pending;
+        if (pending !== null && pending !== undefined) {
+          for (const entry of pending.values()) {
+            clearTimeout(entry.timer);
+            entry.resolve(null);
+          }
+          pending.clear();
         }
-        const ledger = ledgerRef.current;
-        if (ledger !== null) ledger.revoke();
-        readyRef.current = false;
+        if (instance.ledger !== null && instance.ledger !== undefined) instance.ledger.revoke();
       }
 
-      function postCommand(type, payload) {
+      function slotFrame(index) {
+        return index === 0 ? iframeRef.current : slot1Ref.current;
+      }
+
+      function settleInstanceWaiter(instance, seq, payload) {
+        const pending = instance !== null && instance !== undefined ? instance.pending : null;
+        if (pending === null || pending === undefined) return;
+        const entry = pending.get(seq);
+        if (entry === undefined) return;
+        pending.delete(seq);
+        clearTimeout(entry.timer);
+        entry.resolve(payload);
+      }
+
+      function postSlotCommand(index, type, payload) {
         return new Promise(function commandPromise(resolve) {
-          const frame = iframeRef.current;
-          const ledger = ledgerRef.current;
-          if (frame === null || ledger === null || typeof frame.contentWindow === 'undefined') {
+          const frame = slotFrame(index);
+          const instances = slotInstancesRef.current;
+          const instance = instances !== null && instances !== undefined ? instances[index] : null;
+          const ledger = instance !== null && instance !== undefined ? instance.ledger : null;
+          if (frame === null || frame === undefined || ledger === null || typeof frame.contentWindow === 'undefined') {
             resolve(null);
             return;
           }
@@ -2441,7 +2517,7 @@ window.__ModuleLoader__.load({
             resolve(null);
             return;
           }
-          const pending = pendingRef.current;
+          const pending = instance.pending;
           const timer = setTimeout(function timeout() {
             if (pending.has(message.seq) === false) return;
             pending.delete(message.seq);
@@ -2458,6 +2534,10 @@ window.__ModuleLoader__.load({
             resolve(null);
           }
         });
+      }
+
+      function postActiveCommand(type, payload) {
+        return postSlotCommand(visibleSlotRef.current, type, payload);
       }
 
       function hideSelection() {
@@ -2525,139 +2605,281 @@ window.__ModuleLoader__.load({
         []
       );
 
-      async function loadSnapshot(targetRevision, restore) {
-        const token = ++snapshotToken.current;
-        readyRef.current = false;
-        setPhase('loading');
-        setFrameError(null);
-        if (playing) {
-          setPlaying(false);
-          void postCommand('pause');
+      // Fire-and-forget Host snapshot release: retention is only needed while an
+      // instance may still load/play. Errors are ignored (the worker TTL and the
+      // Host route cap clean up).
+      function releaseSnapshot(instance) {
+        if (instance === null || instance === undefined) return;
+        if (typeof instance.snapshotId !== 'string' || instance.snapshotId.length === 0) return;
+        hostRequest('preview.release', { snapshotId: instance.snapshotId }).catch(function ignoreRelease() {});
+      }
+
+      function snapshotInstance(next, restore) {
+        const instanceId = canvasInstanceId();
+        const nonce = canvasNonce();
+        return {
+          snapshotId: next.snapshotId,
+          revision: next.revision,
+          entryUrl: next.entryUrl,
+          routeBase: next.routeBase,
+          src: next.entryUrl + '?instance=' + encodeURIComponent(instanceId) + '&nonce=' + nonce,
+          instanceId: instanceId,
+          nonce: nonce,
+          restore: restore || null,
+          ledger: canvasMessageLedger({ instanceId: instanceId, nonce: nonce, timeoutMs: 4000 }),
+          pending: new Map(),
+        };
+      }
+
+      function discardCandidate() {
+        const current = candidateRef.current;
+        if (current === null) return;
+        candidateRef.current = null;
+        settleInstance(current);
+        releaseSnapshot(current);
+        setCandidate(null);
+        setPreviewNotice(null);
+      }
+
+      // Snapshot request failure or candidate runtime error: keep the last ready
+      // composition visible/playable. With an active composition a compact notice
+      // + retry appears next to the stage; without one (first load) the existing
+      // full recoverable status is shown.
+      function failCandidate(error) {
+        const current = candidateRef.current;
+        if (current !== null) {
+          candidateRef.current = null;
+          settleInstance(current);
+          releaseSnapshot(current);
         }
-        try {
-          const next = await hostRequest('preview.snapshot', { projectId: projectId, revision: targetRevision, ttlMs: 300000 });
-          if (token !== snapshotToken.current) return;
-          const instance = canvasInstanceId();
-          const nonce = canvasNonce();
-          // A new snapshot is a new sandbox instance: settle every promise that
-          // still belongs to the old instance before its ledger is replaced.
-          settlePendingCommands();
-          ledgerRef.current = canvasMessageLedger({ instanceId: instance, nonce: nonce, timeoutMs: 4000 });
-          pendingRef.current = new Map();
-          setSnapshot({
-            snapshotId: next.snapshotId,
-            revision: next.revision,
-            entryUrl: next.entryUrl,
-            routeBase: next.routeBase,
-            src: next.entryUrl + '?instance=' + encodeURIComponent(instance) + '&nonce=' + nonce,
-            restore: restore || null,
-          });
+        setCandidate(null);
+        if (activeRef.current !== null) {
+          setPreviewNotice(hostError(error));
           setPhase('ready');
-        } catch (error) {
-          if (token !== snapshotToken.current) return;
+        } else {
           setPhase('error');
           setFrameError(hostError(error));
         }
       }
 
+      function promoteCandidate(instance) {
+        if (candidateRef.current !== instance) return;
+        const previous = activeRef.current;
+        const hiddenIndex = 1 - visibleSlotRef.current;
+        const restore = instance.restore;
+        const restoreTime = restore !== null && restore !== undefined && Number.isFinite(restore.time)
+          ? Math.min(restore.time, duration)
+          : Math.min(timeRef.current, duration);
+        // The preloaded runtime is already ready: carry the playback position (and
+        // on the manual path the selection) over before the slot roles swap.
+        void postSlotCommand(hiddenIndex, 'seek', { time: restoreTime });
+        if (playingRef.current === true) void postSlotCommand(hiddenIndex, 'play');
+        if (restore !== null && restore !== undefined && typeof restore.stableId === 'string') {
+          const element = elements.find(function same(item) {
+            return item.stableId === restore.stableId;
+          });
+          if (element !== undefined && element.layout && Number.isFinite(element.layout.left) && Number.isFinite(element.layout.top)) {
+            const rect = element.layout;
+            if (rect.width > 0 && rect.height > 0) {
+              void postSlotCommand(hiddenIndex, 'hitTest', { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }).then(function applyHit(payload) {
+                if (payload && payload.hit) setSelectedSafe(payload.hit);
+              });
+            }
+          }
+        }
+        activeRef.current = instance;
+        candidateRef.current = null;
+        visibleSlotRef.current = hiddenIndex;
+        setVisibleSlot(hiddenIndex);
+        setActive(instance);
+        setCandidate(null);
+        setPhase('ready');
+        setFrameError(null);
+        setPreviewNotice(null);
+        readyRef.current = true;
+        if (previous !== null) {
+          // Release the outgoing instance only after the successful switch.
+          settleInstance(previous);
+          releaseSnapshot(previous);
+        }
+      }
+
+      async function loadTarget(requested, restore) {
+        const target = typeof requested === 'string' && requested.length > 0 ? requested : revision;
+        // Idempotent for the requested revision: an already in-flight request,
+        // an already preloading candidate and the displayed composition are never
+        // fetched a second time (a re-render or a poll cannot disturb them, and no
+        // duplicate snapshot is created).
+        const inFlight = pendingRequestRef.current;
+        if (inFlight !== null && inFlight.revision === target) return;
+        if (candidateRef.current !== null && candidateRef.current.revision === target) {
+          setTargetRevision(target);
+          return;
+        }
+        if (activeRef.current !== null && activeRef.current.revision === target) {
+          setTargetRevision(target);
+          setPreviewNotice(null);
+          setPhase('ready');
+          return;
+        }
+        const token = ++snapshotToken.current;
+        pendingRequestRef.current = { revision: target, token: token };
+        setTargetRevision(target);
+        setPreviewNotice(null);
+        // A newer request supersedes a still-preloading candidate.
+        discardCandidate();
+        if (activeRef.current === null) {
+          setPhase('loading');
+          setFrameError(null);
+        }
+        let next;
+        try {
+          next = await hostRequest('preview.snapshot', { projectId: projectId, revision: target, ttlMs: 300000 });
+        } catch (error) {
+          if (token !== snapshotToken.current) {
+            if (pendingRequestRef.current !== null && pendingRequestRef.current.token === token) pendingRequestRef.current = null;
+            return;
+          }
+          pendingRequestRef.current = null;
+          failCandidate(error);
+          return;
+        }
+        if (token !== snapshotToken.current) {
+          // Superseded while in flight: the snapshot we just obtained is unused;
+          // release it without touching the displayed composition.
+          if (pendingRequestRef.current !== null && pendingRequestRef.current.token === token) pendingRequestRef.current = null;
+          if (next !== null && typeof next === 'object' && typeof next.snapshotId === 'string') {
+            hostRequest('preview.release', { snapshotId: next.snapshotId }).catch(function ignoreRelease() {});
+          }
+          return;
+        }
+        pendingRequestRef.current = null;
+        if (next === null || typeof next !== 'object' || typeof next.snapshotId !== 'string' || typeof next.entryUrl !== 'string') {
+          failCandidate({ code: 'E_SNAPSHOT', message: 'The preview snapshot was invalid' });
+          return;
+        }
+        const instance = snapshotInstance(next, restore || null);
+        candidateRef.current = instance;
+        setCandidate(instance);
+      }
+
       React.useEffect(
         function reloadOnRevision() {
-          void loadSnapshot(revision, { time: timeRef.current, stableId: selectedRef.current ? selectedRef.current.stableId : null });
+          void loadTarget(revision, {
+            time: timeRef.current,
+            stableId: selectedRef.current ? selectedRef.current.stableId : null,
+            playing: playingRef.current,
+          });
           return function cancelSnapshot() {
             snapshotToken.current += 1;
+            pendingRequestRef.current = null;
           };
         },
         [projectId, revision]
       );
 
+      function handleActiveRuntimeEvent(instance, outcome) {
+        if (activeRef.current !== instance) return;
+        const payload = outcome.payload;
+        if (outcome.type === 'ready') {
+          readyRef.current = true;
+          setPhase('ready');
+        } else if (outcome.type === 'seeked' || outcome.type === 'state') {
+          if (Number.isFinite(payload.time)) setTime(payload.time);
+          if (typeof payload.playing === 'boolean') setPlaying(payload.playing);
+          readyRef.current = true;
+        } else if (outcome.type === 'playing') {
+          setPlaying(true);
+        } else if (outcome.type === 'paused') {
+          setPlaying(false);
+          if (Number.isFinite(payload.time)) setTime(payload.time);
+        } else if (outcome.type === 'hit') {
+          setSelectedSafe(payload.hit || null);
+        } else if (outcome.type === 'error') {
+          setActionError({ code: payload.code, message: payload.message });
+        } else if (outcome.type === 'destroyed') {
+          settleInstance(instance);
+        }
+      }
+
+      function handleCandidateRuntimeEvent(instance, outcome) {
+        // Only the currently tracked candidate may promote; an old/revoked
+        // candidate's ready or error can never affect the displayed composition.
+        if (candidateRef.current !== instance) return;
+        const payload = outcome.payload;
+        if (outcome.type === 'ready' || outcome.type === 'state') {
+          promoteCandidate(instance);
+        } else if (outcome.type === 'error') {
+          failCandidate({ code: payload.code, message: payload.message });
+        } else if (outcome.type === 'destroyed') {
+          settleInstance(instance);
+        }
+      }
+
       React.useEffect(
         function bindRuntimeMessages() {
-          if (snapshot === null) return function noMessages() {};
-          const frame = iframeRef.current;
-          if (frame === null) return function noFrame() {};
-          const boundLedger = ledgerRef.current;
-          function restoreRuntimeState() {
-            const restore = snapshot.restore;
-            const target = restore && Number.isFinite(restore.time) ? Math.min(restore.time, duration) : 0;
-            void postCommand('seek', { time: target }).then(function restoreSelection() {
-              if (restore && restore.stableId) {
-                const element = elements.find(function same(item) {
-                  return item.stableId === restore.stableId;
-                });
-                if (element !== undefined && element.layout && Number.isFinite(element.layout.left) && Number.isFinite(element.layout.top)) {
-                  const rect = element.layout;
-                  if (rect.width > 0 && rect.height > 0) {
-                    void postCommand('hitTest', { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }).then(function applyHit(payload) {
-                      if (payload && payload.hit) setSelectedSafe(payload.hit);
-                    });
-                  }
-                }
+          if (typeof window === 'undefined' || typeof window.addEventListener !== 'function') return function noWindow() {};
+          function handleMessage(event) {
+            const instances = slotInstancesRef.current;
+            for (let index = 0; index < 2; index += 1) {
+              const frame = slotFrame(index);
+              if (frame === null || frame === undefined) continue;
+              if (event.source !== frame.contentWindow) continue;
+              const instance = instances !== null && instances !== undefined ? instances[index] : null;
+              if (instance === null || instance === undefined) return;
+              const role = index === visibleSlotRef.current ? 'active' : 'candidate';
+              const outcome = instance.ledger.accept(event.data, { sourceOk: true });
+              if (outcome.accepted === false) return;
+              if (outcome.replyTo !== null) {
+                settleInstanceWaiter(instance, outcome.replyTo, outcome.type === 'error' ? null : outcome.payload);
               }
-            });
-          }
-          function settleWaiter(seq, payload) {
-            const pending = pendingRef.current;
-            const entry = pending.get(seq);
-            if (entry === undefined) return;
-            pending.delete(seq);
-            clearTimeout(entry.timer);
-            entry.resolve(payload);
-          }
-          function handleRuntimeEvent(outcome) {
-            const payload = outcome.payload;
-            if (outcome.type === 'ready') {
-              readyRef.current = true;
-              setPhase('ready');
-              restoreRuntimeState();
-            } else if (outcome.type === 'seeked' || outcome.type === 'state') {
-              if (Number.isFinite(payload.time)) setTime(payload.time);
-              if (typeof payload.playing === 'boolean') setPlaying(payload.playing);
-              if (readyRef.current === false) {
-                readyRef.current = true;
-                setPhase('ready');
-                restoreRuntimeState();
-              }
-            } else if (outcome.type === 'playing') {
-              setPlaying(true);
-            } else if (outcome.type === 'paused') {
-              setPlaying(false);
-              if (Number.isFinite(payload.time)) setTime(payload.time);
-            } else if (outcome.type === 'hit') {
-              setSelectedSafe(payload.hit || null);
-            } else if (outcome.type === 'error') {
-              setActionError({ code: payload.code, message: payload.message });
-            } else if (outcome.type === 'destroyed') {
-              settlePendingCommands();
+              if (role === 'candidate') handleCandidateRuntimeEvent(instance, outcome);
+              else handleActiveRuntimeEvent(instance, outcome);
+              return;
             }
           }
-          function handleMessage(event) {
-            if (event.source !== frame.contentWindow) return;
-            const ledger = ledgerRef.current;
-            if (ledger === null) return;
-            const outcome = ledger.accept(event.data, { sourceOk: true });
-            if (outcome.accepted === false) return;
-            if (outcome.replyTo !== null) settleWaiter(outcome.replyTo, outcome.type === 'error' ? null : outcome.payload);
-            handleRuntimeEvent(outcome);
-          }
-          if (typeof window === 'undefined' || typeof window.addEventListener !== 'function') return function noWindow() {};
           window.addEventListener('message', handleMessage);
           return function unbind() {
             window.removeEventListener('message', handleMessage);
-            // Explicit settlement: a replaced snapshot already settled its own
-            // pending commands before its ledger was swapped out; only this
-            // still-active instance still owns promises.
-            if (ledgerRef.current === boundLedger) settlePendingCommands();
-            else if (boundLedger !== null) boundLedger.revoke();
           };
         },
-        [snapshot]
+        []
+      );
+
+      // Release the displayed/preloading snapshots only when the component is
+      // really unmounting. In the Node smoke shim effect cleanups also run on
+      // re-render, so a re-armed epoch distinguishes a re-render from an unmount
+      // without releasing routes that are still displayed.
+      React.useEffect(
+        function releaseOnUnmount() {
+          const epoch = ++unmountEpochRef.current;
+          return function scheduleRelease() {
+            void Promise.resolve().then(function releaseIfStillUnmounted() {
+              if (unmountEpochRef.current !== epoch) return;
+              if (candidateRef.current !== null) {
+                const next = candidateRef.current;
+                candidateRef.current = null;
+                settleInstance(next);
+                releaseSnapshot(next);
+              }
+              if (activeRef.current !== null) {
+                const current = activeRef.current;
+                activeRef.current = null;
+                settleInstance(current);
+                releaseSnapshot(current);
+              }
+              readyRef.current = false;
+            });
+          };
+        },
+        []
       );
 
       React.useEffect(
         function pollDuringPlayback() {
           if (!playing) return function noPoll() {};
           const timer = setInterval(function pollState() {
-            void postCommand('state');
+            void postActiveCommand('state');
           }, 250);
           return function stopPoll() {
             clearInterval(timer);
@@ -2684,7 +2906,7 @@ window.__ModuleLoader__.load({
         }
         const point = stagePoint(event);
         if (point === null) return;
-        void postCommand('hitTest', point).then(function applyHit(payload) {
+        void postActiveCommand('hitTest', point).then(function applyHit(payload) {
           setSelectedSafe(payload && payload.hit ? payload.hit : null);
         });
       }
@@ -3154,17 +3376,17 @@ window.__ModuleLoader__.load({
       function togglePlayback() {
         if (playing) {
           setPlaying(false);
-          void postCommand('pause');
+          void postActiveCommand('pause');
         } else {
           setPlaying(true);
-          void postCommand('play');
+          void postActiveCommand('play');
         }
       }
 
       function seekTo(nextTime) {
         const value = Math.max(0, Math.min(duration, Number(nextTime) || 0));
         setTime(value);
-        void postCommand('seek', { time: value });
+        void postActiveCommand('seek', { time: value });
       }
 
       // Open the in-place text editor for one inspected text-capable element.
@@ -3182,7 +3404,7 @@ window.__ModuleLoader__.load({
         if (rect === null) return;
         setSelectedSafe(hit);
         setPlaying(false);
-        void postCommand('pause');
+        void postActiveCommand('pause');
         setEditorNotice(null);
         setEditor({
           stableId: hit.stableId,
@@ -3235,7 +3457,7 @@ window.__ModuleLoader__.load({
           openEditorForHit(current);
           return;
         }
-        void postCommand('hitTest', point).then(function openOnHit(payload) {
+        void postActiveCommand('hitTest', point).then(function openOnHit(payload) {
           if (editorRef.current !== null || drag !== null) return;
           openEditorForHit(payload !== null && typeof payload === 'object' && payload.hit ? payload.hit : null);
         });
@@ -3249,8 +3471,72 @@ window.__ModuleLoader__.load({
       const selectedBox = selectionRect();
       const selectedScale = scale;
 
+      // One physical iframe per slot: `active` occupies the visible slot and the
+      // preloading `candidate` the hidden one. The candidate is mounted at the
+      // same composition size so its fixed runtime loads, but is invisible and
+      // cannot receive pointer input.
+      function slotFrameNode(index) {
+        const instance = index === visibleSlot ? active : candidate;
+        if (instance === null) return null;
+        const visible = index === visibleSlot && active !== null;
+        return h('iframe', {
+          key: 'slot-' + index,
+          ref: index === 0 ? iframeRef : slot1Ref,
+          className: visible ? 'dv-stage-frame' : 'dv-stage-frame dv-stage-frame-candidate',
+          title: t('video.canvas.frameTitle'),
+          src: instance.src,
+          // The sandbox document must keep its composition viewport: the
+          // runtime's hitTest uses the iframe document's CSS pixels, so a
+          // letterboxed (smaller) viewport would clip the frame and silently
+          // miss composition coordinates beyond it. Keep the element at the
+          // composition size and scale the whole element visually instead.
+          style: {
+            width: width + 'px',
+            height: height + 'px',
+            transformOrigin: 'top left',
+            transform: 'scale(' + scale + ')',
+            visibility: visible ? 'visible' : 'hidden',
+            pointerEvents: visible ? 'auto' : 'none',
+          },
+          'aria-hidden': visible ? 'false' : 'true',
+          sandbox: 'allow-scripts',
+          referrerPolicy: 'no-referrer',
+          onLoad: function runtimeLoaded() {
+            setTimeout(function recoverState() {
+              void postSlotCommand(index, 'state');
+            }, 120);
+          },
+        });
+      }
+
+      function retryRequestedRevision() {
+        void loadTarget(targetRevision, {
+          time: timeRef.current,
+          stableId: selectedRef.current ? selectedRef.current.stableId : null,
+          playing: playingRef.current,
+        });
+      }
+
+      // Compact in-place feedback next to the stage when a candidate revision
+      // fails while an active composition is still displayed.
+      function previewNoticeNode() {
+        if (previewNotice === null) return null;
+        return h(
+          'div',
+          { className: 'dv-preview-notice', role: 'alert', key: 'preview-notice' },
+          h('span', { className: 'dv-preview-notice-text' }, errorText(previewNotice, t)),
+          h(
+            'button',
+            { type: 'button', className: 'dv-button dv-button-quiet dv-preview-notice-retry', onClick: retryRequestedRevision },
+            t('video.canvas.retry')
+          )
+        );
+      }
+
       function canvasBody() {
-        if (phase === 'error') {
+        if (phase === 'error' && active === null) {
+          // First load failed: no composition was ever displayed, so the full
+          // recoverable error remains the honest state.
           return h(
             'div',
             { className: 'dv-canvas-status', role: 'alert' },
@@ -3260,15 +3546,13 @@ window.__ModuleLoader__.load({
               {
                 type: 'button',
                 className: 'dv-button dv-button-quiet',
-                onClick: function retrySnapshot() {
-                  void loadSnapshot(revision, { time: time, stableId: selected ? selected.stableId : null });
-                },
+                onClick: retryRequestedRevision,
               },
               t('video.canvas.retry')
             )
           );
         }
-        if (snapshot === null || displayWidth === 0 || displayHeight === 0) {
+        if ((active === null && candidate === null) || displayWidth === 0 || displayHeight === 0) {
           return h('p', { className: 'dv-canvas-status', role: 'status' }, t('video.canvas.loading'));
         }
         return h(
@@ -3278,30 +3562,15 @@ window.__ModuleLoader__.load({
             ref: stageRef,
             style: { width: displayWidth + 'px', height: displayHeight + 'px' },
           },
-          h('iframe', {
-            ref: iframeRef,
-            className: 'dv-stage-frame',
-            title: t('video.canvas.frameTitle'),
-            src: snapshot.src,
-            // The sandbox document must keep its composition viewport: the
-            // runtime's hitTest uses the iframe document's CSS pixels, so a
-            // letterboxed (smaller) viewport would clip the frame and silently
-            // miss composition coordinates beyond it. Keep the element at the
-            // composition size and scale the whole element visually instead.
-            style: {
-              width: width + 'px',
-              height: height + 'px',
-              transformOrigin: 'top left',
-              transform: 'scale(' + scale + ')',
-            },
-            sandbox: 'allow-scripts',
-            referrerPolicy: 'no-referrer',
-            onLoad: function runtimeLoaded() {
-              setTimeout(function recoverState() {
-                void postCommand('state');
-              }, 120);
-            },
-          }),
+          slotFrameNode(0),
+          slotFrameNode(1),
+          active === null
+            ? h(
+                'p',
+                { className: 'dv-canvas-status dv-canvas-status-overlay', role: 'status', 'data-overlay': 'true' },
+                t('video.canvas.loading')
+              )
+            : null,
           previewOnly
             ? null
             : h(
@@ -3409,7 +3678,11 @@ window.__ModuleLoader__.load({
         'section',
         {
           className: 'dv-canvas-shell',
-          'data-canvas-revision': revision,
+          // Truthful markers: the revision marker names only the ACTIVE displayed
+          // composition (empty before the first ready), while the target marker
+          // names the requested revision being loaded/pending/failed.
+          'data-canvas-revision': active !== null ? active.revision : '',
+          'data-canvas-target-revision': targetRevision === null || targetRevision === undefined ? '' : String(targetRevision),
           'data-canvas-phase': phase,
           'data-preview-only': previewOnly ? 'true' : 'false',
         },
@@ -3445,6 +3718,7 @@ window.__ModuleLoader__.load({
             : h('button', { type: 'button', className: 'dv-button dv-button-primary', onClick: function render() { void exportVideo(); }, disabled: busy !== null }, exportState && exportState.state === 'running' ? t('video.canvas.exporting') : t('video.canvas.export'))
         ),
         h('div', { className: 'dv-canvas-wrap', ref: wrapRef }, canvasBody()),
+        previewNoticeNode(),
         previewOnly ? null : h(
           'div',
           { className: 'dv-canvas-tools' },

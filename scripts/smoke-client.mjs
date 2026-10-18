@@ -23,7 +23,11 @@
  * (project.list -> remembered/default/most-recent auto-open, auto-provision +
  * guarded single auto-Session, 1500 ms inspect poll adopting a published
  * revision, recoverable preview failure + retry, absence of deferred manual
- * controls in the rendered product, read-only previewOnly component), the
+ * controls in the rendered product, read-only previewOnly component), the R2
+ * dual-instance preview retention contract (hidden candidate preload, promotion
+ * only on runtime ready, last-ready composition kept on snapshot/runtime
+ * failure with a compact notice+retry, truthful active/target revision markers,
+ * post-switch preview.release), the
  * native conversation/history/file-preview surfaces, and (P3-008 R1/R2/R5/R6)
  * the reviewed runtime message contract, the static-base inverse-mapped
  * drag/resize patches, the frozen Scene template copy/refusal path and the
@@ -973,10 +977,13 @@ function sessionFetch(options) {
     }
     if (method === 'preview.snapshot') {
       config.snapshotRequests = (config.snapshotRequests || []).concat([request.body.params]);
+      config.snapshotSeq = (config.snapshotSeq || 0) + 1;
+      const snapshotId = ('a'.repeat(16) + String(config.snapshotSeq).padStart(16, '0')).slice(0, 32);
+      config.snapshotResults = (config.snapshotResults || []).concat([{ revision: request.body.params.revision, snapshotId: snapshotId }]);
       return Promise.resolve({
         ok: true,
         result: {
-          snapshotId: 'a'.repeat(32),
+          snapshotId: snapshotId,
           projectId: request.body.params.projectId,
           revision: request.body.params.revision,
           entry: 'index.html',
@@ -986,6 +993,10 @@ function sessionFetch(options) {
           expiresAt: new Date(Date.now() + 60000).toISOString(),
         },
       });
+    }
+    if (method === 'preview.release') {
+      config.releaseCalls = (config.releaseCalls || []).concat([request.body.params.snapshotId]);
+      return Promise.resolve({ ok: true, result: { released: true } });
     }
     if (method === 'preview') {
       config.previewCalls = (config.previewCalls || []).concat([request.body.params]);
@@ -1060,6 +1071,12 @@ function remountInteractivePanel(editor, kit) {
 async function mountBootedPanel(hostFetch, options) {
   const editor = mountSessionEditor(hostFetch, options);
   await settlePanel(editor);
+  // The product preview preloads its first revision as a hidden candidate and
+  // promotes it when the fixed runtime reports ready; the Node shim simulates
+  // that contract event so product-level assertions run against a ready preview.
+  if (findNode(editor.tree(), (node) => node.props && node.props.className === 'dv-canvas-shell') !== null) {
+    await ensureCanvasActive(editor);
+  }
   return editor;
 }
 //#endregion
@@ -1642,7 +1659,28 @@ test('P3-012: project.list auto-opens the most recent managed project and ignore
   assert(optionValues.includes('demo') === false, 'the demo project is still offered in the product switcher');
 });
 
-test('P3-012: a changed Host revision updates the preview without a user action', async () => {
+function previewNoticeNode(tree) {
+  return findNode(tree, (node) => node.props && node.props.className === 'dv-preview-notice');
+}
+
+function snapshotIdFor(config, revision) {
+  const results = (config.snapshotResults || []).filter((entry) => entry.revision === revision);
+  assert(results.length > 0, 'the fake host never produced a snapshot for revision ' + revision.slice(0, 4));
+  return results[results.length - 1].snapshotId;
+}
+
+async function waitForCandidate(editor, rounds) {
+  const total = rounds || 24;
+  for (let round = 0; round < total; round += 1) {
+    await settle();
+    editor.rerender();
+    if (candidateIframe(editor) !== null) return true;
+    await new Promise((resolve) => setTimeout(resolve, 120));
+  }
+  return false;
+}
+
+test('P3-012/R2: a published revision preloads hidden and switches only after its runtime is ready', async () => {
   const revisionA = 'c'.repeat(64);
   const revisionB = 'e'.repeat(64);
   let currentRevision = revisionA;
@@ -1654,55 +1692,182 @@ test('P3-012: a changed Host revision updates the preview without a user action'
   };
   const kit = makeSessionKit();
   const editor = await mountBootedPanel(hostFetch, { sessions: sessions, kit: kit });
-  assert(findNode(editor.tree(), (node) => node.props && node.props['data-canvas-revision'] === revisionA) !== null, 'the initial revision marker is missing');
+  let shell = productCanvas(editor.tree());
+  assert(shell.props['data-canvas-revision'] === revisionA, `initial active revision is ${shell.props['data-canvas-revision']}`);
+  assert(shell.props['data-canvas-target-revision'] === revisionA, 'initial target revision marker is missing');
+  assert(shell.props['data-canvas-phase'] === 'ready', `initial phase is ${shell.props['data-canvas-phase']}`);
+  const activeBefore = activeIframe(editor);
+  assert(activeBefore !== null, 'the initial active iframe is missing');
   const snapshotsBefore = hostFetch.config.snapshotRequests.length;
-  const inspectsBefore = hostFetch.calls.filter((call) => call.body.method === 'inspect').length;
   // The Agent published through project.compose: the worker revision changed.
   currentRevision = revisionB;
   await new Promise((resolve) => setTimeout(resolve, 1700));
+  assert(await waitForCandidate(editor), 'the published revision was not preloaded as a hidden candidate');
+  shell = productCanvas(editor.tree());
+  // Retention: the old composition is still the visible/playable one and the
+  // markers stay truthful while the new candidate preloads.
+  assert(activeIframe(editor) !== null, 'the last valid composition was unmounted while the new revision preloaded');
+  assert(activeIframe(editor).props.src === activeBefore.props.src, 'the visible composition changed before the candidate was ready');
+  assert(shell.props['data-canvas-revision'] === revisionA, 'the active revision marker lied during preload');
+  assert(shell.props['data-canvas-target-revision'] === revisionB, 'the target revision marker does not name the preloading revision');
+  assert(shell.props['data-canvas-phase'] === 'ready', 'the phase left ready while the last valid composition is visible');
+  assert(candidateIframe(editor) !== null, 'the hidden candidate iframe is missing');
+  assert(candidateIframe(editor).props['aria-hidden'] === 'true', 'the candidate iframe is not hidden from assistive content');
+  assert(candidateIframe(editor).props.style.visibility === 'hidden', 'the candidate iframe is not visually hidden');
+  assert(candidateIframe(editor).props.style.pointerEvents === 'none', 'the candidate iframe can receive pointer input');
+  assert(previewNoticeNode(editor.tree()) === null, 'a preview notice appeared before any failure');
+  assert(hostFetch.config.snapshotRequests.length > snapshotsBefore, 'no snapshot was requested for the published revision');
+  assert(hostFetch.config.snapshotRequests.some((request) => request.revision === revisionB), 'the published revision was never requested');
+  // Promote only on the candidate runtime ready event.
+  const oldSnapshotId = snapshotIdFor(hostFetch.config, revisionA);
+  promoteCanvasCandidate(editor);
+  shell = productCanvas(editor.tree());
+  assert(shell.props['data-canvas-revision'] === revisionB, 'the active revision marker did not switch after promotion');
+  assert(shell.props['data-canvas-target-revision'] === revisionB, 'the target revision marker did not settle on the new active revision');
+  assert(shell.props['data-canvas-phase'] === 'ready', 'the switched preview is not ready');
+  assert(activeIframe(editor) !== null && activeIframe(editor).props.src !== activeBefore.props.src, 'the visible iframe did not switch to the published revision');
+  assert(candidateIframe(editor) === null, 'the candidate iframe is still mounted after promotion');
+  assert(previewNoticeNode(editor.tree()) === null, 'a preview notice is visible after a successful switch');
   await settle();
-  editor.rerender();
-  await settle();
-  editor.rerender();
-  assert(hostFetch.calls.filter((call) => call.body.method === 'inspect').length > inspectsBefore, 'the preview did not poll inspect');
-  assert(hostFetch.config.snapshotRequests.length > snapshotsBefore, 'no new preview snapshot was requested after the revision changed');
-  assert(hostFetch.config.snapshotRequests.some((request) => request.revision === revisionB), `the published revision ${revisionB.slice(0, 4)} was never requested`);
-  const tree = editor.tree();
-  assert(findNode(tree, (node) => node.props && node.props['data-canvas-revision'] === revisionB) !== null, 'the canvas revision marker did not update automatically');
-  assert(panelRoot(tree).props['data-project-id'] === 'proj-smoke', 'revision follow replaced the current project');
+  const releases = hostFetch.config.releaseCalls || [];
+  assert(releases.filter((snapshotId) => snapshotId === oldSnapshotId).length === 1, `expected one preview.release for the old snapshot, got ${JSON.stringify(releases)}`);
 });
 
-test('P3-012: a preview snapshot failure is recoverable and never the legacy frame copy', async () => {
-  let snapshotFails = true;
-  const sessions = makeSessionsService({ list: ['session-err'] });
-  const hostFetch = sessionFetch({ activeSessionId: 'session-err', sessions: ['session-err'] });
+test('P3-012/R2: a failed candidate snapshot keeps the last valid composition and retries', async () => {
+  const revisionA = 'c'.repeat(64);
+  const revisionB = 'e'.repeat(64);
+  let currentRevision = revisionA;
+  let failRevisionB = true;
+  const sessions = makeSessionsService({ list: ['session-retain'] });
+  const hostFetch = sessionFetch({ activeSessionId: 'session-retain', sessions: ['session-retain'] });
   hostFetch.config.handler = async (request) => {
-    if (request.body.method === 'preview.snapshot' && snapshotFails) {
+    if (request.body.method === 'inspect') return { ok: true, result: inspectWithRevision(currentRevision) };
+    if (request.body.method === 'preview.snapshot' && request.body.params.revision === revisionB && failRevisionB) {
       return { ok: false, error: { code: 'E_PERSIST', message: 'snapshot copy failed' } };
     }
     return undefined;
   };
   const kit = makeSessionKit();
   const editor = await mountBootedPanel(hostFetch, { sessions: sessions, kit: kit });
-  let tree = editor.tree();
-  assert(productCanvas(tree) !== null, 'the preview canvas disappeared after a snapshot failure');
-  const failure = findNode(tree, (node) => node.props && node.props.role === 'alert');
-  assert(failure !== null, 'the recoverable preview failure is not shown');
-  assert(textOf(failure).includes(translateFor(editor.env)('video.canvas.persistFailed')), `failure copy is not localized: ${textOf(failure)}`);
-  const retry = findNode(tree, (node) => node.type === 'button' && textOf(node) === translateFor(editor.env)('video.canvas.retry'));
-  assert(retry !== null, 'the preview retry button is missing');
-  assert(textOf(tree).includes(translateFor(editor.env)('video.frame.empty')) === false, 'the removed legacy no-frame copy is still rendered');
-  snapshotFails = false;
-  retry.props.onClick();
-  await settle();
-  editor.rerender();
-  await settle();
-  editor.rerender();
-  tree = editor.tree();
-  assert(previewFrame(tree) !== null, 'the retry did not recover the preview');
-  assert(findNode(tree, (node) => node.props && node.props['data-canvas-phase'] === 'ready') !== null, 'the recovered preview did not reach the ready phase');
+  let shell = productCanvas(editor.tree());
+  assert(shell.props['data-canvas-revision'] === revisionA, 'the initial active revision is missing');
+  const activeBefore = activeIframe(editor);
+  assert(activeBefore !== null, 'the initial active iframe is missing');
+  currentRevision = revisionB;
+  await new Promise((resolve) => setTimeout(resolve, 1700));
+  let notice = null;
+  for (let round = 0; round < 24; round += 1) {
+    await settle();
+    editor.rerender();
+    notice = previewNoticeNode(editor.tree());
+    if (notice !== null) break;
+    await new Promise((resolve) => setTimeout(resolve, 120));
+  }
+  assert(notice !== null, 'the compact preview failure notice is missing');
+  assert(notice.props.role === 'alert', 'the preview notice is not an alert');
+  assert(textOf(notice).includes(translateFor(editor.env)('video.canvas.persistFailed')), `notice copy is not localized: ${textOf(notice)}`);
+  shell = productCanvas(editor.tree());
+  assert(activeIframe(editor) !== null && activeIframe(editor).props.src === activeBefore.props.src, 'the last valid composition was unmounted by a failed candidate snapshot');
+  assert(shell.props['data-canvas-revision'] === revisionA, 'the active revision marker changed on a failed switch');
+  assert(shell.props['data-canvas-target-revision'] === revisionB, 'the target revision marker does not name the failed revision');
+  assert(shell.props['data-canvas-phase'] === 'ready', `phase is ${shell.props['data-canvas-phase']} while the old composition is visible`);
+  assert(candidateIframe(editor) === null, 'the failed candidate iframe was not discarded');
+  assert(textOf(editor.tree()).includes(translateFor(editor.env)('video.frame.empty')) === false, 'the removed legacy no-frame copy is still rendered');
+  const noticeRetry = findNode(notice, (node) => node.type === 'button' && textOf(node) === translateFor(editor.env)('video.canvas.retry'));
+  assert(noticeRetry !== null, 'the preview notice retry button is missing');
+  // Explicit retry with the host serving the revision again: the preview switches.
+  failRevisionB = false;
+  noticeRetry.props.onClick();
+  assert(await waitForCandidate(editor), 'the retry did not preload the requested revision');
+  promoteCanvasCandidate(editor);
+  shell = productCanvas(editor.tree());
+  assert(shell.props['data-canvas-revision'] === revisionB, 'the retry did not switch the active revision');
+  assert(previewNoticeNode(editor.tree()) === null, 'the notice is still visible after a successful retry');
+  assert(activeIframe(editor) !== null && activeIframe(editor).props.src !== activeBefore.props.src, 'the visible iframe did not switch after a successful retry');
 });
 
+test('P3-012/R2: a candidate runtime error keeps the last valid composition playable', async () => {
+  const revisionA = 'c'.repeat(64);
+  const revisionB = 'e'.repeat(64);
+  let currentRevision = revisionA;
+  const sessions = makeSessionsService({ list: ['session-runtime-error'] });
+  const hostFetch = sessionFetch({ activeSessionId: 'session-runtime-error', sessions: ['session-runtime-error'] });
+  hostFetch.config.handler = async (request) => {
+    if (request.body.method === 'inspect') return { ok: true, result: inspectWithRevision(currentRevision) };
+    return undefined;
+  };
+  const kit = makeSessionKit();
+  const editor = await mountBootedPanel(hostFetch, { sessions: sessions, kit: kit });
+  const activeBefore = activeIframe(editor);
+  assert(activeBefore !== null, 'the initial active iframe is missing');
+  currentRevision = revisionB;
+  await new Promise((resolve) => setTimeout(resolve, 1700));
+  assert(await waitForCandidate(editor), 'the next revision was not preloaded as a candidate');
+  const candidateNode = candidateIframe(editor);
+  assert(candidateNode !== null, 'the hidden candidate iframe is missing');
+  const releasesBefore = (hostFetch.config.releaseCalls || []).length;
+  // The fixed runtime reports an error before ready: nothing may be promoted.
+  dispatchFrameEvent(editor, {
+    frame: runtimeFrameOf(editor, candidateNode),
+    type: 'error',
+    payload: { code: 'E_RUNTIME', message: 'runtime failed before ready' },
+  });
+  editor.rerender();
+  const tree = editor.tree();
+  const notice = previewNoticeNode(tree);
+  assert(notice !== null && notice.props.role === 'alert', 'the candidate runtime error did not show the compact notice');
+  const shell = productCanvas(tree);
+  assert(activeIframe(editor) !== null && activeIframe(editor).props.src === activeBefore.props.src, 'the last valid composition was unmounted by a candidate runtime error');
+  assert(shell.props['data-canvas-revision'] === revisionA, 'the active revision marker changed on a candidate runtime error');
+  assert(shell.props['data-canvas-target-revision'] === revisionB, 'the target revision marker is missing on a candidate runtime error');
+  assert(shell.props['data-canvas-phase'] === 'ready', 'the phase left ready on a candidate runtime error');
+  assert(findNode(tree, (node) => node.props && node.props.className === 'dv-canvas-status' && node.props.role === 'alert') === null, 'a candidate runtime error replaced the stage with the full first-load error');
+  await settle();
+  assert((hostFetch.config.releaseCalls || []).length > releasesBefore, 'the failed candidate snapshot was not released');
+  // The retained composition still receives the playback commands.
+  const commandCountBefore = editor.loaded.runtime.commands.length;
+  const play = findNode(tree, (node) => node.type === 'button' && textOf(node) === translateFor(editor.env)('video.canvas.play'));
+  assert(play !== null, 'the play control is missing while the retained composition is shown');
+  play.props.onClick();
+  editor.rerender();
+  const playCommand = editor.loaded.runtime.commands.slice(commandCountBefore).find((message) => message.type === 'play');
+  assert(playCommand !== undefined, 'the retained composition is not playable');
+  assert(playCommand.instanceId === contractRefFromFrame(activeIframe(editor)).instanceId, 'the play command was not sent to the displayed composition');
+});
+
+test('P3-012/R2: an initial preview failure stays a full recoverable error', async () => {
+  let failFirst = true;
+  const sessions = makeSessionsService({ list: ['session-initial'] });
+  const hostFetch = sessionFetch({ activeSessionId: 'session-initial', sessions: ['session-initial'] });
+  hostFetch.config.handler = async (request) => {
+    if (request.body.method === 'preview.snapshot' && failFirst) {
+      return { ok: false, error: { code: 'E_NETWORK', message: 'snapshot transport failed' } };
+    }
+    return undefined;
+  };
+  const kit = makeSessionKit();
+  const editor = mountSessionEditor(hostFetch, { sessions: sessions, kit: kit });
+  await settlePanel(editor);
+  let tree = editor.tree();
+  let shell = productCanvas(tree);
+  assert(shell !== null, 'the preview shell is missing');
+  assert(shell.props['data-canvas-revision'] === '', 'no active revision marker may exist before the first ready composition');
+  assert(shell.props['data-canvas-target-revision'] === 'c'.repeat(64), 'the target revision marker is missing on the initial failure');
+  assert(shell.props['data-canvas-phase'] === 'error', `initial failure phase is ${shell.props['data-canvas-phase']}`);
+  const status = findNode(tree, (node) => node.props && node.props.className === 'dv-canvas-status' && node.props.role === 'alert');
+  assert(status !== null, 'the initial failure did not show the full recoverable status');
+  assert(textOf(status).includes(translateFor(editor.env)('video.error.network')), `initial failure copy is not localized: ${textOf(status)}`);
+  assert(previewNoticeNode(tree) === null, 'the first-load failure must not use the compact candidate notice');
+  const retry = findNode(status, (node) => node.type === 'button' && textOf(node) === translateFor(editor.env)('video.canvas.retry'));
+  assert(retry !== null, 'the initial failure retry button is missing');
+  failFirst = false;
+  retry.props.onClick();
+  assert(await waitForCandidate(editor), 'the retry did not preload the first composition');
+  promoteCanvasCandidate(editor);
+  shell = productCanvas(editor.tree());
+  assert(shell.props['data-canvas-revision'] === 'c'.repeat(64), 'the retried first composition did not become active');
+  assert(shell.props['data-canvas-phase'] === 'ready', 'the retried first composition did not reach the ready phase');
+});
 test('P3-012: the rendered product workspace has no manual editing controls', async () => {
   const sessions = makeSessionsService({ list: ['session-clean'], titles: { 'session-clean': '工程 · 干净' } });
   const hostFetch = sessionFetch({ activeSessionId: 'session-clean', sessions: ['session-clean'] });
@@ -2550,13 +2715,7 @@ async function mountCanvasReady(options) {
   };
   const interactive = loaded.react.renderInteractive(canvasModule.CanvasWorkspace, props);
   let tree = interactive.render();
-  for (let round = 0; round < 5; round += 1) {
-    await settle();
-    tree = interactive.rerender();
-  }
-  assert(findNode(tree, (node) => node.props && node.props.className === 'dv-canvas-shell') !== null, 'managed canvas did not mount');
-  assert(findNode(tree, (node) => node.props && node.props.className === 'dv-stage-frame') !== null, 'snapshot iframe did not render');
-  return {
+  const editor = {
     loaded,
     env,
     interactive,
@@ -2568,6 +2727,112 @@ async function mountCanvasReady(options) {
       return tree;
     },
   };
+  for (let round = 0; round < 5; round += 1) {
+    await settle();
+    tree = interactive.rerender();
+  }
+  assert(findNode(tree, (node) => node.props && node.props.className === 'dv-canvas-shell') !== null, 'managed canvas did not mount');
+  // R2: the first snapshot is a hidden candidate until its fixed runtime reports
+  // ready (the real browser runtime does that itself; the Node shim simulates the
+  // contract event so the manual path can be exercised after promotion).
+  await ensureCanvasActive(editor);
+  tree = editor.tree();
+  assert(activeIframe(editor) !== null, 'the ready candidate was not promoted to the active composition');
+  return editor;
+}
+
+/** Parse the runtime instance reference out of a snapshot iframe src. */
+function contractRefFromFrame(frame) {
+  const src = frame && frame.props && typeof frame.props.src === 'string' ? frame.props.src : '';
+  const instanceMatch = /[?&]instance=([^&]+)/.exec(src);
+  const nonceMatch = /[?&]nonce=([^&]+)/.exec(src);
+  assert(instanceMatch !== null && nonceMatch !== null, 'snapshot iframe src carries no instance/nonce contract markers');
+  return { instanceId: decodeURIComponent(instanceMatch[1]), nonce: nonceMatch[1] };
+}
+
+/** Dispatch one contract event from a specific snapshot iframe WindowProxy. */
+function dispatchFrameEvent(editor, options) {
+  const settings = options || {};
+  const runtime = editor.loaded.runtime;
+  const frame = settings.frame || canvasLatestFrame(editor);
+  assert(frame !== undefined && frame !== null, 'no iframe to dispatch a runtime event to');
+  const reference = contractRefFromFrame(frame);
+  if (runtime.eventSeqs === undefined) runtime.eventSeqs = new Map();
+  const last = runtime.eventSeqs.get(reference.instanceId) || 0;
+  const seq = settings.seq !== undefined ? settings.seq : last + 1;
+  runtime.eventSeqs.set(reference.instanceId, Math.max(last, seq));
+  const event = {
+    v: 1,
+    kind: 'evt',
+    instanceId: reference.instanceId,
+    nonce: reference.nonce,
+    seq: seq,
+    type: settings.type,
+    replyTo: settings.replyTo !== undefined ? settings.replyTo : null,
+    payload: settings.payload || {},
+  };
+  for (const listener of runtime.listeners.slice()) listener({ source: frame.contentWindow, data: event });
+  return event;
+}
+
+function iframesByClass(editor, className) {
+  return findAll(
+    editor.tree(),
+    (node) => node.type === 'iframe' && node.props && typeof node.props.className === 'string' && node.props.className.split(/\s+/).includes(className)
+  );
+}
+
+function candidateIframe(editor) {
+  const candidates = iframesByClass(editor, 'dv-stage-frame-candidate');
+  return candidates.length > 0 ? candidates[candidates.length - 1] : null;
+}
+
+function activeIframe(editor) {
+  const actives = iframesByClass(editor, 'dv-stage-frame');
+  return actives.length > 0 ? actives[actives.length - 1] : null;
+}
+
+function runtimeFrameOf(editor, vnode) {
+  const frames = editor.loaded.runtime.iframes;
+  const found = frames.filter((entry) => entry.props.src === vnode.props.src);
+  assert(found.length > 0, 'runtime iframe node not tracked by the React shim');
+  return found[found.length - 1];
+}
+
+/** Simulate the fixed runtime of the hidden candidate reporting ready. */
+function promoteCanvasCandidate(editor) {
+  const candidate = candidateIframe(editor);
+  assert(candidate !== null, 'no hidden candidate iframe to promote');
+  dispatchFrameEvent(editor, {
+    frame: runtimeFrameOf(editor, candidate),
+    type: 'ready',
+    payload: { runtimeVersion: 'p3-012-runtime.1', width: 1280, height: 720, duration: 15 },
+  });
+  editor.rerender();
+  return editor.tree();
+}
+
+/**
+ * Drive the preview to its ready composition: promote the hidden candidate once
+ * its runtime reports ready (the real browser runtime does that by itself) and
+ * return once the active composition is mounted. An active composition is only
+ * returned after any pending candidate has been promoted, so revision-switch
+ * assertions run against the new active revision.
+ */
+async function ensureCanvasActive(editor) {
+  for (let round = 0; round < 10; round += 1) {
+    await settle();
+    editor.rerender();
+    if (candidateIframe(editor) !== null) {
+      promoteCanvasCandidate(editor);
+      await settle();
+      editor.rerender();
+      if (activeIframe(editor) !== null) return editor.tree();
+      continue;
+    }
+    if (activeIframe(editor) !== null) return editor.tree();
+  }
+  return editor.tree();
 }
 
 function canvasOverlay(tree) {
@@ -2874,8 +3139,9 @@ test('R1 wiring: scene colour is copied from a fresh authoritative template and 
     assert(params.template.sceneId === undefined, 'the scene.update template leaked sceneId');
     assert(typeof params.operationId === 'string' && params.operationId.length > 0, 'scene.update lost its operationId');
     assert(canvasMethodCalls(hostFetch, 'inspect').length >= 2, 'no fresh inspect was issued before the scene write');
+    await ensureCanvasActive(editor);
     assert(
-      findNode(editor.rerender(), (node) => node.props && node.props['data-canvas-revision'] === CANVAS_FRESH_REVISION) !== null,
+      findNode(editor.tree(), (node) => node.props && node.props['data-canvas-revision'] === CANVAS_FRESH_REVISION) !== null,
       'the canvas did not reload the fresh revision after the write'
     );
   } finally {
@@ -2962,8 +3228,9 @@ test('R2 wiring: a component move writes the static-base patch and reloads the n
     assert(op.type === 'layout' && op.unit === 'composition-px' && op.target === 'scene-1-title', `unexpected layout op ${JSON.stringify(op)}`);
     assert(JSON.stringify(op.box) === JSON.stringify({ left: 98, top: 196 }), `layout box was ${JSON.stringify(op.box)}; the animated Y offset or the auto height leaked into the write`);
     assert(params.expectedRevision === CANVAS_REVISION, 'layout edit lost expectedRevision');
+    await ensureCanvasActive(editor);
     assert(
-      findNode(editor.rerender(), (node) => node.props && node.props['data-canvas-revision'] === CANVAS_NEXT_REVISION) !== null,
+      findNode(editor.tree(), (node) => node.props && node.props['data-canvas-revision'] === CANVAS_NEXT_REVISION) !== null,
       'the new revision did not replace the canvas snapshot after the layout write'
     );
   } finally {
@@ -3053,6 +3320,7 @@ test('R5: a failed text save keeps the draft and reuses the editor operationId o
     assert(findNode(editor.tree(), (node) => node.props && node.props.className === 'dv-inline-editor') === null, 'the editor did not close after the successful retry');
     const editIndex = hostFetch.calls.indexOf(edits[1]);
     assert(hostFetch.calls.slice(editIndex + 1).some((call) => call.body.method === 'inspect'), 'the successful save did not reload the authoritative project');
+    await ensureCanvasActive(editor);
     assert(
       findNode(editor.tree(), (node) => node.props && node.props['data-canvas-revision'] === CANVAS_NEXT_REVISION) !== null,
       'the saved revision did not replace the canvas snapshot'
@@ -3253,6 +3521,7 @@ test('R5: a successful save closes the editor first and then reloads the new rev
     assert(editIndex >= before, 'the edit was not sent after the explicit submit');
     assert(hostFetch.calls.slice(editIndex + 1).some((call) => call.body.method === 'inspect'), 'the successful save did not reload the authoritative project');
     assert(findNode(editor.tree(), (node) => node.props && node.props.className === 'dv-inline-editor') === null, 'the editor did not close on success');
+    await ensureCanvasActive(editor);
     assert(
       findNode(editor.tree(), (node) => node.props && node.props['data-canvas-revision'] === CANVAS_NEXT_REVISION) !== null,
       'the canvas did not load the saved revision'
@@ -3295,6 +3564,7 @@ test('R5(b): a write applied but response lost replays the identical frozen requ
     assert(JSON.stringify(edits[1].body.params) === JSON.stringify(edits[0].body.params), 'the unchanged-draft retry did not send the identical frozen request');
     assert(engine.applied === 1, `the text was applied ${engine.applied} times instead of once`);
     assert(findNode(editor.tree(), (node) => node.props && node.props.className === 'dv-inline-editor') === null, 'the editor did not close after the cached success');
+    await ensureCanvasActive(editor);
     assert(
       findNode(editor.tree(), (node) => node.props && node.props['data-canvas-revision'] === engine.revision) !== null,
       'the canvas did not load the settled revision after the cached success'
@@ -3332,6 +3602,7 @@ test('R5(c): a changed retained draft settles the old frozen attempt first and t
     assert(next.ops[0].text === '新文案', 'the new attempt did not carry the changed draft');
     assert(engine.applied === 2 && engine.text === '新文案', `final apply state is wrong: ${engine.text} applied ${engine.applied}`);
     assert(findNode(editor.tree(), (node) => node.props && node.props.className === 'dv-inline-editor') === null, 'the editor did not close after the new attempt succeeded');
+    await ensureCanvasActive(editor);
     assert(
       findNode(editor.tree(), (node) => node.props && node.props['data-canvas-revision'] === engine.revision) !== null,
       'the canvas did not load the final revision'
@@ -3444,7 +3715,8 @@ test('R6 wiring: the canvas drops wrong-source, uncorrelated and malformed event
         command.kind === 'cmd' &&
         /^[a-z0-9][a-z0-9-]{7,63}$/.test(command.instanceId) &&
         command.nonce.length === 32 &&
-        command.seq === 1,
+        Number.isInteger(command.seq) &&
+        command.seq >= 1,
       `outgoing command is not the reviewed contract shape: ${JSON.stringify(command)}`
     );
     assert(findNode(editor.tree(), (node) => node.props && node.props.className === 'dv-selection') === null, 'a selection existed before any runtime reply');
@@ -3467,6 +3739,7 @@ test('R6 wiring: the canvas drops wrong-source, uncorrelated and malformed event
     assert(takeCanvasCommand(editor, 'hitTest') !== null, 'the final pending command was not posted');
     assert(editor.loaded.runtime.timers.size > 0, 'a pending command did not have a settlement timer');
     editor.interactive.unmount();
+    await settle();
     assert(editor.loaded.runtime.listeners.length === 0, 'the canvas left a message listener bound after unmount');
     assert(editor.loaded.runtime.timers.size === 0, `unmount left ${editor.loaded.runtime.timers.size} pending command timer(s); pending promises were not settled`);
   } finally {
@@ -3492,17 +3765,44 @@ test('P3-012 component: previewOnly hides every manual control and gesture surfa
     onError: function canvasError() {},
   };
   const interactive = loaded.react.renderInteractive(canvasModule.CanvasWorkspace, props);
-  let tree = interactive.render();
-  for (let round = 0; round < 5; round += 1) {
-    await settle();
-    tree = interactive.rerender();
-  }
+  let currentTree = interactive.render();
+  const editor = {
+    loaded,
+    env,
+    interactive,
+    props,
+    tree: () => currentTree,
+    rerender() {
+      currentTree = interactive.rerender();
+      return currentTree;
+    },
+  };
   try {
+    for (let round = 0; round < 5; round += 1) {
+      await settle();
+      currentTree = interactive.rerender();
+    }
+    // R2: the first composition preloads as a hidden candidate; the revision
+    // marker stays empty and the target marker names the requested revision.
+    const pendingShell = findNode(editor.tree(), (node) => node.props && node.props.className === 'dv-canvas-shell');
+    assert(pendingShell !== null, 'the preview-only shell is missing');
+    assert(pendingShell.props['data-preview-only'] === 'true', 'the preview-only shell marker is missing');
+    assert(pendingShell.props['data-canvas-phase'] === 'loading', `first-load phase is ${pendingShell.props['data-canvas-phase']}`);
+    assert(pendingShell.props['data-canvas-revision'] === '', 'the active revision marker must be empty before the first ready composition');
+    assert(pendingShell.props['data-canvas-target-revision'] === CANVAS_REVISION, 'the target revision marker is missing during preload');
+    const hiddenCandidate = candidateIframe(editor);
+    assert(hiddenCandidate !== null, 'the preloading candidate iframe is missing');
+    assert(hiddenCandidate.props['aria-hidden'] === 'true', 'the candidate iframe is not aria-hidden');
+    assert(hiddenCandidate.props.style.visibility === 'hidden', 'the candidate iframe is not visually hidden');
+    assert(hiddenCandidate.props.style.pointerEvents === 'none', 'the candidate iframe can receive pointer input');
+    await ensureCanvasActive(editor);
+    const tree = editor.tree();
     const shell = findNode(tree, (node) => node.props && node.props.className === 'dv-canvas-shell');
-    assert(shell !== null && shell.props['data-preview-only'] === 'true', 'the preview-only shell marker is missing');
-    assert(typeof shell.props['data-canvas-revision'] === 'string', 'the revision marker is missing');
-    assert(typeof shell.props['data-canvas-phase'] === 'string', 'the phase marker is missing');
-    assert(findNode(tree, (node) => node.props && node.props.className === 'dv-stage-frame') !== null, 'the snapshot iframe is missing');
+    assert(shell.props['data-canvas-revision'] === CANVAS_REVISION, 'the promoted active revision marker is missing');
+    assert(shell.props['data-canvas-target-revision'] === CANVAS_REVISION, 'the target revision marker is missing after promotion');
+    assert(shell.props['data-canvas-phase'] === 'ready', `phase is ${shell.props['data-canvas-phase']} after promotion`);
+    assert(activeIframe(editor) !== null, 'the active composition iframe is missing');
+    assert(candidateIframe(editor) === null, 'the candidate iframe is still mounted after promotion');
     assert(findNode(tree, (node) => node.type === 'input' && node.props && node.props.className === 'dv-seek') !== null, 'the seek control is missing');
     assert(buttonByText(tree, translateFor(env)('video.canvas.play')) !== null, 'the play control is missing');
     const classes = findAll(tree, (node) => node.props && typeof node.props.className === 'string').map((node) => node.props.className);
