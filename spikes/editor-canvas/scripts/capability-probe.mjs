@@ -375,11 +375,11 @@ async function main() {
         evidence: "merge.mergedHumanLayoutWithAiText",
       },
       {
-        capability: "同字段双改 / AI 删除人工覆盖对象",
+        capability: "同字段双改 / AI 删除人工覆盖对象的显式冲突（不静默覆盖）",
         currentPath: "written:false conflicts[{field,humanValue,aiValue}] / AI_DELETE_HUMAN_MODIFY",
-        persisted: false,
+        persisted: true,
         evidence: "merge.conflict",
-        note: "显式冲突，不静默覆盖",
+        note: "handled as explicit conflict; no silent overwrite",
       },
       {
         capability: "拖动/缩放的任意 CSS、旋转、层级",

@@ -1,6 +1,6 @@
 {
   "kind": "p3-006b-capability-probe",
-  "startedAt": "2026-10-18T03:22:47.858Z",
+  "startedAt": "2026-10-18T03:28:06.791Z",
   "engine": {
     "worker": "dsh-video-engine-worker@0.3.0",
     "client": "dsh-video-engine-client@0.3.0",
@@ -311,11 +311,11 @@
       "evidence": "merge.mergedHumanLayoutWithAiText"
     },
     {
-      "capability": "同字段双改 / AI 删除人工覆盖对象",
+      "capability": "同字段双改 / AI 删除人工覆盖对象的显式冲突（不静默覆盖）",
       "currentPath": "written:false conflicts[{field,humanValue,aiValue}] / AI_DELETE_HUMAN_MODIFY",
-      "persisted": false,
+      "persisted": true,
       "evidence": "merge.conflict",
-      "note": "显式冲突，不静默覆盖"
+      "note": "handled as explicit conflict; no silent overwrite"
     },
     {
       "capability": "拖动/缩放的任意 CSS、旋转、层级",
@@ -374,10 +374,10 @@
       "元素位置 left/top（静态基座）",
       "元素尺寸 width/height",
       "文字颜色/字号/字重/对齐",
-      "人工 layout/style + AI 文案合并"
+      "人工 layout/style + AI 文案合并",
+      "同字段双改 / AI 删除人工覆盖对象的显式冲突（不静默覆盖）"
     ],
     "gapCapabilities": [
-      "同字段双改 / AI 删除人工覆盖对象",
       "拖动/缩放的任意 CSS、旋转、层级",
       "字体族/多选/清除覆盖"
     ],
@@ -393,6 +393,6 @@
       "layout:E_UNSUPPORTED_EDIT"
     ]
   },
-  "finishedAt": "2026-10-18T03:22:49.074Z",
+  "finishedAt": "2026-10-18T03:28:08.412Z",
   "evidenceFile": "evidence/p3-006b/capability-evidence.json"
 }
