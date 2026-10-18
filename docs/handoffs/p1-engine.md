@@ -1,3 +1,5 @@
+> **历史交接，2026-10-18起停止执行。用户已统一到video-studio；当前任务读video-studio.md。旧树/分支保留，不继续写入。**
+
 # p1-engine：当前接手
 
 更新：2026-10-18。交付 **c31fde5**，功能 **d383e3d / 两包0.3.2**，P3-009已通过[独立复审](../reviews/P3-009-review-01.md)。BUG-001和此前R1/R2保持通过。沿用原树/分支/PR#2，fetch读协调STATUS/DEVELOPMENT，不merge。
