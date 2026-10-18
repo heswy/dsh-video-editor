@@ -160,6 +160,9 @@ window.__ModuleLoader__.load({
       'video.canvas.persistFailed': '保存失败，请重试。',
       'video.canvas.retryText': '重试保存',
       'video.canvas.revisionRefreshed': '工程已更新，请再次提交保存。',
+      'video.preview.booting': '正在准备工程…',
+      'video.preview.empty': '还没有可用画面。',
+      'video.preview.retry': '重试',
       'video.error.session': '创作会话暂不可用。',
       'video.error.sessionConfig': '创作会话尚未配置。',
       'video.error.sessionState': '创作会话记录无法读取，请检查 Host 存储。',
@@ -278,6 +281,9 @@ window.__ModuleLoader__.load({
       'video.canvas.persistFailed': 'The save failed. Try again.',
       'video.canvas.retryText': 'Retry save',
       'video.canvas.revisionRefreshed': 'The project was updated; submit the save again.',
+      'video.preview.booting': 'Preparing the project…',
+      'video.preview.empty': 'No preview is available yet.',
+      'video.preview.retry': 'Retry',
       'video.error.session': 'Creation conversations are temporarily unavailable.',
       'video.error.sessionConfig': 'Creation conversations are not configured.',
       'video.error.sessionState': 'The creation conversation record could not be read. Check the Host storage.',
@@ -1019,7 +1025,9 @@ window.__ModuleLoader__.load({
 .dv-asset-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.78em;}
 .dv-asset-row .dv-button{min-height:24px;padding:0 7px;font-size:.74em;}
 .dv-empty-actions{display:flex;flex-wrap:wrap;gap:8px;}
-.dv-managed-stage{display:flex;flex:1;flex-direction:column;min-width:0;min-height:0;}
+.dv-managed-stage{display:flex;flex:1;flex-direction:column;min-width:0;min-height:0;gap:6px;padding-top:6px;}
+.dv-canvas-shell[data-preview-only="true"]{padding:0 16px 14px;}
+.dv-canvas-shell[data-preview-only="true"] .dv-canvas-wrap{border-radius:12px;}
 @media (prefers-reduced-motion: reduce){
   .dv-root{animation:none;}
 }
@@ -1349,6 +1357,11 @@ window.__ModuleLoader__.load({
     // The Host-configured controlled fixture id. A request can only reference a
     // project id from the trusted allowlist; this UI never sends a path or URL.
     const DEMO_PROJECT_ID = 'demo';
+    // The read-only preview follows the exact revision the Host reports. The
+    // poll is the only UI-side trigger for a new preview snapshot: an AI Tool
+    // publish (project.compose) bumps the worker revision, this panel observes it
+    // through `inspect` and mounts the new snapshot without a user action.
+    const REVISION_POLL_MS = 1500;
     // The plugin-private source key for its owned Session references. It must
     // never reuse "mainView": the host derives its current conversation from
     // that retention key (see P3-005-A investigation).
@@ -2327,6 +2340,13 @@ window.__ModuleLoader__.load({
       const inspected = props.inspected;
       const onReload = props.onReload;
       const onError = props.onError;
+      // The product workspace mounts the canvas read-only (`previewOnly: true`):
+      // snapshot load/retry, the fixed runtime contract, play/pause, seek and the
+      // revision/phase markers stay, while every manual-edit affordance and every
+      // user gesture that could issue a write is not rendered. The default stays
+      // false so the reviewed P3-008 manual path is unchanged for its browser
+      // harness and component-level contract tests.
+      const previewOnly = props.previewOnly === true;
       const scenes = Array.isArray(inspected.scenes) ? inspected.scenes : [];
       const elements = Array.isArray(inspected.elements) ? inspected.elements : [];
       const files = Array.isArray(inspected.files) ? inspected.files : [];
@@ -3282,7 +3302,9 @@ window.__ModuleLoader__.load({
               }, 120);
             },
           }),
-          h(
+          previewOnly
+            ? null
+            : h(
             'div',
             {
               className: 'dv-overlay',
@@ -3385,7 +3407,12 @@ window.__ModuleLoader__.load({
       const scene = currentScene();
       return h(
         'section',
-        { className: 'dv-canvas-shell', 'data-canvas-revision': revision, 'data-canvas-phase': phase },
+        {
+          className: 'dv-canvas-shell',
+          'data-canvas-revision': revision,
+          'data-canvas-phase': phase,
+          'data-preview-only': previewOnly ? 'true' : 'false',
+        },
         h(
           'div',
           { className: 'dv-canvas-bar' },
@@ -3407,16 +3434,18 @@ window.__ModuleLoader__.load({
             }
           ),
           h('span', { className: 'dv-time' }, formatSeconds(time) + ' / ' + formatSeconds(duration)),
-          h('button', { type: 'button', className: 'dv-button dv-button-quiet', onClick: function undo() { void historyStep('undo'); }, disabled: busy !== null, title: t('video.canvas.undo') }, t('video.canvas.undo')),
-          h('button', { type: 'button', className: 'dv-button dv-button-quiet', onClick: function redo() { void historyStep('redo'); }, disabled: busy !== null, title: t('video.canvas.redo') }, t('video.canvas.redo')),
-          h('button', { type: 'button', className: 'dv-button dv-button-quiet', onClick: function drawer() { setDrawerOpen(!drawerOpen); }, 'aria-expanded': drawerOpen ? 'true' : 'false' }, t('video.canvas.materials')),
-          h('button', { type: 'button', className: 'dv-button dv-button-quiet', onClick: function add() { void addScene(); }, disabled: busy !== null }, t('video.canvas.addScene')),
-          exportState && exportState.state === 'ready'
+          previewOnly ? null : h('button', { type: 'button', className: 'dv-button dv-button-quiet', onClick: function undo() { void historyStep('undo'); }, disabled: busy !== null, title: t('video.canvas.undo') }, t('video.canvas.undo')),
+          previewOnly ? null : h('button', { type: 'button', className: 'dv-button dv-button-quiet', onClick: function redo() { void historyStep('redo'); }, disabled: busy !== null, title: t('video.canvas.redo') }, t('video.canvas.redo')),
+          previewOnly ? null : h('button', { type: 'button', className: 'dv-button dv-button-quiet', onClick: function drawer() { setDrawerOpen(!drawerOpen); }, 'aria-expanded': drawerOpen ? 'true' : 'false' }, t('video.canvas.materials')),
+          previewOnly ? null : h('button', { type: 'button', className: 'dv-button dv-button-quiet', onClick: function add() { void addScene(); }, disabled: busy !== null }, t('video.canvas.addScene')),
+          previewOnly
+            ? null
+            : exportState && exportState.state === 'ready'
             ? h('a', { className: 'dv-button dv-button-primary dv-export-link', href: exportState.url, download: 'dsh-video.mp4' }, t('video.canvas.download'))
             : h('button', { type: 'button', className: 'dv-button dv-button-primary', onClick: function render() { void exportVideo(); }, disabled: busy !== null }, exportState && exportState.state === 'running' ? t('video.canvas.exporting') : t('video.canvas.export'))
         ),
         h('div', { className: 'dv-canvas-wrap', ref: wrapRef }, canvasBody()),
-        h(
+        previewOnly ? null : h(
           'div',
           { className: 'dv-canvas-tools' },
           scene === null
@@ -3457,7 +3486,7 @@ window.__ModuleLoader__.load({
           actionError !== null ? h('span', { className: 'dv-tool-error', role: 'alert' }, errorText(actionError, t)) : null,
           busy !== null ? h('span', { className: 'dv-tool-hint' }, t('video.canvas.busy')) : null
         ),
-        drawerOpen
+        drawerOpen && previewOnly === false
           ? h(
               'aside',
               { className: 'dv-drawer', 'aria-label': t('video.canvas.materials') },
@@ -3504,24 +3533,14 @@ window.__ModuleLoader__.load({
       const triggerRef = React.useRef(null);
       const itemRef = React.useRef(null);
 
+      // Panel-switch memory keeps only the visible view: the Host worker stays the
+      // authority for project/revision/session truth. On a later mount the
+      // remembered project is re-validated against `project.list` before it opens.
       const remembered = editorMemory === null ? {} : editorMemory;
       const [project, setProject] = React.useState(remembered.project || null);
-      const [frame, setFrame] = React.useState(remembered.frame || null);
-      const [job, setJob] = React.useState(remembered.job || null);
-      const [busy, setBusy] = React.useState(null);
+      const [boot, setBoot] = React.useState('idle');
       const [error, setError] = React.useState(remembered.error || null);
-      const rememberedFrameTime = typeof remembered.frameTimeDraft === 'string'
-        ? remembered.frameTimeDraft
-        : (remembered.frame && Number.isFinite(Number(remembered.frame.time)) ? formatSeconds(remembered.frame.time) : '');
-      const [frameTimeDraft, setFrameTimeDraft] = React.useState(rememberedFrameTime);
-      const [targetId, setTargetId] = React.useState(typeof remembered.targetId === 'string' ? remembered.targetId : null);
-      const [titleDraft, setTitleDraft] = React.useState(typeof remembered.titleDraft === 'string' ? remembered.titleDraft : '');
-      const [startDraft, setStartDraft] = React.useState(typeof remembered.startDraft === 'string' ? remembered.startDraft : '');
-      const [durationDraft, setDurationDraft] = React.useState(typeof remembered.durationDraft === 'string' ? remembered.durationDraft : '');
-      const aliveRef = React.useRef(true);
-      const jobTokenRef = React.useRef(0);
-      const resumedRef = React.useRef(false);
-      const [projectId, setProjectId] = React.useState(typeof remembered.projectId === 'string' ? remembered.projectId : DEMO_PROJECT_ID);
+      const [projectId, setProjectId] = React.useState(typeof remembered.projectId === 'string' ? remembered.projectId : '');
       const [projectChoices, setProjectChoices] = React.useState([]);
       const [projectBusy, setProjectBusy] = React.useState(null);
       const projectIdRef = React.useRef(projectId);
@@ -3542,6 +3561,11 @@ window.__ModuleLoader__.load({
       const sessionListToken = React.useRef(0);
       const sessionSwitchToken = React.useRef(0);
       const sessionCreatePending = React.useRef(false);
+      const aliveRef = React.useRef(true);
+      const bootToken = React.useRef(0);
+      const bootStarted = React.useRef(false);
+      const autoProvisionedRef = React.useRef(false);
+      const autoSessionProjectRef = React.useRef(null);
       const sessionListSnapshot = useSessionListSnapshot(sessions);
 
       React.useEffect(
@@ -3592,84 +3616,79 @@ window.__ModuleLoader__.load({
         []
       );
 
-      // Load the Host-owned creation-Session mapping once per panel mount. The
-      // Host is the mapping authority; this list never creates a Session.
+      // Conversation-first boot: one `project.list` decides whether the
+      // remembered / most recent managed project opens or a first project is
+      // provisioned. The guard ref keeps a re-rendered effect from issuing the
+      // creation pair twice.
       React.useEffect(
-        function loadCreationSessions() {
-          void refreshSessions();
-          void diagnoseSessions();
-          void refreshProjectChoices();
+        function prepareWorkspace() {
+          if (bootStarted.current) return;
+          bootStarted.current = true;
+          void bootstrap();
         },
         []
       );
 
-      // Managed canvases observe the worker revision while the embedded AI can
-      // write through the same project. A changed revision reloads the snapshot
-      // instead of letting an old iframe/PNG stand in for the current project.
+      // Read-only installation preflight: kit presence is checked locally and
+      // the Host reports only safe status/version facts (no messages, titles or
+      // credentials). It never enables anything; failures stay advisory.
       React.useEffect(
-        function pollManagedCanvasRevision() {
-          const managed = project !== null && Array.isArray(project.scenes) && project.scenes.length > 0;
-          if (managed === false) return function noManagedPoll() {};
+        function diagnoseCreationSessions() {
+          void diagnoseSessions();
+        },
+        []
+      );
+
+      // Automatic preview follow: while a project is loaded the panel polls the
+      // worker revision (exactly like the Host reports it) and swaps in the new
+      // snapshot. This is the only UI-side trigger for a publish: an AI Tool
+      // `project.compose` appears here without a manual refresh.
+      React.useEffect(
+        function followPublishedRevision() {
+          const followedProjectId = projectId;
+          if (typeof followedProjectId !== 'string' || followedProjectId.length === 0 || project === null) return function noRevisionPoll() {};
           let cancelled = false;
+          async function inspectCurrent() {
+            let next;
+            try {
+              next = await hostRequest('inspect', { projectId: followedProjectId });
+            } catch (_pollError) {
+              /* A transient poll failure keeps the last valid preview mounted. */
+              return;
+            }
+            // Late responses may only update the same project this poll belongs
+            // to; a stale project's result can never overwrite the current one.
+            if (cancelled || !aliveRef.current || projectIdRef.current !== followedProjectId) return;
+            if (next === null || typeof next !== 'object' || typeof next.revision !== 'string') return;
+            if (next.revision !== latestRevisionRef.current) {
+              latestRevisionRef.current = next.revision;
+              setProject(next);
+            }
+          }
+          void inspectCurrent();
           const timer = setInterval(function pollRevision() {
-            hostRequest('inspect', { projectId: projectId }).then(
-              function inspected(next) {
-                if (cancelled || !aliveRef.current || next === null || typeof next !== 'object') return;
-                if (next.revision !== latestRevisionRef.current) {
-                  latestRevisionRef.current = next.revision;
-                  setProject(next);
-                }
-              },
-              function ignored() {}
-            );
-          }, 2500);
-          return function stopManagedPoll() {
+            void inspectCurrent();
+          }, REVISION_POLL_MS);
+          return function stopRevisionPoll() {
             cancelled = true;
             clearInterval(timer);
           };
         },
-        [projectId, project !== null && Array.isArray(project.scenes) && project.scenes.length > 0]
+        [projectId, project === null]
       );
 
-      // A panel switch is a view switch: the worker keeps the project and jobs,
-      // and this memory keeps the visible project/frame/draft/job in the plugin
-      // scope so returning restores them instead of silently clearing progress.
+      // A panel switch is a view switch: the worker keeps the project and the
+      // mapped Sessions, and this memory restores the visible view instead of
+      // silently clearing progress.
       React.useEffect(function rememberVisibleState() {
         editorMemory = {
           project: project,
-          frame: frame,
-          job: job,
           error: error,
-          targetId: targetId,
-          frameTimeDraft: frameTimeDraft,
-          titleDraft: titleDraft,
-          startDraft: startDraft,
-          durationDraft: durationDraft,
+          projectId: projectId,
           sessionState: sessionState,
           activeSessionId: activeSessionId,
-          projectId: projectId,
         };
       });
-
-      // Resume observation of a job that was already running when the panel was
-      // left. A terminal job needs no polling; the restored state is enough.
-      React.useEffect(
-        function resumeRunningJob() {
-          if (resumedRef.current) return;
-          resumedRef.current = true;
-          if (project === null || job === null || isTerminalJob(job)) return;
-          const kind = job.kind === 'frame' ? 'frame' : 'render';
-          const resumeTime = kind === 'frame'
-            ? (parseFrameTime(frameTimeDraft, project) ?? defaultFrameTime(project, frameTimeDraft))
-            : undefined;
-          const token = ++jobTokenRef.current;
-          setBusy(kind === 'frame' ? 'frame' : 'export');
-          void waitForJob(job, kind, project, token, resumeTime).finally(function finishResume() {
-            if (aliveRef.current && token === jobTokenRef.current) setBusy(null);
-          });
-        },
-        []
-      );
 
       // Focus management for the single-item display menu. The trigger opens the
       // menu; the open menu moves focus onto its item; Escape and Tab close it and
@@ -3742,316 +3761,213 @@ window.__ModuleLoader__.load({
         setSimplifiedEffects(!ui.simplifiedEffects);
       }
 
-      function applyInspected(inspected, preferredId) {
-        const elements = elementsOf(inspected);
-        const target = targetFor(elements, preferredId);
-        setProject(inspected);
-        setTargetId(target !== null ? target.stableId : null);
-        setTitleDraft(target !== null && hasCapability(target, 'text') && typeof target.text === 'string' ? target.text : '');
-        setStartDraft(target !== null && hasCapability(target, 'timing') && target.timing ? formatSeconds(target.timing.start) : '');
-        setDurationDraft(target !== null && hasCapability(target, 'timing') && target.timing ? formatSeconds(target.timing.duration) : '');
-      }
-
-      function selectTarget(nextId) {
-        if (project === null || busy !== null) return;
-        const target = targetFor(elementsOf(project), nextId);
-        setTargetId(target !== null ? target.stableId : null);
-        setTitleDraft(target !== null && hasCapability(target, 'text') && typeof target.text === 'string' ? target.text : '');
-        setStartDraft(target !== null && hasCapability(target, 'timing') && target.timing ? formatSeconds(target.timing.start) : '');
-        setDurationDraft(target !== null && hasCapability(target, 'timing') && target.timing ? formatSeconds(target.timing.duration) : '');
-        setError(null);
-      }
-
-      function clearEditor() {
-        jobTokenRef.current += 1;
-        setProject(null);
-        setFrame(null);
-        setJob(null);
-        setBusy(null);
-        setTargetId(null);
-        setTitleDraft('');
-        setStartDraft('');
-        setDurationDraft('');
-      }
-
-      function sleep(milliseconds) {
-        return new Promise(function wait(resolve) {
-          setTimeout(resolve, milliseconds);
+      /** Managed projects only: demo/legacy entries never reach the product UI. */
+      function managedProjectChoices(result) {
+        const list = result !== null && typeof result === 'object' && Array.isArray(result.projects) ? result.projects : [];
+        const seen = new Set();
+        const choices = [];
+        for (const entry of list) {
+          if (entry === null || typeof entry !== 'object') continue;
+          const id = entry.projectId;
+          if (typeof id !== 'string' || id.length === 0 || id === DEMO_PROJECT_ID || seen.has(id)) continue;
+          seen.add(id);
+          const updatedAt = Number.isFinite(Number(entry.updatedAt)) ? Number(entry.updatedAt) : 0;
+          choices.push({ projectId: id, updatedAt: updatedAt });
+        }
+        choices.sort(function recentFirst(left, right) {
+          if (right.updatedAt !== left.updatedAt) return right.updatedAt - left.updatedAt;
+          if (left.projectId === right.projectId) return 0;
+          return left.projectId < right.projectId ? -1 : 1;
         });
+        return choices;
       }
 
-      async function waitForJob(initialJob, kind, targetProject, token, frameTimeSeconds) {
-        if (!aliveRef.current || token !== jobTokenRef.current) return null;
-        setJob(initialJob);
-        const deadline = Date.now() + 125000;
-        for (;;) {
-          if (!aliveRef.current || token !== jobTokenRef.current) return null;
-          let current;
-          try {
-            current = await hostRequest('status', { jobId: initialJob.jobId });
-          } catch (requestError) {
-            if (aliveRef.current && token === jobTokenRef.current) setError(hostError(requestError));
-            return null;
-          }
-          if (!aliveRef.current || token !== jobTokenRef.current) return null;
-          setJob(current);
-          if (isTerminalJob(current)) {
-            if (current.state === 'cancelled') {
-              // A user-requested cancellation is a neutral terminal state, not a
-              // failure. For frame this leaves the explicit empty state (the old
-              // frame was cleared when the job started); render keeps its settings.
-              setError(null);
-            } else if (current.state === 'succeeded') {
-              if (kind === 'frame') {
-                setFrame({
-                  url: artifactUrl(initialJob.jobId),
-                  revision: targetProject.revision,
-                  jobId: initialJob.jobId,
-                  time: frameTimeSeconds,
-                });
-              }
-            } else if (current.state === 'timed_out') {
-              setError({ code: 'E_TIMEOUT', message: t('video.error.timedOut') });
-            } else {
-              setError({
-                code: kind === 'frame' ? 'E_FRAME_FAILED' : 'E_RENDER_FAILED',
-                message: kind === 'frame' ? t('video.error.frameFailed') : t('video.error.renderFailed'),
-              });
-            }
-            return current;
-          }
-          if (Date.now() > deadline) {
-            setError({ code: 'E_TIMEOUT', message: t('video.error.timedOut') });
-            return null;
-          }
-          await sleep(700);
-        }
-      }
-
-      async function requestFrame(targetProject, explicitTime) {
-        if (targetProject === null) return;
-        const time = explicitTime === undefined ? parseFrameTime(frameTimeDraft, targetProject) : parseFrameTime(explicitTime, targetProject);
-        if (time === null) {
-          const duration = durationOf(targetProject);
-          setError({
-            code: 'E_PARAMS',
-            message: t('video.frameTime.invalid') + (duration === null ? '' : ' 0–' + formatSeconds(duration) + 's'),
-          });
-          return;
-        }
-        setFrameTimeDraft(formatSeconds(time));
-        const token = ++jobTokenRef.current;
-        setBusy('frame');
-        setError(null);
-        setFrame(null);
-        setJob(null);
+      async function refreshProjectChoices() {
         try {
-          const initial = await hostRequest('frame', {
-            projectId: targetProject.projectId,
-            revision: targetProject.revision,
-            time: time,
-          });
-          await waitForJob(initial, 'frame', targetProject, token, time);
-        } catch (requestError) {
-          if (aliveRef.current && token === jobTokenRef.current) setError(hostError(requestError));
-        } finally {
-          if (aliveRef.current && token === jobTokenRef.current) setBusy(null);
-        }
-      }
-
-      async function openSample() {
-        if (busy !== null) return;
-        jobTokenRef.current += 1;
-        clearEditor();
-        setBusy('open');
-        setError(null);
-        let inspected = null;
-        let initialTime = null;
-        try {
-          const opened = await hostRequest('open', { projectId: DEMO_PROJECT_ID });
-          inspected = await hostRequest('inspect', { projectId: opened.projectId });
-          if (aliveRef.current) {
-            setProjectId(opened.projectId);
-            await loadSessionsFor(opened.projectId);
-          }
-          initialTime = defaultFrameTime(inspected, frameTimeDraft);
-          if (aliveRef.current) {
-            setFrameTimeDraft(formatSeconds(initialTime));
-            applyInspected(inspected, null);
-          }
-        } catch (requestError) {
-          if (aliveRef.current) setError(hostError(requestError));
-        } finally {
-          if (aliveRef.current) setBusy(null);
-        }
-        if (inspected !== null && initialTime !== null && aliveRef.current) void requestFrame(inspected, initialTime);
-      }
-
-      async function refreshProject() {
-        if (project === null || busy !== null) return;
-        const token = ++jobTokenRef.current;
-        setBusy('refresh');
-        setError(null);
-        let inspected = null;
-        try {
-          inspected = await hostRequest('inspect', { projectId: project.projectId });
-          if (aliveRef.current && token === jobTokenRef.current) applyInspected(inspected, targetId);
-        } catch (requestError) {
-          if (aliveRef.current && token === jobTokenRef.current) setError(hostError(requestError));
-        } finally {
-          if (aliveRef.current && token === jobTokenRef.current) setBusy(null);
-        }
-        if (inspected !== null && inspected.revision !== project.revision && aliveRef.current) {
-          setFrame(null);
-          setJob(null);
-          void requestFrame(inspected);
-        }
-      }
-
-      async function saveEdit() {
-        if (project === null || busy !== null) return;
-        const target = targetFor(elementsOf(project), targetId);
-        if (target === null) {
-          setError({ code: 'E_PARAMS', message: t('video.noText') });
-          return;
-        }
-        const ops = [];
-        let nextStart = null;
-        let nextDuration = null;
-
-        if (hasCapability(target, 'text') && typeof target.text === 'string' && titleDraft !== target.text) {
-          ops.push({ type: 'text', target: target.stableId, text: titleDraft });
-        }
-        if (hasCapability(target, 'timing') && target.timing) {
-          nextStart = Number(startDraft);
-          nextDuration = Number(durationDraft);
-          if (Number.isFinite(nextStart) === false || Number.isFinite(nextDuration) === false || nextStart < 0 || nextStart > 3600 || nextDuration < 1 / 240 || nextDuration > 3600) {
-            setError({ code: 'E_PARAMS', message: t('video.edit.invalidTiming') });
-            return;
-          }
-          const projectDuration = durationOf(project);
-          if (projectDuration !== null && nextStart + nextDuration > projectDuration + 1 / 240) {
-            setError({ code: 'E_PARAMS', message: timingRangeMessage(t, projectDuration) });
-            return;
-          }
-          if (nextStart !== Number(target.timing.start) || nextDuration !== Number(target.timing.duration)) {
-            ops.push({ type: 'timing', target: target.stableId, start: nextStart, duration: nextDuration });
-          }
-        }
-        if (ops.length === 0) {
-          setError({ code: 'E_PARAMS', message: t('video.edit.empty') });
-          return;
-        }
-
-        const token = ++jobTokenRef.current;
-        setBusy('edit');
-        setError(null);
-        let inspected = null;
-        try {
-          await hostRequest('edit', {
-            projectId: project.projectId,
-            expectedRevision: project.revision,
-            operationId: operationId(),
-            ops: ops,
-          });
-          inspected = await hostRequest('inspect', { projectId: project.projectId });
-          if (aliveRef.current && token === jobTokenRef.current) applyInspected(inspected, targetId);
-        } catch (requestError) {
-          if (aliveRef.current && token === jobTokenRef.current) {
-            if (isTimingBeyondComposition(requestError)) {
-              setError({ code: 'E_PARAMS', message: timingRangeMessage(t, durationOf(project)) });
-            } else {
-              setError(hostError(requestError));
-            }
-          }
-        } finally {
-          if (aliveRef.current && token === jobTokenRef.current) setBusy(null);
-        }
-        if (inspected !== null && aliveRef.current) {
-          setFrame(null);
-          setJob(null);
-          void requestFrame(inspected);
-        }
-      }
-
-      async function exportVideo() {
-        if (project === null || busy !== null) return;
-        const token = ++jobTokenRef.current;
-        setBusy('export');
-        setError(null);
-        setJob(null);
-        try {
-          const initial = await hostRequest('render', {
-            projectId: project.projectId,
-            revision: project.revision,
-          });
-          await waitForJob(initial, 'render', project, token);
-        } catch (requestError) {
-          if (aliveRef.current && token === jobTokenRef.current) setError(hostError(requestError));
-        } finally {
-          if (aliveRef.current && token === jobTokenRef.current) setBusy(null);
-        }
-      }
-
-      async function cancelCurrentJob() {
-        if (job === null || typeof job.jobId !== 'string' || isTerminalJob(job) || busy === 'cancel') return;
-        setBusy('cancel');
-        try {
-          const updated = await hostRequest('cancel', { jobId: job.jobId });
-          if (aliveRef.current) setJob(updated);
-        } catch (requestError) {
-          if (aliveRef.current) setError(hostError(requestError));
-        } finally {
-          if (aliveRef.current) setBusy(null);
-        }
-      }
-
-      const elements = elementsOf(project);
-      const editable = editableElements(elements);
-      const target = targetFor(elements, targetId);
-      const targetHasText = target !== null && hasCapability(target, 'text');
-      const targetHasTiming = target !== null && hasCapability(target, 'timing');
-      const savedTitle = targetHasText && typeof target.text === 'string' ? target.text : '';
-      const titleChanged = targetHasText && titleDraft !== savedTitle;
-      const timingChanged =
-        targetHasTiming &&
-        target.timing &&
-        (Number(startDraft) !== Number(target.timing.start) || Number(durationDraft) !== Number(target.timing.duration));
-      const canSave = project !== null && busy === null && target !== null && (titleChanged || timingChanged);
-      const projectTitle = project !== null ? savedTitle || project.projectId : '';
-      const projectMeta =
-        project !== null && Number.isFinite(Number(project.width)) && Number.isFinite(Number(project.height))
-          ? Math.round(Number(project.width)) + '×' + Math.round(Number(project.height)) + ' · ' + formatSeconds(project.duration) + 's'
-          : '';
-      const activeJob = job !== null && typeof job === 'object' ? job : null;
-      const canCancel = activeJob !== null && typeof activeJob.jobId === 'string' && !isTerminalJob(activeJob) && busy !== 'cancel';
-      const download = activeJob !== null && activeJob.state === 'succeeded' && activeJob.kind === 'render' ? artifactUrl(activeJob.jobId) : null;
-
-      function errorNotice() {
-        if (error === null) return null;
-        return h('p', { className: 'dv-error', role: 'alert', key: 'error' }, errorText(error, t));
-      }
-
-      function navigationNotice() {
-        if (ui.navigationError === null) return null;
-        return h('p', { className: 'dv-error', role: 'alert', key: 'navigation-error' }, t('video.error.back'));
-      }
-
-      function sessionTitle(sessionId) {
-        return sessionTitleFromSnapshot(sessionListSnapshot, sessionId);
-      }
-
-      // Read-only installation preflight: kit presence is checked locally and
-      // the Host reports only safe status/version facts (no messages, titles or
-      // credentials). It never enables anything; failures stay advisory.
-      async function diagnoseSessions() {
-        if (sessionKitAvailable === false || sessions === null || typeof sessions.retain !== 'function') return;
-        try {
-          const result = await hostRequest('session.diagnose', {});
-          if (aliveRef.current && result !== null && typeof result === 'object') setSessionDiagnostic(result);
+          const result = await hostRequest('project.list', {});
+          if (!aliveRef.current) return null;
+          const items = managedProjectChoices(result);
+          setProjectChoices(items);
+          return items;
         } catch (_error) {
-          /* diagnosis is advisory; the visible list state already reports failures */
+          /* the project list is advisory; the canvas state reports real errors */
+          return null;
         }
+      }
+
+      async function bootstrap() {
+        const token = ++bootToken.current;
+        setBoot('loading');
+        setError(null);
+        let listed = null;
+        try {
+          listed = await hostRequest('project.list', {});
+        } catch (listError) {
+          if (!aliveRef.current || token !== bootToken.current) return;
+          setBoot('error');
+          setError(hostError(listError));
+          return;
+        }
+        if (!aliveRef.current || token !== bootToken.current) return;
+        const choices = managedProjectChoices(listed);
+        setProjectChoices(choices);
+        const rememberedId = typeof projectIdRef.current === 'string' && projectIdRef.current.length > 0 && projectIdRef.current !== DEMO_PROJECT_ID
+          ? projectIdRef.current
+          : '';
+        const rememberedAvailable = rememberedId !== '' && choices.some(function known(item) {
+          return item.projectId === rememberedId;
+        });
+        let targetId = rememberedAvailable ? rememberedId : '';
+        if (targetId === '' && listed !== null && typeof listed === 'object' && typeof listed.defaultProjectId === 'string') {
+          const fromHost = choices.find(function hostDefault(item) {
+            return item.projectId === listed.defaultProjectId;
+          });
+          if (fromHost !== undefined) targetId = fromHost.projectId;
+        }
+        if (targetId === '' && choices.length > 0) targetId = choices[0].projectId;
+        if (targetId !== '') {
+          await openProject(targetId, token);
+          return;
+        }
+        await provisionProject(token);
+      }
+
+      function retryBoot() {
+        autoProvisionedRef.current = false;
+        void bootstrap();
+      }
+
+      async function provisionProject(token) {
+        if (autoProvisionedRef.current) return;
+        autoProvisionedRef.current = true;
+        setProjectBusy('create');
+        setError(null);
+        try {
+          const created = await hostRequest('project.create', {
+            templateId: 'product-launch-v1',
+            title: t('video.project.untitled'),
+          });
+          if (!aliveRef.current || token !== bootToken.current) return;
+          autoSessionProjectRef.current = null;
+          await openProject(created.projectId, token);
+        } catch (createError) {
+          autoProvisionedRef.current = false;
+          if (!aliveRef.current || token !== bootToken.current) return;
+          setBoot('error');
+          setError(hostError(createError));
+        } finally {
+          if (aliveRef.current && token === bootToken.current) setProjectBusy(null);
+        }
+      }
+
+      async function createManagedProject() {
+        if (projectBusy !== null) return;
+        const token = ++bootToken.current;
+        autoProvisionedRef.current = true;
+        setProjectBusy('create');
+        setError(null);
+        setBoot('loading');
+        try {
+          const created = await hostRequest('project.create', {
+            templateId: 'product-launch-v1',
+            title: t('video.project.untitled'),
+          });
+          if (!aliveRef.current || token !== bootToken.current) return;
+          autoSessionProjectRef.current = null;
+          await openProject(created.projectId, token);
+          await refreshProjectChoices();
+        } catch (createError) {
+          if (!aliveRef.current || token !== bootToken.current) return;
+          setBoot('error');
+          setError(hostError(createError));
+        } finally {
+          if (aliveRef.current && token === bootToken.current) setProjectBusy(null);
+        }
+      }
+
+      async function openProject(nextProjectId, token) {
+        if (typeof nextProjectId !== 'string' || nextProjectId.length === 0) return;
+        const activeToken = token === undefined ? ++bootToken.current : token;
+        setBoot('loading');
+        setError(null);
+        setProjectBusy('open');
+        try {
+          const opened = await hostRequest('open', { projectId: nextProjectId });
+          if (!aliveRef.current || activeToken !== bootToken.current) return;
+          const inspected = await hostRequest('inspect', { projectId: opened.projectId });
+          if (!aliveRef.current || activeToken !== bootToken.current) return;
+          latestRevisionRef.current = typeof inspected.revision === 'string' ? inspected.revision : null;
+          projectIdRef.current = opened.projectId;
+          setProjectId(opened.projectId);
+          setProject(inspected);
+          setBoot('ready');
+          setActiveSessionId(null);
+          setSessionState({ status: 'loading', items: [], activeSessionId: null, error: null });
+          previewToken.current += 1;
+          setPreview(null);
+          const listedSessions = await loadSessionsFor(opened.projectId);
+          if (!aliveRef.current || activeToken !== bootToken.current) return;
+          await ensureProjectSession(opened.projectId, listedSessions);
+          if (!aliveRef.current || activeToken !== bootToken.current) return;
+          await refreshProjectChoices();
+        } catch (openError) {
+          if (!aliveRef.current || activeToken !== bootToken.current) return;
+          setBoot('error');
+          setError(hostError(openError));
+        } finally {
+          if (aliveRef.current && activeToken === bootToken.current) setProjectBusy(null);
+        }
+      }
+
+      // A project without any mapped creation Session gets one automatically so a
+      // first-time user lands directly in a working conversation. Once per
+      // project: the guard survives re-renders and the Host also dedupes the
+      // requestId, and a failed attempt resets the guard so retry can work.
+      async function ensureProjectSession(targetProjectId, listedSessions) {
+        if (sessionKitAvailable === false) return null;
+        if (sessions === null || typeof sessions.retain !== 'function') return null;
+        if (autoSessionProjectRef.current === targetProjectId) return null;
+        const items = listedSessions !== null && listedSessions !== undefined && Array.isArray(listedSessions.sessions) ? listedSessions.sessions : null;
+        if (items === null || items.length > 0) return null;
+        if (listedSessions !== null && listedSessions !== undefined && typeof listedSessions.activeSessionId === 'string') return null;
+        autoSessionProjectRef.current = targetProjectId;
+        const created = await createSessionForProject(targetProjectId);
+        if (created === null) autoSessionProjectRef.current = null;
+        return created;
+      }
+
+      async function createSessionForProject(targetProjectId) {
+        // A second click may arrive before React re-renders the disabled button;
+        // the synchronous ref keeps creation single-flight in the interim.
+        if (sessionCreatePending.current) return null;
+        if (sessionKitAvailable === false) return null;
+        sessionCreatePending.current = true;
+        setSessionBusy('create');
+        setError(null);
+        try {
+          const created = await hostRequest('session.create', { projectId: targetProjectId, requestId: operationId() });
+          if (!aliveRef.current || projectIdRef.current !== targetProjectId) return null;
+          const listed = await loadSessionsFor(targetProjectId);
+          if (!aliveRef.current || projectIdRef.current !== targetProjectId) return null;
+          const fallback = listed !== null && listed !== undefined && typeof listed.activeSessionId === 'string' ? listed.activeSessionId : null;
+          previewToken.current += 1;
+          setPreview(null);
+          setActiveSessionId(typeof created.sessionId === 'string' ? created.sessionId : fallback);
+          setHistoryOpen(false);
+          return created;
+        } catch (createError) {
+          if (aliveRef.current) setError(hostError(createError));
+          return null;
+        } finally {
+          sessionCreatePending.current = false;
+          if (aliveRef.current) setSessionBusy(null);
+        }
+      }
+
+      async function reloadCanvasProject() {
+        const next = await hostRequest('inspect', { projectId: projectIdRef.current });
+        if (aliveRef.current) setProject(next);
+        return next;
       }
 
       async function loadSessionsFor(targetProjectId) {
@@ -4089,103 +4005,16 @@ window.__ModuleLoader__.load({
       }
 
       function refreshSessions() {
-        return loadSessionsFor(projectId);
+        return loadSessionsFor(projectIdRef.current);
       }
 
-      async function refreshProjectChoices() {
+      async function diagnoseSessions() {
+        if (sessionKitAvailable === false || sessions === null || typeof sessions.retain !== 'function') return;
         try {
-          const result = await hostRequest('project.list', {});
-          if (!aliveRef.current) return;
-          const items = Array.isArray(result.projects) ? result.projects.filter((item) => item !== null && typeof item.projectId === 'string') : [];
-          setProjectChoices(items);
+          const result = await hostRequest('session.diagnose', {});
+          if (aliveRef.current && result !== null && typeof result === 'object') setSessionDiagnostic(result);
         } catch (_error) {
-          /* the project list is advisory; the canvas state reports real errors */
-        }
-      }
-
-      async function openManagedProject(nextProjectId) {
-        if (projectBusy !== null) return;
-        if (typeof nextProjectId !== 'string' || nextProjectId.length === 0) return;
-        setProjectBusy('open');
-        setError(null);
-        jobTokenRef.current += 1;
-        try {
-          const opened = await hostRequest('open', { projectId: nextProjectId });
-          const inspected = await hostRequest('inspect', { projectId: opened.projectId });
-          if (!aliveRef.current) return;
-          setProjectId(opened.projectId);
-          setProject(inspected);
-          setFrame(null);
-          setJob(null);
-          setActiveSessionId(null);
-          setSessionState({ status: 'loading', items: [], activeSessionId: null, error: null });
-          await loadSessionsFor(opened.projectId);
-        } catch (requestError) {
-          if (aliveRef.current) setError(hostError(requestError));
-        } finally {
-          if (aliveRef.current) setProjectBusy(null);
-        }
-      }
-
-      async function createManagedProject() {
-        if (projectBusy !== null) return;
-        setProjectBusy('create');
-        setError(null);
-        jobTokenRef.current += 1;
-        try {
-          const created = await hostRequest('project.create', { templateId: 'product-launch-v1', title: t('video.project.untitled') });
-          const inspected = await hostRequest('inspect', { projectId: created.projectId });
-          if (!aliveRef.current) return;
-          setProjectId(created.projectId);
-          setProject(inspected);
-          setFrame(null);
-          setJob(null);
-          setActiveSessionId(null);
-          setSessionState({ status: 'loading', items: [], activeSessionId: null, error: null });
-          await loadSessionsFor(created.projectId);
-          const session = await hostRequest('session.create', { projectId: created.projectId, requestId: operationId() });
-          if (!aliveRef.current) return;
-          await loadSessionsFor(created.projectId);
-          if (aliveRef.current) setActiveSessionId(session.sessionId);
-          await refreshProjectChoices();
-        } catch (requestError) {
-          if (aliveRef.current) setError(hostError(requestError));
-        } finally {
-          if (aliveRef.current) setProjectBusy(null);
-        }
-      }
-
-      async function reloadCanvasProject() {
-        const next = await hostRequest('inspect', { projectId: projectIdRef.current });
-        if (!aliveRef.current) return;
-        setProject(next);
-      }
-
-      async function createSession() {
-        // A second click may arrive before React re-renders the disabled button;
-        // the synchronous ref keeps creation single-flight in the interim.
-        if (sessionCreatePending.current) return;
-        if (sessionBusy !== null || sessionKitAvailable === false) return;
-        if (sessionState.status !== 'ready') return;
-        sessionCreatePending.current = true;
-        setSessionBusy('create');
-        setError(null);
-        try {
-          const result = await hostRequest('session.create', { projectId: projectId, requestId: operationId() });
-          if (!aliveRef.current) return;
-          const listResult = await hostRequest('session.list', { projectId: projectId });
-          if (!aliveRef.current) return;
-          const items = Array.isArray(listResult.sessions) ? listResult.sessions : [];
-          setSessionState({ status: 'ready', items: items, activeSessionId: listResult.activeSessionId || result.sessionId, error: null, contract: listResult.contract || null });
-          previewToken.current += 1;
-          setPreview(null);
-          setActiveSessionId(result.sessionId);
-          setHistoryOpen(false);
-        } catch (requestError) {
-          if (aliveRef.current) setError(hostError(requestError));
-        } finally {
-          sessionCreatePending.current = false;
-          if (aliveRef.current) setSessionBusy(null);
+          /* diagnosis is advisory; the visible list state already reports failures */
         }
       }
 
@@ -4197,7 +4026,7 @@ window.__ModuleLoader__.load({
         setSessionBusy('select');
         setError(null);
         try {
-          const result = await hostRequest('session.select', { projectId: projectId, sessionId: sessionId });
+          const result = await hostRequest('session.select', { projectId: projectIdRef.current, sessionId: sessionId });
           if (token !== sessionSwitchToken.current || !aliveRef.current) return;
           previewToken.current += 1;
           setPreview(null);
@@ -4226,7 +4055,7 @@ window.__ModuleLoader__.load({
           return;
         }
         setPreview({ phase: 'loading', sessionId: sessionId, fileName: fileName });
-        hostRequest('preview', { projectId: projectId, sessionId: sessionId, path: path }).then(
+        hostRequest('preview', { projectId: projectIdRef.current, sessionId: sessionId, path: path }).then(
           function previewReady(result) {
             if (token !== previewToken.current || !aliveRef.current || activeSessionIdRef.current !== sessionId) return;
             if (result === null || typeof result !== 'object' || typeof result.dataUrl !== 'string' || typeof result.mediaType !== 'string') {
@@ -4263,6 +4092,35 @@ window.__ModuleLoader__.load({
         setRetryTick(function bump(value) {
           return value + 1;
         });
+      }
+
+      function errorNotice() {
+        if (error === null) return null;
+        return h(
+          'div',
+          { className: 'dv-error', role: 'alert', key: 'error' },
+          errorText(error, t),
+          ' ',
+          h(
+            'button',
+            {
+              type: 'button',
+              className: 'dv-button dv-button-quiet',
+              disabled: boot === 'loading' || projectBusy !== null,
+              onClick: retryBoot,
+            },
+            t('video.preview.retry')
+          )
+        );
+      }
+
+      function navigationNotice() {
+        if (ui.navigationError === null) return null;
+        return h('p', { className: 'dv-error', role: 'alert', key: 'navigation-error' }, t('video.error.back'));
+      }
+
+      function sessionTitle(sessionId) {
+        return sessionTitleFromSnapshot(sessionListSnapshot, sessionId);
       }
 
       function historyMenu() {
@@ -4374,7 +4232,9 @@ window.__ModuleLoader__.load({
                 type: 'button',
                 className: 'dv-button dv-button-quiet',
                 onClick: function retryList() {
-                  void refreshSessions();
+                  void refreshSessions().then(function ensureSession(listed) {
+                    if (listed !== null && listed !== undefined) void ensureProjectSession(projectIdRef.current, listed);
+                  });
                 },
               },
               t('video.ai.retry')
@@ -4390,9 +4250,9 @@ window.__ModuleLoader__.load({
               {
                 type: 'button',
                 className: 'dv-button dv-button-primary',
-                disabled: sessionBusy !== null,
+                disabled: sessionBusy !== null || projectId === '',
                 onClick: function create() {
-                  void createSession();
+                  void createSessionForProject(projectIdRef.current);
                 },
               },
               sessionBusy === 'create' ? t('video.ai.creating') : t('video.ai.create')
@@ -4430,9 +4290,9 @@ window.__ModuleLoader__.load({
                 {
                   type: 'button',
                   className: 'dv-button dv-button-quiet dv-new-session',
-                  disabled: sessionBusy !== null || status === 'disabled' || status === 'unavailable',
+                  disabled: sessionBusy !== null || status === 'disabled' || status === 'unavailable' || projectId === '',
                   onClick: function createNew() {
-                    void createSession();
+                    void createSessionForProject(projectIdRef.current);
                   },
                 },
                 sessionBusy === 'create' ? t('video.ai.creating') : t('video.ai.new')
@@ -4462,8 +4322,9 @@ window.__ModuleLoader__.load({
       }
 
       function projectBar() {
+        if (projectId === '' && projectChoices.length === 0) return null;
         const options = projectChoices.slice();
-        if (options.some(function has(item) { return item.projectId === projectId; }) === false) {
+        if (projectId !== '' && options.some(function has(item) { return item.projectId === projectId; }) === false) {
           options.unshift({ projectId: projectId });
         }
         return h(
@@ -4481,9 +4342,8 @@ window.__ModuleLoader__.load({
                 'aria-label': t('video.project.open'),
                 onChange: function switchProject(event) {
                   const next = event.target.value;
-                  if (next === projectId) return;
-                  if (next === DEMO_PROJECT_ID) void openSample();
-                  else void openManagedProject(next);
+                  if (next === projectId || next.length === 0) return;
+                  void openProject(next);
                 },
               },
               options.map(function option(item) {
@@ -4499,14 +4359,18 @@ window.__ModuleLoader__.load({
         );
       }
 
+      // Left side: one read-only, auto-playing preview of the revision the Host
+      // reports. There is no project/empty choice UI for manual editing here and
+      // no legacy PNG/form editor branch.
       function stageContent() {
         if (project === null) {
+          const busyCreating = boot === 'loading' || boot === 'idle' || projectBusy !== null;
           return h(
             'div',
             { className: 'dv-emptywrap', key: 'empty' },
             navigationNotice(),
             errorNotice(),
-            h('p', { className: 'dv-empty' }, t('video.empty')),
+            h('p', { className: 'dv-empty', role: 'status' }, busyCreating ? t('video.preview.booting') : t('video.preview.empty')),
             h(
               'div',
               { className: 'dv-empty-actions' },
@@ -4514,18 +4378,18 @@ window.__ModuleLoader__.load({
                 'button',
                 {
                   type: 'button',
-                  className: 'dv-button dv-button-primary',
-                  disabled: busy !== null || projectBusy !== null,
-                  onClick: openSample,
+                  className: 'dv-button dv-button-quiet',
+                  disabled: busyCreating,
+                  onClick: retryBoot,
                 },
-                busy === 'open' ? t('video.opening') : t('video.open')
+                t('video.preview.retry')
               ),
               h(
                 'button',
                 {
                   type: 'button',
-                  className: 'dv-button dv-button-quiet',
-                  disabled: busy !== null || projectBusy !== null,
+                  className: 'dv-button dv-button-primary',
+                  disabled: projectBusy !== null,
                   onClick: function createFromEmpty() {
                     void createManagedProject();
                   },
@@ -4535,152 +4399,20 @@ window.__ModuleLoader__.load({
             )
           );
         }
-        if (Array.isArray(project.scenes) && project.scenes.length > 0) {
-          return h(
-            'div',
-            { className: 'dv-managed-stage', key: 'canvas' },
-            h(CanvasWorkspace, {
-              t: t,
-              projectId: projectId,
-              inspected: project,
-              onReload: reloadCanvasProject,
-              onError: function canvasError(nextError) {
-                setError(nextError);
-              },
-            })
-          );
-        }
         return h(
           'div',
-          { className: 'dv-editor', key: 'editor' },
-          h(
-            'section',
-            { className: 'dv-stage', 'aria-label': projectTitle },
-            h(
-              'header',
-              { className: 'dv-stagebar' },
-              h('div', { className: 'dv-project-title' }, projectTitle),
-              projectMeta === '' ? null : h('div', { className: 'dv-project-meta' }, projectMeta)
-            ),
-            h(
-              'div',
-              { className: 'dv-canvas' },
-              frame !== null
-                ? h('img', {
-                    className: 'dv-frame',
-                    src: frame.url,
-                    alt: projectTitle,
-                    onError: function frameFailed() {
-                      if (!aliveRef.current) return;
-                      setFrame(null);
-                      setError({ code: 'E_ARTIFACT_INTEGRITY', message: t('video.frame.failed') });
-                    },
-                  })
-                : h('p', { className: 'dv-canvas-note' }, busy === 'frame' ? t('video.updating') : t('video.frame.empty'))
-            )
-          ),
-          h(
-            'div',
-            { className: 'dv-controls', role: 'group', 'aria-label': t('video.details') },
-            h(
-              'div',
-              { className: 'dv-actions' },
-              h(
-                'button',
-                { type: 'button', className: 'dv-button dv-button-primary', disabled: busy !== null, onClick: function update() { void requestFrame(project); } },
-                busy === 'frame' ? t('video.updating') : t('video.update')
-              ),
-              h(
-                'button',
-                { type: 'button', className: 'dv-button', disabled: busy !== null, onClick: function render() { void exportVideo(); } },
-                busy === 'export' ? t('video.exporting') : t('video.export')
-              ),
-              h(
-                'button',
-                { type: 'button', className: 'dv-button dv-button-quiet', disabled: busy !== null, onClick: function refresh() { void refreshProject(); } },
-                busy === 'refresh' ? t('video.refreshing') : t('video.refresh')
-              )
-            ),
-            navigationNotice(),
-            errorNotice(),
-            project === null ? null : h('div', { className: 'dv-field', key: 'frame-time' },
-              h('label', { className: 'dv-label', htmlFor: 'dsh-video-frame-time' }, t('video.frameTime')),
-              h('input', {
-                id: 'dsh-video-frame-time',
-                className: 'dv-input',
-                type: 'number',
-                min: '0',
-                max: formatSeconds(durationOf(project) === null ? 0 : durationOf(project)),
-                step: '0.1',
-                value: frameTimeDraft,
-                disabled: busy !== null,
-                onChange: function updateFrameTime(event) { setFrameTimeDraft(event.target.value); },
-              })
-            ),
-            project === null || editable.length === 0
-              ? (project === null ? null : h('p', { className: 'dv-note' }, t('video.noText')))
-              : h('div', { className: 'dv-field' },
-                  h('label', { className: 'dv-label', htmlFor: 'dsh-video-target' }, t('video.target')),
-                  h('select', {
-                    id: 'dsh-video-target',
-                    className: 'dv-input',
-                    value: target !== null ? target.stableId : '',
-                    disabled: busy !== null,
-                    onChange: function chooseTarget(event) { selectTarget(event.target.value); },
-                  }, editable.map(function targetOption(element) {
-                    const capabilities = capabilityList(element);
-                    const label = (typeof element.stableId === 'string' ? element.stableId : '') + (capabilities.length > 0 ? ' · ' + capabilities.join(', ') : '');
-                    return h('option', { key: element.stableId, value: element.stableId }, label);
-                  }))
-                ),
-            project === null || targetHasText === false ? null : h('div', { className: 'dv-field' },
-              h('label', { className: 'dv-label', htmlFor: 'dsh-video-title' }, t('video.title')),
-              h('input', {
-                id: 'dsh-video-title',
-                className: 'dv-input',
-                type: 'text',
-                value: titleDraft,
-                disabled: busy !== null,
-                onChange: function updateTitle(event) { setTitleDraft(event.target.value); },
-              })
-            ),
-            project === null || targetHasTiming === false ? null : h('div', null,
-              h('div', { className: 'dv-label' }, t('video.timing')),
-              h('div', { className: 'dv-field-row' },
-                h('div', { className: 'dv-field' },
-                  h('label', { className: 'dv-label', htmlFor: 'dsh-video-start' }, t('video.start')),
-                  h('input', { id: 'dsh-video-start', className: 'dv-input', type: 'number', step: '0.05', min: '0', max: '3600', value: startDraft, disabled: busy !== null, onChange: function updateStart(event) { setStartDraft(event.target.value); } })
-                ),
-                h('div', { className: 'dv-field' },
-                  h('label', { className: 'dv-label', htmlFor: 'dsh-video-duration' }, t('video.duration')),
-                  h('input', { id: 'dsh-video-duration', className: 'dv-input', type: 'number', step: '0.05', min: '0.01', max: '3600', value: durationDraft, disabled: busy !== null, onChange: function updateDuration(event) { setDurationDraft(event.target.value); } })
-                )
-              )
-            ),
-            h('button', {
-              type: 'button',
-              className: 'dv-button',
-              disabled: !canSave,
-              onClick: function save() { void saveEdit(); },
-            }, busy === 'edit' ? t('video.saving') : t('video.save')),
-            activeJob === null ? null : h('div', { className: 'dv-job' },
-              h('span', { className: 'dv-job-state' }, stateText(activeJob.state, t)),
-              Number.isFinite(Number(activeJob.progress)) && activeJob.progress > 0 ? h('span', null, Math.round(Number(activeJob.progress) * 100) + '%') : null,
-              canCancel ? h('button', { type: 'button', className: 'dv-button dv-button-quiet', disabled: busy === 'cancel', onClick: function cancel() { void cancelCurrentJob(); } }, busy === 'cancel' ? t('video.cancelling') : t('video.cancel')) : null,
-              download === null ? null : h('a', { className: 'dv-download', href: download, download: 'dsh-video-' + activeJob.jobId + '.mp4' }, t('video.download'))
-            ),
-            h('details', { className: 'dv-details' },
-              h('summary', null, t('video.details')),
-              h('ul', { className: 'dv-meta-list' },
-                elements.map(function elementRow(element, index) {
-                  const capabilities = capabilityList(element);
-                  const summary = (typeof element.stableId === 'string' && element.stableId.length > 0 ? element.stableId : '#' + (index + 1)) + (capabilities.length > 0 ? ' · ' + capabilities.join(', ') : '');
-                  return h('li', { className: 'dv-meta-item', key: (element.stableId || index) + '' }, summary);
-                })
-              ),
-              target === null ? null : h('p', { className: 'dv-note' }, t('video.target') + ': ' + target.stableId + (targetHasText ? ' · ' + t('video.title') : '') + (targetHasTiming ? ' · ' + t('video.timing') : ''))
-            )
-          )
+          { className: 'dv-managed-stage', key: 'canvas' },
+          errorNotice(),
+          h(CanvasWorkspace, {
+            t: t,
+            projectId: projectId,
+            inspected: project,
+            previewOnly: true,
+            onReload: reloadCanvasProject,
+            onError: function canvasError(nextError) {
+              setError(nextError);
+            },
+          })
         );
       }
 
@@ -4691,6 +4423,7 @@ window.__ModuleLoader__.load({
           'data-simplified': ui.simplifiedEffects ? 'true' : 'false',
           'data-panel': PANEL_ID,
           'data-project-id': projectId,
+          'data-boot': boot,
           'data-session': sessionKitAvailable === false ? 'unavailable' : sessionState.status,
           'data-session-kit': sessionKitAvailable ? 'available' : 'missing',
           'data-session-active': activeSessionId === null ? '' : activeSessionId,
