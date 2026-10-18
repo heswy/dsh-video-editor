@@ -1,14 +1,11 @@
 # p0-mode-shell：当前接手
 
-更新：2026-10-18。最新交付head **c1e7aae** / 功能 **5f2df96** / 根alpha.3；最终引擎固定 **d383e3d / 两包0.3.2**。当前安装仍alpha.1，不覆盖。沿用本树/分支/PR#3，fetch读协调STATUS/DEVELOPMENT，不merge协调分支。
+更新：2026-10-18。交付 **fdb6bc2** / 功能 **7d60312** / 根alpha.3；引擎固定 **d383e3d / 两包0.3.2**。已通过[P3-008第三轮复审](../reviews/P3-008-review-03.md)，R1/R5关闭，原R2/R3/R4/parent回归保持。独立174/174+版本10/10、实际画布13/13/249断言、额外真实worker探针3/3、包/staging摘要通过。
 
-## 当前动作：仅集中补修R1/R5两个后续问题
+## 下一步：P3-007安装与实际创作闭环
 
-读取[P3-008第二轮复审](../reviews/P3-008-review-02.md)。总调度独立167/167+版本10/10，实际CanvasWorkspace浏览器10/10、175/175，包/staging摘要通过；旧跨工程读、慢上传停用、迟到快照已复测修复。R2/R3/R4及parent主要回归保留通过结论，不重做调查。
+读取[P3-007指南](../tasks/P3-007-canvas-live-acceptance.md)。**当前仅准备，待用户明确授权本指南。** 用户转发明确启动后，直接按固定候选安装并执行，不重复问已授权步骤。最多一个测试工程、两个专用Session、两次模型请求，授权细节与回滚/安全边界见指南；不继承旧alpha.1任务剩余额度。无法安全定向操作的步骤请用户人工完成，不能全局键盘/坐标/剪贴板。
 
-1. **R1-follow-up**：Client canvasCopySceneTemplate、Host sceneTemplate仍旧200/300/48限制。对齐冻结0.3.2的title/subtitle/badge各2048；不截断、不取消上限、不改p1。真实长文案后换color/shot与Tool revise要能保留其它字段，覆盖边界。
-2. **R5-follow-up**：operationId绑定一次不可变请求，不是整个编辑器生命周期。真实worker已写但响应丢失后，用户改草稿再用旧id提交会E_OPERATION_REUSED；同id请求的expectedRevision也必须一致。原样显式重试保持原payload；新意图在旧尝试处理后用新id，不自动重放/覆盖。增加真实写后丢确认的worker与实际组件浏览器回归，保留E_PERSIST/Esc/冲突回归。
+不再继续无目标加功能或重做引擎调查。固定安装目录staging-d383e3d-7d60312/bundle，旧候选/用户当前alpha.1工程与安装依赖不覆盖。link客户端缓存若需应用重启另报告用户，不自动重启。发现功能错误另提交候选，不热改已审staging。
 
-继续固定d383e3d53a9401285519ee578d993081c3cb4b51，两包摘要见P3-008指南及P3-009复审。不跟随移动HEAD、不merge/改p1；只修最新alpha.3，根版本可保留，新提交目录与新staging打包，保留所有旧候选/证据。复跑受影响检查与真实Host/worker链，新增浏览器用例后一次push PR#3交回。
-
-不安装/启停/重启、不新增真实模型请求、不改用户工程/个人会话、不merge、不跨会话联络。禁止全局键盘/坐标/个人剪贴板；不对当前供用户创作的demo运行prepare-fixture。候选通过后再安排具体安装验收。
+本任务允许更新自己的验收记录/去标识证据并普通push PR#3，不改p1、不merge、不跨会话联络。沿用本树/分支/PR#3，fetch读协调STATUS/DEVELOPMENT，不merge协调分支。
