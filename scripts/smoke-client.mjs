@@ -3389,6 +3389,33 @@ test('R6 wiring: the canvas drops wrong-source, uncorrelated and malformed event
   }
 });
 
+test('P3-008 wiring: the snapshot iframe keeps the composition viewport and is CSS-scaled', async () => {
+  const stageSize = { width: 900, height: 400 };
+  const hostFetch = canvasFetch({});
+  const editor = await mountCanvasReady({ fetch: hostFetch, stageSize: stageSize });
+  try {
+    const tree = editor.tree();
+    const frame = findNode(tree, (node) => node.props && node.props.className === 'dv-stage-frame');
+    assert(frame !== null, 'snapshot iframe is missing');
+    const scale = Math.min(stageSize.width / 1280, stageSize.height / 720);
+    const style = frame.props.style || {};
+    // The reviewed P3-005-B contract: composition coordinates are CSS pixels in
+    // the iframe document viewport, so the element must stay at composition
+    // size and be scaled visually by the host, never resized to the letterbox.
+    assert(style.width === '1280px' && style.height === '720px', `the iframe viewport is not composition-sized: ${style.width}x${style.height}`);
+    assert(style.transformOrigin === 'top left', 'the iframe transform origin is not top left');
+    assert(style.transform === 'scale(' + scale + ')', `the iframe transform is not the stage scale: ${style.transform}`);
+    const stage = findNode(
+      tree,
+      (node) => node.props && typeof node.props.className === 'string' && node.props.className.split(/\s+/).includes('dv-canvas-stage')
+    );
+    assert(stage !== null, 'the canvas stage node is missing');
+    assert(stage.props.style.width === 1280 * scale + 'px' && stage.props.style.height === 720 * scale + 'px', `the stage letterbox is wrong: ${stage.props.style.width}x${stage.props.style.height}`);
+  } finally {
+    editor.interactive.unmount();
+  }
+});
+
 //#endregion
 
 //#endregion

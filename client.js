@@ -921,7 +921,7 @@ window.__ModuleLoader__.load({
 }
 .dv-stage{position:relative;overflow:hidden;background:#000;box-shadow:0 12px 32px -24px rgba(0,0,0,.65);}
 .dv-stage.dv-canvas-stage{display:block;flex:none;padding:0;}
-.dv-stage-frame{position:absolute;inset:0;width:100%;height:100%;border:0;background:#000;}
+.dv-stage-frame{position:absolute;top:0;left:0;border:0;background:#000;}
 .dv-overlay{position:absolute;inset:0;cursor:default;touch-action:none;}
 .dv-selection{
   position:absolute;
@@ -3173,6 +3173,17 @@ window.__ModuleLoader__.load({
             className: 'dv-stage-frame',
             title: t('video.canvas.frameTitle'),
             src: snapshot.src,
+            // The sandbox document must keep its composition viewport: the
+            // runtime's hitTest uses the iframe document's CSS pixels, so a
+            // letterboxed (smaller) viewport would clip the frame and silently
+            // miss composition coordinates beyond it. Keep the element at the
+            // composition size and scale the whole element visually instead.
+            style: {
+              width: width + 'px',
+              height: height + 'px',
+              transformOrigin: 'top left',
+              transform: 'scale(' + scale + ')',
+            },
             sandbox: 'allow-scripts',
             referrerPolicy: 'no-referrer',
             onLoad: function runtimeLoaded() {
