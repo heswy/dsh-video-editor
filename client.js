@@ -1656,6 +1656,11 @@ window.__ModuleLoader__.load({
     const CANVAS_COMMAND_KEYS = Object.freeze(['v', 'kind', 'instanceId', 'nonce', 'seq', 'type', 'payload']);
     const CANVAS_EVENT_KEYS = Object.freeze(['v', 'kind', 'instanceId', 'nonce', 'seq', 'type', 'replyTo', 'payload']);
     const CANVAS_SCENE_TEMPLATE_KEYS = Object.freeze(['title', 'duration', 'subtitle', 'badge', 'color', 'accent', 'logo', 'shot']);
+    // Frozen engine 0.3.2 sceneTemplate text limits (UTF-16 string length, as
+    // enforced by the Host bridge and the worker). Human typed text edits can
+    // legally reach these lengths, so the client copy must not reject or
+    // truncate them and must use the same length semantics as the Host/engine.
+    const CANVAS_SCENE_TEXT_MAX = 2048;
     const CANVAS_SCENE_COLOR = /^#[0-9a-fA-F]{6}$/;
     const CANVAS_SCENE_ASSET = /^assets\/[A-Za-z0-9][A-Za-z0-9._-]*\.(png|jpe?g)$/i;
     const CANVAS_REVISION = /^[a-f0-9]{64}$/;
@@ -1666,6 +1671,14 @@ window.__ModuleLoader__.load({
 
     function canvasFiniteNumber(value) {
       return typeof value === 'number' && Number.isFinite(value);
+    }
+
+    /**
+     * Text length in UTF-16 code units, exactly like the frozen Host bridge and
+     * engine (`typeof value === 'string'` + `value.length`).
+     */
+    function canvasTextLength(value) {
+      return typeof value === 'string' ? value.length : -1;
     }
 
     function canvasExactKeys(value, allowed, required) {
@@ -2024,7 +2037,8 @@ window.__ModuleLoader__.load({
         if (key === 'sceneId') continue;
         if (CANVAS_SCENE_TEMPLATE_KEYS.includes(key) === false) return { ok: false, detail: 'unknown scene template field ' + key };
       }
-      if (typeof template.title !== 'string' || template.title.length < 1 || template.title.length > 200) {
+      const titleLength = canvasTextLength(template.title);
+      if (titleLength < 1 || titleLength > CANVAS_SCENE_TEXT_MAX) {
         return { ok: false, detail: 'scene title is invalid' };
       }
       if (canvasFiniteNumber(template.duration) === false || template.duration < 0.5 || template.duration > 60) {
@@ -2032,11 +2046,13 @@ window.__ModuleLoader__.load({
       }
       const copy = { title: template.title, duration: template.duration };
       if (template.subtitle !== undefined) {
-        if (typeof template.subtitle !== 'string' || template.subtitle.length > 300) return { ok: false, detail: 'scene subtitle is invalid' };
+        const subtitleLength = canvasTextLength(template.subtitle);
+        if (subtitleLength < 0 || subtitleLength > CANVAS_SCENE_TEXT_MAX) return { ok: false, detail: 'scene subtitle is invalid' };
         copy.subtitle = template.subtitle;
       }
       if (template.badge !== undefined) {
-        if (typeof template.badge !== 'string' || template.badge.length > 48) return { ok: false, detail: 'scene badge is invalid' };
+        const badgeLength = canvasTextLength(template.badge);
+        if (badgeLength < 0 || badgeLength > CANVAS_SCENE_TEXT_MAX) return { ok: false, detail: 'scene badge is invalid' };
         copy.badge = template.badge;
       }
       for (const key of ['color', 'accent']) {
@@ -2769,20 +2785,75 @@ window.__ModuleLoader__.load({
         }
       }
 
+      // ---- inline text write attempts ---------------------------------------
+      // One operationId binds exactly ONE immutable request. The worker caches
+      // results by operationId + canonical request signature and checks that
+      // cache BEFORE the revision, so:
+      //   - replaying the exact frozen request after a lost response returns the
+      //     cached success (applied once);
+      //   - the same operationId with a different request is E_OPERATION_REUSED;
+      //   - a stale expectedRevision without a cache entry is
+      //     E_REVISION_CONFLICT.
+      // A changed draft therefore settles the old frozen attempt first and only
+      // then starts a new attempt with a new operationId and the settled
+      // revision. The id is never switched while the old outcome is unknown.
+      function makeTextAttempt(stableId, expectedRevision, value) {
+        // One immutable text operation id per attempt: an exact retry replays
+        // this request; a changed intent always gets a fresh textOperationId.
+        const textOperationId = operationId();
+        return {
+          operationId: textOperationId,
+          expectedRevision: expectedRevision,
+          ops: [{ type: 'text', target: stableId, text: value }],
+          value: value,
+        };
+      }
+
+      function sendTextAttempt(attempt) {
+        return hostRequest('edit', {
+          projectId: projectId,
+          expectedRevision: attempt.expectedRevision,
+          operationId: attempt.operationId,
+          ops: attempt.ops,
+        });
+      }
+
+      function isRecoverableAttemptError(failure) {
+        return canvasIsRevisionConflict(failure) || failure.code === 'E_OPERATION_REUSED';
+      }
+
+      function showAttemptFailure(failure, freezeAttempt) {
+        setActionError(failure);
+        setEditor(function keepDraftAndAttempt(previous) {
+          if (previous === null) return null;
+          if (isRecoverableAttemptError(failure)) {
+            // Recoverable, but never auto-overwritten: reset the attempt and use
+            // the explicit refresh path. A later explicit submit creates a new
+            // id at the refreshed revision.
+            return Object.assign({}, previous, { attempt: null, error: failure, refreshRequired: true });
+          }
+          // Uncertain/definite failure: the frozen request is kept so the next
+          // explicit submit re-sends exactly this request (same id/ops/revision).
+          return Object.assign({}, previous, { attempt: freezeAttempt, error: failure, refreshRequired: false });
+        });
+        onError(failure);
+      }
+
       async function submitText() {
         if (editor === null || busy !== null) return;
         if (editor.refreshRequired === true) {
-          // The previous explicit submit hit a revision conflict. Retrying now
-          // refreshes the authoritative revision only: the user has to submit
-          // again afterwards, so a newer project is never overwritten silently
-          // and nothing is replayed automatically.
+          // The previous explicit submit hit a revision conflict (or a
+          // recoverable E_OPERATION_REUSED). Retrying now refreshes the
+          // authoritative revision only and resets the attempt: the user has to
+          // submit again afterwards, so a newer project is never overwritten
+          // silently and nothing is replayed automatically.
           setBusy('text');
           setActionError(null);
           try {
             await onReload();
             setEditor(function clearConflict(previous) {
               if (previous === null) return null;
-              return Object.assign({}, previous, { refreshRequired: false, error: null });
+              return Object.assign({}, previous, { attempt: null, refreshRequired: false, error: null });
             });
             setEditorNotice(t('video.canvas.revisionRefreshed'));
           } catch (reloadError) {
@@ -2793,39 +2864,58 @@ window.__ModuleLoader__.load({
           }
           return;
         }
-        // One operationId is created when the editor opens and reused on every
-        // retry: the worker replays the same operation idempotently, so an
-        // uncertain failure cannot apply the text twice.
         const value = editor.value;
         const stableId = editor.stableId;
-        const textOperationId = typeof editor.operationId === 'string' && editor.operationId.length > 0 ? editor.operationId : operationId();
+        const frozen = editor.attempt;
+        let pendingAttempt = frozen;
         setBusy('text');
         setActionError(null);
         try {
-          await hostRequest('edit', {
-            projectId: projectId,
-            expectedRevision: revision,
-            operationId: textOperationId,
-            ops: [{ type: 'text', target: stableId, text: value }],
-          });
+          if (frozen !== null && value !== frozen.value) {
+            // The retained draft changed after an unknown outcome. A user-
+            // initiated submit first settles the OLD attempt by re-sending its
+            // exact frozen request; only its result unlocks a new intent/id.
+            let settled = null;
+            try {
+              settled = await sendTextAttempt(frozen);
+            } catch (settleError) {
+              showAttemptFailure(hostError(settleError), frozen);
+              return;
+            }
+            // If the user closed the editor while the settle was in flight, the
+            // old attempt was settled (applied at most once) and the new intent
+            // stays unsent: never write new text after an explicit cancel.
+            if (editorRef.current === null) return;
+            const settledRevision =
+              canvasPlainObject(settled) && typeof settled.revision === 'string' ? settled.revision : revision;
+            const nextAttempt = makeTextAttempt(stableId, settledRevision, value);
+            pendingAttempt = nextAttempt;
+            setEditor(function storeNextAttempt(previous) {
+              if (previous === null) return null;
+              return Object.assign({}, previous, { attempt: nextAttempt, error: null, refreshRequired: false });
+            });
+            await sendTextAttempt(nextAttempt);
+            setEditor(null);
+            setEditorNotice(null);
+            await onReload();
+            return;
+          }
+          const attempt = frozen !== null ? frozen : makeTextAttempt(stableId, revision, value);
+          pendingAttempt = attempt;
+          if (frozen === null) {
+            setEditor(function storeAttempt(previous) {
+              if (previous === null) return null;
+              return Object.assign({}, previous, { attempt: attempt, error: null, refreshRequired: false });
+            });
+          }
+          await sendTextAttempt(attempt);
           setEditor(null);
           setEditorNotice(null);
           await onReload();
         } catch (error) {
           // Keep the draft and its target visible; no automatic retry and no
-          // silent close. A conflict additionally requires an explicit reload
-          // step before the next explicit submit.
-          const failure = hostError(error);
-          setActionError(failure);
-          setEditor(function keepDraft(previous) {
-            if (previous === null) return null;
-            return Object.assign({}, previous, {
-              operationId: textOperationId,
-              error: failure,
-              refreshRequired: canvasIsRevisionConflict(failure),
-            });
-          });
-          onError(failure);
+          // silent close. The frozen attempt is preserved on uncertain failures.
+          showAttemptFailure(hostError(error), pendingAttempt);
         } finally {
           setBusy(null);
         }
@@ -3078,9 +3168,9 @@ window.__ModuleLoader__.load({
           stableId: hit.stableId,
           value: typeof hit.text === 'string' ? hit.text : element !== null && typeof element.text === 'string' ? element.text : '',
           rect: rect,
-          // One operationId for this editor lifetime: retries reuse it so the
-          // worker can replay an uncertain write idempotently.
-          operationId: operationId(),
+          // `attempt` freezes exactly ONE immutable write request when the user
+          // first submits. It stays null while the editor only holds a draft.
+          attempt: null,
           error: null,
           refreshRequired: false,
         });

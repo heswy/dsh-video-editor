@@ -2913,7 +2913,150 @@ function canvasDrag(editor, options) {
   editor.rerender();
   canvasOverlay(editor.tree()).props.onPointerUp(Object.assign({}, pointer, { clientX: settings.moveX, clientY: settings.moveY }));
 }
+
+const CANVAS_REVISION_CHAIN = [
+  CANVAS_REVISION,
+  CANVAS_NEXT_REVISION,
+  CANVAS_FRESH_REVISION,
+  'a'.repeat(64),
+  'b'.repeat(64),
+  'f'.repeat(64),
+];
+
+/**
+ * Fake Host worker for the inline-text write-attempt regressions. It mirrors the
+ * real worker semantics: the result is cached by operationId + canonical request
+ * signature and the cache is checked BEFORE the revision; the same operationId
+ * with another signature is E_OPERATION_REUSED; a stale expectedRevision without
+ * a cache entry is E_REVISION_CONFLICT. `loseResponses` makes an applied/cached
+ * call throw before answering (the acknowledgement is lost).
+ */
+function canvasTextEngine(options) {
+  const config = options || {};
+  const state = {
+    revisionIndex: 0,
+    revision: CANVAS_REVISION,
+    text: config.initialText || 'Scene 1',
+    applied: 0,
+    appliedTexts: [],
+    operations: new Map(),
+    loseResponses: config.loseResponses || 0,
+    reuseNextOperation: config.reuseNextOperation || 0,
+  };
+  state.handle = async function handleEdit(request) {
+    const params = request.body.params;
+    const signature = JSON.stringify({
+      expectedRevision: params.expectedRevision,
+      operationId: params.operationId,
+      ops: params.ops,
+    });
+    const cached = state.operations.get(params.operationId);
+    let result;
+    if (cached !== undefined) {
+      if (cached.signature !== signature) {
+        return { ok: false, error: { code: 'E_OPERATION_REUSED', message: 'operationId already has a different request' } };
+      }
+      result = cached.result;
+    } else {
+      if (state.reuseNextOperation > 0) {
+        state.reuseNextOperation -= 1;
+        return { ok: false, error: { code: 'E_OPERATION_REUSED', message: 'operationId already has a different request' } };
+      }
+      if (params.expectedRevision !== state.revision) {
+        return { ok: false, error: { code: 'E_REVISION_CONFLICT', message: 'Project changed before edit' } };
+      }
+      const textOp = params.ops.find((op) => op.type === 'text');
+      if (textOp !== undefined) {
+        state.text = textOp.text;
+        state.appliedTexts.push(textOp.text);
+      }
+      state.applied += 1;
+      state.revisionIndex = Math.min(state.revisionIndex + 1, CANVAS_REVISION_CHAIN.length - 1);
+      state.revision = CANVAS_REVISION_CHAIN[state.revisionIndex];
+      result = { projectId: 'proj-smoke', revision: state.revision, operationId: params.operationId };
+      state.operations.set(params.operationId, { signature: signature, result: result });
+    }
+    if (state.loseResponses > 0) {
+      state.loseResponses -= 1;
+      throw new Error('the write was applied but the response was lost');
+    }
+    return { ok: true, result: result };
+  };
+  return state;
+}
+
+function canvasTextFetch(engine) {
+  return canvasFetch({
+    inspect: () =>
+      canvasManagedInspect({
+        revision: engine.revision,
+        elements: [
+          {
+            stableId: 'scene-1-title',
+            sceneId: 'scene-1',
+            text: engine.text,
+            timing: { start: 0, duration: 5 },
+            capabilities: ['text', 'layout', 'style'],
+            layout: { left: 88, top: 196, width: 980, height: 120 },
+            style: { color: '#ffffff', fontSize: 64, fontWeight: 600, textAlign: 'left' },
+          },
+        ],
+      }),
+    edit: (request) => engine.handle(request),
+  });
+}
 //#endregion
+
+test('R1 pure: frozen 0.3.2 template text limits accept long text without truncation', () => {
+  function prepare(templateOverrides) {
+    const template = Object.assign({ title: 'Scene 1', duration: 5 }, templateOverrides || {});
+    return CANVAS.canvasSceneTemplate(
+      { revision: CANVAS_FRESH_REVISION, scenes: [{ sceneId: 'scene-1', template: template }] },
+      'scene-1'
+    );
+  }
+  // Lengths that the previous 200/300/48 limits wrongly rejected are legal now.
+  for (const title of ['x'.repeat(201), 'x'.repeat(300), '标题'.repeat(400)]) {
+    const prepared = prepare({ title: title });
+    assert(prepared.ok === true, `title of ${title.length} was rejected`);
+    assert(prepared.template.title === title, 'the title was truncated or changed');
+  }
+  assert(prepare({ subtitle: 'x'.repeat(301) }).ok === true, 'subtitle of 301 was rejected');
+  assert(prepare({ subtitle: 'x'.repeat(1500) }).ok === true, 'long subtitle was rejected');
+  assert(prepare({ badge: 'x'.repeat(49) }).ok === true, 'badge of 49 was rejected');
+  assert(prepare({ badge: 'x'.repeat(1500) }).ok === true, 'long badge was rejected');
+  // 2048 boundary accepted and preserved exactly for every text field.
+  const boundary = 'x'.repeat(2048);
+  for (const field of ['title', 'subtitle', 'badge']) {
+    const override = {};
+    override[field] = boundary;
+    const prepared = prepare(override);
+    assert(prepared.ok === true, `${field} at the 2048 boundary was rejected`);
+    assert(prepared.template[field] === boundary, `${field} was truncated at the 2048 boundary`);
+  }
+  // 2049 rejected for every text field.
+  const overflow = 'x'.repeat(2049);
+  for (const field of ['title', 'subtitle', 'badge']) {
+    const override = {};
+    override[field] = overflow;
+    const prepared = prepare(override);
+    assert(prepared.ok === false && prepared.code === 'E_SCENE_TEMPLATE', `${field} over 2048 was accepted`);
+  }
+  // Empty title stays illegal; empty optional text fields are legal.
+  assert(prepare({ title: '' }).ok === false, 'an empty title was accepted');
+  const emptyOptional = prepare({ subtitle: '', badge: '' });
+  assert(emptyOptional.ok === true && emptyOptional.template.subtitle === '' && emptyOptional.template.badge === '', 'empty optional text was rejected or guessed');
+  // The frozen Host bridge and engine enforce UTF-16 string length
+  // (`value.length`), so astral characters count as two units here as well:
+  // this keeps the client aligned with the Host instead of accepting text the
+  // worker would reject. 1024 astral chars = 2048 units is legal; 1025 is not.
+  const astralAtLimit = '\u{1F600}'.repeat(1024);
+  const astralPrepared = prepare({ title: astralAtLimit });
+  assert(astralPrepared.ok === true, 'a 2048-UTF-16-unit astral title was rejected');
+  assert(astralPrepared.template.title === astralAtLimit, 'an astral title was truncated');
+  assert(astralPrepared.template.title.length === 2048, 'the astral title length is not UTF-16 units');
+  assert(prepare({ title: '\u{1F600}'.repeat(1025) }).ok === false, 'a 2050-UTF-16-unit astral title was accepted');
+});
 
 test('R1 wiring: scene colour is copied from a fresh authoritative template and only the colour changes', async () => {
   const template = {
@@ -3197,7 +3340,10 @@ test('R5: a revision conflict refreshes only on explicit retry and needs a later
     const edits = canvasMethodCalls(hostFetch, 'edit');
     assert(edits.length === 2, `expected the later explicit submit, got ${edits.length} edits`);
     assert(edits[1].body.params.expectedRevision === CANVAS_FRESH_REVISION, `the retried write used ${edits[1].body.params.expectedRevision}`);
-    assert(edits[0].body.params.operationId === edits[1].body.params.operationId, 'the retry lost the editor operationId');
+    // The conflict refresh reset the frozen attempt: the later explicit submit
+    // must use a NEW operationId at the refreshed revision (a reused id could
+    // only be replayed with the stale signature).
+    assert(edits[0].body.params.operationId !== edits[1].body.params.operationId, 'the post-refresh submit reused the conflict attempt operationId');
     assert(findNode(editor.tree(), (node) => node.props && node.props.className === 'dv-inline-editor') === null, 'the editor did not close after the successful retry');
   } finally {
     editor.interactive.unmount();
@@ -3342,6 +3488,176 @@ test('R5: a successful save closes the editor first and then reloads the new rev
       findNode(editor.tree(), (node) => node.props && node.props['data-canvas-revision'] === CANVAS_NEXT_REVISION) !== null,
       'the canvas did not load the saved revision'
     );
+  } finally {
+    editor.interactive.unmount();
+  }
+});
+
+test('R5(b): a write applied but response lost replays the identical frozen request and applies once', async () => {
+  const engine = canvasTextEngine({ loseResponses: 1 });
+  const hostFetch = canvasTextFetch(engine);
+  const editor = await mountCanvasReady({ fetch: hostFetch });
+  try {
+    canvasSelectText(editor);
+    canvasOpenTextEditor(editor);
+    canvasTypeDraft(editor, '丢确认标题');
+    canvasPressEnter(editor);
+    await settle();
+    editor.rerender();
+    await settle();
+    const firstAttempts = canvasMethodCalls(hostFetch, 'edit');
+    assert(firstAttempts.length === 1, `expected one sent attempt, got ${firstAttempts.length}`);
+    assert(engine.applied === 1 && engine.text === '丢确认标题', 'the fake worker did not apply the write whose acknowledgement was lost');
+    const kept = findNode(editor.tree(), (node) => node.props && node.props.className === 'dv-inline-editor');
+    assert(kept !== null && kept.props.value === '丢确认标题', 'the lost acknowledgement closed the editor or cleared the draft');
+    const alert = findNode(editor.tree(), (node) => node.props && node.props.role === 'alert');
+    assert(
+      alert !== null && textOf(alert).includes(translateFor(editor.env)('video.error.network')),
+      'the lost acknowledgement was not surfaced as an uncertain failure'
+    );
+    await settle();
+    assert(canvasMethodCalls(hostFetch, 'edit').length === 1, 'the uncertain attempt was retried automatically');
+    canvasRetryButton(editor).props.onClick();
+    await settle();
+    editor.rerender();
+    await settle();
+    const edits = canvasMethodCalls(hostFetch, 'edit');
+    assert(edits.length === 2, `expected one explicit retry, got ${edits.length} edits`);
+    assert(JSON.stringify(edits[1].body.params) === JSON.stringify(edits[0].body.params), 'the unchanged-draft retry did not send the identical frozen request');
+    assert(engine.applied === 1, `the text was applied ${engine.applied} times instead of once`);
+    assert(findNode(editor.tree(), (node) => node.props && node.props.className === 'dv-inline-editor') === null, 'the editor did not close after the cached success');
+    assert(
+      findNode(editor.tree(), (node) => node.props && node.props['data-canvas-revision'] === engine.revision) !== null,
+      'the canvas did not load the settled revision after the cached success'
+    );
+  } finally {
+    editor.interactive.unmount();
+  }
+});
+
+test('R5(c): a changed retained draft settles the old frozen attempt first and then writes with a new operationId', async () => {
+  const engine = canvasTextEngine({ loseResponses: 1 });
+  const hostFetch = canvasTextFetch(engine);
+  const editor = await mountCanvasReady({ fetch: hostFetch });
+  try {
+    canvasSelectText(editor);
+    canvasOpenTextEditor(editor);
+    canvasTypeDraft(editor, '旧文案');
+    canvasPressEnter(editor);
+    await settle();
+    editor.rerender();
+    await settle();
+    assert(engine.applied === 1 && engine.text === '旧文案', 'setup: the acknowledged-lost write was not applied');
+    const first = canvasMethodCalls(hostFetch, 'edit')[0].body.params;
+    canvasTypeDraft(editor, '新文案');
+    canvasPressEnter(editor);
+    await settle();
+    editor.rerender();
+    await settle();
+    const edits = canvasMethodCalls(hostFetch, 'edit');
+    assert(edits.length === 3, `expected old-attempt settle plus new attempt, got ${edits.length} edits`);
+    assert(JSON.stringify(edits[1].body.params) === JSON.stringify(first), 'the old attempt was not settled with its exact frozen request');
+    const next = edits[2].body.params;
+    assert(next.operationId !== first.operationId, 'the new intent reused the old attempt operationId');
+    assert(next.expectedRevision === CANVAS_NEXT_REVISION, `the new attempt did not use the settled revision: ${next.expectedRevision}`);
+    assert(next.ops[0].text === '新文案', 'the new attempt did not carry the changed draft');
+    assert(engine.applied === 2 && engine.text === '新文案', `final apply state is wrong: ${engine.text} applied ${engine.applied}`);
+    assert(findNode(editor.tree(), (node) => node.props && node.props.className === 'dv-inline-editor') === null, 'the editor did not close after the new attempt succeeded');
+    assert(
+      findNode(editor.tree(), (node) => node.props && node.props['data-canvas-revision'] === engine.revision) !== null,
+      'the canvas did not load the final revision'
+    );
+  } finally {
+    editor.interactive.unmount();
+  }
+});
+
+test('R5(d): an uncertain settle keeps the frozen attempt and recovers without reopening the editor', async () => {
+  const engine = canvasTextEngine({ loseResponses: 2 });
+  const hostFetch = canvasTextFetch(engine);
+  const editor = await mountCanvasReady({ fetch: hostFetch });
+  try {
+    canvasSelectText(editor);
+    canvasOpenTextEditor(editor);
+    canvasTypeDraft(editor, '旧文案');
+    canvasPressEnter(editor);
+    await settle();
+    editor.rerender();
+    await settle();
+    const first = canvasMethodCalls(hostFetch, 'edit')[0].body.params;
+    canvasTypeDraft(editor, '新文案');
+    canvasPressEnter(editor);
+    await settle();
+    editor.rerender();
+    await settle();
+    const afterSettleFailure = canvasMethodCalls(hostFetch, 'edit');
+    assert(afterSettleFailure.length === 2, `expected only the old-attempt settle, got ${afterSettleFailure.length} edits`);
+    assert(JSON.stringify(afterSettleFailure[0].body.params) === JSON.stringify(afterSettleFailure[1].body.params), 'the settle was not the exact frozen request');
+    assert(afterSettleFailure[1].body.params.operationId === first.operationId, 'the operationId changed while the old outcome was still unknown');
+    const kept = findNode(editor.tree(), (node) => node.props && node.props.className === 'dv-inline-editor');
+    assert(kept !== null && kept.props.value === '新文案', 'the changed draft was lost after the uncertain settle');
+    const alert = findNode(editor.tree(), (node) => node.props && node.props.role === 'alert');
+    assert(alert !== null && textOf(alert).includes(translateFor(editor.env)('video.error.network')), 'the uncertain settle was not surfaced');
+    // The next explicit retry settles the same frozen attempt (cached success)
+    // and only then starts the new intent: recoverable without Esc/reopen.
+    canvasRetryButton(editor).props.onClick();
+    await settle();
+    editor.rerender();
+    await settle();
+    const edits = canvasMethodCalls(hostFetch, 'edit');
+    assert(edits.length === 4, `expected settle retry plus new attempt, got ${edits.length} total edits`);
+    assert(JSON.stringify(edits[2].body.params) === JSON.stringify(first), 'the recovering retry changed the frozen settle request');
+    assert(edits[3].body.params.operationId !== first.operationId, 'the recovered new intent reused the old operationId');
+    assert(edits[3].body.params.ops[0].text === '新文案', 'the recovered attempt did not carry the changed draft');
+    assert(engine.applied === 2 && engine.text === '新文案', `final apply state is wrong: ${engine.text} applied ${engine.applied}`);
+    assert(findNode(editor.tree(), (node) => node.props && node.props.className === 'dv-inline-editor') === null, 'the editor did not close after recovery');
+  } finally {
+    editor.interactive.unmount();
+  }
+});
+
+test('R5(e): E_OPERATION_REUSED is recoverable through the explicit refresh path', async () => {
+  const engine = canvasTextEngine({ reuseNextOperation: 1 });
+  const hostFetch = canvasTextFetch(engine);
+  const editor = await mountCanvasReady({ fetch: hostFetch });
+  try {
+    canvasSelectText(editor);
+    canvasOpenTextEditor(editor);
+    canvasTypeDraft(editor, '复用标题');
+    canvasPressEnter(editor);
+    await settle();
+    editor.rerender();
+    await settle();
+    assert(canvasMethodCalls(hostFetch, 'edit').length === 1, 'the reused-id failure did not stop at one write');
+    assert(engine.applied === 0, 'the reused-id failure applied the text');
+    const kept = findNode(editor.tree(), (node) => node.props && node.props.className === 'dv-inline-editor');
+    assert(kept !== null && kept.props.value === '复用标题', 'the E_OPERATION_REUSED failure lost the draft');
+    const alert = findNode(editor.tree(), (node) => node.props && node.props.role === 'alert');
+    assert(
+      alert !== null && textOf(alert).includes(translateFor(editor.env)('video.error.conflict')),
+      `E_OPERATION_REUSED was not mapped to the recoverable conflict copy: ${alert && textOf(alert)}`
+    );
+    const inspectBefore = canvasMethodCalls(hostFetch, 'inspect').length;
+    canvasRetryButton(editor).props.onClick();
+    await settle();
+    editor.rerender();
+    await settle();
+    assert(canvasMethodCalls(hostFetch, 'edit').length === 1, 'the refresh retry silently resubmitted after E_OPERATION_REUSED');
+    assert(canvasMethodCalls(hostFetch, 'inspect').length === inspectBefore + 1, 'the refresh retry did not refresh the authoritative revision');
+    const notice = findNode(
+      editor.tree(),
+      (node) => node.props && node.props.className === 'dv-tool-hint' && textOf(node).includes(translateFor(editor.env)('video.canvas.revisionRefreshed'))
+    );
+    assert(notice !== null, 'the refreshed-revision notice is missing after E_OPERATION_REUSED');
+    canvasRetryButton(editor).props.onClick();
+    await settle();
+    editor.rerender();
+    await settle();
+    const edits = canvasMethodCalls(hostFetch, 'edit');
+    assert(edits.length === 2, `expected the later explicit submit, got ${edits.length} edits`);
+    assert(edits[1].body.params.operationId !== edits[0].body.params.operationId, 'the recovered submit reused the failed operationId');
+    assert(engine.applied === 1 && engine.text === '复用标题', 'the recovered submit did not apply the text once');
+    assert(findNode(editor.tree(), (node) => node.props && node.props.className === 'dv-inline-editor') === null, 'the editor did not close after recovery');
   } finally {
     editor.interactive.unmount();
   }
