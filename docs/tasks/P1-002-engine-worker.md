@@ -36,7 +36,24 @@ P1-001 已通过本机单 Scene 可行性验收。读原研究与 [ADR-0001](../
 
 ## 开发记录
 
-- base / result commit：待填写。
-- 实现文件与启动命令：待填写。
-- 协议/真实作业/修订与取消验证：待填写。
-- 产物与限制：待填写。
+- base / result commit：`e88615f` / 当前工作树交付提交（见交接回复）。协调指南来源
+  `codex/project-foundation@5589add087349ea09137fb3340e6cd27fb129fbc`；仅以 git
+  show 导入本指南和 ADR-0001。
+- 实现文件与启动命令：`packages/video-engine-worker/**`；从仓库根使用
+  `node packages/video-engine-worker/src/worker.mjs --registry
+  packages/video-engine-worker/artifacts/registry.json`。包 README 和 JSON Schema 记录
+  v1 stdio 协议、受控 registry 和各项限额。
+- 协议/真实作业/修订与取消验证：`npm test --prefix
+  packages/video-engine-worker` 为 7/7，`npm run test:real --prefix
+  packages/video-engine-worker` 为 2/2。真实 SDK 编辑重开、revision conflict/资产变化、
+  固定快照 PNG/H.264 MP4、cancel/timeout/EOF/shutdown/SIGTERM、stdout 纯净和仅清理拥有
+  进程均有行为测试；完整事实和命令见 `docs/research/P1-002-engine-worker.md`。
+- 产物与限制：忽略的真实产物位于
+  `packages/video-engine-worker/artifacts/worker.mp4`（SHA-256
+  `86a8ed261e76283da602de17e1e2aec8f61a7398d816c8bd160bef73d658a863`）和
+  `worker.png`（`efca929677830434624a262bc13b2f6e1dd39af70619e3455c6753ac079441db`）。
+  仅本机 POSIX 受控 fixture，非安全沙箱；DSH 生命周期集成留 P2。
+- R1 首审修复：在 projectId 关闭开始时同步建立 lifecycle gate；并发 open/inspect/edit/
+  frame/render 返回 `E_PROJECT_CLOSING`，重复 close 合并排空，close 完成后才可 reopen。新增真实
+  官方 CLI 回归覆盖运行中 render、两个 close、并发内容请求、产物保留、进程 sentinel 和 reopen；完整
+  结果为协议 7/7、真实作业 3/3（最终完整复跑分别为 7.35 秒、55.79 秒），细节见研究记录。

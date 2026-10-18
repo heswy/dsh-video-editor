@@ -1,0 +1,10 @@
+[
+  {
+    "package": "node_modules/esbuild",
+    "version": "0.25.12",
+    "scripts": {
+      "postinstall": "node install.js"
+    },
+    "executed": false
+  }
+]

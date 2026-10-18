@@ -9,3 +9,6 @@ playwright-report/
 .env
 .env.*
 !.env.example
+
+# ignored local evidence (fixed tarballs, renders)
+artifacts/

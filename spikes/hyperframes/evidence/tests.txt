@@ -1,0 +1,15 @@
+
+> dsh-p1-hyperframes-spike@0.0.0 test
+> node --test test/*.test.mjs
+
+✔ cancel terminates an owned process group and cleans its temp directory (2534.922458ms)
+✔ timeout terminates an owned process group and cleans its temp directory (2805.989583ms)
+✔ SDK changes title and timing, saves native HTML, reopens with stable IDs (2113.045917ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 5589.722666

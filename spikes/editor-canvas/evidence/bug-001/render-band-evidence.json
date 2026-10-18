@@ -1,0 +1,251 @@
+{
+  "kind": "bug-001-render-bottom-band",
+  "startedAt": "2026-10-18T04:40:28.950Z",
+  "engine": {
+    "worker": "dsh-video-engine-worker@0.3.1",
+    "tools": {
+      "node": "v24.14.0",
+      "chromePath": "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+    }
+  },
+  "rootCause": {
+    "summary": "HyperFrames static-frame-dedup opens a second verification page; after it closes the primary capture page loses its page.setViewport(1280x720) device-metrics override (window.innerHeight: 720 -> 633), while captureBeyondViewport had already been downgraded to false because the document scrollHeight fits 720. CDP then paints only 633 viewport rows; the remaining 87 rows are black.",
+    "observations": [
+      "worker snapshot/frame path has no static-dedup page and always rendered the full 720p frame",
+      "first static-dedup verification captures reported innerHeight 720 and were full",
+      "after verification, streaming captures reported viewport 1280x720 but innerHeight 633 and were black from y=633/634",
+      "HF_STATIC_DEDUP=false removes the second page and the band; forcing captureBeyondViewport also removes it",
+      "upstream version 0.8.167, node_modules not modified"
+    ],
+    "adapterFix": "worker render job env sets HF_STATIC_DEDUP=false (render only; frame/snapshot unchanged). Same revision/HTML, full 720p composition, no crop/stretch/fill. Performance tradeoff recorded below."
+  },
+  "oldEvidence": "spikes/editor-canvas/evidence/p3-006b/rendered-1.5s.png (86 black rows) preserved unchanged",
+  "projects": {
+    "baseline": {
+      "projectId": "proj-mvdc7izu-159923c5",
+      "revision": "99750d03f08a45954fe3bef6a161a9fa16c78c03f15b01a9b680470b539f17b2",
+      "duration": 5,
+      "before": {
+        "mp4": "<repo>/spikes/editor-canvas/evidence/bug-001/before-baseline.mp4",
+        "elapsedMs": 9050
+      },
+      "after": {
+        "mp4": "<repo>/spikes/editor-canvas/evidence/bug-001/after-baseline.mp4",
+        "elapsedMs": 13512,
+        "metadata": {
+          "codec_name": "h264",
+          "width": 1280,
+          "height": 720,
+          "r_frame_rate": "30/1",
+          "nb_read_frames": "150",
+          "duration": 5
+        }
+      },
+      "times": {
+        "0.5": {
+          "workerFrame": "worker-baseline-0.5s.png",
+          "before": {
+            "file": "before-baseline-0.5s.png",
+            "bottomBlackRows": 86,
+            "bottomColor": [
+              0,
+              0,
+              0
+            ],
+            "bottomColorDistanceToScene": 216,
+            "diffVsWorker": {
+              "changedPct": 0.133583984375,
+              "mae": 29.431231553819444
+            }
+          },
+          "after": {
+            "file": "after-baseline-0.5s.png",
+            "bottomBlackRows": 0,
+            "bottomColor": [
+              27,
+              76,
+              214
+            ],
+            "bottomColorDistanceToScene": 2,
+            "diffVsWorker": {
+              "changedPct": 0.011355251736111112,
+              "mae": 3.5518728298611113
+            }
+          }
+        },
+        "1.5": {
+          "workerFrame": "worker-baseline-1.5s.png",
+          "before": {
+            "file": "before-baseline-1.5s.png",
+            "bottomBlackRows": 86,
+            "bottomColor": [
+              0,
+              0,
+              0
+            ],
+            "bottomColorDistanceToScene": 216,
+            "diffVsWorker": {
+              "changedPct": 0.13352647569444445,
+              "mae": 29.547421875
+            }
+          },
+          "after": {
+            "file": "after-baseline-1.5s.png",
+            "bottomBlackRows": 0,
+            "bottomColor": [
+              27,
+              76,
+              214
+            ],
+            "bottomColorDistanceToScene": 2,
+            "diffVsWorker": {
+              "changedPct": 0.011293402777777777,
+              "mae": 3.6694487847222224
+            }
+          }
+        }
+      }
+    },
+    "edited": {
+      "projectId": "proj-mvdc8cfr-5e0c626d",
+      "revision": "2730eb515a3a8265262383f55c7d261c8fd46755eb5aa50778dfa3dae095dd9b",
+      "duration": 5,
+      "before": {
+        "mp4": "<repo>/spikes/editor-canvas/evidence/bug-001/before-edited.mp4",
+        "elapsedMs": 26073
+      },
+      "after": {
+        "mp4": "<repo>/spikes/editor-canvas/evidence/bug-001/after-edited.mp4",
+        "elapsedMs": 39335,
+        "metadata": {
+          "codec_name": "h264",
+          "width": 1280,
+          "height": 720,
+          "r_frame_rate": "30/1",
+          "nb_read_frames": "150",
+          "duration": 5
+        }
+      },
+      "times": {
+        "0.5": {
+          "workerFrame": "worker-edited-0.5s.png",
+          "before": {
+            "file": "before-edited-0.5s.png",
+            "bottomBlackRows": 86,
+            "bottomColor": [
+              0,
+              0,
+              0
+            ],
+            "bottomColorDistanceToScene": 216,
+            "diffVsWorker": {
+              "changedPct": 0.13645941840277778,
+              "mae": 28.91916015625
+            }
+          },
+          "after": {
+            "file": "after-edited-0.5s.png",
+            "bottomBlackRows": 0,
+            "bottomColor": [
+              27,
+              76,
+              214
+            ],
+            "bottomColorDistanceToScene": 2,
+            "diffVsWorker": {
+              "changedPct": 0.014241536458333334,
+              "mae": 4.120309244791667
+            }
+          }
+        },
+        "1.5": {
+          "workerFrame": "worker-edited-1.5s.png",
+          "before": {
+            "file": "before-edited-1.5s.png",
+            "bottomBlackRows": 86,
+            "bottomColor": [
+              0,
+              0,
+              0
+            ],
+            "bottomColorDistanceToScene": 216,
+            "diffVsWorker": {
+              "changedPct": 0.13634765625,
+              "mae": 29.086845703125
+            }
+          },
+          "after": {
+            "file": "after-edited-1.5s.png",
+            "bottomBlackRows": 0,
+            "bottomColor": [
+              27,
+              76,
+              214
+            ],
+            "bottomColorDistanceToScene": 2,
+            "diffVsWorker": {
+              "changedPct": 0.014185112847222223,
+              "mae": 4.288314887152778
+            }
+          }
+        }
+      }
+    }
+  },
+  "ratio": {
+    "width": 960,
+    "height": 720,
+    "beforeElapsedMs": 28462,
+    "afterElapsedMs": 29132,
+    "metadata": {
+      "codec_name": "h264",
+      "width": 960,
+      "height": 720,
+      "r_frame_rate": "30/1",
+      "nb_read_frames": "150",
+      "duration": 5
+    },
+    "times": {
+      "0.5": {
+        "before": {
+          "file": "before-ratio-0.5s.png",
+          "bottomBlackRows": 86
+        },
+        "after": {
+          "file": "after-ratio-0.5s.png",
+          "bottomBlackRows": 0,
+          "diffVsWorker": {
+            "changedPct": 0.009560185185185185,
+            "mae": 3.253012152777778
+          }
+        }
+      },
+      "1.5": {
+        "before": {
+          "file": "before-ratio-1.5s.png",
+          "bottomBlackRows": 86
+        },
+        "after": {
+          "file": "after-ratio-1.5s.png",
+          "bottomBlackRows": 0,
+          "diffVsWorker": {
+            "changedPct": 0.009694733796296297,
+            "mae": 3.35271556712963
+          }
+        }
+      }
+    }
+  },
+  "failures": [],
+  "summary": {
+    "baselineBeforeBlackRows": 86,
+    "baselineAfterBlackRows": 0,
+    "editedAfterBlackRows": 0,
+    "editedBottomColorDistance": 2,
+    "afterDiffVsWorkerPct": 0.014185112847222223,
+    "ratioBeforeBlackRows": 86,
+    "ratioAfterBlackRows": 0
+  },
+  "finishedAt": "2026-10-18T04:44:03.171Z",
+  "evidenceFile": "evidence/bug-001/render-band-evidence.json"
+}
