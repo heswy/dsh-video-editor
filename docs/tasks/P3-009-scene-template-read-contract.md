@@ -22,3 +22,7 @@ central sceneSummaries所影响的inspect/open、project.create、scene.*、proj
 4. 新固定提交目录两包/完整SHA/条目/源码字节一致与干净pack证据、方法结果样例和未测项一次交回PR#2。82f6219旧包保留。
 
 不安装/启停/重启、不改profile、不发模型请求、不改当前用户工程、不merge、不联系或修改p0。p0按此冻结的template形状并行准备，新的具体提交需总调度复审后才能进入其最终staging，不依赖移动HEAD。
+
+## 总调度验收（2026-10-18）
+
+功能d383e3d、交付c31fde5已通过[复审](../reviews/P3-009-review-01.md)。独立worker44/44、client20 pass+1 opt-in skip、额外公共JSONL探针4/4、两包逐文件摘要通过；冻结两包0.3.2供p0生成新staging。本任务收口，p0 R1–R5不因本任务通过而自动关闭。未安装/merge。

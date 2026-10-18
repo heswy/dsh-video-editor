@@ -14,7 +14,7 @@
 
 独立136/136+版本10/10、候选/摘要一致，但以上场景已复现，两个候选均未验收，不安装。探针在同级artifacts/reviews/2026-10-18/P3-008/，原始探针不改，补修复后断言与正式回归。parent消息形状/序号/销毁pending也按复审说明在实际前端回归中补齐，不能只用runtime脚本冒充UI测试。
 
-p1并行[P3-009](../tasks/P3-009-scene-template-read-contract.md)，提供冻结形状scene.template（完整合法scene.update输入，不含sceneId）。可按该形状并行开发/测试，不读HTML/本地默认猜场景。最终包要等p1固定新提交复审，再由总调度明确通知采用；当前最新已审为82f6219/0.3.1，不能继续交旧74294e6/0.3.0，也不自动跟随p1 HEAD。
+p1的[P3-009](../tasks/P3-009-scene-template-read-contract.md)已通过[独立复审](../reviews/P3-009-review-01.md)。最终引擎明确冻结 **d383e3d53a9401285519ee578d993081c3cb4b51 / client与worker 0.3.2**，采用p1树artifacts/engine/d383e3d/两包：client SHA-256 `0830ab717ac2ef2572faf95aacace0778d5dc379cdfcc4546b48e6fa851311a5`；worker `e4e161418c252e6973760ca20d8aff890eabcf26a0bce5e93e0bfb6bef3716c3`。不再等待引擎提交，不从移动HEAD取包、不merge p1。新scene.template是完整合法scene.update输入；复制当次inspect模板后仅改目标字段，expectedRevision一致；缺template明确拒绝，不读HTML/本地默认猜场景。此验收只解决读取前提，不自动关闭p0 R1。保留黑带修复，新staging仍需完整MP4画面复核。
 
 只在最新alpha.3分支集中解决C和008，不必回旧分支重打一轮alpha.2。保留所有旧候选/staging，最新功能新提交目录打包；未安装的alpha.3可保留根版本。交新staging/完整摘要、真实Host Tool→worker的AI等价续改链和实际CanvasWorkspace浏览器交互证据，一次push PR#3交回。
 

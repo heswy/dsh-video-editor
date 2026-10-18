@@ -18,27 +18,27 @@
 | 本机应用包 | 只读 app.asar 的 dsh/package.json 为 **0.2.1-rc.2** | [对话复用调查](research/2026-10-17-conversation-embedding-v03.md)；P3-005-A交付了rc.2运行身份/live查询证据，总调度独立核包源码；嵌入已在LIVE有证据且用户实测发现文件预览缺陷，旧rc.1证据保持历史口径 |
 | 最近确认的安装 | 根插件 **0.3.0-alpha.1**，link→`staging-54f4671-b382686/bundle`；引擎54f4671/0.1.1 | 用户截图与p0真机交付2cd718a；[LIVE复核](reviews/P3-006A-live-review-01.md)：原生会话/历史/标题写入有证据，**图片文件打开FAIL**；本轮未再读profile或操作GUI。旧0.2.1回滚保留 |
 | 插件最新交付 | C：3310280/alpha.2；008：8ab5f1a/alpha.3，head8b56304 | [联合复审](reviews/P3-008-review-01.md)需修R1–R5；独立136/136+版本10/10、两个包/staging摘要通过，但Scene丢字段/动画基座/预览归属/停用排空/失败草稿问题已复现；未安装 |
-| 引擎已验收 | 两包 **0.3.1**，功能82f6219、交付9aebcbc | [BUG-001复审](reviews/BUG-001-review-01.md)：本机受控范围黑带关闭；worker40/40、真实画面/生命周期4/4、反向旧实现检出86行黑、新包摘要一致。R1–R2合并能力保持；非完整产品验收 |
-| 引擎后续 | P3-009完整scene.template投影，目标0.3.2 | p0读取信息不足导致局部更新丢数据；p1按冻结新读取形状独立实现，具体提交复审后再进入最终staging。82f6219与黑带修复保持 |
+| 引擎已验收 | 两包 **0.3.2**，功能d383e3d、交付c31fde5 | [BUG-001复审](reviews/BUG-001-review-01.md)：本机受控范围黑带关闭；BUG-001验收时worker40/40、真实画面/生命周期4/4、反向旧实现检出86行黑；0.3.2读取契约证据见下行。R1–R2合并能力保持；非完整产品验收 |
+| 引擎读取契约 | P3-009完整scene.template已通过 | [复审](reviews/P3-009-review-01.md)：独立worker44/44、client20 pass+1 skip、公共JSONL边界4/4、包字节通过；p0固定d383e3d/0.3.2修R1，不自动关闭前端缺陷。黑带修复保持 |
 | 新产品体验 | 右侧原生 AI、历史、模型；左侧实时直接编辑；工程素材库 | 设计已确认，**尚未整体实现或验收**；不能把底层方法存在当成用户闭环完成 |
 
 ## 工作区与当前任务
 
-工作树绝对路径和通用规则只维护在 [DEVELOPMENT](DEVELOPMENT.md)。三棵树规划保持，本轮fetch成功并核对p0-mode-shell交付8b56304后干净；本轮另核对p1-engine交付9aebcbc后干净（BUG-001通过）；开发树不需要新建或重建。
+工作树绝对路径和通用规则只维护在 [DEVELOPMENT](DEVELOPMENT.md)。三棵树规划保持，p0-mode-shell最近核对为交付8b56304后干净；本轮fetch成功并核对p1-engine交付c31fde5后干净（P3-009通过）；开发树不需要新建或重建。
 
 | 工作区 | 分支 / PR | 最近功能交付 | 当前动作 |
 |---|---|---|---|
-| 主工作区（总调度） | `codex/project-foundation` / [#1](https://github.com/heswy/dsh-video-editor/pull/1) | 当前产品、规则、评审、交接 | A/B调查与spike均已验收；P3-006-A已安装，原生文件预览FAIL，转P3-006-C修复，P3-006-B修复通过；黑带已关闭；p0集中修C/008 R1–R5，p1补Scene完整读取契约 |
-| p1-engine | `codex/p1-engine-spike-b4bf` / [#2](https://github.com/heswy/dsh-video-editor/pull/2) | 82f6219；交付head9aebcbc | BUG-001已验收；下一任务[P3-009](tasks/P3-009-scene-template-read-contract.md)完整Scene读取投影 |
+| 主工作区（总调度） | `codex/project-foundation` / [#1](https://github.com/heswy/dsh-video-editor/pull/1) | 当前产品、规则、评审、交接 | A/B调查与spike均已验收；P3-006-A已安装，原生文件预览FAIL，转P3-006-C修复，P3-006-B修复通过；黑带已关闭；p0集中修C/008 R1–R5；p1完整读取契约已验收 |
+| p1-engine | `codex/p1-engine-spike-b4bf` / [#2](https://github.com/heswy/dsh-video-editor/pull/2) | d383e3d；交付headc31fde5 | P3-009已验收，保留固定包/树；当前无新增实现任务 |
 | p0-mode-shell | `dsh/p0-mode-shell` / [#3](https://github.com/heswy/dsh-video-editor/pull/3) | 8ab5f1a；交付head8b56304 | [联合复审](reviews/P3-008-review-01.md)需集中修R1–R5，配合p1 Scene投影，原树交回新候选 |
 
-本轮核对：`p0-mode-shell@8b56304`（已push、干净，候选待修）；p1-engine@9aebcbc（已push、干净，BUG-001通过）；未合并协调分支。
+最近核对：`p0-mode-shell@8b56304`（已push、干净，候选待修）；p1-engine@c31fde5（已push、干净，P3-009通过）；未合并协调分支。
 
 当前接手只使用 [p1-engine 交接](handoffs/p1-engine.md)、[p0-mode-shell 交接](handoffs/p0-mode-shell.md)。旧 programmer1/2 文件保留为历史，不重新执行已交付任务。
 
 ## 接下来按这个顺序
 
-1. p0按P3-008联合复审集中修R1–R5，不安装C/008旧候选；p1按P3-009补完整scene.template，目标两包0.3.2。两树并行、不重复调查；最终staging使用新元数据提交前需总调度复审固定commit，不读移动HEAD。当前安装alpha.1不变。
+1. p0按P3-008联合复审集中修R1–R5，不安装C/008旧候选；P3-009已通过，p0最终staging明确固定d383e3d/两包0.3.2。无需等待新引擎，不读移动HEAD；p1保留固定交付等待具体新任务。当前安装alpha.1不变。
 2. A调查已通过；采用videoView source、hero:false、工程映射Host持久化，不新Workspace/不归档隐藏。mainView保留计数不等于编辑器可见，接线需避免双根与错误锁定。B已验收：composition CSS px与静态布局基座分离、实例消息/生命周期；toy Host不可原样进生产，需补授权/TTL/精确脚本资源策略。
 3. 会话侧基础接线已装alpha.1、引擎仍54f4671；p0先修图片打开。p1的0.3.0覆盖语义已验收，P3-008冻结新引擎+受控工程创建+Host/Tool方法+实际画布整合，不把换版本号或暂态拖动当用户闭环。
 4. 保留当前已安装alpha.1与全部旧候选、0.2.1回滚入口；后续新候选需精确包/实际渲染版本核对。link更新本轮曾需用户手动重启，不许通过热改旧staging凑验证。
@@ -65,8 +65,8 @@
 
 最新会话候选复审：[P3-006-A修复](reviews/P3-006A-review-02.md)，831d275的123项检查与版本10/10、四故障场景修复探针及固定包/staging通过；R1–R4关闭。安装验收指南已准备，用户随后明确回复“我授权。完全授权。”，本任务已获授权并已有LIVE交付；当前文件预览修复另见P3-006-C。原始复现与修复后探针在同级artifacts/reviews/2026-10-18/P3-006A/。
 
-最新引擎验收：[BUG-001复审](reviews/BUG-001-review-01.md)，82f6219/0.3.1黑带修复通过，升级为P3-008固定基线；74294e6为历史已审接口基线，4c087ef为历史失败候选。当前用户已安装的旧引擎54f4671仍未自动更新，不能将新包通过当作新界面或安装验收。
+最新引擎验收：[BUG-001复审](reviews/BUG-001-review-01.md)，82f6219/0.3.1黑带修复通过；P3-008最新固定基线已升级d383e3d/0.3.2；74294e6为历史已审接口基线，4c087ef为历史失败候选。当前用户已安装的旧引擎54f4671仍未自动更新，不能将新包通过当作新界面或安装验收。
 
 最新LIVE：[P3-006-A复核](reviews/P3-006A-live-review-01.md)，交付2cd718a的证据摘要吻合；用户实测PNG文件卡报sidebarRight缺session surface，源码根因已独立确认。根插件仍旧引擎/legacy demo，不支持工程换色；后续必须接新引擎+受控工程+Host/Tool/预览，不能用后期调色图片或直接改HTML替代。用户报告的全局输入误发/个人剪贴板使用违反既有边界，后续禁止再用，缺定向通道改人工。
 
-最新候选复审：[C/008联合复审](reviews/P3-008-review-01.md)；不是只剩安装验收，已独立复现五项内容/交互/范围/生命周期缺陷。p1下一任务P3-009读取契约，p0按同一冻结形状并行修复。证据位于同级artifacts/reviews/2026-10-18/P3-008/。
+最新候选复审：[C/008联合复审](reviews/P3-008-review-01.md)；不是只剩安装验收，已独立复现五项内容/交互/范围/生命周期缺陷。P3-009读取契约已验收，p0采用d383e3d/0.3.2集中修复。证据位于同级artifacts/reviews/2026-10-18/P3-008/。
