@@ -56,14 +56,14 @@ const client = new WorkerClient({
 
 ## 包入口与版本
 
-`package.json` 版本 0.3.2，`exports` 提供根入口与 manifest 解析：
+`package.json` 版本 0.4.0，`exports` 提供根入口与 manifest 解析：
 
 - `dsh-video-engine-client` → `./src/index.mjs`（根入口不变）
 - `dsh-video-engine-client/package.json` → 自身 manifest
 
 worker 包（`dsh-video-engine-worker`）另行导出 `./worker` → `./src/worker.mjs` 与 `./package.json`；Host 应通过 Node 包解析获得 worker entry，而不是拼接开发路径。worker 入口只用于 resolve，不要在 Host 进程里 import 执行。两个包的 `files` 白名单只含 runtime 源码、协议 schema 与 README，不含 tests、fixtures、scripts、node_modules、缓存、artifacts 或字体。
 
-公共方法：`start`、`doctor`、`open`、`inspect`、`edit`、`frame`、`render`、`status`、`cancel`、`close`、`request`、`dispose`，以及 P3-003 多 Scene/修订方法：`projectCreate`、`assetImport`、`sceneCreate`、`sceneUpdate`、`sceneRemove`、`sceneReorder`、`projectRevise`、`history`、`undo`、`redo`（分别对应 v1 协议的 `project.create`、`asset.import`、`scene.*`、`project.revise`、`history`、`undo`、`redo`），以及 P3-004 预览快照方法：`previewSnapshot`、`previewRelease`（对应 `preview.snapshot`/`preview.release`）。0.3.2 起所有 Scene summary 额外返回只读 `template`（可直接作为 `scene.update.template` 输入，支持只改目标字段而保留其它字段）；0.3.1 起统一 `edit` 还接受 `layout`/`style` 两类受控 op（无需新方法），`inspect` 元素增加规范化 `layout`/`style` 与 `layout`/`style` capability；全部随 worker 结果透明透传。成功时返回 worker 原始 result；worker 的结构化错误与本包错误均以 `WorkerClientError` reject，包含 `code`、`message`、`stage`。`stdin`/`stdout`/`stderr` 断管会停止该 client、以 `E_TRANSPORT` 结算全部 pending，并只终止其直接 worker；故障被观察到之后的新请求在准入前以 `E_CLIENT_STATE` 拒绝，既不标记为已发送也不重放。未收到可靠响应的 `edit`（超时、断管、坏帧、退出或 teardown）会带 `uncertain: true`：调用方必须重新 inspect/以 expectedRevision 协调，不能假定未写入。未收到 `frame`/`render` jobId 的传输失败带 `jobUnknown: true`，它不声称作业未开始，且客户端无 jobId 可恢复查询或取消。没有自动重试或重放。
+公共方法：`start`、`doctor`、`open`、`inspect`、`edit`、`frame`、`render`、`status`、`cancel`、`close`、`request`、`dispose`，以及 P3-003 多 Scene/修订方法：`projectCreate`、`assetImport`、`sceneCreate`、`sceneUpdate`、`sceneRemove`、`sceneReorder`、`projectRevise`、`history`、`undo`、`redo`（分别对应 v1 协议的 `project.create`、`asset.import`、`scene.*`、`project.revise`、`history`、`undo`、`redo`），P3-004 预览快照方法：`previewSnapshot`、`previewRelease`（对应 `preview.snapshot`/`preview.release`），以及 P3-012 完整合成方法：`projectCompose`、`projectSource`（对应 `project.compose`/`project.source`，见下文）。0.3.2 起所有 Scene summary 额外返回只读 `template`（可直接作为 `scene.update.template` 输入，支持只改目标字段而保留其它字段）；0.3.1 起统一 `edit` 还接受 `layout`/`style` 两类受控 op（无需新方法），`inspect` 元素增加规范化 `layout`/`style` 与 `layout`/`style` capability；全部随 worker 结果透明透传。成功时返回 worker 原始 result；worker 的结构化错误与本包错误均以 `WorkerClientError` reject，包含 `code`、`message`、`stage`（worker 显式报告 `uncertain` 时一并透传）。`stdin`/`stdout`/`stderr` 断管会停止该 client、以 `E_TRANSPORT` 结算全部 pending，并只终止其直接 worker；故障被观察到之后的新请求在准入前以 `E_CLIENT_STATE` 拒绝，既不标记为已发送也不重放。未收到可靠响应的 `edit`（超时、断管、坏帧、退出或 teardown）会带 `uncertain: true`：调用方必须重新 inspect/以 expectedRevision 协调，不能假定未写入。未收到 `frame`/`render` jobId 的传输失败带 `jobUnknown: true`，它不声称作业未开始，且客户端无 jobId 可恢复查询或取消。没有自动重试或重放。
 
 每个 client 自己生成 request id、按原始字节组行再 UTF-8 解码 stdout，严格验证 v1 envelope。分段、粘包、中文/emoji 跨字节和乱序响应按 id 匹配；坏 JSON、未知/重复 id、错误 envelope 和超长行会以协议错误终止该 client。stderr 也按原始字节截留尾部，`debug()` 可查看 `stderrBytes`/`stderrTruncated` 和 pending 数。
 
@@ -82,6 +82,28 @@ await client.previewRelease({ snapshotId: snapshot.snapshotId });
 ```
 
 快照由 worker 写到私有 `outputRoot/previews/<snapshotId>/`，只返回相对路径；client 不读工程 HTML、不缓存 revision、不解释快照内容。`previewRelease` 对未知/过期 snapshotId 抛 `WorkerClientError`（`code: "E_SNAPSHOT_NOT_FOUND"`）；重复释放同一 id 属安全 no-op，会得到同一错误码。传输失败不回放请求，调用方按 snapshotId 语义自行处理；快照到期、`close`、`shutdown` 与 worker 重启都会清理私有副本。
+
+## 完整合成发布/读取（P3-012）
+
+```js
+const source = await client.projectSource({ projectId });
+// { projectId, revision, entry: "index.html", bytes, assets, html }
+
+const published = await client.projectCompose({
+  projectId,
+  expectedRevision: source.revision, // 64 位小写 hex；过期返回 E_REVISION_CONFLICT
+  operationId: "compose-1",          // 幂等键；同 operationId 不同内容返回 E_OPERATION_REUSED
+  html: nextDocument,                // 完整 HTML 文档，1..49152 UTF-8 字节
+});
+// { projectId, revision, publishedRevision, written, unchanged, scenes: [],
+//   entry, width, height, duration, bytes, assets, elements, files, preview }
+```
+
+- `projectCompose` 是创建与后续每次修改的同一路径：worker 先校验完整合成契约（完整文档、唯一#main、`window.__timelines={main}`、无外部 URL/embedding、只引用声明资产、SDK 往返），通过后才原子替换 `index.html` 并返回 `publishedRevision`。失败返回 `WorkerClientError`：`E_COMPOSE_INVALID`（契约）、`E_REVISION_CONFLICT`（stale expectedRevision）、`E_PERSIST`（写盘/读回/快照证明失败，旧内容被恢复）或 `E_OPERATION_REUSED`；失败不会留下半份内容。
+- `unchanged: true` 表示提交内容与当前入口逐字节相同：worker 不写盘、revision 不变仍返回成功结果；`publishedRevision` 只在文档真正发布/已确认后出现，调用方应据此报告“已更新”，不能仅凭意图判断。
+- `preview.status: "ready"` 仅表示 worker 已校验该 revision 可通过既有私有快照路由服务（内部创建并立即释放 TTL 60s 快照），不代表浏览器已验证播放。
+- `projectSource` 只读返回当前 `index.html` 全文、revision 与声明资产；入口超过 48 KiB 时抛 `E_LIMIT`（该工程仍可被浏览器预览，但不能走 Agent 编辑路径）。
+- client 仍只做透传：不缓存 revision、不解析 HTML、不自动重试 compose；Host 负责在 Tool scope 内串行化调用。
 
 ```sh
 npm test --prefix packages/video-engine-client

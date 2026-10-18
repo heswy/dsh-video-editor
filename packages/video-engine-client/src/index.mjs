@@ -216,6 +216,9 @@ export class WorkerClient {
         entry.reject(
           new WorkerClientError(response.error.code, response.error.message, {
             stage: response.error.stage,
+            // Only publish the flag when the worker itself reported an
+            // uncertain outcome (a failed publish whose rollback also failed).
+            uncertain: response.error.uncertain === true,
           }),
         );
     }
@@ -369,6 +372,12 @@ export class WorkerClient {
   }
   projectCreate(params) {
     return this.request("project.create", params);
+  }
+  projectCompose(params) {
+    return this.request("project.compose", params);
+  }
+  projectSource(params) {
+    return this.request("project.source", params);
   }
   assetImport(params) {
     return this.request("asset.import", params);

@@ -52,6 +52,8 @@ v1 固定 index.html、30fps、H.264；frame 精确时间 PNG。项目根、入�
 | `open` | projectId | 已注册工程的 inspect；未知映射拒绝，无 path/URL 参数 |
 | `inspect` | projectId | revision、尺寸、时长、stableId、文本、原生 timing、规范化 layout/style、capabilities、路径/字节/hash 清单 |
 | `edit` | projectId, expectedRevision, operationId, ops | 保存/读回成功后的 revision；ops 支持 text/timing/layout/style，最多32项（P3-006-B） |
+| `project.compose` | projectId, expectedRevision, operationId, html | 校验并原子发布整份 HTML 合成（创建与后续每次修改同一路径）；返回 publishedRevision、尺寸/时长、文件清单与 snapshot 证明，见下文 P3-012 |
+| `project.source` | projectId | 读取当前 `index.html` 全文、revision 与声明资产；入口超过 48 KiB 返回 `E_LIMIT`，见下文 P3-012 |
 | `frame` | projectId, revision, time, timeoutMs? | 立即返回异步 PNG job；time 位于 [0,duration−1/30] |
 | `render` | projectId, revision, timeoutMs? | 立即返回异步 MP4 job，queued；不等待渲染完成 |
 | `status` | jobId | 当前状态、阶段、进度、projectId/revision/jobId、工具版本；成功时 artifact |
@@ -83,7 +85,7 @@ operationId 以 projectId 为作用域：同一规范化请求（JSON 对象键�
 
 stdin EOF、shutdown、SIGINT/SIGTERM、未捕获异常路径均尝试排空并清理。EOF 和信号是真实行为测试；无法在 SIGKILL 或机器断电后执行用户态清理，P2 需父进程监督与重启恢复策略。采样式进程跟踪、路径 confinement 和独立进程均不是安全沙箱，不允许扩大到任意 Agent 生成代码。
 
-错误码：E_JSON/E_LINE_LIMIT/E_OUTPUT_LIMIT/E_VERSION/E_DUPLICATE_ID/E_METHOD/E_PARAMS/E_LIMIT/E_OVERRIDE_CONFLICT、E_PROJECT_NOT_FOUND/E_PROJECT_NOT_OPEN/E_PROJECT_CLOSING/E_PROJECT/E_PATH/E_ASSET_MISSING、E_REVISION_CONFLICT/E_OPERATION_REUSED/E_UNSUPPORTED_EDIT/E_PERSIST、E_JOB_NOT_FOUND/E_SHUTDOWN/E_SNAPSHOT/E_SNAPSHOT_NOT_FOUND/E_RENDER/E_METADATA/E_CLEANUP/E_INTERNAL。状态 failed 的 error 有 stage；cancelled/timed_out 为明确终态。
+错误码：E_JSON/E_LINE_LIMIT/E_OUTPUT_LIMIT/E_VERSION/E_DUPLICATE_ID/E_METHOD/E_PARAMS/E_LIMIT/E_OVERRIDE_CONFLICT、E_PROJECT_NOT_FOUND/E_PROJECT_NOT_OPEN/E_PROJECT_CLOSING/E_PROJECT/E_PATH/E_ASSET_MISSING、E_REVISION_CONFLICT/E_OPERATION_REUSED/E_UNSUPPORTED_EDIT/E_PERSIST/E_COMPOSE_INVALID、E_JOB_NOT_FOUND/E_SHUTDOWN/E_SNAPSHOT/E_SNAPSHOT_NOT_FOUND/E_RENDER/E_METADATA/E_CLEANUP/E_INTERNAL。状态 failed 的 error 有 stage；cancelled/timed_out 为明确终态。
 
 ## 测试与证据
 
@@ -220,3 +222,61 @@ worker 新配置模式（管理工程，Host 不直接改这些文件）：
 - 可选字段只在当前文档确实存在时出现（subtitle/logo/shot 等不虚构；受控模板的空 badge 元素返回 `badge:""`）。`scene.update` 仍是完整替换语义，**未改成 partial patch**；未设置/清空字段的既有规则不变。无变化提交仍按既有 `E_INTERNAL` 守卫拒绝。
 - 为保证投影始终可往返，Scene 文本字段上限与既有 text edit 边界对齐：title/subtitle/badge 的模板输入/投影上限为 **2048** 字符（原有更短值请求不受影响）；title 是必填模板字段，空/纯空白 title 的 `edit {type:'text'}` 返回 `E_PARAMS`，避免产生无法回写的工程状态。其它元素的 text/timing 行为不变。
 - 旧 P2 legacy 单 composition 仍返回 `scenes: []`；schema 的 `sceneSummary`/`inspectScene` 均要求 `template`，方法集与 v1 协议不变。
+
+## P3-012：完整合成发布与读取 project.compose / project.source（0.4.0）
+
+两包升 **0.4.0**；JSONL v1 与既有 22 个方法语义不变，新增 2 个方法（共 24 个）。这是“对话生成/续改 + 左侧自动预览”路径的唯一写入入口：Agent 先读当前完整 HTML（`project.source`），生成新的完整文档后一次提交（`project.compose`），worker 校验通过才原子替换 `index.html`。
+
+```json
+{"v":1,"id":"c1","method":"project.source","params":{"projectId":"proj-..."}}
+{"v":1,"id":"c1","ok":true,"result":{"projectId":"proj-...","revision":"<64 hex>","entry":"index.html","bytes":653,"assets":["assets/gsap.min.js"],"html":"<!doctype html>..."}}
+{"v":1,"id":"c2","method":"project.compose","params":{"projectId":"proj-...","expectedRevision":"<64 hex>","operationId":"compose-1","html":"<!doctype html>..."}}
+```
+
+`project.compose` 结果（`scenes: []` 是拒绝隐式的合成模式标记；字段固定，供 Host prompt facts 使用）：
+
+```json
+{
+  "projectId": "proj-...",
+  "revision": "<new 64 hex>",
+  "publishedRevision": "<same new 64 hex>",
+  "written": true,
+  "unchanged": false,
+  "scenes": [],
+  "entry": "index.html",
+  "width": 1280,
+  "height": 720,
+  "duration": 5,
+  "bytes": 653,
+  "assets": ["assets/gsap.min.js"],
+  "elements": [{"stableId": "hf-abcd", "capabilities": ["text"]}],
+  "files": [{"path": "assets/gsap.min.js", "bytes": 72927, "sha256": "<64 hex>"}, {"path": "index.html", "bytes": 653, "sha256": "<64 hex>"}],
+  "preview": {"mode": "snapshot", "status": "ready", "checked": "composition+snapshot", "revision": "<new 64 hex>"}
+}
+```
+
+### 合成契约（发布前校验，任一不满足返回 E_COMPOSE_INVALID 且不写盘）
+
+1. UTF-8 1..49152 字节（48 KiB），不含 NUL；`MAX_COMPOSITION_BYTES = 48 * 1024`。
+2. 完整文档：可选 BOM/空白后以 `<!doctype html`（大小写不敏感）或 `<html` 开始，且包含 `</html>`。
+3. 恰好一个 `id="main"` 元素，带非空 `data-composition-id` 与数值 `data-width`（320..3840）、`data-height`（180..2160）、`data-duration`（0.1..3600）。
+4. 必须由脚本暴露预览 timeline：`window.__timelines = { main: <gsap timeline> }`（也接受 `window["__timelines"]`）；缺失时给出可操作的错误。
+5. 拒绝 `<iframe>/<object>/<embed>/<base>/<link>/<video>/<audio>/<source>/<track>`，以及 `src=`/`href=`/CSS `url(...)` 中的 `http:`/`https:`/`//`/`file:`/`blob:`/`javascript:`。`xmlns="http://www.w3.org/2000/svg"` 是命名空间不是 fetch，允许；`url(#fragment)` 同文档引用也允许。
+6. `src=`/`href=`/`url(...)` 的本地引用（去掉前导 `./`）必须是 `project.json` 已声明资产（通常 `assets/gsap.min.js`）；引用 `index.html`、未声明文件、绝对路径或 `..` 被拒绝，错误信息列出当前声明资产。
+7. SDK 校验与 inspect 一致：`openComposition(html)` 可打开，`buildDocument(comp.serialize())` 的 width/height/duration 有限且在范围内；始终 `comp.dispose()`。
+8. 与当前入口字节完全相同时不写盘，返回 `unchanged: true` 且 revision 不变（仍做一次 snapshot 证明，绝不写盘）。
+
+### 原子性、幂等与 preview 证明
+
+- `expectedRevision` 不是当前 revision → `E_REVISION_CONFLICT`（stage `compose`），不写。参数结构/类型错误 → `E_PARAMS`；契约校验失败 → `E_COMPOSE_INVALID`（stage `compose`）。三者都在写盘前发生。
+- operationId 与 `edit` 相同的单写者队列 + 内存幂等：同 projectId 下同一规范化请求返回首次成功结果，不重复写盘；相同 operationId 不同内容 → `E_OPERATION_REUSED`；失败不缓存。
+- 写入路径：`atomicWrite(index.html)` → `read()` 逐字节读回核对；不一致或读取失败则用 `atomicWrite` 恢复旧字节并返回 `E_PERSIST`（stage `persist`）；恢复也失败时错误带 `uncertain: true`。
+- 发布后立即通过既有 `Previews.create` 建立新 revision 的私有快照（TTL 单独用 60s），确认入口文件在快照清单内后 `discard`；失败则恢复旧字节并返回 `E_PERSIST`。`preview.status: "ready"` 只表示“契约校验通过 + 该 revision 可通过既有快照路由服务”，不声称浏览器已播放。
+- 成功后 `recordWrite` 追加 `actor:"ai", kind:"project.compose"` 历史条目（summary 形如 `AI composition (653 bytes, 5s)`）；`close`/worker 重启后 revision 与 HTML 从磁盘恢复。
+- `project.source` 只读：返回当前 revision 的完整 HTML 与声明资产；入口 > 48 KiB 返回 `E_LIMIT`（浏览器预览仍可读，Agent 编辑路径拒绝）。`source` 不写事实、不产生历史。
+
+### 测试
+
+- `test/schema.test.mjs`：schema 方法集 == worker switch 方法集（24）、新方法 params/result 双向校验。
+- `test/compose.integration.mjs`（真实 worker 进程）：创建工程 → `project.source` 读回 → `project.compose` 发布（新 revision/history/close 重开/重启持久化）→ 相同内容 `unchanged` → 幂等与 `E_OPERATION_REUSED` → `E_REVISION_CONFLICT` 不改文件 → 各契约失败场景均为 `E_COMPOSE_INVALID` 且 revision/内容不变 → 参数错误 `E_PARAMS` → 工程目录只读注入恢复旧内容（`uncertain: true`）→ 预览快照目录只读注入恢复旧版本。
+- 运行：`node --test --test-concurrency=1 test/*.test.mjs`（既有 44 项）与 `node --test --test-concurrency=1 test/compose.integration.mjs`。

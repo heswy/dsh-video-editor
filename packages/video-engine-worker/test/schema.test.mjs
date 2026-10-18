@@ -13,6 +13,31 @@ const PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
   "base64",
 );
+// A complete, self-contained free-form composition for the P3-012 methods.
+const COMPOSITION_HTML = `<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>schema composition</title>
+<style>html,body{margin:0;overflow:hidden;background:#0b1220}</style>
+<script src="./assets/gsap.min.js"></script>
+</head>
+<body>
+<div id="main" data-composition-id="main" data-width="1280" data-height="720" data-fps="30" data-start="0" data-duration="5">
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
+<rect width="1280" height="720" fill="#0b1220"/>
+<circle id="thing" cx="200" cy="360" r="80" fill="#4ade80"/>
+</svg>
+<script>
+const tl = gsap.timeline({ paused: true });
+tl.to("#thing", { x: 100, duration: 1 }, 0);
+window.__timelines = { main: tl };
+tl.seek(0);
+</script>
+</div>
+</body>
+</html>
+`;
 
 async function managed() {
   const dir = await mkdtemp(resolve(base, "artifacts/schema-"));
@@ -366,6 +391,53 @@ test("schema params and worker validation agree for every method; results valida
       "unsafe inboxName",
     );
 
+    // P3-012: project.source reads the current document; project.compose
+    // publishes a complete validated composition; resubmitting identical bytes
+    // is an explicit unchanged success. Both result shapes are schema-checked.
+    const sourceBefore = await sendValid("project.source", {
+      projectId: state.projectId,
+    });
+    assert.equal(sourceBefore.result.entry, "index.html");
+    assert.equal(sourceBefore.result.revision, state.revision);
+    assert.equal(
+      sourceBefore.result.bytes,
+      Buffer.byteLength(sourceBefore.result.html, "utf8"),
+    );
+    const composed = await sendValid("project.compose", {
+      projectId: state.projectId,
+      expectedRevision: state.revision,
+      operationId: "schema-compose",
+      html: COMPOSITION_HTML,
+    });
+    assert.equal(composed.result.publishedRevision, composed.result.revision);
+    assert.notEqual(composed.result.revision, state.revision);
+    assert.equal(composed.result.written, true);
+    assert.equal(composed.result.unchanged, false);
+    assert.deepEqual(composed.result.scenes, []);
+    assert.equal(composed.result.bytes, Buffer.byteLength(COMPOSITION_HTML, "utf8"));
+    assert.deepEqual(composed.result.preview, {
+      mode: "snapshot",
+      status: "ready",
+      checked: "composition+snapshot",
+      revision: composed.result.revision,
+    });
+    state.revision = composed.result.revision;
+    const sourceAfter = await sendValid("project.source", {
+      projectId: state.projectId,
+    });
+    assert.equal(sourceAfter.result.html, COMPOSITION_HTML);
+    assert.equal(sourceAfter.result.revision, state.revision);
+    const unchanged = await sendValid("project.compose", {
+      projectId: state.projectId,
+      expectedRevision: state.revision,
+      operationId: "schema-compose-unchanged",
+      html: COMPOSITION_HTML,
+    });
+    assert.equal(unchanged.result.unchanged, true);
+    assert.equal(unchanged.result.written, false);
+    assert.equal(unchanged.result.revision, state.revision);
+    assert.equal(unchanged.result.publishedRevision, state.revision);
+
     await sendValid("close", { projectId: state.projectId });
     for (const method of Object.keys(schema["x-methods"]))
       assert.ok(validated.has(method), `no schema-validated response for ${method}`);
@@ -407,6 +479,15 @@ function buildSample(method, state) {
       return { projectId };
     case "project.create":
       return { templateId: TEMPLATE, title: "probe", assets: [{ inboxName: "logo.png" }] };
+    case "project.compose":
+      return {
+        projectId,
+        expectedRevision: state.revision,
+        operationId: "probe-compose",
+        html: COMPOSITION_HTML,
+      };
+    case "project.source":
+      return { projectId };
     case "asset.import":
       return {
         projectId,

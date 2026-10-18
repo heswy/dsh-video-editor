@@ -2,6 +2,7 @@ import { readFile, mkdir } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import {
   Projects,
+  validateCompose,
   validateCreateProject,
   validateEdit,
   validateHistory,
@@ -12,6 +13,7 @@ import {
   validateSceneRemove,
   validateSceneReorder,
   validateSceneUpdate,
+  validateSource,
 } from "./projects.mjs";
 import { TEMPLATE_IDS } from "./scenes.mjs";
 import { loadManagedRegistry } from "./registry.mjs";
@@ -108,6 +110,12 @@ async function method(name, p) {
     case "edit":
       validateEdit(p);
       return store.edit(p.projectId, p);
+    case "project.compose":
+      validateCompose(p);
+      return store.compose(p.projectId, p);
+    case "project.source":
+      validateSource(p);
+      return store.source(p.projectId);
     case "project.create":
       validateCreateProject(p);
       return store.createProject(p);

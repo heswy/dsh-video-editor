@@ -12,7 +12,11 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { openComposition, buildDocument } from "@hyperframes/sdk";
 import { createFsAdapter } from "@hyperframes/sdk/adapters/fs";
-import { fail, keys, string, number, revision } from "./errors.mjs";
+import { fail, keys, string, number, revision, WorkerError } from "./errors.mjs";
+import {
+  MAX_COMPOSITION_BYTES,
+  validateComposition,
+} from "./composition.mjs";
 import {
   DEFAULT_FPS,
   DEFAULT_HEIGHT,
@@ -67,7 +71,11 @@ import {
 } from "./layout.mjs";
 
 const packageRoot = fileURLToPath(new URL("../", import.meta.url));
+// The internal preview-pipeline proof copy of a freshly published revision is
+// discarded in the same request, so a short TTL is enough.
+const COMPOSE_PREVIEW_TTL_MS = 60 * 1000;
 export const sha = (value) => createHash("sha256").update(value).digest("hex");
+const formatSeconds = (value) => String(Number(Number(value).toFixed(3)));
 export function inside(root, path) {
   const r = relative(root, path);
   return r === "" || (!r.startsWith("..") && !isAbsolute(r));
@@ -651,6 +659,230 @@ export class Projects {
       }
     });
   }
+  // ─── P3-012: complete composition publish/read (conversation-first) ─────
+  // One validated HTML document is the whole content model of a free-form
+  // project: `compose` replaces it atomically (creation and every later edit),
+  // `source` reads it back byte-exactly for the next modification.
+  async compose(id, p) {
+    this.assertActive(id);
+    return this.queue(id, async () => {
+      const signature = sha(
+        JSON.stringify(p, (_key, value) =>
+          value && typeof value === "object" && !Array.isArray(value)
+            ? Object.fromEntries(
+                Object.entries(value).sort(([a], [b]) => a.localeCompare(b)),
+              )
+            : value,
+        ),
+      );
+      const cached = this.operationResult(id, p.operationId, signature);
+      if (cached) return cached;
+      // Same guard as `edit`: fail before publishing when a successful result
+      // could no longer be remembered in the bounded idempotency table.
+      if (this.operations.size >= 2048)
+        fail("E_LIMIT", "Operation history full; restart worker", "compose");
+      const current = await this.read(id);
+      if (current.revision !== p.expectedRevision)
+        fail("E_REVISION_CONFLICT", "Project changed before compose", "compose");
+      const entry = current.manifest.entry;
+      const previousHtml = current.files.get(entry).toString();
+      const validated = await validateComposition({
+        html: p.html,
+        assets: current.manifest.assets,
+      });
+      if (p.html === previousHtml) {
+        // Byte-identical to the published entry: no write, same revision. The
+        // snapshot proof still runs once so `preview.status: "ready"` stays
+        // truthful for this exact revision; nothing is ever rolled back.
+        try {
+          await this.previewProof({
+            projectId: id,
+            revision: current.revision,
+            manifest: current.manifest,
+            files: current.files,
+            entries: current.entries,
+          });
+        } catch {
+          fail(
+            "E_PERSIST",
+            "Preview snapshot proof failed for the unchanged composition",
+            "persist",
+          );
+        }
+        const unchangedResult = {
+          projectId: id,
+          revision: current.revision,
+          publishedRevision: current.revision,
+          written: false,
+          unchanged: true,
+          scenes: [],
+          entry,
+          width: validated.width,
+          height: validated.height,
+          duration: validated.duration,
+          bytes: validated.bytes,
+          assets: [...current.manifest.assets],
+          elements: validated.elements,
+          files: current.entries,
+          preview: {
+            mode: "snapshot",
+            status: "ready",
+            checked: "composition+snapshot",
+            revision: current.revision,
+          },
+        };
+        return this.rememberOperation(
+          id,
+          p.operationId,
+          signature,
+          unchangedResult,
+        );
+      }
+      const dir = this.handles.get(id);
+      let after;
+      try {
+        await atomicWrite(resolve(dir, entry), p.html);
+        after = await this.read(id);
+        if (after.files.get(after.manifest.entry)?.toString() !== p.html)
+          throw new Error("published composition readback mismatch");
+      } catch {
+        const restored = await this.restoreEntry(dir, entry, previousHtml);
+        if (!restored)
+          fail(
+            "E_PERSIST",
+            "Publishing the composition failed and the previous composition could not be restored",
+            "persist",
+            { uncertain: true },
+          );
+        fail(
+          "E_PERSIST",
+          "Publishing the composition failed; the previous composition was restored",
+          "persist",
+        );
+      }
+      try {
+        // Proof that the new revision is servable through the existing private
+        // snapshot route (not that a browser plays it).
+        await this.previewProof({
+          projectId: id,
+          revision: after.revision,
+          manifest: after.manifest,
+          files: after.files,
+          entries: after.entries,
+        });
+      } catch {
+        const restored = await this.restoreEntry(dir, entry, previousHtml);
+        if (!restored)
+          fail(
+            "E_PERSIST",
+            "Preview snapshot proof failed and the previous composition could not be restored",
+            "persist",
+            { uncertain: true },
+          );
+        fail(
+          "E_PERSIST",
+          "Preview snapshot proof failed; the previous composition was restored",
+          "persist",
+        );
+      }
+      await recordWrite(dir, {
+        before: { revision: current.revision, html: previousHtml },
+        after: { revision: after.revision, html: p.html },
+        actor: "ai",
+        kind: "project.compose",
+        summary: `AI composition (${validated.bytes} bytes, ${formatSeconds(validated.duration)}s)`,
+      });
+      const result = {
+        projectId: id,
+        revision: after.revision,
+        publishedRevision: after.revision,
+        written: true,
+        unchanged: false,
+        scenes: [],
+        entry: after.manifest.entry,
+        width: validated.width,
+        height: validated.height,
+        duration: validated.duration,
+        bytes: validated.bytes,
+        assets: [...after.manifest.assets],
+        elements: validated.elements,
+        files: after.entries,
+        preview: {
+          mode: "snapshot",
+          status: "ready",
+          checked: "composition+snapshot",
+          revision: after.revision,
+        },
+      };
+      return this.rememberOperation(id, p.operationId, signature, result);
+    });
+  }
+  async source(id) {
+    this.assertActive(id);
+    return this.queue(id, async () => {
+      const current = await this.read(id);
+      const entry = current.manifest.entry;
+      const bytes = current.files.get(entry).length;
+      if (bytes > MAX_COMPOSITION_BYTES)
+        fail(
+          "E_LIMIT",
+          `project.source is limited to ${MAX_COMPOSITION_BYTES} UTF-8 bytes (48 KiB) so one Tool result stays bounded; this composition is ${bytes} bytes.`,
+          "compose",
+        );
+      return {
+        projectId: id,
+        revision: current.revision,
+        entry,
+        bytes,
+        assets: [...current.manifest.assets],
+        html: current.files.get(entry).toString("utf8"),
+      };
+    });
+  }
+  /**
+   * Create and immediately discard a private preview snapshot of one revision.
+   * It proves the revision is servable through the existing snapshot route; it
+   * does not prove a browser can play it.
+   */
+  async previewProof({ projectId, revision, manifest, files, entries }) {
+    let snapshot;
+    try {
+      snapshot = await this.previews.create({
+        projectId,
+        revision,
+        entry: manifest.entry,
+        files,
+        entries,
+        ttlMs: COMPOSE_PREVIEW_TTL_MS,
+      });
+      if (
+        !Array.isArray(snapshot.files) ||
+        !snapshot.files.some((file) => file.path === manifest.entry)
+      )
+        fail(
+          "E_PERSIST",
+          "Preview snapshot is missing the composition entry",
+          "persist",
+        );
+    } catch (error) {
+      if (snapshot?.snapshotId)
+        await this.previews.discard(snapshot.snapshotId);
+      if (error instanceof WorkerError && error.code === "E_PERSIST") throw error;
+      fail("E_PERSIST", "Preview snapshot proof failed", "persist");
+    }
+    await this.previews.discard(snapshot.snapshotId);
+    return snapshot;
+  }
+  async restoreEntry(dir, entry, html) {
+    try {
+      await atomicWrite(resolve(dir, entry), html);
+      return true;
+    } catch {
+      this.diagnostic("compose rollback failed");
+      return false;
+    }
+  }
+
   async snapshot(id, revision, destination) {
     return this.queue(id, async () => {
       const p = await this.read(id);
@@ -1386,6 +1618,27 @@ export function validateEdit(p) {
     } else fail("E_PARAMS", "Unsupported edit type");
     string(op.target, 256);
   }
+}
+
+export function validateCompose(p) {
+  keys(
+    p,
+    ["projectId", "expectedRevision", "operationId", "html"],
+    ["projectId", "expectedRevision", "operationId", "html"],
+  );
+  string(p.projectId);
+  revision(p.expectedRevision);
+  string(p.operationId);
+  // Type/keys only: the composition contract itself (size, structure, assets,
+  // SDK round-trip) is validated inside Projects.compose from the live manifest
+  // and reports E_COMPOSE_INVALID.
+  if (typeof p.html !== "string")
+    fail("E_PARAMS", "Expected html to be a complete HTML composition string");
+}
+
+export function validateSource(p) {
+  keys(p, ["projectId"], ["projectId"]);
+  string(p.projectId);
 }
 
 function templateObject(value) {

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:dsh-video-engine-worker:v1",
   "title": "JSON Lines request and response frames; byte limits specified in README",
-  "$comment": "The response envelope carries no method field, so x-methods maps every method to its request and result definition; contract tests validate both directions against this file. Result definitions describe the worker's published result shape for Version 1 (0.3.2). Params schemas enforce structure, keys, types, ranges and path/name shape (edit ops include text/timing/layout/style); checks that depend on disk or referenced file state (inbox existence, image signature, duplicate assets, content size, revision currency) remain worker-side and can still reject a schema-valid request with E_ASSET_MISSING/E_PARAMS/E_REVISION_CONFLICT/E_LIMIT.",
+  "$comment": "The response envelope carries no method field, so x-methods maps every method to its request and result definition; contract tests validate both directions against this file. Result definitions describe the worker's published result shape for Version 1 (0.4.0). Params schemas enforce structure, keys, types, ranges and path/name shape (edit ops include text/timing/layout/style); checks that depend on disk or referenced file state (inbox existence, image signature, duplicate assets, content size, revision currency) remain worker-side and can still reject a schema-valid request with E_ASSET_MISSING/E_PARAMS/E_REVISION_CONFLICT/E_LIMIT/E_COMPOSE_INVALID. The composition HTML byte ceiling is a UTF-8 byte limit enforced by the worker (JSON Schema maxLength counts characters, so an ASCII string may still be rejected with E_COMPOSE_INVALID).",
   "x-methods": {
     "doctor": {
       "request": "#/$defs/request_doctor",
@@ -47,6 +47,14 @@
     "project.create": {
       "request": "#/$defs/request_project_create",
       "result": "#/$defs/result_project_create"
+    },
+    "project.compose": {
+      "request": "#/$defs/request_project_compose",
+      "result": "#/$defs/result_project_compose"
+    },
+    "project.source": {
+      "request": "#/$defs/request_project_source",
+      "result": "#/$defs/result_project_source"
     },
     "asset.import": {
       "request": "#/$defs/request_asset_import",
@@ -541,6 +549,9 @@
           "type": "string",
           "minLength": 1,
           "maxLength": 32
+        },
+        "uncertain": {
+          "type": "boolean"
         }
       },
       "required": [
@@ -1283,6 +1294,51 @@
         "templateId"
       ]
     },
+    "params_project_compose": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "expectedRevision": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "operationId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "html": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 49152
+        }
+      },
+      "required": [
+        "projectId",
+        "expectedRevision",
+        "operationId",
+        "html"
+      ]
+    },
+    "params_project_source": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      },
+      "required": [
+        "projectId"
+      ]
+    },
     "params_asset_import": {
       "type": "object",
       "additionalProperties": false,
@@ -1798,6 +1854,186 @@
         "height",
         "fps",
         "scenes"
+      ]
+    },
+    "result_project_compose": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "revision": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "publishedRevision": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "written": {
+          "type": "boolean"
+        },
+        "unchanged": {
+          "type": "boolean"
+        },
+        "scenes": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "entry": {
+          "const": "index.html"
+        },
+        "width": {
+          "type": "number",
+          "minimum": 320,
+          "maximum": 3840
+        },
+        "height": {
+          "type": "number",
+          "minimum": 180,
+          "maximum": 2160
+        },
+        "duration": {
+          "type": "number",
+          "minimum": 0.1,
+          "maximum": 3600
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 49152
+        },
+        "assets": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "pattern": "^(?!/)(?!.*\\\\)(?!.*:)(?!.*//)(?!.*/$)(?!.*(?:^|/)\\.\\.?(?:/|$)).+$"
+          }
+        },
+        "elements": {
+          "type": "array",
+          "maxItems": 40,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "stableId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256
+              },
+              "capabilities": {
+                "$ref": "#/$defs/capabilities"
+              }
+            },
+            "required": [
+              "stableId",
+              "capabilities"
+            ]
+          }
+        },
+        "files": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 65,
+          "items": {
+            "$ref": "#/$defs/fileEntry"
+          }
+        },
+        "preview": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "mode": {
+              "const": "snapshot"
+            },
+            "status": {
+              "const": "ready"
+            },
+            "checked": {
+              "const": "composition+snapshot"
+            },
+            "revision": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            }
+          },
+          "required": [
+            "mode",
+            "status",
+            "checked",
+            "revision"
+          ]
+        }
+      },
+      "required": [
+        "projectId",
+        "revision",
+        "publishedRevision",
+        "written",
+        "unchanged",
+        "scenes",
+        "entry",
+        "width",
+        "height",
+        "duration",
+        "bytes",
+        "assets",
+        "elements",
+        "files",
+        "preview"
+      ]
+    },
+    "result_project_source": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "revision": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "entry": {
+          "const": "index.html"
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 49152
+        },
+        "assets": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "pattern": "^(?!/)(?!.*\\\\)(?!.*:)(?!.*//)(?!.*/$)(?!.*(?:^|/)\\.\\.?(?:/|$)).+$"
+          }
+        },
+        "html": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 49152
+        }
+      },
+      "required": [
+        "projectId",
+        "revision",
+        "entry",
+        "bytes",
+        "assets",
+        "html"
       ]
     },
     "result_asset_import": {
@@ -2470,6 +2706,54 @@
         "params"
       ]
     },
+    "request_project_compose": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "id": {
+          "$ref": "#/$defs/requestId"
+        },
+        "method": {
+          "const": "project.compose"
+        },
+        "params": {
+          "$ref": "#/$defs/params_project_compose"
+        }
+      },
+      "required": [
+        "v",
+        "id",
+        "method",
+        "params"
+      ]
+    },
+    "request_project_source": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "id": {
+          "$ref": "#/$defs/requestId"
+        },
+        "method": {
+          "const": "project.source"
+        },
+        "params": {
+          "$ref": "#/$defs/params_project_source"
+        }
+      },
+      "required": [
+        "v",
+        "id",
+        "method",
+        "params"
+      ]
+    },
     "request_asset_import": {
       "type": "object",
       "additionalProperties": false,
@@ -2773,6 +3057,12 @@
         },
         {
           "$ref": "#/$defs/request_project_create"
+        },
+        {
+          "$ref": "#/$defs/request_project_compose"
+        },
+        {
+          "$ref": "#/$defs/request_project_source"
         },
         {
           "$ref": "#/$defs/request_asset_import"
