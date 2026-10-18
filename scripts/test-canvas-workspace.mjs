@@ -1247,6 +1247,344 @@ async function runTextConflictCase(ctx) {
   return caseResult;
 }
 
+// ─── R5-follow-up: write succeeded, response lost, explicit recovery ───────
+
+function editRequestsBetween(ctx, mark) {
+  return ctx.apiLog.slice(mark).filter((request) => request.method === 'edit');
+}
+
+function editTextOf(request) {
+  if (request === null || request === undefined) return null;
+  const params = request.params;
+  if (params === null || typeof params !== 'object' || Array.isArray(params.ops) === false) return null;
+  const op = params.ops[0];
+  return op !== null && typeof op === 'object' && op.type === 'text' && typeof op.text === 'string' ? op.text : null;
+}
+
+/** Immutable identity of one edit attempt: expectedRevision + operationId + ops. */
+function editRequestSignature(request) {
+  if (request === null || request === undefined) return null;
+  const params = request.params || {};
+  return JSON.stringify({
+    projectId: params.projectId,
+    expectedRevision: params.expectedRevision,
+    operationId: params.operationId,
+    ops: params.ops,
+  });
+}
+
+function editRequestSummary(request) {
+  if (request === null || request === undefined) return null;
+  const params = request.params || {};
+  return {
+    operationId: params.operationId,
+    expectedRevision: params.expectedRevision,
+    ops: params.ops,
+    responseStatus: request.responseStatus,
+    responseErrorCode: request.responseErrorCode,
+    responseRevision: request.responseRevision,
+  };
+}
+
+async function waitForHostRevisionChange(ctx, projectId, previousRevision, timeout) {
+  const deadline = Date.now() + (timeout || 15000);
+  let inspected = await inspectProject(ctx, projectId);
+  while (Date.now() < deadline) {
+    if (inspected.revision !== previousRevision) return inspected;
+    await sleep(100);
+    inspected = await inspectProject(ctx, projectId);
+  }
+  return inspected;
+}
+
+async function waitForCanvasRevision(page, expectedRevision, timeout) {
+  try {
+    await page.waitForFunction(
+      (expected) => {
+        const shell = document.querySelector('.dv-canvas-shell');
+        return shell !== null && shell.getAttribute('data-canvas-revision') === expected;
+      },
+      { timeout, polling: 'raf' },
+      expectedRevision
+    );
+    return true;
+  } catch (_error) {
+    return false;
+  }
+}
+
+async function waitForEditorClosed(page, timeout) {
+  try {
+    await page.waitForFunction(
+      () => document.querySelector('.dv-inline-editor') === null,
+      { timeout, polling: 'raf' }
+    );
+    return true;
+  } catch (_error) {
+    return false;
+  }
+}
+
+/**
+ * Shared T4 setup: type a draft, inject a lost-response failure that FIRST
+ * forwards the edit to the real staged Host (real worker write) and only then
+ * reports a lost/uncertain transport result to the page.
+ */
+async function beginLostResponseAttempt(ctx, caseResult, options) {
+  const { page } = ctx;
+  const projectId = await createFreshProject(ctx, options.projectTitle);
+  const inspected = await inspectProject(ctx, projectId);
+  const titleElement = findElement(inspected, TITLE_ID);
+  const originalText = titleElement !== null ? titleElement.text : null;
+  await mountWorkspace(ctx, { projectId, inspected, wrap: { width: 900, height: 400 }, t: 2 });
+  const selected = await selectTitle(page, inspected, 2);
+  const opened = await openTextEditor(page, selected.selection);
+  check(caseResult, 'real double-click gesture opens the inline editor', opened.mode === 'real-double-click', { mode: opened.mode });
+  const initialValue = opened.state.editor !== null ? opened.state.editor.value : null;
+  check(caseResult, 'editor opens with the current host text', initialValue === originalText, { originalText, editorValue: initialValue });
+  await page.keyboard.type(options.draftSuffix, { delay: 18 });
+  await sleep(140);
+  let state = await pageState(page);
+  const draft = state.editor !== null ? state.editor.value : null;
+  check(caseResult, 'keyboard typing updates the draft', typeof draft === 'string' && draft !== initialValue, { draft });
+
+  const revisionA = inspected.revision;
+  const apiMark = ctx.apiLog.length;
+  const pageMark = await page.evaluate(() => window.__CASE__.mark());
+  await page.evaluate((spec) => window.__CASE__.inject(spec), {
+    method: 'edit',
+    kind: 'lost-response',
+    code: 'E_TRANSPORT',
+    message: 'response lost after Host commit',
+    uncertain: true,
+    times: 1,
+  });
+  await page.keyboard.press('Enter');
+  // The response is only lost AFTER the real Host/worker write: wait for the
+  // authoritative revision to advance before reading the page-side failure.
+  const writtenInspected = await waitForHostRevisionChange(ctx, projectId, revisionA, 20000);
+  const sawError = await waitForErrorOrActions(page, 15000);
+  await sleep(650);
+  state = await pageState(page);
+  const pageRequests = await page.evaluate((mark) => window.__CASE__.requestsSince(mark), pageMark);
+  const apiEdits = editRequestsBetween(ctx, apiMark);
+  const injected = await page.evaluate(() => window.__CASE__.injectionState());
+  const firstRequest = apiEdits.length > 0 ? apiEdits[0] : null;
+  const pageEditRequests = pageRequests.filter((request) => request.method === 'edit');
+  const revisionB = writtenInspected.revision;
+  const writtenTitle = findElement(writtenInspected, TITLE_ID);
+  const writtenText = writtenTitle !== null ? writtenTitle.text : null;
+  const setup = {
+    page,
+    projectId,
+    inspected,
+    originalText,
+    initialValue,
+    draft,
+    revisionA,
+    revisionB,
+    writtenText,
+    sawError,
+    failureState: state,
+    pageRequests,
+    pageEditRequests,
+    injected,
+    apiEdits,
+    firstRequest,
+    operationId: firstRequest !== null ? firstRequest.params.operationId : null,
+    signature: editRequestSignature(firstRequest),
+    apiMark,
+  };
+
+  check(caseResult, 'real Host/worker write completed BEFORE the response was lost', setup.revisionB !== revisionA
+    && setup.writtenText === draft, { revisionA, revisionB: setup.revisionB, expectedText: draft, actualText: setup.writtenText });
+  check(caseResult, 'lost-response injection consumed exactly once and only after a real Host response', injected.length === 1
+    && injected[0].kind === 'lost-response'
+    && injected[0].hits === 1
+    && pageEditRequests.length === 1
+    && pageEditRequests[0].injected === 'LOST_RESPONSE'
+    && pageEditRequests[0].realStatus === 200
+    && pageEditRequests[0].realOk === true
+    && pageEditRequests[0].realRevision === setup.revisionB
+    && pageEditRequests[0].responseDiscarded === true, {
+    injected,
+    pageEditRequests: pageEditRequests.map((request) => ({
+      injected: request.injected,
+      realStatus: request.realStatus,
+      realOk: request.realOk,
+      realRevision: request.realRevision,
+      responseDiscarded: request.responseDiscarded,
+    })),
+    revisionB: setup.revisionB,
+  });
+  check(caseResult, 'exactly one edit request reached the real Host for the lost attempt', apiEdits.length === 1, { actual: apiEdits.length });
+  check(caseResult, 'frozen attempt body captured (operationId / expectedRevision=pre-write revision / draft ops)', setup.firstRequest !== null
+    && typeof setup.operationId === 'string'
+    && setup.operationId.length > 0
+    && setup.firstRequest.params.expectedRevision === revisionA
+    && editTextOf(setup.firstRequest) === draft, { operationId: setup.operationId, expectedRevision: setup.firstRequest !== null ? setup.firstRequest.params.expectedRevision : null, revisionA, opsText: editTextOf(setup.firstRequest), draft });
+  check(caseResult, 'UI shows the lost-response failure and keeps the textarea with the draft', sawError
+    && state.errorVisible === true
+    && state.editor !== null
+    && state.editor.value === draft, { sawError, toolErrors: state.toolErrors, editor: state.editor, draft });
+  check(caseResult, 'retry affordance is visible (no Esc/reopen needed)', state.retryVisible === true, { retryText: state.retryText, editorActions: state.editorActions });
+  check(caseResult, 'no automatic replay after the lost response', apiEdits.length === 1 && pageEditRequests.length === 1, { apiEdits: apiEdits.length, pageEdits: pageEditRequests.length });
+  check(caseResult, 'no E_OPERATION_REUSED response for the lost attempt', setup.firstRequest !== null && setup.firstRequest.responseErrorCode !== 'E_OPERATION_REUSED', { actual: setup.firstRequest !== null ? setup.firstRequest.responseErrorCode : null });
+  caseResult.diagnostics = {
+    projectId,
+    revisionA,
+    revisionB: setup.revisionB,
+    operationId: setup.operationId,
+    lostResponseRequest: editRequestSummary(setup.firstRequest),
+  };
+  return setup;
+}
+
+/** T4A: unchanged retained draft -> exact frozen retry applies once, editor closes. */
+async function runLostResponseUnchangedRetryCase(ctx) {
+  const caseResult = newCase('T4A', 'write succeeded + response lost -> unchanged draft exact retry applies once (t=2)');
+  const setup = await beginLostResponseAttempt(ctx, caseResult, {
+    projectTitle: PROJECT_TITLE + ' lost response unchanged',
+    draftSuffix: ' LOST-RESPONSE-DRAFT',
+  });
+  const { page, failureState } = setup;
+
+  const retryApiMark = ctx.apiLog.length;
+  const retryPageMark = await page.evaluate(() => window.__CASE__.mark());
+  if (failureState.retryRect !== null) {
+    await page.mouse.click(failureState.retryRect.centerX, failureState.retryRect.centerY);
+  } else {
+    await page.keyboard.press('Enter');
+  }
+  const closed = await waitForEditorClosed(page, 20000);
+  const revisionRendered = await waitForCanvasRevision(page, setup.revisionB, 20000);
+  await waitForPhaseReady(page, 20000);
+  await sleep(300);
+  const state = await pageState(page);
+  const inspected = await inspectProject(ctx, setup.projectId);
+  const title = findElement(inspected, TITLE_ID);
+  const retryEdits = editRequestsBetween(ctx, retryApiMark);
+  const retryPageRequests = await page.evaluate((mark) => window.__CASE__.requestsSince(mark), retryPageMark);
+  const retryRequest = retryEdits.length > 0 ? retryEdits[0] : null;
+
+  check(caseResult, 'explicit retry closes the editor', closed, { editor: state.editor });
+  check(caseResult, 'exactly one retry edit request', retryEdits.length === 1, { actual: retryEdits.length });
+  check(caseResult, 'retry re-sends the IDENTICAL frozen request (operationId / expectedRevision / ops)',
+    retryRequest !== null
+    && editRequestSignature(retryRequest) === setup.signature
+    && retryRequest.params.operationId === setup.operationId
+    && retryRequest.params.expectedRevision === setup.revisionA
+    && editTextOf(retryRequest) === setup.draft,
+    { frozen: { operationId: setup.operationId, expectedRevision: setup.revisionA, text: setup.draft }, retried: editRequestSummary(retryRequest) });
+  check(caseResult, 'retry is served by the real Host as a settled cached success', retryRequest !== null
+    && retryRequest.responseStatus === 200
+    && retryRequest.responseErrorCode === null, { actual: retryRequest !== null ? { responseStatus: retryRequest.responseStatus, responseErrorCode: retryRequest.responseErrorCode } : null });
+  check(caseResult, 'no E_OPERATION_REUSED response anywhere in the case', ctx.apiLog.slice(setup.apiMark).every((request) => request.method !== 'edit' || request.responseErrorCode !== 'E_OPERATION_REUSED'), { editResponses: ctx.apiLog.slice(setup.apiMark).filter((request) => request.method === 'edit').map((request) => ({ operationId: request.params.operationId, expectedRevision: request.params.expectedRevision, responseStatus: request.responseStatus, responseErrorCode: request.responseErrorCode })) });
+  check(caseResult, 'worker applied the write exactly once (retry returns the same revision, no new commit)', inspected.revision === setup.revisionB
+    && state.revision === setup.revisionB, { revisionAfterLostWrite: setup.revisionB, revisionAfterRetry: inspected.revision, canvasRevision: state.revision });
+  check(caseResult, 'committed text equals the draft after the explicit retry', title !== null && title.text === setup.draft, { expectedText: setup.draft, actualText: title !== null ? title.text : null });
+  check(caseResult, 'new revision snapshot loaded and the error is cleared', revisionRendered && state.snapshotId !== failureState.snapshotId && state.toolErrors.length === 0, { revisionRendered, beforeSnapshot: failureState.snapshotId, afterSnapshot: state.snapshotId, toolErrors: state.toolErrors });
+  check(caseResult, 'single editor lifetime (no Esc/reopen workaround)', state.editorMountCount === 1, { editorMountCount: state.editorMountCount });
+  caseResult.diagnostics.retryRequest = editRequestSummary(retryRequest);
+  caseResult.diagnostics.retryPageRequests = retryPageRequests.map((request) => ({ method: request.method, injected: request.injected }));
+  caseResult.diagnostics.editorMountCount = state.editorMountCount;
+  caseResult.finishedAt = new Date().toISOString();
+  return caseResult;
+}
+
+/** Replace the retained draft with new text using real keyboard input. */
+async function retypeRetainedDraft(page, editor, newText) {
+  const screen = editor.rect !== null && editor.rect.screen !== undefined ? editor.rect.screen : null;
+  if (screen === null) throw new Error('inline editor has no screen rect to focus');
+  const centerX = screen.left + screen.width / 2;
+  const centerY = screen.top + screen.height / 2;
+  await page.mouse.click(centerX, centerY);
+  await sleep(180);
+  // Triple-click is the real-gesture select-all for a textarea (Chrome). If the
+  // platform does not select, the typed suffix appends; the actual retained
+  // value is read back and used verbatim as the new text.
+  await page.mouse.click(centerX, centerY, { count: 3 });
+  await sleep(160);
+  await page.keyboard.type(newText, { delay: 14 });
+  await sleep(200);
+  const state = await pageState(page);
+  return state.editor !== null ? state.editor.value : null;
+}
+
+/** T4B: modified retained draft -> settle frozen attempt, then new id/revision commit. */
+async function runLostResponseModifiedDraftCase(ctx) {
+  const caseResult = newCase('T4B', 'write succeeded + response lost -> modified retained draft settles then commits new text (t=2)');
+  const setup = await beginLostResponseAttempt(ctx, caseResult, {
+    projectTitle: PROJECT_TITLE + ' lost response modified',
+    draftSuffix: ' LOST-ORIGINAL-DRAFT',
+  });
+  const { page, failureState } = setup;
+  const newDraft = 'P3-008 Harness T4B NEW-TEXT';
+
+  const newValue = await retypeRetainedDraft(page, failureState.editor, newDraft);
+  const editorState = await pageState(page);
+  check(caseResult, 'retained draft modified by real keyboard input (same editor, no reopen)', editorState.editor !== null
+    && typeof newValue === 'string'
+    && newValue !== setup.draft
+    && newValue.includes(newDraft), { oldDraft: setup.draft, newValue, replacement: newValue === newDraft, editorMountCount: editorState.editorMountCount });
+  check(caseResult, 'modifying the draft did not reopen the editor', editorState.editorMountCount === 1, { editorMountCount: editorState.editorMountCount });
+
+  const submitApiMark = ctx.apiLog.length;
+  const submitPageMark = await page.evaluate(() => window.__CASE__.mark());
+  await page.keyboard.press('Enter');
+  const closed = await waitForEditorClosed(page, 25000);
+  const interimEdits = editRequestsBetween(ctx, submitApiMark);
+  const expectedFinalRevision = interimEdits.length > 1 && interimEdits[1].responseRevision !== null && interimEdits[1].responseRevision !== undefined
+    ? interimEdits[1].responseRevision
+    : null;
+  if (expectedFinalRevision !== null) await waitForCanvasRevision(page, expectedFinalRevision, 25000);
+  await waitForPhaseReady(page, 25000);
+  await sleep(320);
+  const state = await pageState(page);
+  const inspected = await inspectProject(ctx, setup.projectId);
+  const title = findElement(inspected, TITLE_ID);
+  const submitEdits = editRequestsBetween(ctx, submitApiMark);
+  const submitPageRequests = await page.evaluate((mark) => window.__CASE__.requestsSince(mark), submitPageMark);
+  const settleRequest = submitEdits.length > 0 ? submitEdits[0] : null;
+  const newRequest = submitEdits.length > 1 ? submitEdits[1] : null;
+
+  check(caseResult, 'submitting the modified draft closes the editor (no Esc/reopen)', closed, { editor: state.editor });
+  check(caseResult, 'exactly two edit requests: freeze/settle first, then the new intent', submitEdits.length === 2, { actual: submitEdits.length, requests: submitEdits.map(editRequestSummary) });
+  check(caseResult, 'first request is the IDENTICAL frozen attempt (same operationId / expectedRevision / ops)', settleRequest !== null
+    && editRequestSignature(settleRequest) === setup.signature
+    && settleRequest.params.operationId === setup.operationId
+    && settleRequest.params.expectedRevision === setup.revisionA
+    && editTextOf(settleRequest) === setup.draft, { frozenSignature: setup.signature, frozenOperationId: setup.operationId, settle: editRequestSummary(settleRequest) });
+  check(caseResult, 'settle request is a real cached Host success, not a failure', settleRequest !== null
+    && settleRequest.responseStatus === 200
+    && settleRequest.responseErrorCode === null, { settle: settleRequest !== null ? { responseStatus: settleRequest.responseStatus, responseErrorCode: settleRequest.responseErrorCode, responseRevision: settleRequest.responseRevision } : null });
+  check(caseResult, 'second request uses a NEW operationId with the new text', newRequest !== null
+    && typeof newRequest.params.operationId === 'string'
+    && newRequest.params.operationId !== setup.operationId
+    && newRequest.params.ops !== undefined
+    && Array.isArray(newRequest.params.ops)
+    && newRequest.params.ops[0] !== undefined
+    && newRequest.params.ops[0].text === newValue, { originalOperationId: setup.operationId, newRequest: editRequestSummary(newRequest), expectedText: newValue });
+  check(caseResult, 'second request uses the settled revision as expectedRevision', newRequest !== null
+    && newRequest.params.expectedRevision === setup.revisionB, { expectedRevision: setup.revisionB, actual: newRequest !== null ? newRequest.params.expectedRevision : null });
+  check(caseResult, 'new-intent request succeeds and commits a new revision', newRequest !== null
+    && newRequest.responseStatus === 200
+    && newRequest.responseErrorCode === null
+    && newRequest.responseRevision !== null
+    && newRequest.responseRevision !== setup.revisionB, { newRequest: newRequest !== null ? { responseStatus: newRequest.responseStatus, responseErrorCode: newRequest.responseErrorCode, responseRevision: newRequest.responseRevision } : null });
+  check(caseResult, 'no E_OPERATION_REUSED response anywhere in the case', ctx.apiLog.slice(setup.apiMark).every((request) => request.method !== 'edit' || request.responseErrorCode !== 'E_OPERATION_REUSED'), { editResponses: ctx.apiLog.slice(setup.apiMark).filter((request) => request.method === 'edit').map((request) => ({ operationId: request.params.operationId, expectedRevision: request.params.expectedRevision, responseStatus: request.responseStatus, responseErrorCode: request.responseErrorCode })) });
+  check(caseResult, 'final committed text is the NEW text', title !== null && title.text === newValue, { expectedText: newValue, actualText: title !== null ? title.text : null });
+  check(caseResult, 'canvas renders the new revision with the save applied', state.revision === inspected.revision && state.revision !== setup.revisionB, { canvasRevision: state.revision, hostRevision: inspected.revision, settledRevision: setup.revisionB });
+  check(caseResult, 'error cleared and single editor lifetime', state.toolErrors.length === 0 && state.editorMountCount === 1 && state.retryVisible === false, { toolErrors: state.toolErrors, editorMountCount: state.editorMountCount, retryVisible: state.retryVisible });
+  caseResult.diagnostics.settleRequest = editRequestSummary(settleRequest);
+  caseResult.diagnostics.newRequest = editRequestSummary(newRequest);
+  caseResult.diagnostics.newDraft = newValue;
+  caseResult.diagnostics.finalRevision = inspected.revision;
+  caseResult.diagnostics.submitPageRequests = submitPageRequests.map((request) => ({ method: request.method, injected: request.injected }));
+  caseResult.finishedAt = new Date().toISOString();
+  return caseResult;
+}
+
 // ─── main ──────────────────────────────────────────────────────────────────
 
 async function main() {
@@ -1392,12 +1730,14 @@ async function main() {
           } catch (_error) {
             parsed = null;
           }
+          let apiEntry = null;
           if (parsed !== null && typeof parsed === 'object' && typeof parsed.method === 'string') {
-            apiLog.push({
+            apiEntry = {
               at: new Date().toISOString(),
               method: parsed.method,
               params: sanitizeRequestParams(parsed.params),
-            });
+            };
+            apiLog.push(apiEntry);
           }
           const hostRequest = new Request(origin + request.url, {
             method: 'POST',
@@ -1406,6 +1746,25 @@ async function main() {
             duplex: 'half',
           });
           const hostResponse = await requestRoute.fetch(hostRequest);
+          if (apiEntry !== null) {
+            // Capture the typed Host result/error so the R5 cases can assert
+            // "settled cached result" / "no E_OPERATION_REUSED" from the real
+            // response, not just from the page's optimistic state.
+            try {
+              const clone = hostResponse.clone();
+              const body = await clone.json();
+              apiEntry.responseStatus = hostResponse.status;
+              apiEntry.responseOk = body !== null && typeof body === 'object' && body.ok === true;
+              apiEntry.responseErrorCode = body !== null && typeof body === 'object' && body.error !== null && typeof body.error === 'object' && typeof body.error.code === 'string'
+                ? body.error.code
+                : null;
+              apiEntry.responseRevision = body !== null && typeof body === 'object' && body.result !== null && typeof body.result === 'object' && typeof body.result.revision === 'string'
+                ? body.result.revision
+                : null;
+            } catch (_error) {
+              apiEntry.responseStatus = hostResponse.status;
+            }
+          }
           await writeResponse(response, hostResponse);
           serverLog.push({ at: new Date().toISOString(), method: request.method, path: requestPath, status: hostResponse.status });
           return;
@@ -1492,6 +1851,8 @@ async function main() {
       { id: 'T1', filter: 'T1', run: () => runTextFailureRetryCase(ctx) },
       { id: 'T2', filter: 'T2', run: () => runTextEscapeCase(ctx) },
       { id: 'T3', filter: 'T3', run: () => runTextConflictCase(ctx) },
+      { id: 'T4A', filter: 'T4A', run: () => runLostResponseUnchangedRetryCase(ctx) },
+      { id: 'T4B', filter: 'T4B', run: () => runLostResponseModifiedDraftCase(ctx) },
     ];
 
     for (const runner of caseRunners) {

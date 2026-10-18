@@ -35,6 +35,21 @@
   var eventLog = [];
   var realFetch = window.fetch.bind(window);
   var mountSeq = 0;
+  var editorMountCount = 0;
+  if (typeof MutationObserver === 'function') {
+    var editorObserver = new MutationObserver(function countEditorMounts(mutations) {
+      for (var mutationIndex = 0; mutationIndex < mutations.length; mutationIndex += 1) {
+        var added = mutations[mutationIndex].addedNodes;
+        for (var nodeIndex = 0; nodeIndex < added.length; nodeIndex += 1) {
+          var node = added[nodeIndex];
+          if (node !== null && node.nodeType === 1 && typeof node.matches === 'function' && node.matches('.dv-inline-editor')) {
+            editorMountCount += 1;
+          }
+        }
+      }
+    });
+    editorObserver.observe(container, { childList: true, subtree: true });
+  }
 
   function sleep(ms) {
     return new Promise(function wait(resolve) {
@@ -92,22 +107,77 @@
         method = null;
       }
     }
-    var entry = { at: Date.now(), url: String(url), method: method, injected: null };
+    var entry = { at: Date.now(), url: String(url), method: method, injected: null, kind: null };
     if (method !== null) {
       for (var index = 0; index < injections.length; index += 1) {
         var injection = injections[index];
         if (injection.remaining > 0 && injection.method === method) {
           injection.remaining -= 1;
           injection.hits += 1;
-          entry.injected = injection.code;
+          entry.injected = injection.kind === 'lost-response' ? 'LOST_RESPONSE' : injection.code;
+          entry.kind = injection.kind;
           fetchLog.push(entry);
+          if (injection.kind === 'lost-response') {
+            // The key R5-follow-up requirement: the edit must really reach the
+            // staged Host/worker (and commit), and only then the successful
+            // response is discarded and reported to the page as a lost/uncertain
+            // transport result. Never fail before the Host.
+            return realFetch(input, init).then(function afterRealWrite(realResponse) {
+              entry.realStatus = realResponse.status;
+              var clone = realResponse.clone();
+              return clone.json().then(function captureBody(body) {
+                entry.realOk = body !== null && body !== undefined && body.ok === true;
+                entry.realRevision = body && body.result && typeof body.result.revision === 'string'
+                  ? body.result.revision
+                  : null;
+                entry.responseDiscarded = true;
+                return {
+                  ok: false,
+                  status: 503,
+                  json: function json() {
+                    return Promise.resolve({
+                      ok: false,
+                      error: {
+                        code: injection.code || 'E_TRANSPORT',
+                        message: injection.message || 'response lost after Host commit',
+                        uncertain: true,
+                      },
+                    });
+                  },
+                  text: function text() {
+                    return Promise.resolve('');
+                  },
+                };
+              }, function unreadableBody() {
+                entry.realOk = realResponse.ok === true;
+                entry.responseDiscarded = true;
+                return {
+                  ok: false,
+                  status: 503,
+                  json: function json() {
+                    return Promise.resolve({
+                      ok: false,
+                      error: {
+                        code: injection.code || 'E_TRANSPORT',
+                        message: injection.message || 'response lost after Host commit',
+                        uncertain: true,
+                      },
+                    });
+                  },
+                  text: function text() {
+                    return Promise.resolve('');
+                  },
+                };
+              });
+            });
+          }
           return Promise.resolve({
             ok: false,
             status: 409,
             json: function json() {
               return Promise.resolve({
                 ok: false,
-                error: { code: injection.code, message: injection.message || 'Injected failure' },
+                error: { code: injection.code, message: injection.message || 'Injected failure', uncertain: injection.uncertain === true },
               });
             },
             text: function text() {
@@ -219,6 +289,7 @@
         return node !== null ? node.textContent : null;
       })(),
       onErrors: onErrors.slice(),
+      editorMountCount: editorMountCount,
       mountSeq: mountSeq,
     };
   }
@@ -270,6 +341,7 @@
     mountSeq += 1;
     onErrors = [];
     injections = [];
+    editorMountCount = 0;
     current = null;
     var wrap = options.wrap || { width: 900, height: 400 };
     document.documentElement.style.setProperty('--harness-wrap-w', wrap.width + 'px');
@@ -341,8 +413,10 @@
   function inject(spec) {
     var injection = {
       method: spec.method,
+      kind: typeof spec.kind === 'string' ? spec.kind : 'pre-response',
       code: spec.code || 'E_PERSIST',
       message: spec.message || 'Injected failure',
+      uncertain: spec.uncertain === true,
       remaining: Number.isInteger(spec.times) && spec.times > 0 ? spec.times : 1,
       hits: 0,
     };
@@ -356,7 +430,7 @@
 
   function injectionState() {
     return injections.map(function describe(item) {
-      return { method: item.method, code: item.code, remaining: item.remaining, hits: item.hits };
+      return { method: item.method, kind: item.kind, code: item.code, remaining: item.remaining, hits: item.hits };
     });
   }
 
