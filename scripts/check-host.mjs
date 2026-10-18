@@ -8,7 +8,10 @@
  *   - lazy single-flight startup and one teardown;
  *   - typed request validation, project allowlist, job ownership and error flags;
  *   - exact Fetch request/artifact routes and Tool dispatcher;
- *   - artifact byte validation (name, root, size, SHA-256).
+ *   - artifact byte validation (name, root, size, SHA-256);
+ *   - P3-012 composition publish/read contract: Tool actions/schema/description,
+ *     pre-worker byte/type validation, compose facts + bounded prompt context,
+ *     Agent Session project scope, and project.list recency for auto-open.
  *
  * A fake WorkerClient is injected; these are contract tests, not evidence that
  * DSH activation or a real engine subprocess works. Those are staged separately.
@@ -17,9 +20,9 @@
  */
 
 import { createHash } from 'node:crypto';
-import { access, mkdtemp, mkdir, readFile, readdir, realpath, rm, symlink, writeFile } from 'node:fs/promises';
+import { access, mkdtemp, mkdir, readFile, readdir, realpath, rm, symlink, utimes, writeFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { pathToFileURL } from 'node:url';
 import { VideoBridge } from '../host/bridge.js';
 import { SessionStateStore } from '../host/session-state.js';
@@ -29,13 +32,23 @@ import { buildWorkerEnv } from '../host/env.js';
 import { createRequestRoute, createArtifactRoute, statusForError } from '../host/routes.js';
 import { createVideoTool, TOOL_NAME } from '../host/tool.js';
 import { BridgeError } from '../host/errors.js';
-import { TOOL_RESULT_BYTES } from '../host/limits.js';
+import { MAX_COMPOSITION_BYTES, TOOL_RESULT_BYTES } from '../host/limits.js';
 import { loadEngine } from '../host/engine.js';
 import { digestTree, loadStagedHost, sha256 } from './lib/staged-host.mjs';
 import { apply } from '../index.js';
 
 const PROJECT = 'demo';
 const REVISION = 'a'.repeat(64);
+const NEXT_REVISION = 'b'.repeat(64);
+const COMPOSITION_HTML = [
+  '<!doctype html>',
+  '<html><head><meta charset="utf-8"><title>Host contract test</title>',
+  '<script src="./assets/gsap.min.js"></script></head>',
+  '<body><div id="main" data-composition-id="main" data-width="1280" data-height="720" data-duration="5">',
+  '<svg viewBox="0 0 1280 720"><text id="thing" x="40" y="80">Hello</text></svg>',
+  '<script>const tl = gsap.timeline(); window.__timelines = { main: tl };</script>',
+  '</div></body></html>',
+].join('\n');
 const JOB_ID = '11111111-2222-4333-8444-555555555555';
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2nXQAAAAASUVORK5CYII=', 'base64');
 const PNG_HASH = createHash('sha256').update(PNG).digest('hex');
@@ -279,6 +292,38 @@ function makeCtx(workspace, options) {
 async function createBoundSession(bridge, projectId) {
   const created = await bridge.invoke('session.create', { projectId: projectId || PROJECT, requestId: 'test-' + Math.random().toString(36).slice(2) }, { source: 'http' });
   return created.sessionId;
+}
+
+/**
+ * A worker project.compose result carrying exactly the fields the Host consumes.
+ * `scenes: []` is the engine's free-form composition marker from P3-012.
+ */
+function composeResult(overrides) {
+  const bytes = Buffer.byteLength(COMPOSITION_HTML, 'utf8');
+  return Object.assign({
+    projectId: PROJECT,
+    revision: NEXT_REVISION,
+    publishedRevision: NEXT_REVISION,
+    written: true,
+    unchanged: false,
+    entry: 'index.html',
+    width: 1280,
+    height: 720,
+    duration: 5,
+    bytes,
+    assets: ['assets/gsap.min.js'],
+    elements: [{ stableId: 'main', capabilities: ['text', 'timing', 'layout', 'style'] }],
+    files: [{ path: 'index.html', bytes, sha256: NEXT_REVISION }],
+    preview: { mode: 'snapshot', status: 'ready', checked: 'composition+snapshot', revision: NEXT_REVISION },
+    scenes: [],
+  }, overrides || {});
+}
+
+/** The current systemPrompt contribution text for one bound Agent Session. */
+function contextTextFor(bag, sessionId) {
+  const contribution = bag.contexts[bag.contexts.length - 1];
+  if (contribution === undefined) return null;
+  return contribution.text({ agent: { session: { id: sessionId } } });
 }
 
 function makeBridge(workspace, behavior, ctx) {
@@ -1387,6 +1432,274 @@ async function main() {
     assert(!JSON.stringify(diagnose).includes('message'), 'diagnosis must not include message text');
     await bridge.dispose();
     assert(bag.contextDisposers.length === 1, 'prompt context was not disposed with the bridge');
+  });
+
+  await run('P3-012: Tool exposes project.compose/source with exact fields and workflow description', async () => {
+    const calls = [];
+    const fakeBridge = {
+      async invoke(method, params) {
+        calls.push({ method, params });
+        return { projectId: params.projectId, revision: NEXT_REVISION };
+      },
+    };
+    const tool = createVideoTool(fakeBridge);
+    const actions = tool.parameters.properties.action.enum;
+    assert(Array.isArray(actions) && actions.includes('project.compose') && actions.includes('project.source'), 'the Tool action enum is missing the composition actions');
+    const htmlSchema = tool.parameters.properties.html;
+    assert(htmlSchema !== undefined && htmlSchema.type === 'string', 'the Tool html parameter schema is missing');
+    assert(String(htmlSchema.description).includes('48 KiB') && String(htmlSchema.description).includes('window.__timelines'), 'the Tool html schema does not state the composition contract');
+    assert(tool.parameters.additionalProperties === false, 'the Tool must reject extra parameters');
+    const description = String(tool.description);
+    for (const fragment of ['project.compose', 'project.source', 'expectedRevision', 'preview follows', 'Never write project files']) {
+      assert(description.includes(fragment), `the Tool description is missing "${fragment}"`);
+    }
+
+    await tool.execute({ action: 'project.source', projectId: PROJECT }, {});
+    await tool.execute({ action: 'project.compose', projectId: PROJECT, expectedRevision: REVISION, operationId: 'tool-compose-1', html: COMPOSITION_HTML }, {});
+    assert(calls.length === 2, `unexpected Tool bridge calls: ${calls.length}`);
+    assert(calls[0].method === 'project.source', 'project.source was not dispatched through the bridge');
+    assert(JSON.stringify(calls[0].params) === JSON.stringify({ projectId: PROJECT }), 'project.source forwarded fields outside its contract');
+    assert(calls[1].method === 'project.compose', 'project.compose was not dispatched through the bridge');
+    assert(
+      JSON.stringify(calls[1].params) === JSON.stringify({ projectId: PROJECT, expectedRevision: REVISION, operationId: 'tool-compose-1', html: COMPOSITION_HTML }),
+      'project.compose parameters were not forwarded exactly'
+    );
+
+    // Unknown fields are refused by the Tool before the bridge sees them.
+    for (const args of [
+      { action: 'project.source', projectId: PROJECT, expectedRevision: REVISION },
+      { action: 'project.compose', projectId: PROJECT, expectedRevision: REVISION, operationId: 'tool-compose-2', html: COMPOSITION_HTML, path: '/tmp/x' },
+    ]) {
+      const error = await rejects(() => tool.execute(args, {}));
+      assert(error.message.includes('E_PARAMS'), `an out-of-contract Tool field was accepted: ${error.message}`);
+    }
+    assert(calls.length === 2, 'invalid Tool arguments reached the bridge');
+  });
+
+  await run('P3-012: compose/source are byte-bounded and typed before the worker starts', async () => {
+    const workspace = await makeWorkspace();
+    const bag = makeCtx(workspace);
+    const { bridge, engine } = makeBridge(workspace, {
+      handler: (method, params) => {
+        if (method === 'project.compose') return composeResult({ bytes: Buffer.byteLength(params.html, 'utf8') });
+        if (method === 'project.source') {
+          return { projectId: params.projectId, revision: NEXT_REVISION, entry: 'index.html', bytes: Buffer.byteLength(COMPOSITION_HTML, 'utf8'), assets: ['assets/gsap.min.js'], html: COMPOSITION_HTML };
+        }
+        return {};
+      },
+    }, bag.ctx);
+    const compose = (overrides) => Object.assign({ projectId: PROJECT, expectedRevision: REVISION, operationId: 'bridge-compose-1', html: COMPOSITION_HTML }, overrides || {});
+    const invalid = [
+      ['uppercase revision', compose({ expectedRevision: 'A'.repeat(64) }), 'E_PARAMS'],
+      ['short revision', compose({ expectedRevision: 'a'.repeat(63) }), 'E_PARAMS'],
+      ['invalid operation id', compose({ operationId: 'bad id!' }), 'E_PARAMS'],
+      ['empty html', compose({ html: '' }), 'E_PARAMS'],
+      ['non-string html', compose({ html: 7 }), 'E_PARAMS'],
+      ['NUL html', compose({ html: 'x\0y' }), 'E_PARAMS'],
+      ['oversize ascii html', compose({ html: 'x'.repeat(MAX_COMPOSITION_BYTES + 1) }), 'E_PARAMS'],
+      ['oversize multibyte html', compose({ html: '中'.repeat(Math.floor(MAX_COMPOSITION_BYTES / 3) + 1) }), 'E_PARAMS'],
+      ['unknown extra parameter', compose({ path: '/tmp/x' }), 'E_PARAMS'],
+      ['unknown project', compose({ projectId: 'other' }), 'E_PROJECT_NOT_FOUND'],
+    ];
+    for (const [label, params, code] of invalid) {
+      const error = await rejects(() => bridge.invoke('project.compose', params, { source: 'http' }));
+      assert(error.code === code, `${label}: unexpected compose error ${error.code}`);
+    }
+    const oversize = await rejects(() => bridge.invoke('project.compose', compose({ html: 'x'.repeat(MAX_COMPOSITION_BYTES + 1) }), { source: 'http' }));
+    assert(oversize.message.includes('48 KiB'), `the oversize error is not actionable: ${oversize.message}`);
+    // The bound is raw UTF-8 bytes, not characters: this document is under the
+    // character count but over the 48 KiB byte ceiling.
+    const multibyte = '中'.repeat(16385);
+    assert(multibyte.length <= MAX_COMPOSITION_BYTES && Buffer.byteLength(multibyte, 'utf8') > MAX_COMPOSITION_BYTES, 'the multibyte fixture does not isolate byte bounding');
+    for (const params of [{ projectId: PROJECT, html: COMPOSITION_HTML }, { projectId: '../demo' }]) {
+      const error = await rejects(() => bridge.invoke('project.source', params, { source: 'http' }));
+      assert(['E_PARAMS', 'E_PROJECT_NOT_FOUND'].includes(error.code), `project.source accepted invalid params: ${error.code}`);
+    }
+    assert(engine.instances.length === 0, 'an invalid compose/source request started the worker');
+
+    const published = await bridge.invoke('project.compose', compose(), { source: 'http' });
+    assert(published.revision === NEXT_REVISION && published.publishedRevision === NEXT_REVISION, 'the valid compose result was not returned');
+    const source = await bridge.invoke('project.source', { projectId: PROJECT }, { source: 'http' });
+    assert(source.html === COMPOSITION_HTML && source.revision === NEXT_REVISION, 'the valid source result was not returned');
+    assert(engine.instances.length === 1, `expected one worker start, saw ${engine.instances.length}`);
+    const requests = engine.instances[0].requests;
+    const composeRequest = requests.find((entry) => entry.method === 'project.compose');
+    assert(composeRequest !== undefined, 'project.compose never reached the worker');
+    assert(
+      composeRequest.params.projectId === PROJECT &&
+        composeRequest.params.expectedRevision === REVISION &&
+        composeRequest.params.operationId === 'bridge-compose-1' &&
+        composeRequest.params.html === COMPOSITION_HTML,
+      'project.compose parameters were altered before the worker'
+    );
+    const sourceRequest = requests.find((entry) => entry.method === 'project.source');
+    assert(sourceRequest !== undefined && JSON.stringify(sourceRequest.params) === JSON.stringify({ projectId: PROJECT }), 'project.source parameters were not forwarded exactly');
+  });
+
+  await run('P3-012: a composition publish updates prompt facts and the next context', async () => {
+    const SCENES_PROJECT = 'scenes';
+    const workspace = await makeWorkspace({ projects: { [SCENES_PROJECT]: 'projects-scenes/scenes' } });
+    const bag = makeCtx(workspace);
+    const INSPECTED_REVISION = 'c'.repeat(64);
+    const { bridge } = makeBridge(workspace, {
+      handler: (method, params) => {
+        if (method === 'project.compose') return composeResult({ bytes: Buffer.byteLength(params.html, 'utf8') });
+        if (method === 'inspect') {
+          if (params.projectId === PROJECT) {
+            return { projectId: PROJECT, revision: INSPECTED_REVISION, scenes: [], elements: [], width: 1280, height: 720, duration: 5 };
+          }
+          return {
+            projectId: params.projectId,
+            revision: 'd'.repeat(64),
+            scenes: [{ sceneId: 'scene-1', title: 'Scene 1', start: 0, duration: 5 }],
+            elements: [{ stableId: 'scene-1-title', capabilities: ['text'] }],
+            width: 1280,
+            height: 720,
+            duration: 5,
+          };
+        }
+        return {};
+      },
+    }, bag.ctx);
+    const sessionId = await createBoundSession(bridge);
+    const published = await bridge.invoke('project.compose', { projectId: PROJECT, expectedRevision: REVISION, operationId: 'facts-compose-1', html: COMPOSITION_HTML }, { source: 'http' });
+    assert(published.publishedRevision === NEXT_REVISION, 'the compose result lost its publish marker');
+    const facts = bridge.projectFacts(PROJECT);
+    assert(facts !== null, 'project.compose did not record prompt facts');
+    assert(facts.revision === NEXT_REVISION, `prompt facts kept the old revision: ${facts.revision}`);
+    assert(facts.width === 1280 && facts.height === 720 && facts.duration === 5, 'project.compose facts lost geometry/duration');
+    assert(facts.mode === 'composition', `project.compose facts did not record composition mode: ${facts.mode}`);
+    let text = contextTextFor(bag, sessionId);
+    assert(typeof text === 'string' && text.includes(NEXT_REVISION), 'the next prompt context does not carry the published revision');
+    assert(text.includes('free-form composition'), 'the next prompt context lost the free-form composition edit path');
+
+    // A later inspect of the same free-form project refreshes revision + mode.
+    await bridge.invoke('inspect', { projectId: PROJECT }, { source: 'http' });
+    const inspectedFacts = bridge.projectFacts(PROJECT);
+    assert(inspectedFacts.revision === INSPECTED_REVISION && inspectedFacts.mode === 'composition', 'inspect of a free-form project did not record composition mode');
+
+    // A legacy scene project keeps the scene path and never claims free-form.
+    const scenesSession = await createBoundSession(bridge, SCENES_PROJECT);
+    await bridge.invoke('inspect', { projectId: SCENES_PROJECT }, { source: 'http' });
+    const sceneFacts = bridge.projectFacts(SCENES_PROJECT);
+    assert(sceneFacts.mode === 'scenes', `a scene project was misclassified: ${sceneFacts.mode}`);
+    text = contextTextFor(bag, scenesSession);
+    assert(text.includes('Scenes: scene-1') && !text.includes('free-form composition'), 'the scene project context was misclassified as free-form');
+    await bridge.dispose();
+  });
+
+  await run('P3-012: prompt context carries the workflow/contract/skeleton and no Host paths', async () => {
+    const workspace = await makeWorkspace();
+    const bag = makeCtx(workspace);
+    const { bridge } = makeBridge(workspace, { handler: () => ({}) }, bag.ctx);
+    const sessionId = await createBoundSession(bridge);
+    const text = contextTextFor(bag, sessionId);
+    assert(typeof text === 'string' && text.length > 0, 'a bound Session received no project context');
+    const required = [
+      `"${PROJECT}"`,
+      'video_engine',
+      'project.compose',
+      'project.source',
+      'expectedRevision',
+      'publishedRevision',
+      'E_REVISION_CONFLICT',
+      '49152',
+      'data-composition-id',
+      'window.__timelines',
+      'GSAP',
+      'never retry with the stale revision',
+      'Never write project files',
+      'never search the plugin source repository',
+    ];
+    for (const fragment of required) {
+      assert(text.includes(fragment), `the prompt context is missing "${fragment}"`);
+    }
+    assert(text.includes('reliable base'), 'the prompt context does not describe project.source as the reliable base');
+    assert(text.includes('data-fps="30"') && text.includes('tl.seek(0)'), 'the prompt context lost the composition skeleton markers');
+    assert(text.length <= 4000, `the prompt context exceeds its bounded budget: ${text.length}`);
+    assert(!text.includes(workspace.root) && !text.includes(workspace.projectDir), 'the prompt context leaked an absolute Host path');
+    assert(!text.includes(tmpdir()), 'the prompt context leaked an OS temp path');
+    assert(!text.includes(homedir()), 'the prompt context leaked the home directory or username');
+    assert(!/\/(?:Users|home|private|var)\//.test(text), 'the prompt context contains an absolute filesystem path');
+    assert(!text.includes('file://'), 'the prompt context contains a file URL');
+    await bridge.dispose();
+  });
+
+  await run('P3-012: compose/source obey the trusted Agent Session project scope', async () => {
+    const OTHER = 'other';
+    const workspace = await makeWorkspace({ projects: { [OTHER]: 'projects-other/other' } });
+    const bag = makeCtx(workspace);
+    const { bridge } = makeBridge(workspace, {
+      handler: (method, params) => {
+        if (method === 'project.compose') return composeResult();
+        if (method === 'project.source') {
+          return { projectId: params.projectId, revision: NEXT_REVISION, entry: 'index.html', bytes: Buffer.byteLength(COMPOSITION_HTML, 'utf8'), assets: ['assets/gsap.min.js'], html: COMPOSITION_HTML };
+        }
+        return {};
+      },
+    }, bag.ctx);
+    const sessionId = await createBoundSession(bridge);
+    const tool = createVideoTool(bridge);
+    const exec = { agent: { session: { id: sessionId } } };
+    const anonymous = await rejects(() => tool.execute({ action: 'project.source', projectId: PROJECT }, {}));
+    assert(anonymous.message.includes('E_AGENT_REQUIRED'), `an anonymous source call was not refused: ${anonymous.message}`);
+    const unbound = await rejects(() => tool.execute({ action: 'project.source', projectId: PROJECT }, { agent: { session: { id: 'session-unbound' } } }));
+    assert(unbound.message.includes('E_SESSION_NOT_BOUND'), `an unbound source call was not refused: ${unbound.message}`);
+    const foreign = await rejects(() => tool.execute({ action: 'project.source', projectId: OTHER }, exec));
+    assert(foreign.message.includes('E_PROJECT_SCOPE'), `a foreign source call was not refused: ${foreign.message}`);
+    const foreignCompose = await rejects(() => tool.execute({ action: 'project.compose', projectId: OTHER, expectedRevision: REVISION, operationId: 'scope-compose-1', html: COMPOSITION_HTML }, exec));
+    assert(foreignCompose.message.includes('E_PROJECT_SCOPE'), `a foreign compose call was not refused: ${foreignCompose.message}`);
+    const ownSource = await tool.execute({ action: 'project.source', projectId: PROJECT }, exec);
+    assert(ownSource.action === 'project.source' && ownSource.result.html === COMPOSITION_HTML, 'own project.source did not reach the worker');
+    const ownCompose = await tool.execute({ action: 'project.compose', projectId: PROJECT, expectedRevision: REVISION, operationId: 'scope-compose-2', html: COMPOSITION_HTML }, exec);
+    assert(ownCompose.result.publishedRevision === NEXT_REVISION, 'own project.compose did not reach the worker');
+    const text = contextTextFor(bag, sessionId);
+    assert(text.includes(NEXT_REVISION), 'a Tool compose did not refresh the prompt facts with the published revision');
+    await bridge.dispose();
+  });
+
+  await run('P3-012: project.list reports recency, a default project and tolerates stat failures', async () => {
+    const OTHER = 'other';
+    const workspace = await makeWorkspace({ projects: { [OTHER]: 'projects-other/other' } });
+    // A registry project outside the trusted allowlist must never be listed.
+    const hiddenDir = join(workspace.root, 'projects', 'hidden');
+    await mkdir(hiddenDir, { recursive: true });
+    const registry = JSON.parse(await readFile(workspace.registryPath, 'utf8'));
+    registry.projects.hidden = hiddenDir;
+    await writeFile(workspace.registryPath, JSON.stringify(registry));
+    const demoEntry = join(workspace.projectDir, 'index.html');
+    const otherEntry = join(workspace.registry.projects[OTHER], 'index.html');
+    await writeFile(demoEntry, '<!doctype html>');
+    await writeFile(otherEntry, '<!doctype html>');
+    await utimes(demoEntry, new Date(1000), new Date(1000));
+    await utimes(otherEntry, new Date(2000), new Date(2000));
+    const bag = makeCtx(workspace);
+    const { bridge } = makeBridge(workspace, { handler: () => ({}) }, bag.ctx);
+    let list = await bridge.invoke('project.list', {});
+    assert(Array.isArray(list.projects), 'project.list projects is not an array');
+    assert(list.projects.every((item) => typeof item.projectId === 'string' && typeof item.updatedAt === 'number' && Object.keys(item).length === 2), 'project.list item shape changed');
+    assert(list.projects.map((item) => item.projectId).join(',') === `${OTHER},${PROJECT}`, `project.list recency order is wrong: ${list.projects.map((item) => item.projectId).join(',')}`);
+    assert(list.defaultProjectId === OTHER, `defaultProjectId is wrong: ${list.defaultProjectId}`);
+    assert(list.projects.every((item) => item.projectId !== 'hidden'), 'an untrusted registry project was listed');
+
+    // A newer demo entry becomes the default and the sort follows it.
+    await utimes(demoEntry, new Date(3000), new Date(3000));
+    list = await bridge.invoke('project.list', {});
+    assert(list.projects.map((item) => item.projectId).join(',') === `${PROJECT},${OTHER}`, 'project.list did not follow the new entry mtime');
+    assert(list.defaultProjectId === PROJECT, 'defaultProjectId did not follow the new entry mtime');
+
+    // A broken entry stat reports updatedAt 0 without failing the list.
+    await rm(otherEntry);
+    await symlink(join(workspace.root, 'missing-entry.html'), otherEntry);
+    list = await bridge.invoke('project.list', {});
+    const broken = list.projects.find((item) => item.projectId === OTHER);
+    assert(broken !== undefined && broken.updatedAt === 0, `a stat failure was not reported as updatedAt 0: ${JSON.stringify(broken)}`);
+    assert(list.defaultProjectId === PROJECT, 'defaultProjectId changed after a tolerated stat failure');
+
+    // Project listing stays UI-only.
+    const toolError = await rejects(() => bridge.invoke('project.list', {}, { source: 'tool', agentSessionId: 'session-unbound' }));
+    assert(toolError.code === 'E_METHOD', `project.list was exposed to the model Tool: ${toolError.code}`);
+    await bridge.dispose();
   });
 
   await run('R1: a failed durable write never publishes the mapping and cleans its temp file', async () => {

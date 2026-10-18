@@ -17,12 +17,19 @@
  *
  * Covered here: registration shape, the panel -> sidebar atomic lifecycle under
  * late/repeated/collapsed declarations, failure rollback, coexistence with the
- * shipped rows, unload fallback without stealing another panel, restrained empty
+ * shipped rows, unload fallback without stealing another panel, restrained boot
  * state, display-menu semantics, preference persistence and corruption safety,
- * the sidebar icon owner-props contract, and (P3-008 R1/R2/R5/R6) the reviewed
- * runtime message contract, the static-base inverse-mapped drag/resize patches,
- * the frozen Scene template copy/refusal path and the inline-editor failure
- * recovery with operationId reuse.
+ * the sidebar icon owner-props contract, the P3-012 conversation-first flow
+ * (project.list -> remembered/default/most-recent auto-open, auto-provision +
+ * guarded single auto-Session, 1500 ms inspect poll adopting a published
+ * revision, recoverable preview failure + retry, absence of deferred manual
+ * controls in the rendered product, read-only previewOnly component), the
+ * native conversation/history/file-preview surfaces, and (P3-008 R1/R2/R5/R6)
+ * the reviewed runtime message contract, the static-base inverse-mapped
+ * drag/resize patches, the frozen Scene template copy/refusal path and the
+ * inline-editor failure recovery with operationId reuse. The P3-008 manual
+ * canvas path is mounted directly with `previewOnly: false` (the reviewed
+ * default) exactly like its browser harness; the product never renders it.
  *
  * Not covered / not claimed: real browser rendering, CSS animation playback,
  * layout, the exact host row pixels, installation or any live host verification.
@@ -526,6 +533,8 @@ function createFakeEnvironment(options) {
 //#endregion
 
 //#region module loading
+const RUNTIMES = [];
+
 function loadClient(options) {
   const config = options || {};
   const registrations = [];
@@ -535,8 +544,10 @@ function loadClient(options) {
     commands: [],
     iframes: [],
     timers: new Set(),
+    intervals: new Set(),
     stageSize: config.stageSize || { width: 1280, height: 720 },
   };
+  RUNTIMES.push(runtime);
   const sandbox = {
     window: {
       __ModuleLoader__: {
@@ -564,6 +575,17 @@ function loadClient(options) {
     clearTimeout(handle) {
       runtime.timers.delete(handle);
       clearTimeout(handle);
+    },
+    // The product workspace follows the published revision on a 1.5s poll; the
+    // sandbox models the browser timer pair and tracks intervals for teardown.
+    setInterval(callback, delay, ...args) {
+      const handle = setInterval(callback, delay, ...args);
+      runtime.intervals.add(handle);
+      return handle;
+    },
+    clearInterval(handle) {
+      runtime.intervals.delete(handle);
+      clearInterval(handle);
     },
     requestAnimationFrame(callback) {
       if (config.queueFrames !== true) {
@@ -593,6 +615,7 @@ function loadClient(options) {
     react,
     exports: exportsObject,
     sandbox,
+    context,
     runtime,
     flushFrames(rounds = 8) {
       for (let round = 0; round < rounds; round += 1) {
@@ -898,7 +921,7 @@ function sessionFetch(options) {
         result: {
           enabled: true,
           contract: 1,
-          projectId: 'demo',
+          projectId: request.body.params.projectId,
           activeSessionId: config.activeSessionId === undefined ? null : config.activeSessionId,
           sessions: (config.sessions || []).map((id) => ({ sessionId: id, status: 'available' })),
         },
@@ -909,21 +932,32 @@ function sessionFetch(options) {
       const id = config.newSessionId || 'session-new';
       config.activeSessionId = id;
       config.sessions = (config.sessions || []).concat([id]);
-      return Promise.resolve({ ok: true, result: { enabled: true, contract: 1, projectId: 'demo', sessionId: id, activeSessionId: id } });
+      return Promise.resolve({ ok: true, result: { enabled: true, contract: 1, projectId: request.body.params.projectId, sessionId: id, activeSessionId: id } });
     }
     if (method === 'session.select') {
       config.selectCalls = (config.selectCalls || []).concat([request.body.params.sessionId]);
       const id = request.body.params.sessionId;
       const delay = (config.selectDelays && config.selectDelays[id]) || 0;
       return new Promise((resolve) => {
-        setTimeout(() => resolve({ ok: true, result: { enabled: true, contract: 1, projectId: 'demo', sessionId: id, activeSessionId: id } }), delay);
+        setTimeout(() => resolve({ ok: true, result: { enabled: true, contract: 1, projectId: request.body.params.projectId, sessionId: id, activeSessionId: id } }), delay);
       });
     }
     if (method === 'session.diagnose') {
       return Promise.resolve({ ok: true, result: { enabled: true, contract: 1 } });
     }
     if (method === 'project.list') {
-      return Promise.resolve({ ok: true, result: { projects: [{ projectId: 'proj-smoke' }, { projectId: 'demo' }] } });
+      // P3-012 bridge shape: recency for auto-open. `demo` is the legacy fixture
+      // entry the client must filter out; `proj-smoke` is the managed project.
+      return Promise.resolve({
+        ok: true,
+        result: {
+          projects: [
+            { projectId: 'proj-smoke', updatedAt: 2000 },
+            { projectId: 'demo', updatedAt: 1000 },
+          ],
+          defaultProjectId: 'proj-smoke',
+        },
+      });
     }
     if (method === 'project.create') {
       config.projectCreated = true;
@@ -997,6 +1031,37 @@ function mountSessionEditor(hostFetch, options) {
     },
   };
 }
+
+/**
+ * P3-012 boot helper: the product workspace auto-loads project.list, opens (or
+ * provisions) the managed project and its Session on mount. Async requests need
+ * more than one settle round; each round re-renders so effects see the new state.
+ */
+async function settlePanel(editor, rounds) {
+  const total = rounds || 12;
+  for (let index = 0; index < total; index += 1) {
+    await settle();
+    editor.rerender();
+  }
+  return editor.tree();
+}
+
+/**
+ * Re-mount the panel from the same loaded module/env (the plugin keeps its view
+ * memory in module scope) with the same kit the first mount received.
+ */
+function remountInteractivePanel(editor, kit) {
+  const main = registrationOf(editor.env, 'main');
+  assert(main !== undefined, 'main panel is not registered');
+  const props = Object.assign({ t: translateFor(editor.env) }, main.options.inject(), kit || {});
+  return editor.loaded.react.renderInteractive(main.component, props);
+}
+
+async function mountBootedPanel(hostFetch, options) {
+  const editor = mountSessionEditor(hostFetch, options);
+  await settlePanel(editor);
+  return editor;
+}
 //#endregion
 
 //#region tests: module + registration baseline
@@ -1059,7 +1124,7 @@ test('sidebar icon honours the host owner props and native line style', () => {
 //#endregion
 
 //#region tests: panel content + display options
-test('panel renders exactly one empty sentence, one return action and one display menu', () => {
+test('panel renders the preparing status, one return action and one display menu before boot', () => {
   const loaded = loadClient();
   const env = createFakeEnvironment();
   loaded.exports.apply(env.ctx);
@@ -1069,7 +1134,7 @@ test('panel renders exactly one empty sentence, one return action and one displa
   assert(root.props['data-simplified'] === 'false', 'simplified effects should default to off');
   const empty = findNode(tree, (node) => node.props && node.props.className === 'dv-empty');
   assert(empty !== null, 'empty state missing');
-  assert(textOf(empty) === '尚无工程', `empty state is "${textOf(empty)}"`);
+  assert(textOf(empty) === '正在准备工程…', `boot status is "${textOf(empty)}"`);
   const back = panelButton(tree, 'dv-back');
   assert(back !== null, 'return action missing');
   assert(back.props['aria-label'] === '返回对话', 'return action needs an accessible name');
@@ -1079,7 +1144,7 @@ test('panel renders exactly one empty sentence, one return action and one displa
   assert(display.props['aria-label'] === '显示选项', 'display options trigger needs an accessible name');
   assert(panelMenuItem(tree) === null, 'display menu must start closed');
   const text = textOf(tree);
-  for (const forbidden of ['空工作区', '从一个想法', '创建工程', '导出', '时间线', '预览', 'Vedio Editor']) {
+  for (const forbidden of ['空工作区', '从一个想法', '创建工程', '导出', '时间线', 'Vedio Editor']) {
     assert(text.includes(forbidden) === false, `panel still renders removed content "${forbidden}"`);
   }
 });
@@ -1479,579 +1544,244 @@ test('unloading while another panel is selected does not steal it', () => {
   assert(env.events.panelCalls.length === 0, 'unload disturbed another selected panel');
 });
 
-//#region P2-002-B: real controlled-project editor flow
-function mountEditor(hostFetch) {
-  const loaded = loadClient({ fetch: hostFetch });
-  const env = createFakeEnvironment();
-  loaded.exports.apply(env.ctx);
-  const interactive = mountInteractivePanel(loaded, env);
-  let tree = interactive.render();
-  return {
-    loaded,
-    env,
-    interactive,
-    tree() {
-      return tree;
-    },
-    rerender() {
-      tree = interactive.rerender();
-      return tree;
-    },
-  };
+//#region P3-012: conversation-first auto preview
+function panelRoot(tree) {
+  return findNode(tree, (node) => node.props && node.props['data-boot'] !== undefined);
 }
 
-test('P2-002-B: no project keeps the quiet empty state and fetches nothing until 打开示例', () => {
-  const hostFetch = makeHostFetch(() => ({ ok: true, result: {} }));
-  const editor = mountEditor(hostFetch);
+function productCanvas(tree) {
+  return findNode(tree, (node) => node.props && node.props.className === 'dv-canvas-shell');
+}
+
+function previewFrame(tree) {
+  return findNode(tree, (node) => node.type === 'iframe' && node.props && node.props.className === 'dv-stage-frame');
+}
+
+function inspectWithRevision(revision) {
+  return Object.assign(managedInspected(), { revision: revision });
+}
+
+function panelClasses(tree) {
+  return findAll(tree, (node) => node.props && typeof node.props.className === 'string').map((node) => node.props.className);
+}
+
+function panelIds(tree) {
+  return findAll(tree, (node) => node.props && typeof node.props.id === 'string').map((node) => node.props.id);
+}
+
+test('P3-012: no project auto-provisions one project and one bound Session exactly once', async () => {
+  const sessions = makeSessionsService({ list: [] });
+  const hostFetch = sessionFetch({ activeSessionId: null, sessions: [], newSessionId: 'session-first' });
+  hostFetch.config.handler = async (request) => {
+    if (request.body.method === 'project.list') {
+      return { ok: true, result: { projects: [{ projectId: 'demo', updatedAt: 9 }], defaultProjectId: 'demo' } };
+    }
+    return undefined;
+  };
+  const kit = makeSessionKit();
+  const editor = await mountBootedPanel(hostFetch, { sessions: sessions, kit: kit });
   const tree = editor.tree();
-  assert(textOf(findNode(tree, (node) => node.props && node.props.className === 'dv-empty')) === '尚无工程', 'quiet empty state missing');
-  assert(buttonByText(tree, '打开示例') !== null, 'open-example action missing');
-  const earlyCalls = hostFetch.calls.filter((call) => call.body.method !== 'project.list');
-  assert(earlyCalls.length === 0, 'empty panel made a business request before the explicit action');
-  assert(findNode(tree, (node) => node.props && node.props.className === 'dv-project-title') === null, 'empty panel invented a project title');
-});
-
-test('P2-002-B: 打开示例 uses only the configured id and renders inspected title/frame', async () => {
-  const frameJob = '11111111-2222-4333-8444-555555555555';
-  const hostFetch = makeHostFetch((request) => {
-    const method = request.body.method;
-    if (method === 'open') return { ok: true, result: { projectId: 'demo', revision: 'a'.repeat(64) } };
-    if (method === 'inspect') return { ok: true, result: sampleInspect() };
-    if (method === 'frame') return { ok: true, result: Object.assign(sampleJob(frameJob), { kind: 'frame' }) };
-    if (method === 'status') return { ok: true, result: Object.assign(sampleJob(frameJob), { kind: 'frame', state: 'succeeded', artifact: { name: frameJob + '.png' } }) };
-    return { ok: false, error: { code: 'E_METHOD', message: 'unexpected ' + method } };
-  });
-  const editor = mountEditor(hostFetch);
-  const open = buttonByText(editor.tree(), '打开示例');
-  await open.props.onClick();
-  await settle();
-  const tree = editor.rerender();
-  assert(textOf(findNode(tree, (node) => node.props && node.props.className === 'dv-project-title')) === '让创意成为影像', 'inspected title was not rendered');
-  assert(findNode(tree, (node) => node.props && node.props.className === 'dv-project-meta') !== null, 'inspected dimensions/duration missing');
-  const image = findNode(tree, (node) => node.props && node.props.className === 'dv-frame');
-  assert(image !== null, 'real frame image missing');
-  assert(image.props.src === 'api/dsh-video/artifact?jobId=' + frameJob, `frame source was ${image.props.src}`);
-  assert(hostFetch.calls.every((call) => call.url === 'api/dsh-video/request'), 'a non-request URL was used');
-  const openCall = hostFetch.calls.find((call) => call.body.method === 'open');
-  assert(openCall.body.params.projectId === 'demo', 'open used a different project id');
-  const frameCall = hostFetch.calls.find((call) => call.body.method === 'frame');
-  assert(frameCall.body.params.revision === 'a'.repeat(64), 'frame did not use the inspected revision');
-  assert(frameCall.body.params.time <= 2.5 && frameCall.body.params.time >= 0, 'frame time was not bounded from real duration');
-});
-
-test('R1: eyebrow-first inspect selects hf-title and binds title/timing to one stableId', async () => {
-  const revisionA = 'a'.repeat(64);
-  const revisionB = 'b'.repeat(64);
-  let titleText = '让创意成为影像';
-  let titleStart = 0;
-  let inspectRevision = revisionA;
-  const hostFetch = makeHostFetch((request) => {
-    const method = request.body.method;
-    if (method === 'open') return { ok: true, result: { projectId: 'demo', revision: revisionA } };
-    if (method === 'inspect') {
-      return {
-        ok: true,
-        result: sampleInspect({
-          revision: inspectRevision,
-          elements: [
-            { stableId: 'hf-eyebrow', text: 'DSH VIDEO / ENGINE STUDY', capabilities: ['text'] },
-            { stableId: 'hf-title', text: titleText, timing: { start: titleStart, duration: 5 }, capabilities: ['text', 'timing'] },
-            { stableId: 'hf-subtitle', text: '原生工程 · 确定性时间 · 自由修改', capabilities: ['text'] },
-          ],
-        }),
-      };
-    }
-    if (method === 'edit') {
-      const textOp = request.body.params.ops.find((op) => op.type === 'text');
-      const timingOp = request.body.params.ops.find((op) => op.type === 'timing');
-      if (textOp) titleText = textOp.text;
-      if (timingOp) titleStart = timingOp.start;
-      inspectRevision = revisionB;
-      return { ok: true, result: { projectId: 'demo', revision: revisionB, operationId: request.body.params.operationId } };
-    }
-    if (method === 'frame') return { ok: true, result: sampleJob('88888888-2222-4333-8444-555555555555') };
-    if (method === 'status') return { ok: true, result: Object.assign(sampleJob('88888888-2222-4333-8444-555555555555'), { state: 'succeeded', artifact: { name: 'frame.png' } }) };
-    return { ok: false, error: { code: 'E_METHOD', message: 'unexpected' } };
-  });
-  const editor = mountEditor(hostFetch);
-  await buttonByText(editor.tree(), '打开示例').props.onClick();
-  await settle();
-  let tree = editor.rerender();
-  assert(textOf(findNode(tree, (node) => node.props && node.props.className === 'dv-project-title')) === '让创意成为影像', 'title display came from the eyebrow');
-  const titleInput = elementById(tree, 'dsh-video-title');
-  assert(titleInput !== null && titleInput.props.value === '让创意成为影像', 'title field was not initialized from hf-title');
-  const targetSelect = elementById(tree, 'dsh-video-target');
-  assert(targetSelect !== null && targetSelect.props.value === 'hf-title', 'default target was not the explicit fixture title');
-  titleInput.props.onChange({ target: { value: '新的标题' } });
-  tree = editor.rerender();
-  elementById(tree, 'dsh-video-start').props.onChange({ target: { value: '1.00' } });
-  tree = editor.rerender();
-  elementById(tree, 'dsh-video-duration').props.onChange({ target: { value: '4.00' } });
-  tree = editor.rerender();
-  await buttonByText(tree, '保存修改').props.onClick();
-  await settle();
-  const editCall = hostFetch.calls.find((call) => call.body.method === 'edit');
-  assert(editCall !== undefined, 'edit was not sent');
-  assert(editCall.body.params.ops.length === 2, `expected text+timing ops, got ${editCall.body.params.ops.length}`);
-  for (const op of editCall.body.params.ops) assert(op.target === 'hf-title', `edit targeted ${op.target} instead of hf-title`);
-  tree = editor.rerender();
-  assert(textOf(findNode(tree, (node) => node.props && node.props.className === 'dv-project-title')) === '新的标题', 'refreshed title was not the edited hf-title');
-});
-
-test('P2-005: opening exposes the frame-time input at the 2.5s default and sends that time', async () => {
-  const frameTimes = [];
-  let frameIndex = 0;
-  const hostFetch = makeHostFetch((request) => {
-    const method = request.body.method;
-    if (method === 'open') return { ok: true, result: { projectId: 'demo', revision: 'a'.repeat(64) } };
-    if (method === 'inspect') return { ok: true, result: sampleInspect() };
-    if (method === 'frame') {
-      frameTimes.push(request.body.params.time);
-      frameIndex += 1;
-      return { ok: true, result: Object.assign(sampleJob('99999999-2222-4333-8444-55555555555' + frameIndex), { revision: 'a'.repeat(64) }) };
-    }
-    if (method === 'status') return { ok: true, result: Object.assign(sampleJob('99999999-2222-4333-8444-55555555555' + frameIndex), { revision: 'a'.repeat(64), state: 'succeeded', artifact: { name: 'frame.png' } }) };
-    return { ok: false, error: { code: 'E_METHOD', message: 'unexpected' } };
-  });
-  const editor = mountEditor(hostFetch);
-  await buttonByText(editor.tree(), '打开示例').props.onClick();
-  await settle();
-  const tree = editor.rerender();
-  const input = elementById(tree, 'dsh-video-frame-time');
-  assert(input !== null, 'frame-time input missing');
-  assert(input.props.value === '2.50', `default frame time is ${input.props.value}`);
-  assert(frameTimes.length === 1 && frameTimes[0] === 2.5, `initial frame time was ${frameTimes[0]}`);
-});
-
-test('P2-005: update frame uses the selected time and rejects out-of-range values loudly', async () => {
-  const frameTimes = [];
-  let frameIndex = 0;
-  const hostFetch = makeHostFetch((request) => {
-    const method = request.body.method;
-    if (method === 'open') return { ok: true, result: { projectId: 'demo', revision: 'a'.repeat(64) } };
-    if (method === 'inspect') return { ok: true, result: sampleInspect() };
-    if (method === 'frame') {
-      frameTimes.push(request.body.params.time);
-      frameIndex += 1;
-      return { ok: true, result: Object.assign(sampleJob('aaaaaaaa-2222-4333-8444-55555555555' + frameIndex), { revision: 'a'.repeat(64) }) };
-    }
-    if (method === 'status') return { ok: true, result: Object.assign(sampleJob('aaaaaaaa-2222-4333-8444-55555555555' + frameIndex), { revision: 'a'.repeat(64), state: 'succeeded', artifact: { name: 'frame.png' } }) };
-    return { ok: false, error: { code: 'E_METHOD', message: 'unexpected' } };
-  });
-  const editor = mountEditor(hostFetch);
-  await buttonByText(editor.tree(), '打开示例').props.onClick();
-  await settle();
-  let tree = editor.rerender();
-  const initialImage = findNode(tree, (node) => node.props && node.props.className === 'dv-frame');
-  assert(initialImage !== null, 'initial frame missing');
-
-  for (const invalid of ['-0.1', '5.01', '']) {
-    elementById(tree, 'dsh-video-frame-time').props.onChange({ target: { value: invalid } });
-    tree = editor.rerender();
-    await buttonByText(tree, '更新画面').props.onClick();
-    await settle();
-    tree = editor.rerender();
-    const alert = findNode(tree, (node) => node.props && node.props.role === 'alert');
-    assert(alert !== null && textOf(alert).includes('画面时间'), `invalid time ${JSON.stringify(invalid)} was not rejected loudly: ${alert && textOf(alert)}`);
-  }
-  assert(frameTimes.length === 1, `invalid values reached frame: ${JSON.stringify(frameTimes)}`);
-  assert(findNode(tree, (node) => node.props && node.props.className === 'dv-frame') !== null, 'old frame was discarded by an invalid time');
-
-  elementById(tree, 'dsh-video-frame-time').props.onChange({ target: { value: '4.2' } });
-  tree = editor.rerender();
-  await buttonByText(tree, '更新画面').props.onClick();
-  await settle();
-  tree = editor.rerender();
-  assert(frameTimes[frameTimes.length - 1] === 4.2, `selected time was ${frameTimes[frameTimes.length - 1]}`);
-  assert(elementById(tree, 'dsh-video-frame-time').props.value === '4.20', 'selected time was not normalized after update');
-  const image = findNode(tree, (node) => node.props && node.props.className === 'dv-frame');
-  assert(image !== null && image.props.src.includes('status') === false, 'new frame missing after valid update');
-});
-
-test('P2-005: returning to the panel restores the chosen time and frame', async () => {
-  const frameTimes = [];
-  let frameIndex = 0;
-  const hostFetch = makeHostFetch((request) => {
-    const method = request.body.method;
-    if (method === 'open') return { ok: true, result: { projectId: 'demo', revision: 'a'.repeat(64) } };
-    if (method === 'inspect') return { ok: true, result: sampleInspect() };
-    if (method === 'frame') {
-      frameTimes.push(request.body.params.time);
-      frameIndex += 1;
-      return { ok: true, result: Object.assign(sampleJob('bbbbbbbb-2222-4333-8444-55555555555' + frameIndex), { revision: 'a'.repeat(64) }) };
-    }
-    if (method === 'status') return { ok: true, result: Object.assign(sampleJob('bbbbbbbb-2222-4333-8444-55555555555' + frameIndex), { revision: 'a'.repeat(64), state: 'succeeded', artifact: { name: 'frame.png' } }) };
-    return { ok: false, error: { code: 'E_METHOD', message: 'unexpected' } };
-  });
-  const editor = mountEditor(hostFetch);
-  await buttonByText(editor.tree(), '打开示例').props.onClick();
-  await settle();
-  let tree = editor.rerender();
-  elementById(tree, 'dsh-video-frame-time').props.onChange({ target: { value: '4.0' } });
-  tree = editor.rerender();
-  await buttonByText(tree, '更新画面').props.onClick();
-  await settle();
-  tree = editor.rerender();
-  const imageBefore = findNode(tree, (node) => node.props && node.props.className === 'dv-frame');
-  assert(imageBefore !== null, 'frame missing before remount');
-  const callsBefore = hostFetch.calls.filter((call) => call.body.method !== 'project.list').length;
-  const remounted = mountInteractivePanel(editor.loaded, editor.env);
-  const remountedTree = remounted.render();
-  const input = elementById(remountedTree, 'dsh-video-frame-time');
-  assert(input !== null && input.props.value === '4.00', `restored time was ${input && input.props.value}`);
-  const imageAfter = findNode(remountedTree, (node) => node.props && node.props.className === 'dv-frame');
-  assert(imageAfter !== null && imageAfter.props.src === imageBefore.props.src, 'restored frame changed');
-  assert(hostFetch.calls.filter((call) => call.body.method !== 'project.list').length === callsBefore, 'remount issued a new frame request');
-});
-test('P2-002-B: save edits with expectedRevision/operationId and refresh from the new inspect', async () => {
-  const revisionA = 'a'.repeat(64);
-  const revisionB = 'b'.repeat(64);
-  let editedTitle = '让创意成为影像';
-  let inspectRevision = revisionA;
-  let frameIndex = 0;
-  const hostFetch = makeHostFetch((request) => {
-    const method = request.body.method;
-    if (method === 'open') return { ok: true, result: { projectId: 'demo', revision: revisionA } };
-    if (method === 'inspect') return { ok: true, result: sampleInspect({ revision: inspectRevision, elements: [{ stableId: 'hf-eyebrow', text: 'DSH VIDEO / ENGINE STUDY', capabilities: ['text'] }, { stableId: 'hf-title', text: editedTitle, timing: { start: 0, duration: 5 }, capabilities: ['text', 'timing'] }] }) };
-    if (method === 'edit') {
-      if (request.body.params.expectedRevision !== revisionA) return { ok: false, error: { code: 'E_REVISION_CONFLICT', message: 'Project changed' } };
-      editedTitle = request.body.params.ops[0].text;
-      inspectRevision = revisionB;
-      return { ok: true, result: { projectId: 'demo', revision: revisionB, operationId: request.body.params.operationId } };
-    }
-    if (method === 'frame') {
-      frameIndex += 1;
-      return { ok: true, result: Object.assign(sampleJob('22222222-2222-4333-8444-55555555555' + frameIndex), { revision: inspectRevision, kind: 'frame' }) };
-    }
-    if (method === 'status') return { ok: true, result: Object.assign(sampleJob('22222222-2222-4333-8444-55555555555' + frameIndex), { revision: inspectRevision, kind: 'frame', state: 'succeeded', artifact: { name: 'frame.png' } }) };
-    return { ok: false, error: { code: 'E_METHOD', message: 'unexpected' } };
-  });
-  const editor = mountEditor(hostFetch);
-  await buttonByText(editor.tree(), '打开示例').props.onClick();
-  await settle();
-  let tree = editor.rerender();
-  const input = elementById(tree, 'dsh-video-title');
-  input.props.onChange({ target: { value: '新标题' } });
-  tree = editor.rerender();
-  elementById(tree, 'dsh-video-start').props.onChange({ target: { value: '1.00' } });
-  tree = editor.rerender();
-  elementById(tree, 'dsh-video-duration').props.onChange({ target: { value: '4.00' } });
-  tree = editor.rerender();
-  await buttonByText(tree, '保存修改').props.onClick();
-  await settle();
-  tree = editor.rerender();
-  assert(textOf(findNode(tree, (node) => node.props && node.props.className === 'dv-project-title')) === '新标题', 'saved title was not refreshed from inspect');
-  const editCall = hostFetch.calls.find((call) => call.body.method === 'edit');
-  assert(editCall !== undefined, 'edit was not sent');
-  assert(editCall.body.params.expectedRevision === revisionA, 'edit lost expectedRevision');
-  assert(typeof editCall.body.params.operationId === 'string' && editCall.body.params.operationId.length > 0, 'edit lost operationId');
-  assert(editCall.body.params.ops[0].type === 'text' && editCall.body.params.ops[0].target === 'hf-title', 'text edit was not bound to hf-title');
-  const timingOp = editCall.body.params.ops.find((op) => op.type === 'timing');
-  assert(timingOp !== undefined && timingOp.target === 'hf-title', 'timing edit was not bound to the same hf-title target');
-  assert(hostFetch.calls.some((call) => call.body.method === 'frame' && call.body.params.revision === revisionB), 'frame was not refreshed for the new revision');
-});
-
-test('P2-002-B: a revision conflict is shown in place and does not overwrite the title', async () => {
-  const revisionA = 'a'.repeat(64);
-  const hostFetch = makeHostFetch((request) => {
-    const method = request.body.method;
-    if (method === 'open') return { ok: true, result: { projectId: 'demo', revision: revisionA } };
-    if (method === 'inspect') return { ok: true, result: sampleInspect() };
-    if (method === 'edit') return { ok: false, error: { code: 'E_REVISION_CONFLICT', message: 'Project changed before edit' } };
-    if (method === 'frame') return { ok: true, result: sampleJob('33333333-2222-4333-8444-555555555555') };
-    if (method === 'status') return { ok: true, result: Object.assign(sampleJob('33333333-2222-4333-8444-555555555555'), { state: 'succeeded', artifact: { name: 'frame.png' } }) };
-    return { ok: false, error: { code: 'E_METHOD', message: 'unexpected' } };
-  });
-  const editor = mountEditor(hostFetch);
-  await buttonByText(editor.tree(), '打开示例').props.onClick();
-  await settle();
-  let tree = editor.rerender();
-  elementById(tree, 'dsh-video-title').props.onChange({ target: { value: '被拒绝的标题' } });
-  tree = editor.rerender();
-  await buttonByText(tree, '保存修改').props.onClick();
-  await settle();
-  tree = editor.rerender();
-  const alert = findNode(tree, (node) => node.props && node.props.role === 'alert');
-  assert(alert !== null, 'conflict was not surfaced in place');
-  assert(textOf(alert).includes('工程已更新'), `conflict text was ${textOf(alert)}`);
-  assert(textOf(findNode(tree, (node) => node.props && node.props.className === 'dv-project-title')) === '让创意成为影像', 'conflict overwrote the saved title');
-});
-
-test('P2-002-B: an update clears the old frame until the new revision frame succeeds', async () => {
-  let resolveFrame;
-  const framePromise = new Promise((resolve) => {
-    resolveFrame = resolve;
-  });
-  const jobId = '44444444-2222-4333-8444-555555555555';
-  const hostFetch = makeHostFetch(async (request) => {
-    const method = request.body.method;
-    if (method === 'open') return { ok: true, result: { projectId: 'demo', revision: 'a'.repeat(64) } };
-    if (method === 'inspect') return { ok: true, result: sampleInspect() };
-    if (method === 'frame') {
-      if (hostFetch.calls.filter((call) => call.body.method === 'frame').length > 1) return framePromise;
-      return { ok: true, result: sampleJob(jobId) };
-    }
-    if (method === 'status') return { ok: true, result: Object.assign(sampleJob(jobId), { state: 'succeeded', artifact: { name: jobId + '.png' } }) };
-    return { ok: false, error: { code: 'E_METHOD', message: 'unexpected' } };
-  });
-  const editor = mountEditor(hostFetch);
-  await buttonByText(editor.tree(), '打开示例').props.onClick();
-  await settle();
-  let tree = editor.rerender();
-  assert(findNode(tree, (node) => node.props && node.props.className === 'dv-frame') !== null, 'initial frame missing');
-  const update = buttonByText(tree, '更新画面');
-  update.props.onClick();
-  tree = editor.rerender();
-  assert(findNode(tree, (node) => node.props && node.props.className === 'dv-frame') === null, 'old frame remained while the new frame was pending');
-  resolveFrame({ ok: true, result: sampleJob(jobId) });
-  await settle();
-  tree = editor.rerender();
-  assert(findNode(tree, (node) => node.props && node.props.className === 'dv-frame') !== null, 'new frame did not appear after resolution');
-});
-
-test('P2-002-B: export starts a real job, exposes cancel and keeps the structured state', async () => {
-  const jobId = '55555555-2222-4333-8444-555555555555';
-  let cancelled = false;
-  const hostFetch = makeHostFetch((request) => {
-    const method = request.body.method;
-    if (method === 'open') return { ok: true, result: { projectId: 'demo', revision: 'a'.repeat(64) } };
-    if (method === 'inspect') return { ok: true, result: sampleInspect() };
-    if (method === 'frame') return { ok: true, result: sampleJob('66666666-2222-4333-8444-555555555555') };
-    if (method === 'status') {
-      const frame = request.body.params.jobId === '66666666-2222-4333-8444-555555555555';
-      if (frame) return { ok: true, result: Object.assign(sampleJob('66666666-2222-4333-8444-555555555555'), { state: 'succeeded', kind: 'frame', artifact: { name: 'frame.png' } }) };
-      return { ok: true, result: Object.assign(sampleJob(jobId), { state: cancelled ? 'cancelled' : 'running', kind: 'render' }) };
-    }
-    if (method === 'render') return { ok: true, result: Object.assign(sampleJob(jobId), { kind: 'render' }) };
-    if (method === 'cancel') {
-      cancelled = true;
-      return { ok: true, result: Object.assign(sampleJob(jobId), { kind: 'render', state: 'cancelling' }) };
-    }
-    return { ok: false, error: { code: 'E_METHOD', message: 'unexpected' } };
-  });
-  const editor = mountEditor(hostFetch);
-  await buttonByText(editor.tree(), '打开示例').props.onClick();
-  await settle();
-  let tree = editor.rerender();
-  buttonByText(tree, '导出 MP4').props.onClick();
-  await settle();
-  tree = editor.rerender();
-  const cancel = buttonByText(tree, '取消');
-  assert(cancel !== null, 'cancel action missing for a running export');
-  await cancel.props.onClick();
-  await settle();
-  await new Promise((resolve) => setTimeout(resolve, 850));
-  await settle();
-  assert(cancelled === true, 'cancel request was not sent');
-  tree = editor.rerender();
-  assert(textOf(tree).includes('正在取消') || textOf(tree).includes('已取消'), 'cancel state was not shown');
-  assert(findNode(tree, (node) => node.props && node.props.role === 'alert') === null, 'cancelled export was presented as an error');
-  const exportAgain = buttonByText(tree, '导出 MP4');
-  assert(exportAgain !== null && exportAgain.props.disabled === false, 'export settings/action were not preserved after cancellation');
-  const renderCall = hostFetch.calls.find((call) => call.body.method === 'render');
-  assert(renderCall !== undefined && typeof renderCall.body.params.revision === 'string', 'render did not use the current revision');
-});
-
-test('R2: cancelled render is neutral and can be retried; failed/timed_out stay localized', async () => {
-  const jobId = 'cccccccc-2222-4333-8444-555555555555';
-  let cancelled = false;
-  const hostFetch = makeHostFetch((request) => {
-    const method = request.body.method;
-    if (method === 'open') return { ok: true, result: { projectId: 'demo', revision: 'a'.repeat(64) } };
-    if (method === 'inspect') return { ok: true, result: sampleInspect() };
-    if (method === 'frame') return { ok: true, result: sampleJob('dddddddd-2222-4333-8444-555555555555') };
-    if (method === 'status') {
-      if (request.body.params.jobId === 'dddddddd-2222-4333-8444-555555555555') return { ok: true, result: Object.assign(sampleJob('dddddddd-2222-4333-8444-555555555555'), { state: 'succeeded', kind: 'frame', artifact: { name: 'frame.png' } }) };
-      return { ok: true, result: Object.assign(sampleJob(jobId), { state: cancelled ? 'cancelled' : 'running', kind: 'render' }) };
-    }
-    if (method === 'render') return { ok: true, result: Object.assign(sampleJob(jobId), { kind: 'render' }) };
-    if (method === 'cancel') { cancelled = true; return { ok: true, result: Object.assign(sampleJob(jobId), { kind: 'render', state: 'cancelling' }) }; }
-    return { ok: false, error: { code: 'E_METHOD', message: 'unexpected' } };
-  });
-  const editor = mountEditor(hostFetch);
-  await buttonByText(editor.tree(), '打开示例').props.onClick();
-  await settle();
-  let tree = editor.rerender();
-  buttonByText(tree, '导出 MP4').props.onClick();
-  await settle();
-  tree = editor.rerender();
-  await buttonByText(tree, '取消').props.onClick();
-  await settle();
-  await new Promise((resolve) => setTimeout(resolve, 850));
-  await settle();
-  tree = editor.rerender();
-  assert(findNode(tree, (node) => node.props && node.props.role === 'alert') === null, 'render cancellation produced an error alert');
-  assert(textOf(tree).includes('已取消'), 'render cancellation terminal state was not shown');
-  assert(buttonByText(tree, '导出 MP4').props.disabled === false, 'export cannot be retried after cancellation');
-
-  // A real failure is different from cancellation and must be localized.
-  for (const terminal of ['failed', 'timed_out']) {
-    const terminalJobId = terminal === 'failed' ? 'abababab-2222-4333-8444-555555555555' : 'acacacac-2222-4333-8444-555555555555';
-    const terminalFetch = makeHostFetch((request) => {
-      const method = request.body.method;
-      if (method === 'open') return { ok: true, result: { projectId: 'demo', revision: 'a'.repeat(64) } };
-      if (method === 'inspect') return { ok: true, result: sampleInspect() };
-      if (method === 'frame') return { ok: true, result: sampleJob('adadadad-2222-4333-8444-555555555555') };
-      if (method === 'status') {
-        if (request.body.params.jobId === 'adadadad-2222-4333-8444-555555555555') return { ok: true, result: Object.assign(sampleJob('adadadad-2222-4333-8444-555555555555'), { state: 'succeeded', kind: 'frame', artifact: { name: 'frame.png' } }) };
-        return { ok: true, result: Object.assign(sampleJob(terminalJobId), { state: terminal, kind: 'render', error: { code: 'E_RENDER', message: 'Job failed without publishing an artifact' } }) };
-      }
-      if (method === 'render') return { ok: true, result: Object.assign(sampleJob(terminalJobId), { kind: 'render' }) };
-      return { ok: false, error: { code: 'E_METHOD', message: 'unexpected' } };
-    });
-    const terminalEditor = mountEditor(terminalFetch);
-    await buttonByText(terminalEditor.tree(), '打开示例').props.onClick();
-    await settle();
-    let terminalTree = terminalEditor.rerender();
-    buttonByText(terminalTree, '导出 MP4').props.onClick();
-    await settle();
-    terminalTree = terminalEditor.rerender();
-    const terminalAlert = findNode(terminalTree, (node) => node.props && node.props.role === 'alert');
-    assert(terminalAlert !== null, `${terminal} render did not show an alert`);
-    const expected = terminal === 'failed' ? '导出失败' : '操作超时';
-    assert(textOf(terminalAlert).includes(expected), `${terminal} error was not localized: ${textOf(terminalAlert)}`);
-    assert(textOf(terminalAlert).includes('Job failed without publishing an artifact') === false, `${terminal} leaked English worker text`);
-  }
-});
-
-test('R2: frame cancellation keeps a neutral empty state without an error', async () => {
-  let frameIndex = 0;
-  const cancelled = new Set();
-  const hostFetch = makeHostFetch((request) => {
-    const method = request.body.method;
-    if (method === 'open') return { ok: true, result: { projectId: 'demo', revision: 'a'.repeat(64) } };
-    if (method === 'inspect') return { ok: true, result: sampleInspect() };
-    if (method === 'frame') {
-      frameIndex += 1;
-      return { ok: true, result: sampleJob('10000000-2222-4333-8444-55555555555' + frameIndex) };
-    }
-    if (method === 'status') {
-      const jobId = request.body.params.jobId;
-      if (jobId === '10000000-2222-4333-8444-555555555551') return { ok: true, result: Object.assign(sampleJob(jobId), { state: 'succeeded', artifact: { name: 'frame.png' } }) };
-      return { ok: true, result: Object.assign(sampleJob(jobId), { state: cancelled.has(jobId) ? 'cancelled' : 'running' }) };
-    }
-    if (method === 'cancel') { cancelled.add(request.body.params.jobId); return { ok: true, result: Object.assign(sampleJob(request.body.params.jobId), { state: 'cancelling' }) }; }
-    return { ok: false, error: { code: 'E_METHOD', message: 'unexpected' } };
-  });
-  const editor = mountEditor(hostFetch);
-  await buttonByText(editor.tree(), '打开示例').props.onClick();
-  await settle();
-  let tree = editor.rerender();
-  assert(findNode(tree, (node) => node.props && node.props.className === 'dv-frame') !== null, 'initial frame missing');
-  await buttonByText(tree, '更新画面').props.onClick();
-  await settle();
-  tree = editor.rerender();
-  await buttonByText(tree, '取消').props.onClick();
-  await settle();
-  await new Promise((resolve) => setTimeout(resolve, 850));
-  await settle();
-  tree = editor.rerender();
-  assert(findNode(tree, (node) => node.props && node.props.role === 'alert') === null, 'frame cancellation produced an error alert');
-  assert(findNode(tree, (node) => node.props && node.props.className === 'dv-frame') === null, 'frame cancellation should show the explicit empty state');
-  assert(textOf(tree).includes('已取消'), 'frame cancellation state was not shown');
-});
-
-test('R3: local timing validation rejects 4/5 without an edit request and accepts 0/5 and 2/3', async () => {
-  async function scenario(start, duration) {
-    const hostFetch = makeHostFetch((request) => {
-      const method = request.body.method;
-      if (method === 'open') return { ok: true, result: { projectId: 'demo', revision: 'a'.repeat(64) } };
-      if (method === 'inspect') return { ok: true, result: sampleInspect() };
-      if (method === 'edit') return { ok: true, result: { projectId: 'demo', revision: 'b'.repeat(64), operationId: request.body.params.operationId } };
-      if (method === 'frame') return { ok: true, result: sampleJob('20000000-2222-4333-8444-555555555555') };
-      if (method === 'status') return { ok: true, result: Object.assign(sampleJob('20000000-2222-4333-8444-555555555555'), { state: 'succeeded', artifact: { name: 'frame.png' } }) };
-      return { ok: false, error: { code: 'E_METHOD', message: 'unexpected' } };
-    });
-    const editor = mountEditor(hostFetch);
-    await buttonByText(editor.tree(), '打开示例').props.onClick();
-    await settle();
-    let tree = editor.rerender();
-    elementById(tree, 'dsh-video-title').props.onChange({ target: { value: '测试标题' } });
-    tree = editor.rerender();
-    elementById(tree, 'dsh-video-start').props.onChange({ target: { value: String(start) } });
-    tree = editor.rerender();
-    elementById(tree, 'dsh-video-duration').props.onChange({ target: { value: String(duration) } });
-    tree = editor.rerender();
-    await buttonByText(tree, '保存修改').props.onClick();
-    await settle();
-    tree = editor.rerender();
-    const editCalls = hostFetch.calls.filter((call) => call.body.method === 'edit');
-    return { tree, editCalls };
-  }
-
-  const rejected = await scenario(4, 5);
-  assert(rejected.editCalls.length === 0, 'local timing rejection still sent edit');
-  const rangeAlert = findNode(rejected.tree, (node) => node.props && node.props.role === 'alert');
-  assert(rangeAlert !== null && textOf(rangeAlert).includes('工程时长'), 'local timing rejection is not localized');
-  assert(textOf(rangeAlert).includes('Timing extends beyond composition') === false, 'local timing rejection leaked English');
-
-  const edge = await scenario(0, 5);
-  assert(edge.editCalls.length === 1, '0/5 edge timing was rejected locally');
-  assert(findNode(edge.tree, (node) => node.props && node.props.role === 'alert' && textOf(node).includes('工程时长')) === null, '0/5 edge produced a range error');
-
-  const valid = await scenario(2, 3);
-  assert(valid.editCalls.length === 1, '2/3 valid timing did not send edit');
-  assert(findNode(valid.tree, (node) => node.props && node.props.role === 'alert' && textOf(node).includes('工程时长')) === null, '2/3 valid timing produced a range error');
-});
-
-test('R3: worker timing rejection is mapped to the same localized message', async () => {
-  const hostFetch = makeHostFetch((request) => {
-    const method = request.body.method;
-    if (method === 'open') return { ok: true, result: { projectId: 'demo', revision: 'a'.repeat(64) } };
-    if (method === 'inspect') return { ok: true, result: sampleInspect() };
-    if (method === 'edit') return { ok: false, error: { code: 'E_PARAMS', message: 'Timing extends beyond composition' } };
-    if (method === 'frame') return { ok: true, result: sampleJob('30000000-2222-4333-8444-555555555555') };
-    if (method === 'status') return { ok: true, result: Object.assign(sampleJob('30000000-2222-4333-8444-555555555555'), { state: 'succeeded', artifact: { name: 'frame.png' } }) };
-    return { ok: false, error: { code: 'E_METHOD', message: 'unexpected' } };
-  });
-  const editor = mountEditor(hostFetch);
-  await buttonByText(editor.tree(), '打开示例').props.onClick();
-  await settle();
-  let tree = editor.rerender();
-  elementById(tree, 'dsh-video-title').props.onChange({ target: { value: '测试标题' } });
-  tree = editor.rerender();
-  await buttonByText(tree, '保存修改').props.onClick();
-  await settle();
-  tree = editor.rerender();
-  const alert = findNode(tree, (node) => node.props && node.props.role === 'alert');
-  assert(alert !== null && textOf(alert).includes('工程时长'), 'worker timing rejection was not mapped to localized text');
-  assert(textOf(alert).includes('Timing extends beyond composition') === false, 'worker timing rejection leaked English');
-});
-
-test('P2-002-B: returning to the panel restores the visible project without a second open request', async () => {
-  const hostFetch = makeHostFetch((request) => {
-    const method = request.body.method;
-    if (method === 'open') return { ok: true, result: { projectId: 'demo', revision: 'a'.repeat(64) } };
-    if (method === 'inspect') return { ok: true, result: sampleInspect() };
-    if (method === 'frame') return { ok: true, result: sampleJob('77777777-2222-4333-8444-555555555555') };
-    if (method === 'status') return { ok: true, result: Object.assign(sampleJob('77777777-2222-4333-8444-555555555555'), { state: 'succeeded', artifact: { name: 'frame.png' } }) };
-    return { ok: false, error: { code: 'E_METHOD', message: 'unexpected' } };
-  });
-  const editor = mountEditor(hostFetch);
-  await buttonByText(editor.tree(), '打开示例').props.onClick();
+  const projectCreates = hostFetch.calls.filter((call) => call.body.method === 'project.create');
+  const sessionCreates = hostFetch.calls.filter((call) => call.body.method === 'session.create');
+  assert(projectCreates.length === 1, `first open issued ${projectCreates.length} project.create requests`);
+  assert(hostFetch.config.projectCreated === true, 'project.create was not called for a first-time user');
+  assert(sessionCreates.length === 1 && hostFetch.config.createCalls === 1, `first open issued ${sessionCreates.length} session.create requests`);
+  assert(typeof sessionCreates[0].body.params.requestId === 'string' && sessionCreates[0].body.params.requestId.length > 0, 'session.create lost its dedupe requestId');
+  const root = panelRoot(tree);
+  assert(root !== null && root.props['data-boot'] === 'ready', `boot state is ${root && root.props['data-boot']}`);
+  assert(root.props['data-project-id'] === 'proj-smoke', `the provisioned project is not adopted: ${root.props['data-project-id']}`);
+  assert(root.props['data-session-active'] === 'session-first', `the created Session is not active: ${root.props['data-session-active']}`);
+  assert(productCanvas(tree) !== null, 'the read-only canvas did not mount for the provisioned project');
+  assert(findNode(tree, (node) => node.props && node.props['data-canvas-revision'] === 'c'.repeat(64)) !== null, 'the first preview revision is not rendered');
+  assert(hostFetch.config.snapshotRequests && hostFetch.config.snapshotRequests.length >= 1, 'no preview snapshot was requested');
+  // Re-renders (a double effect) must not provision a second project/Session pair.
+  editor.rerender();
   await settle();
   editor.rerender();
-  const requestCount = hostFetch.calls.filter((call) => call.body.method !== 'project.list').length;
-  const remounted = mountInteractivePanel(editor.loaded, editor.env);
-  const tree = remounted.render();
-  assert(textOf(findNode(tree, (node) => node.props && node.props.className === 'dv-project-title')) === '让创意成为影像', 'remount lost the visible project');
-  assert(hostFetch.calls.filter((call) => call.body.method !== 'project.list').length === requestCount, 'remount issued a new business request instead of restoring the view');
+  assert(hostFetch.calls.filter((call) => call.body.method === 'project.create').length === 1, 'a re-render provisioned a second project');
+  assert(hostFetch.calls.filter((call) => call.body.method === 'session.create').length === 1, 'a re-render created a second Session');
 });
 
-test('P2-002-B: configuration errors are shown without breaking the shell', async () => {
-  const hostFetch = makeHostFetch((request) => {
-    if (request.body.method === 'open') return { ok: false, error: { code: 'E_CONFIGURATION', message: 'Host bridge configuration is missing' } };
-    return { ok: false, error: { code: 'E_METHOD', message: 'unexpected' } };
-  });
-  const editor = mountEditor(hostFetch);
-  await buttonByText(editor.tree(), '打开示例').props.onClick();
-  await settle();
-  const tree = editor.rerender();
-  const alert = findNode(tree, (node) => node.props && node.props.role === 'alert');
-  assert(alert !== null, 'configuration error was not surfaced');
-  assert(textOf(alert).includes('视频服务尚未配置'), `configuration error text was ${textOf(alert)}`);
-  assert(buttonByText(tree, '打开示例') !== null, 'shell no longer offers the explicit action after a configuration error');
+test('P3-012: project.list auto-opens the most recent managed project and ignores demo', async () => {
+  const sessions = makeSessionsService({ list: ['session-ready'] });
+  const hostFetch = sessionFetch({ activeSessionId: 'session-ready', sessions: ['session-ready'] });
+  hostFetch.config.handler = async (request) => {
+    if (request.body.method === 'project.list') {
+      return {
+        ok: true,
+        result: {
+          projects: [
+            { projectId: 'demo', updatedAt: 90 },
+            { projectId: 'proj-older', updatedAt: 10 },
+            { projectId: 'proj-recent', updatedAt: 20 },
+          ],
+          defaultProjectId: 'proj-recent',
+        },
+      };
+    }
+    return undefined;
+  };
+  const kit = makeSessionKit();
+  const editor = await mountBootedPanel(hostFetch, { sessions: sessions, kit: kit });
+  const tree = editor.tree();
+  assert(hostFetch.config.openedProject === 'proj-recent', `auto-opened "${hostFetch.config.openedProject}" instead of the most recent managed project`);
+  const root = panelRoot(tree);
+  assert(root.props['data-project-id'] === 'proj-recent', 'the product panel did not adopt the auto-opened project');
+  assert(productCanvas(tree) !== null, 'the left read-only canvas did not mount');
+  const frame = previewFrame(tree);
+  assert(frame !== null, 'the snapshot iframe is missing');
+  assert(typeof frame.props.src === 'string' && frame.props.src.startsWith('/api/dsh-video/preview/') && frame.props.src.includes('instance='), 'the iframe is not bound to the preview route');
+  assert(frame.props.sandbox === 'allow-scripts', 'the snapshot iframe is not sandboxed to scripts only');
+  assert(hostFetch.config.snapshotRequests[0].projectId === 'proj-recent', `snapshot requested for ${hostFetch.config.snapshotRequests[0].projectId}`);
+  assert(hostFetch.config.snapshotRequests[0].revision === 'c'.repeat(64), 'the snapshot was not requested for the inspected revision');
+  const sessionLists = hostFetch.calls.filter((call) => call.body.method === 'session.list');
+  assert(sessionLists.length >= 1, 'the bound Session list was not loaded');
+  assert(sessionLists.every((call) => call.body.params.projectId === 'proj-recent'), 'the Session list was loaded for a different project');
+  // The demo entry never reaches the switcher.
+  const optionValues = findAll(tree, (node) => node.type === 'option').map((node) => node.props.value);
+  assert(optionValues.includes('demo') === false, 'the demo project is still offered in the product switcher');
 });
+
+test('P3-012: a changed Host revision updates the preview without a user action', async () => {
+  const revisionA = 'c'.repeat(64);
+  const revisionB = 'e'.repeat(64);
+  let currentRevision = revisionA;
+  const sessions = makeSessionsService({ list: ['session-live'] });
+  const hostFetch = sessionFetch({ activeSessionId: 'session-live', sessions: ['session-live'] });
+  hostFetch.config.handler = async (request) => {
+    if (request.body.method === 'inspect') return { ok: true, result: inspectWithRevision(currentRevision) };
+    return undefined;
+  };
+  const kit = makeSessionKit();
+  const editor = await mountBootedPanel(hostFetch, { sessions: sessions, kit: kit });
+  assert(findNode(editor.tree(), (node) => node.props && node.props['data-canvas-revision'] === revisionA) !== null, 'the initial revision marker is missing');
+  const snapshotsBefore = hostFetch.config.snapshotRequests.length;
+  const inspectsBefore = hostFetch.calls.filter((call) => call.body.method === 'inspect').length;
+  // The Agent published through project.compose: the worker revision changed.
+  currentRevision = revisionB;
+  await new Promise((resolve) => setTimeout(resolve, 1700));
+  await settle();
+  editor.rerender();
+  await settle();
+  editor.rerender();
+  assert(hostFetch.calls.filter((call) => call.body.method === 'inspect').length > inspectsBefore, 'the preview did not poll inspect');
+  assert(hostFetch.config.snapshotRequests.length > snapshotsBefore, 'no new preview snapshot was requested after the revision changed');
+  assert(hostFetch.config.snapshotRequests.some((request) => request.revision === revisionB), `the published revision ${revisionB.slice(0, 4)} was never requested`);
+  const tree = editor.tree();
+  assert(findNode(tree, (node) => node.props && node.props['data-canvas-revision'] === revisionB) !== null, 'the canvas revision marker did not update automatically');
+  assert(panelRoot(tree).props['data-project-id'] === 'proj-smoke', 'revision follow replaced the current project');
+});
+
+test('P3-012: a preview snapshot failure is recoverable and never the legacy frame copy', async () => {
+  let snapshotFails = true;
+  const sessions = makeSessionsService({ list: ['session-err'] });
+  const hostFetch = sessionFetch({ activeSessionId: 'session-err', sessions: ['session-err'] });
+  hostFetch.config.handler = async (request) => {
+    if (request.body.method === 'preview.snapshot' && snapshotFails) {
+      return { ok: false, error: { code: 'E_PERSIST', message: 'snapshot copy failed' } };
+    }
+    return undefined;
+  };
+  const kit = makeSessionKit();
+  const editor = await mountBootedPanel(hostFetch, { sessions: sessions, kit: kit });
+  let tree = editor.tree();
+  assert(productCanvas(tree) !== null, 'the preview canvas disappeared after a snapshot failure');
+  const failure = findNode(tree, (node) => node.props && node.props.role === 'alert');
+  assert(failure !== null, 'the recoverable preview failure is not shown');
+  assert(textOf(failure).includes(translateFor(editor.env)('video.canvas.persistFailed')), `failure copy is not localized: ${textOf(failure)}`);
+  const retry = findNode(tree, (node) => node.type === 'button' && textOf(node) === translateFor(editor.env)('video.canvas.retry'));
+  assert(retry !== null, 'the preview retry button is missing');
+  assert(textOf(tree).includes(translateFor(editor.env)('video.frame.empty')) === false, 'the removed legacy no-frame copy is still rendered');
+  snapshotFails = false;
+  retry.props.onClick();
+  await settle();
+  editor.rerender();
+  await settle();
+  editor.rerender();
+  tree = editor.tree();
+  assert(previewFrame(tree) !== null, 'the retry did not recover the preview');
+  assert(findNode(tree, (node) => node.props && node.props['data-canvas-phase'] === 'ready') !== null, 'the recovered preview did not reach the ready phase');
+});
+
+test('P3-012: the rendered product workspace has no manual editing controls', async () => {
+  const sessions = makeSessionsService({ list: ['session-clean'], titles: { 'session-clean': '工程 · 干净' } });
+  const hostFetch = sessionFetch({ activeSessionId: 'session-clean', sessions: ['session-clean'] });
+  const kit = makeSessionKit();
+  const editor = await mountBootedPanel(hostFetch, { sessions: sessions, kit: kit });
+  const tree = editor.tree();
+  const shell = productCanvas(tree);
+  assert(shell !== null, 'the read-only preview is missing');
+  assert(shell.props['data-preview-only'] === 'true', 'the product canvas is not in preview-only mode');
+  assert(shell.props['data-canvas-revision'] === 'c'.repeat(64), 'the canvas is not bound to the inspected revision');
+  assert(findNode(tree, (node) => node.props && node.props['data-canvas-phase'] !== undefined) !== null, 'the canvas phase marker is missing');
+  assert(buttonByText(tree, translateFor(editor.env)('video.canvas.play')) !== null, 'the play control is missing');
+  assert(findNode(tree, (node) => node.type === 'input' && node.props && node.props.className === 'dv-seek') !== null, 'the seek control is missing');
+  const classes = panelClasses(tree);
+  for (const forbidden of ['dv-editor', 'dv-stagebar', 'dv-overlay', 'dv-selection', 'dv-inline-editor', 'dv-drawer', 'dv-canvas-tools', 'dv-editor-actions', 'dv-export-link']) {
+    assert(classes.some((value) => value.split(/\s+/).includes(forbidden)) === false, `removed manual surface "${forbidden}" is still rendered`);
+  }
+  const ids = panelIds(tree);
+  for (const removedId of ['dsh-video-target', 'dsh-video-title', 'dsh-video-frame-time']) {
+    assert(ids.includes(removedId) === false, `removed manual control #${removedId} is still rendered`);
+  }
+  const renderedText = textOf(tree);
+  for (const key of ['video.canvas.undo', 'video.canvas.redo', 'video.canvas.materials', 'video.canvas.addScene', 'video.canvas.export', 'video.canvas.exporting', 'video.canvas.download', 'video.canvas.sceneColor', 'video.canvas.textStyle', 'video.open', 'video.update', 'video.save', 'video.export', 'video.frame.empty', 'video.frameTime', 'video.details', 'video.target']) {
+    const label = translateFor(editor.env)(key);
+    assert(label !== key, `removed dictionary key ${key} was dropped (keep old keys for compatibility)`);
+    assert(renderedText.includes(label) === false, `removed manual-editing copy "${label}" is still rendered`);
+  }
+  // The native conversation panel and its history action stay.
+  assert(findNode(tree, (node) => node.props && node.props.className === 'dv-ai') !== null, 'the native conversation panel is missing');
+  assert(findNode(tree, (node) => node.props && node.props['data-factory'] === 'conversation.content') !== null, 'the native conversation Factory is missing');
+  assert(findNode(tree, (node) => node.props && typeof node.props.className === 'string' && node.props.className.includes('dv-history-toggle')) !== null, 'the conversation history action is missing');
+});
+
+test('P3-012: returning to the panel reopens the remembered managed project', async () => {
+  const sessions = makeSessionsService({ list: ['session-a'] });
+  const hostFetch = sessionFetch({ activeSessionId: 'session-a', sessions: ['session-a'] });
+  hostFetch.config.handler = async (request) => {
+    if (request.body.method === 'project.list') {
+      return {
+        ok: true,
+        result: {
+          projects: [
+            { projectId: 'proj-a', updatedAt: 10 },
+            { projectId: 'proj-b', updatedAt: 20 },
+          ],
+          defaultProjectId: 'proj-b',
+        },
+      };
+    }
+    if (request.body.method === 'open') {
+      hostFetch.config.openedProjects = (hostFetch.config.openedProjects || []).concat([request.body.params.projectId]);
+      return undefined;
+    }
+    if (request.body.method === 'inspect') return { ok: true, result: managedInspected() };
+    return undefined;
+  };
+  const kit = makeSessionKit();
+  const first = await mountBootedPanel(hostFetch, { sessions: sessions, kit: kit });
+  assert(panelRoot(first.tree()).props['data-project-id'] === 'proj-b', 'the first boot did not open the most recent project');
+  const select = findNode(first.tree(), (node) => node.type === 'select' && node.props && node.props['aria-label'] === translateFor(first.env)('video.project.open'));
+  assert(select !== null, 'the project switcher is missing');
+  select.props.onChange({ target: { value: 'proj-a' } });
+  await settlePanel(first);
+  assert(panelRoot(first.tree()).props['data-project-id'] === 'proj-a', 'the switcher did not open the chosen project');
+  const remounted = remountInteractivePanel(first, kit);
+  let tree = remounted.render();
+  for (let round = 0; round < 12; round += 1) {
+    await settle();
+    tree = remounted.rerender();
+  }
+  const opened = (hostFetch.config.openedProjects || []).slice();
+  assert(opened.length >= 3, `expected three open requests (first, switch, remount), got ${opened.length}`);
+  assert(opened[opened.length - 1] === 'proj-a', `the remount reopened "${opened[opened.length - 1]}" instead of the remembered project`);
+  assert(panelRoot(tree).props['data-project-id'] === 'proj-a', 'the remounted panel lost the remembered project');
+  assert(findNode(tree, (node) => node.props && node.props['data-session-active'] === 'session-a') !== null, 'the remembered Session was not restored');
+  remounted.unmount();
+});
+//#endregion
+
 test('P3-006-A: embedded native conversation uses videoView, hero:false and the Chat view', async () => {
   const sessions = makeSessionsService({
     list: ['session-aaa'],
@@ -2140,29 +1870,25 @@ test('P3-006-A: unmounting the panel releases the owned reference (reverse navig
   assert(sessions.released.includes('session-leave'), 'release was not owned by the panel lifecycle');
 });
 
-test('P3-006-A: the create action is single-flight and adopts the returned Session id', async () => {
+test('P3-012: an opened project without a Session auto-creates exactly one and adopts it', async () => {
   const sessions = makeSessionsService({ list: [] });
   const hostFetch = sessionFetch({ activeSessionId: null, sessions: [], newSessionId: 'session-created' });
   const kit = makeSessionKit();
-  const editor = mountSessionEditor(hostFetch, { sessions, kit });
-  await settle();
-  editor.rerender();
-  await settle();
-  const tree = editor.rerender();
-  const createLabel = translateFor(editor.env)('video.ai.create');
-  const createButton = buttonByText(tree, createLabel);
-  assert(createButton !== null, 'the real create action is missing');
-  createButton.props.onClick();
-  createButton.props.onClick();
-  await settle();
-  editor.rerender();
-  await settle();
-  const after = editor.rerender();
-  assert(hostFetch.config.createCalls === 1, `create was issued ${hostFetch.config.createCalls} times`);
-  assert(sessions.retained.length > 0 && sessions.retained[sessions.retained.length - 1].id === 'session-created', 'the returned id was not adopted');
+  const editor = await mountBootedPanel(hostFetch, { sessions: sessions, kit: kit });
+  const tree = editor.tree();
+  const creates = hostFetch.calls.filter((call) => call.body.method === 'session.create');
+  assert(creates.length === 1, `the opened project issued ${creates.length} session.create requests`);
+  assert(hostFetch.config.createCalls === 1, `session.create ran ${hostFetch.config.createCalls} times`);
+  assert(typeof creates[0].body.params.requestId === 'string' && creates[0].body.params.requestId.length > 0, 'session.create lost its dedupe requestId');
+  assert(findNode(tree, (node) => node.props && node.props['data-session-active'] === 'session-created') !== null, 'the auto-created Session is not active');
   const provider = kit.calls.filter((call) => call.type === 'session-provider').pop();
-  assert(provider !== undefined && provider.session.sessionId === 'session-created', 'the returned Session was not bound');
-  assert(textOf(findNode(after, (node) => node.props && node.props.className === 'dv-ai-session')) === 'session-created', 'the returned id is not visible in the AI header');
+  assert(provider !== undefined && provider.session.sessionId === 'session-created', 'the native conversation provider did not receive the created Session');
+  assert(textOf(findNode(tree, (node) => node.props && node.props.className === 'dv-ai-session')) === 'session-created', 'the created Session is not visible in the conversation header');
+  // A re-render cannot create a second Session for the same project.
+  editor.rerender();
+  await settle();
+  editor.rerender();
+  assert(hostFetch.calls.filter((call) => call.body.method === 'session.create').length === 1, 'a re-render created a second Session');
 });
 
 test('P3-006-A: history lists mapped Sessions and a superseded switch cannot win', async () => {
@@ -2198,8 +1924,9 @@ test('P3-006-A: history lists mapped Sessions and a superseded switch cannot win
   assert(provider !== undefined && provider.session.sessionId === 'session-ccc', `superseded switch won: ${provider && provider.session.sessionId}`);
   assert(textOf(findNode(finalTree, (node) => node.props && node.props.className === 'dv-ai-session')) === '工程 · 三', 'the latest Session title is not visible');
   assert(hostFetch.config.selectCalls.includes('session-bbb') && hostFetch.config.selectCalls.includes('session-ccc'), 'both switches were not attempted');
-  const businessCalls = hostFetch.calls.filter((call) => !call.body.method.startsWith('session.') && call.body.method !== 'project.list');
-  assert(businessCalls.length === 0, 'switching Sessions issued a project business request');
+  const projectWrites = hostFetch.calls.filter((call) => ['open', 'project.create', 'edit', 'scene.update', 'scene.create', 'scene.remove', 'frame', 'render'].includes(call.body.method));
+  assert(projectWrites.length === 1, `the only project request must be the initial auto-open, got ${projectWrites.map((call) => call.body.method).join(',')}`);
+  assert(projectWrites[0].body.method === 'open', 'switching Sessions issued a project business request');
 });
 
 
@@ -2254,7 +1981,7 @@ test('P3-006-C: a presented image card opens the local preview without the host 
   assert(prevented === 1 && stopped === 1, 'the native file opener was not intercepted');
   assert(hostFetch.config.previewCalls.length === 1, 'the preview request was not issued exactly once');
   const call = hostFetch.config.previewCalls[0];
-  assert(call.projectId === 'demo' && call.sessionId === 'session-preview' && call.path === '/tmp/output/frame.png', `unexpected preview params: ${JSON.stringify(call)}`);
+  assert(call.projectId === 'proj-smoke' && call.sessionId === 'session-preview' && call.path === '/tmp/output/frame.png', `unexpected preview params: ${JSON.stringify(call)}`);
   assert(findNode(tree, (node) => node.props && node.props.className === 'dv-left') !== null, 'opening a preview replaced the left project surface');
   const close = findNode(tree, (node) => node.props && node.props.className === 'dv-preview-close');
   assert(close !== null, 'preview close control missing');
@@ -2340,35 +2067,26 @@ function closePreviewTree(tree) {
 
 
 
-test('P3-008: new project creates a managed canvas and asks the worker for a snapshot', async () => {
-  const sessions = makeSessionsService({ list: [] });
-  const hostFetch = sessionFetch({ activeSessionId: null, sessions: [], newSessionId: 'session-canvas-smoke' });
+test('P3-008 -> P3-012: the product mounts the snapshot canvas read-only; manual controls are hidden', async () => {
+  const sessions = makeSessionsService({ list: ['session-canvas'] });
+  const hostFetch = sessionFetch({ activeSessionId: 'session-canvas', sessions: ['session-canvas'] });
   const kit = makeSessionKit();
-  const editor = mountSessionEditor(hostFetch, { sessions, kit });
-  await settle();
-  editor.rerender();
-  await settle();
-  const tree = editor.rerender();
-  const create = buttonByText(tree, translateFor(editor.env)('video.project.new'));
-  assert(create !== null, 'new managed-project action missing from the empty state');
-  create.props.onClick();
-  await settle();
-  await settle();
-  editor.rerender();
-  await settle();
-  const after = editor.rerender();
-  assert(hostFetch.config.projectCreated === true, 'project.create was not called');
-  assert(hostFetch.config.snapshotRequests && hostFetch.config.snapshotRequests.length >= 1, 'worker snapshot was not requested for the canvas');
-  assert(hostFetch.config.snapshotRequests[0].projectId === 'proj-smoke', `snapshot project was ${hostFetch.config.snapshotRequests[0].projectId}`);
-  const shell = findNode(after, (node) => node.props && node.props.className === 'dv-canvas-shell');
-  assert(shell !== null, 'managed canvas shell was not rendered');
-  const frame = findNode(after, (node) => node.props && node.props.className === 'dv-stage-frame');
+  const editor = await mountBootedPanel(hostFetch, { sessions, kit });
+  const after = editor.tree();
+  const shell = productCanvas(after);
+  assert(shell !== null, 'snapshot canvas shell was not rendered');
+  assert(shell.props['data-preview-only'] === 'true', 'the product canvas is not read-only');
+  const frame = previewFrame(after);
   assert(frame !== null && frame.props.sandbox === 'allow-scripts', 'sandboxed snapshot iframe missing');
   assert(typeof frame.props.src === 'string' && frame.props.src.startsWith('/api/dsh-video/preview/') && frame.props.src.includes('instance='), 'snapshot iframe src is not the bound preview route');
   assert(findNode(after, (node) => node.props && node.props['data-canvas-revision'] === 'c'.repeat(64)) !== null, 'canvas revision marker missing');
   assert(buttonByText(after, translateFor(editor.env)('video.canvas.play')) !== null, 'playback control missing');
-  assert(buttonByText(after, translateFor(editor.env)('video.canvas.materials')) !== null, 'material drawer action missing');
-  assert(hostFetch.config.createCalls === 1, 'creating the managed project did not create exactly one bound Session');
+  assert(buttonByText(after, translateFor(editor.env)('video.canvas.materials')) === null, 'the manual materials drawer is still offered in the product UI');
+  assert(buttonByText(after, translateFor(editor.env)('video.canvas.addScene')) === null, 'the manual add-Scene action is still offered');
+  assert(buttonByText(after, translateFor(editor.env)('video.canvas.export')) === null, 'the manual export action is still offered');
+  assert(hostFetch.config.snapshotRequests && hostFetch.config.snapshotRequests.length >= 1, 'worker snapshot was not requested for the canvas');
+  assert(hostFetch.config.createCalls === undefined || hostFetch.config.createCalls === 1, 'the auto-provisioned Session count is wrong');
+  editor.interactive.unmount();
 });
 
 //#region tests: R1/R2/R5/R6 canvas contracts
@@ -2408,6 +2126,29 @@ const CANVAS = (function loadCanvasHelpers() {
   const exportExpression = ';({' + CANVAS_HELPER_NAMES.map((name) => name + ': ' + name).join(', ') + '})';
   return vm.runInContext(source + exportExpression, vm.createContext({}), { filename: 'client.js#host-bridge-helpers' });
 })();
+
+/**
+ * P3-012: the product workspace only mounts CanvasWorkspace read-only
+ * (`previewOnly: true`). The reviewed P3-008 manual path stays reachable through
+ * the default previewOnly=false, so the component tests mount the exact shipped
+ * component source extracted from the two reviewed client regions — the same
+ * region-extraction contract the P3-008 browser harness uses.
+ */
+function extractCanvasModule(loaded) {
+  const helpers = extractClientRegion('host bridge helpers');
+  const canvas = extractClientRegion('P3-008 canvas workspace');
+  assert(canvas.includes('function CanvasWorkspace('), 'P3-008 canvas region has no CanvasWorkspace');
+  assert(helpers.includes('async function hostRequest('), 'host bridge helpers region has no hostRequest');
+  assert(canvas.includes('const previewOnly = props.previewOnly === true'), 'the canvas region lost its previewOnly flag');
+  const body =
+    '"use strict";\n' +
+    helpers +
+    '\n' +
+    canvas +
+    '\nreturn { CanvasWorkspace: CanvasWorkspace, hostRequest: hostRequest, formatSeconds: formatSeconds, errorText: errorText, hostError: hostError, operationId: operationId };\n';
+  const factory = vm.runInContext('(function (React, h) {\n' + body + '\n})', loaded.context, { filename: 'client.js#canvas-component' });
+  return factory(loaded.react, loaded.react.createElement);
+}
 
 const CANVAS_TEST_INSTANCE = 'dvcanvas-smoketest';
 const CANVAS_TEST_NONCE = '0123456789abcdef0123456789abcdef';
@@ -2780,25 +2521,53 @@ function canvasMethodCalls(hostFetch, method) {
   return hostFetch.calls.filter((call) => call.body && call.body.method === method);
 }
 
+/**
+ * Mount the shipped CanvasWorkspace directly with `previewOnly: false` (the
+ * reviewed default) so the hidden manual-edit path keeps its component-level
+ * regression coverage even though the product workspace only renders it
+ * read-only. This mirrors the P3-008 browser harness, which also mounts this
+ * component from the extracted reviewed regions.
+ */
 async function mountCanvasReady(options) {
   const settings = options || {};
-  const editor = mountSessionEditor(settings.fetch, {
-    sessions: makeSessionsService({ list: [] }),
-    kit: makeSessionKit(),
-    stageSize: settings.stageSize,
-  });
-  const create = buttonByText(editor.tree(), translateFor(editor.env)('video.project.new'));
-  assert(create !== null, 'new-project action missing from the empty state');
-  create.props.onClick();
-  for (let round = 0; round < 4; round += 1) {
+  const loaded = loadClient({ fetch: settings.fetch, stageSize: settings.stageSize });
+  const env = createFakeEnvironment();
+  loaded.exports.apply(env.ctx);
+  const canvasModule = extractCanvasModule(loaded);
+  const firstInspected = await canvasModule.hostRequest('inspect', { projectId: 'proj-smoke' });
+  assert(firstInspected !== null && typeof firstInspected === 'object', 'the component harness inspect failed');
+  const props = {
+    t: translateFor(env),
+    projectId: 'proj-smoke',
+    inspected: firstInspected,
+    previewOnly: false,
+    onReload: async function reloadCanvas() {
+      const next = await canvasModule.hostRequest('inspect', { projectId: 'proj-smoke' });
+      props.inspected = next;
+      return next;
+    },
+    onError: function canvasError() {},
+  };
+  const interactive = loaded.react.renderInteractive(canvasModule.CanvasWorkspace, props);
+  let tree = interactive.render();
+  for (let round = 0; round < 5; round += 1) {
     await settle();
-    editor.rerender();
+    tree = interactive.rerender();
   }
-  await settle();
-  const tree = editor.tree();
   assert(findNode(tree, (node) => node.props && node.props.className === 'dv-canvas-shell') !== null, 'managed canvas did not mount');
   assert(findNode(tree, (node) => node.props && node.props.className === 'dv-stage-frame') !== null, 'snapshot iframe did not render');
-  return editor;
+  return {
+    loaded,
+    env,
+    interactive,
+    props,
+    canvasModule,
+    tree: () => tree,
+    rerender() {
+      tree = interactive.rerender();
+      return tree;
+    },
+  };
 }
 
 function canvasOverlay(tree) {
@@ -3705,6 +3474,52 @@ test('R6 wiring: the canvas drops wrong-source, uncorrelated and malformed event
   }
 });
 
+test('P3-012 component: previewOnly hides every manual control and gesture surface', async () => {
+  const hostFetch = canvasFetch({});
+  const loaded = loadClient({ fetch: hostFetch, stageSize: { width: 1280, height: 720 } });
+  const env = createFakeEnvironment();
+  loaded.exports.apply(env.ctx);
+  const canvasModule = extractCanvasModule(loaded);
+  const firstInspected = await canvasModule.hostRequest('inspect', { projectId: 'proj-smoke' });
+  const props = {
+    t: translateFor(env),
+    projectId: 'proj-smoke',
+    inspected: firstInspected,
+    previewOnly: true,
+    onReload: async function reloadCanvas() {
+      return firstInspected;
+    },
+    onError: function canvasError() {},
+  };
+  const interactive = loaded.react.renderInteractive(canvasModule.CanvasWorkspace, props);
+  let tree = interactive.render();
+  for (let round = 0; round < 5; round += 1) {
+    await settle();
+    tree = interactive.rerender();
+  }
+  try {
+    const shell = findNode(tree, (node) => node.props && node.props.className === 'dv-canvas-shell');
+    assert(shell !== null && shell.props['data-preview-only'] === 'true', 'the preview-only shell marker is missing');
+    assert(typeof shell.props['data-canvas-revision'] === 'string', 'the revision marker is missing');
+    assert(typeof shell.props['data-canvas-phase'] === 'string', 'the phase marker is missing');
+    assert(findNode(tree, (node) => node.props && node.props.className === 'dv-stage-frame') !== null, 'the snapshot iframe is missing');
+    assert(findNode(tree, (node) => node.type === 'input' && node.props && node.props.className === 'dv-seek') !== null, 'the seek control is missing');
+    assert(buttonByText(tree, translateFor(env)('video.canvas.play')) !== null, 'the play control is missing');
+    const classes = findAll(tree, (node) => node.props && typeof node.props.className === 'string').map((node) => node.props.className);
+    for (const forbidden of ['dv-overlay', 'dv-selection', 'dv-inline-editor', 'dv-drawer', 'dv-canvas-tools', 'dv-editor-actions']) {
+      assert(classes.some((value) => value.split(/\s+/).includes(forbidden)) === false, `manual surface "${forbidden}" rendered in previewOnly`);
+    }
+    for (const key of ['video.canvas.undo', 'video.canvas.redo', 'video.canvas.materials', 'video.canvas.addScene', 'video.canvas.export', 'video.canvas.sceneColor', 'video.canvas.textStyle']) {
+      assert(buttonByText(tree, translateFor(env)(key)) === null, `manual control "${key}" rendered in previewOnly`);
+    }
+    // No user gesture exists that could issue a write.
+    const writes = hostFetch.calls.filter((call) => ['edit', 'scene.create', 'scene.update', 'scene.remove', 'scene.reorder', 'render', 'asset.import', 'undo', 'redo'].includes(call.body.method));
+    assert(writes.length === 0, `previewOnly issued write requests: ${writes.map((call) => call.body.method).join(',')}`);
+  } finally {
+    interactive.unmount();
+  }
+});
+
 test('P3-008 wiring: the snapshot iframe keeps the composition viewport and is CSS-scaled', async () => {
   const stageSize = { width: 900, height: 400 };
   const hostFetch = canvasFetch({});
@@ -3746,6 +3561,15 @@ async function runTests() {
       failures.push([name, error instanceof Error ? error.message : String(error)]);
       console.error(`FAIL  ${name}: ${error instanceof Error ? error.message : String(error)}`);
     }
+  }
+  // The product panel polls the revision every 1.5s; a test that leaves a panel
+  // mounted must not keep Node alive or fire after the run finished.
+  for (const runtime of RUNTIMES) {
+    for (const handle of runtime.timers) clearTimeout(handle);
+    for (const handle of runtime.intervals) clearInterval(handle);
+    runtime.timers.clear();
+    runtime.intervals.clear();
+    runtime.listeners.length = 0;
   }
   console.log(`\n${passes.length} passed, ${failures.length} failed`);
   if (failures.length > 0) process.exitCode = 1;

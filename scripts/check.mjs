@@ -134,8 +134,8 @@ check('bundle manifest declares patch and client', () => {
   return `platform=web, inject=[${pkg.dsh.client.inject.join(', ')}]`;
 });
 
-check('package version advanced for the P3-008 canvas integration candidate', () => {
-  assert(pkg.version === '0.3.0-alpha.3', `expected version 0.3.0-alpha.3, found "${pkg.version}"`);
+check('package version advanced for the P3-012 conversation-first candidate', () => {
+  assert(pkg.version === '0.3.0-alpha.4', `expected version 0.3.0-alpha.4, found "${pkg.version}"`);
   return pkg.version;
 });
 
@@ -378,13 +378,72 @@ check('P2-002-B: committed runtime carries no development/deployment absolute pa
   return `${runtime.length} runtime files, no absolute dev/deployment paths`;
 });
 
-check('P2-004 R1: title and timing bind one explicit target, not two first-capability scans', () => {
-  assert(clientSource.includes('function textElement(') === false, 'textElement first-capability scan is still present');
-  assert(clientSource.includes('function timingElement(') === false, 'timingElement first-capability scan is still present');
-  assert(clientSource.includes('function targetFor('), 'single targetFor selector missing');
-  assert(clientSource.includes('const FIXTURE_TITLE_ID = \'hf-title\''), 'controlled fixture title contract missing');
-  assert(clientSource.includes('dsh-video-target'), 'explicit target selector missing');
-  return 'one selected stableId for title/timing; fixture contract hf-title';
+// P2-004 R1 (one manual title/timing target) is superseded by P3-012: the manual
+// property form is no longer rendered in the product UI. The single-target
+// helpers stay in the hidden default-false canvas path and are asserted as such.
+check('P3-012: the product workspace is a read-only auto preview', () => {
+  assert(clientSource.includes('function CanvasWorkspace'), 'canvas preview component missing');
+  assert(clientSource.includes('const previewOnly = props.previewOnly === true'), 'CanvasWorkspace must default previewOnly to false and enable the read-only mode only when asked');
+  assert(clientSource.includes("'data-preview-only'"), 'the preview-only marker is missing');
+  assert(clientSource.includes('previewOnly: true'), 'the product workspace must mount the canvas read-only');
+  assert(clientSource.includes('const REVISION_POLL_MS = 1500'), 'the read-only preview must follow the Host revision on the 1.5s poll');
+  assert(clientSource.includes('setInterval(function pollRevision()'), 'automatic revision polling effect missing');
+  assert(clientSource.includes("hostRequest('preview.snapshot'"), 'the preview does not request worker snapshots');
+  assert(clientSource.includes("hostRequest('inspect'"), 'revision polling does not inspect the project');
+  assert(clientSource.includes('project.scenes.length > 0') === false, 'the preview must not be gated on the legacy Scenes list');
+  assert(clientSource.includes('data-canvas-revision') && clientSource.includes('data-canvas-phase'), 'canvas revision/phase markers missing');
+  return 'previewOnly canvas + 1500ms inspect poll + snapshot follow';
+});
+
+check('P3-012: an AI publish appears automatically and failures stay recoverable', () => {
+  assert(clientSource.includes('next.revision !== latestRevisionRef.current'), 'a changed revision must replace the preview state');
+  assert(clientSource.includes('projectIdRef.current !== followedProjectId'), 'late/stale poll results must not overwrite the current project');
+  assert(clientSource.includes('A transient poll failure keeps the last valid preview mounted'), 'poll failure handling comment/behaviour missing');
+  assert(clientSource.includes("t('video.canvas.retry')"), 'preview retry affordance missing');
+  assert(clientSource.includes('setProject(next)'), 'the changed revision is not adopted');
+  assert(clientSource.includes("'video.frame.empty':") && clientSource.includes("t('video.frame.empty')") === false, 'the removed legacy no-frame copy is still rendered');
+  assert(clientSource.includes("t('video.preview.retry')"), 'recoverable project/preview retry copy missing');
+  return 'revision poll swaps the snapshot; recoverable failure copy + retry';
+});
+
+check('P3-012: first open auto-opens or provisions a working creation conversation', () => {
+  assert(clientSource.includes("hostRequest('project.list'"), 'the workspace must list projects on mount');
+  assert(clientSource.includes('managedProjectChoices'), 'the managed-project filter is missing');
+  assert(clientSource.includes('id === DEMO_PROJECT_ID'), 'demo/legacy projects must be filtered out of the product list');
+  assert(clientSource.includes('rememberedAvailable'), 'the remembered project must be validated against the current list');
+  assert(clientSource.includes('listed.defaultProjectId'), 'the Host default project is not honoured');
+  assert(clientSource.includes('provisionProject'), 'auto-provisioning path missing');
+  assert(clientSource.includes("hostRequest('project.create'"), 'auto-provision must use the existing project.create');
+  assert(clientSource.includes("hostRequest('session.create', { projectId: targetProjectId, requestId: operationId() })"), 'auto-provision must create one Session with a dedupe requestId');
+  assert(clientSource.includes('autoProvisionedRef'), 'auto-provisioning must be guarded against a double effect');
+  assert(clientSource.includes('autoSessionProjectRef') && clientSource.includes('ensureProjectSession'), 'one auto Session per project is not guarded');
+  assert(clientSource.includes("hostRequest('open'"), 'the selected project is not opened on the Host');
+  return 'project.list -> remembered/default/most recent -> open + bound Session (auto-create once)';
+});
+
+check('P3-012: the legacy PNG/form editor and demo entry are gone from the product UI', () => {
+  const removed = [
+    "className: 'dv-editor'",
+    "className: 'dv-stagebar'",
+    'dsh-video-target',
+    'dsh-video-title',
+    'dsh-video-frame-time',
+    'openSample',
+    '"data-project-title"',
+  ];
+  for (const needle of removed) assert(clientSource.includes(needle) === false, `product client still renders/uses removed editor surface "${needle}"`);
+  for (const key of ['video.open', 'video.update', 'video.save', 'video.export', 'video.details', 'video.target', 'video.frameTime']) {
+    assert(clientSource.includes(`t('${key}')`) === false, `product UI still references removed manual-editing copy key "${key}"`);
+  }
+  // The native conversation, its history and the file-preview overlay stay.
+  for (const kept of ['h(SessionConversationHost', 'function historyMenu', 'function previewOverlay', 'onClickCapture: capturePreviewClick']) {
+    assert(clientSource.includes(kept), `native conversation surface is missing "${kept}"`);
+  }
+  // The hidden default-false manual canvas path must stay intact.
+  for (const helper of ['function commitLayout', 'function submitText', 'function addScene', 'function historyStep', 'function exportVideo', 'function beginDrag', 'function openTextEditor']) {
+    assert(clientSource.includes(helper), `hidden manual canvas helper was deleted instead of hidden: ${helper}`);
+  }
+  return 'no legacy editor/demo entry; native conversation kept; manual path retained behind previewOnly=false';
 });
 
 check('P2-004 R2: Tool result budget is one raw UTF-8 byte constant without truncation', () => {
@@ -420,26 +479,32 @@ check('P2-002-B: Host modules do not import DSH-internal packages', () => {
   return 'node builtins + explicit engine package specifiers only';
 });
 
-check('P2-006 R2: cancelled jobs are neutral, failures stay localized', () => {
-  assert(clientSource.includes("current.state === 'cancelled'"), 'cancelled terminal state handling missing');
-  assert(clientSource.includes('setError(null);'), 'cancelled state does not clear/suppress the error');
-  const waitStart = clientSource.indexOf('async function waitForJob');
-  const waitEnd = clientSource.indexOf('async function cancelCurrentJob', waitStart);
-  assert(waitStart >= 0 && waitEnd > waitStart, 'waitForJob boundary not found');
-  assert(clientSource.slice(waitStart, waitEnd).includes("state !== 'succeeded'") === false, 'waitForJob still treats every non-success as an error');
-  for (const key of ['video.error.frameFailed', 'video.error.renderFailed', 'video.error.timedOut']) {
-    assert(clientSource.includes(key), `localized terminal error key missing: ${key}`);
+// P2-006 R2/R3 are superseded by P3-012: frame/render jobs and the manual
+// title/timing form left the product UI (manual editing deferred). The hidden
+// default-false canvas keeps its own copy; the product preview error path is
+// asserted by the P3-012 checks and the smoke test.
+check('P3-012: the product panel renders no deferred manual-editing controls', () => {
+  assert((clientSource.match(/previewOnly \? null : h\('button'/g) || []).length >= 4, 'undo/redo/materials/add-scene buttons are not gated by previewOnly');
+  assert(clientSource.includes('drawerOpen && previewOnly === false'), 'the manual materials drawer is not gated by previewOnly');
+  assert(clientSource.includes("previewOnly ? null : h(\n          'div',\n          { className: 'dv-canvas-tools' }"), 'the manual tools row is not gated by previewOnly');
+  assert(clientSource.includes("const previewOnly = props.previewOnly === true"), 'previewOnly mode flag missing');
+  for (const manual of ['video.canvas.undo', 'video.canvas.redo', 'video.canvas.materials', 'video.canvas.addScene', 'video.canvas.export', 'video.canvas.sceneColor', 'video.canvas.textStyle']) {
+    assert(clientSource.includes(`t('${manual}')`), `hidden manual capability was deleted instead of hidden: ${manual}`);
   }
-  return 'cancelled neutral; failed/timed_out localized';
+  // The rendered product marks its mode so the smoke test can prove absence.
+  assert(clientSource.includes("'data-preview-only': previewOnly ? 'true' : 'false'"), 'preview-only marker not exposed on the canvas shell');
+  return 'manual controls exist only behind previewOnly=false; product mode marker exposed';
 });
 
-check('P2-006 R3: timing sum is validated locally and worker English is mapped', () => {
-  assert(clientSource.includes('timingRangeMessage'), 'localized timing range helper missing');
-  assert(clientSource.includes('nextStart + nextDuration > projectDuration + 1 / 240'), 'local start+duration tolerance check missing');
-  assert(clientSource.includes('Timing extends beyond composition'), 'worker timing rejection is not mapped');
-  assert(clientSource.includes("'video.timing.range'"), 'timing range locale key missing');
-  assert(clientSource.includes("replace('{duration}'"), 'timing range message does not interpolate duration');
-  return 'local 1/240 check; worker E_PARAMS mapped to localized text';
+check('P3-012: read-only preview copy exists at dictionary parity', () => {
+  for (const key of ['video.preview.booting', 'video.preview.empty', 'video.preview.retry']) {
+    const occurrences = (clientSource.match(new RegExp("'" + key.replace(/\./g, '\\.') + "':", 'g')) || []).length;
+    assert(occurrences === 2, `locale key ${key} must exist in both dictionaries (found ${occurrences})`);
+  }
+  for (const key of ['video.canvas.play', 'video.canvas.pause', 'video.canvas.timeline', 'video.canvas.loading', 'video.canvas.retry']) {
+    assert(clientSource.includes(`t('${key}')`), `read-only preview control copy missing: ${key}`);
+  }
+  return 'booting/empty/retry keys in both dictionaries; play/pause/seek reused';
 });
 
 check('P2-005 R1: primary button uses existing paired host tokens', () => {
@@ -455,28 +520,14 @@ check('P2-005 R1: primary button uses existing paired host tokens', () => {
   return 'button-primary-fill/hover/dimmed + label-primary-foreground';
 });
 
-check('P2-005: frame-time preview is real and bounded; no fake playback/timeline', () => {
-  for (const needle of ['dsh-video-frame-time', 'video.frameTime', 'parseFrameTime', 'defaultFrameTime', 'frameTimeDraft']) {
-    assert(clientSource.includes(needle), `client.js is missing frame-time preview wiring "${needle}"`);
-  }
-  for (const forbidden of ['时间线', '自动轮播']) {
-    assert(clientSource.includes(forbidden) === false, `client.js advertises unsupported playback/timeline capability "${forbidden}"`);
-  }
-  assert(clientSource.includes("time: time,"), 'frame request does not carry the selected time');
-  return 'bounded frame-time input; real canvas playback only under a worker snapshot';
-});
-
-check('P2-002-B: the editor exposes only the real controlled-project loop', () => {
-  for (const needle of ['video.open', 'openSample', 'hostRequest', 'REQUEST_ROUTE', 'E_CONFIGURATION', 'video.update', 'video.export', 'video.cancel', 'video.save']) {
-    assert(clientSource.includes(needle), `client.js is missing real editor wiring "${needle}"`);
-  }
-  const forbidden = ['创建工程', '时间线', 'AI 生成', '演示数据', '假进度', '自动生成'];
-  for (const needle of forbidden) assert(clientSource.includes(needle) === false, `client.js advertises unsupported or fake capability "${needle}"`);
-  assert(clientSource.includes("const DEMO_PROJECT_ID = 'demo'"), 'the controlled example id must be a fixed configured id, not a path');
-  assert(clientSource.includes("'video.empty': '尚无工程'"), 'the no-project state must stay a quiet real state');
-  const dictionaries = clientSource.slice(clientSource.indexOf('const ZH = {'), clientSource.indexOf('//#endregion', clientSource.indexOf('const EN = {')));
-  for (const forbiddenText of ['revision:', '路径', '版本号', '开发阶段']) assert(dictionaries.includes(forbiddenText) === false, `editor copy exposes internal detail "${forbiddenText}"`);
-  return 'real open/update/edit/export/cancel wiring; no fake or unsupported affordances';
+check('P3-012: the Host project.list contract is tolerated defensively', () => {
+  assert(clientSource.includes('Array.isArray(result.projects)'), 'project.list projects array is not defended');
+  assert(clientSource.includes('Number.isFinite(Number(entry.updatedAt))'), 'a missing/stat-failure updatedAt must default to 0');
+  assert(clientSource.includes('choices.sort'), 'managed projects are not sorted for auto-open');
+  assert(clientSource.includes("typeof listed.defaultProjectId === 'string'"), 'the Host defaultProjectId is not read defensively');
+  assert(clientSource.includes("hostRequest('project.list'"), 'the workspace does not call the project list');
+  assert(clientSource.includes('function stageContent'), 'the left preview surface component is missing');
+  return 'projects/updatedAt/defaultProjectId defended; sorted managed choices';
 });
 
 check('P0-005: mode wiring is host-owned and has no local mode source', () => {
@@ -559,7 +610,7 @@ check('P3-008: managed canvas is snapshot-bound, sandboxed and Host-authoritativ
   assert(bridge.includes("'project.create'") && bridge.includes("'scene.create'") && bridge.includes("'preview.snapshot'") && bridge.includes("'asset.import'"), 'Host managed method allowlist is incomplete');
   assert(bridge.includes('readManagedProjectMap') && bridge.includes('discoverManagedProjects'), 'managed project registry/allowlist discovery missing');
   assert(snapshot.includes('content-security-policy') && snapshot.includes("connect-src 'none'") && snapshot.includes('inlineScriptHashes'), 'snapshot route is missing CSP/hash hardening');
-  assert(stage.includes('REVIEWED_ENGINE_PAIRS') && stage.includes("'0.3.2'") && stage.includes('MANAGED_ENGINE_VERSIONS') && stage.includes('projectsRoot'), 'staging does not restrict the reviewed engine pairs and prepare managed 0.3.2 snapshots');
+  assert(stage.includes('REVIEWED_ENGINE_PAIRS') && stage.includes("'0.4.0'") && stage.includes('MANAGED_ENGINE_VERSIONS') && stage.includes('projectsRoot'), 'staging does not restrict the reviewed engine pairs and prepare managed 0.4.0 snapshots');
   return 'snapshot iframe, fixed runtime/route CSP, managed project discovery, Host methods';
 });
 
