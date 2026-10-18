@@ -59,6 +59,9 @@ const clientSource = read('client.js');
 const hostSource = read('index.js');
 const patchSource = read('cordis.patch.yml');
 const readme = read('README.md');
+const previewSource = read('host/preview.js');
+const sessionsSource = read('host/sessions.js');
+const assetSource = read('host/asset-inbox.js');
 
 const moduleIdMatch = clientSource.match(/__ModuleLoader__\.load\(\{\s*\n?\s*id:\s*['"]([^'"]+)['"]/);
 const moduleId = moduleIdMatch === null ? undefined : moduleIdMatch[1];
@@ -176,7 +179,7 @@ check('package files list covers every shipped artifact', () => {
     const covered = pkg.files.some((pattern) => listMatchingFiles(pattern).includes(artifact));
     assert(covered, `files list does not cover required artifact "${artifact}"`);
   }
-  const extra = ['scripts/check.mjs', 'scripts/smoke-client.mjs', 'scripts/check-host.mjs', 'scripts/stage-dev.mjs', 'scripts/test-host-engine.mjs', 'scripts/test-stage-version.mjs', 'scripts/lib/staged-host.mjs', 'scripts/lib/stage-version.mjs', 'scripts/test-canvas-chain.mjs', 'scripts/test-canvas-browser.mjs'];
+  const extra = ['scripts/check.mjs', 'scripts/smoke-client.mjs', 'scripts/check-host.mjs', 'scripts/stage-dev.mjs', 'scripts/test-host-engine.mjs', 'scripts/test-stage-version.mjs', 'scripts/lib/staged-host.mjs', 'scripts/lib/stage-version.mjs', 'scripts/test-canvas-chain.mjs', 'scripts/test-canvas-browser.mjs', 'scripts/test-canvas-workspace.mjs', 'scripts/lib/react-dom-lite.mjs', 'scripts/lib/canvas-harness-page.js', 'scripts/lib/canvas-harness-page.html'];
   for (const tool of extra) {
     assert(exists(tool), `local check tool "${tool}" is missing from the workspace`);
     const packaged = pkg.files.some((pattern) => listMatchingFiles(pattern).includes(tool));
@@ -556,8 +559,64 @@ check('P3-008: managed canvas is snapshot-bound, sandboxed and Host-authoritativ
   assert(bridge.includes("'project.create'") && bridge.includes("'scene.create'") && bridge.includes("'preview.snapshot'") && bridge.includes("'asset.import'"), 'Host managed method allowlist is incomplete');
   assert(bridge.includes('readManagedProjectMap') && bridge.includes('discoverManagedProjects'), 'managed project registry/allowlist discovery missing');
   assert(snapshot.includes('content-security-policy') && snapshot.includes("connect-src 'none'") && snapshot.includes('inlineScriptHashes'), 'snapshot route is missing CSP/hash hardening');
-  assert(stage.includes("clientPackage.version === '0.3.0'") && stage.includes('projectsRoot'), 'staging does not prepare managed 0.3.0 snapshots');
+  assert(stage.includes('REVIEWED_ENGINE_PAIRS') && stage.includes("'0.3.2'") && stage.includes('MANAGED_ENGINE_VERSIONS') && stage.includes('projectsRoot'), 'staging does not restrict the reviewed engine pairs and prepare managed 0.3.2 snapshots');
   return 'snapshot iframe, fixed runtime/route CSP, managed project discovery, Host methods';
+});
+
+check('P3-008 R1: destructive Scene writes copy the complete authoritative template', () => {
+  assert(clientSource.includes('function canvasCopySceneTemplate('), 'complete scene.template copier missing');
+  assert(clientSource.includes('function canvasSceneTemplate('), 'scene.template copy helper missing');
+  assert(clientSource.includes("hostRequest('inspect'"), 'Scene colour/shot writes must refresh the authoritative inspect first');
+  assert(clientSource.includes('template.color = color') && clientSource.includes('template.shot = shot'), 'Scene writes do not change only their intended field');
+  assert(clientSource.includes("'video.canvas.templateUnavailable'"), 'missing-template refusal copy is missing');
+  assert(clientSource.includes('{ title: scene.title, duration: scene.duration, color: sceneColor }') === false, 'the old partial Scene template write is still present');
+  return 'fresh inspect + complete frozen template copy + explicit refusal';
+});
+
+check('P3-008 R2: layout writes are inverse-mapped from the inspected static base', () => {
+  assert(clientSource.includes('function canvasStaticBase(') && clientSource.includes('function canvasLayoutPatch('), 'inverse-mapped layout helpers missing');
+  assert(clientSource.includes('base: base'), 'drag capture does not keep the inspected static layout base');
+  assert(clientSource.includes('canvasLayoutPatch({'), 'commitLayout does not use the inverse-mapped helper');
+  assert(clientSource.includes('height: Math.round(preview.height * 1000) / 1000') === false, 'commitLayout still bakes the animated rect into the layout box');
+  return 'static base + animation inverse mapping; no animated rect persisted';
+});
+
+check('P3-008 R5: inline text save keeps the draft and target on failure', () => {
+  assert(clientSource.includes('dv-editor-retry') && clientSource.includes('dv-editor-actions'), 'explicit retry affordance is missing from the inline editor');
+  assert(clientSource.includes('function canvasIsRevisionConflict('), 'revision-conflict classification missing');
+  assert(clientSource.includes('refreshRequired'), 'revision conflict does not require an explicit refresh step');
+  assert(clientSource.includes('Keep the draft'), 'failure path does not document keeping the draft');
+  assert(clientSource.includes('operationId: operationId()') && clientSource.includes('textOperationId'), 'inline editor does not reuse one operationId across retries');
+  return 'draft/target kept; explicit retry only; one idempotent operationId';
+});
+
+check('P3-008 R6: the parent restores the reviewed strict runtime message contract', () => {
+  for (const marker of ['function canvasValidateEvent(', 'function canvasValidateCommand(', 'function canvasMessageLedger(', 'function settlePendingCommands(', 'CANVAS_EVENT_TYPES', 'E_STALE_SEQ', 'E_LATE_RESPONSE', 'E_UNCORRELATED']) {
+    assert(clientSource.includes(marker), `strict runtime message marker missing: ${marker}`);
+  }
+  assert(clientSource.includes('event.source !== frame.contentWindow'), 'runtime events are not bound to the exact iframe WindowProxy');
+  assert(clientSource.includes('settlePendingCommands();'), 'pending commands are not explicitly settled on instance teardown');
+  return 'v1 envelope/allowlist/payload/seq + correlated replies + explicit pending settlement';
+});
+
+check('P3-008 R3: preview authorization is per project/Session provenance', () => {
+  const bridge = read('host/bridge.js');
+  assert(bridge.includes('async previewRoots(') && bridge.includes('artifactOwnedBy(') && bridge.includes('sessionReferencesPath('), 'project/Session provenance roots are missing from the Host bridge');
+  assert(bridge.includes("kind: 'legacy'") && bridge.includes('inside(owned, canonical)'), 'legacy shared-root files are not isolated from per-project session roots');
+  assert(sessionsSource.includes('projectSessionRoot(') && sessionsSource.includes('sessionEventsReferencePath'), 'per-project Session root or bounded legacy reference verification is missing');
+  assert(previewSource.includes('entry.verify') || previewSource.includes('roots'), 'preview reader does not require caller-computed owned roots');
+  assert(bridge.includes('sessionCwd: config.sessionCwd,') === false || bridge.includes('artifactRoot: config.artifactRoot,') === false, 'the old blanket session/artifact root authorization still exists');
+  return 'project dir + per-project session root + job/receipt provenance + verified legacy references';
+});
+
+check('P3-008 R4: accepted requests and uploads are admitted, drained and cleaned', () => {
+  const bridge = read('host/bridge.js');
+  assert(bridge.includes('async dispatch(') && bridge.includes('this.inFlight.add(task)'), 'unified synchronous admission wrapper missing');
+  assert(bridge.includes('await Promise.allSettled([...this.inFlight])'), 'dispose does not drain accepted work before teardown');
+  assert(bridge.includes('releaseWorkerSnapshot('), 'a late preview snapshot is not released instead of published');
+  assert(assetSource.includes('isTrustedProject') && assetSource.includes('this.handlers') && assetSource.includes('this.activeReaders') && assetSource.includes('this.ownedFiles'), 'asset inbox lifecycle (trusted project/admission/abort/cleanup) missing');
+  assert(assetSource.includes('unlinkQuietly(receipt.target)') && assetSource.includes('this.disposed'), 'expiry/dispose does not unlink owned inbox copies');
+  return 'single inFlight drain + trusted upload lifecycle + no publication after dispose';
 });
 
 for (const [name, detail] of passes) console.log(`PASS  ${name}${detail === 'ok' ? '' : `  [${detail}]`}`);

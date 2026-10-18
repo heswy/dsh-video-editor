@@ -61,6 +61,20 @@ const RUNTIME_PATHS = [
   'README.md',
 ];
 const DEFAULT_OUT = resolve(ROOT, '..', 'artifacts', 'p2-b', 'staging');
+/**
+ * Engine package versions that an independently reviewed fixed commit may use.
+ * Add a pair only after the coordinator names a reviewed fixed commit; never
+ * follow the p1 branch HEAD automatically.
+ */
+const REVIEWED_ENGINE_PAIRS = Object.freeze([
+  { client: '0.1.1', worker: '0.1.1' },
+  { client: '0.3.0', worker: '0.3.0' },
+  { client: '0.3.1', worker: '0.3.1' },
+  { client: '0.3.2', worker: '0.3.2' },
+]);
+/** Managed-project registries exist from engine 0.3.0; stricter than the pair list on purpose. */
+const MANAGED_ENGINE_VERSIONS = Object.freeze(['0.3.0', '0.3.1', '0.3.2']);
+
 const ENGINE_CLIENT = 'packages/video-engine-client';
 const ENGINE_WORKER = 'packages/video-engine-worker';
 
@@ -221,12 +235,9 @@ async function main() {
     await cp(join(work, ENGINE_WORKER), workerRoot, { recursive: true });
     const clientPackage = JSON.parse(await readFile(join(clientRoot, 'package.json'), 'utf8'));
     const workerPackage = JSON.parse(await readFile(join(workerRoot, 'package.json'), 'utf8'));
-    const reviewed = [
-      { client: '0.1.1', worker: '0.1.1' },
-      { client: '0.3.0', worker: '0.3.0' },
-    ].find((pair) => pair.client === clientPackage.version && pair.worker === workerPackage.version);
+    const reviewed = REVIEWED_ENGINE_PAIRS.find((pair) => pair.client === clientPackage.version && pair.worker === workerPackage.version);
     if (reviewed === undefined) {
-      throw new Error(`engine versions ${clientPackage.version}/${workerPackage.version} are not the reviewed 0.1.1 or 0.3.0 pair`);
+      throw new Error(`engine versions ${clientPackage.version}/${workerPackage.version} are not a reviewed engine pair; update REVIEWED_ENGINE_PAIRS only with an independently reviewed fixed commit`);
     }
     for (const [name, manifest] of [['client', clientPackage], ['worker', workerPackage]]) {
       if (manifest.private !== true) throw new Error(`engine ${name} package must stay private in the snapshot`);
@@ -278,7 +289,7 @@ async function main() {
     const registry = JSON.parse(await readFile(registryPath, 'utf8'));
     await mkdir(registry.outputRoot, { recursive: true });
     let managed = null;
-    if (clientPackage.version === '0.3.0') {
+    if (MANAGED_ENGINE_VERSIONS.includes(clientPackage.version)) {
       const projectsRoot = join(out, 'projects');
       const assetInboxRoot = join(out, 'asset-inbox');
       const managedDir = join(out, 'managed');

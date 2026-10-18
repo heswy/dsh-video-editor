@@ -15,6 +15,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { access, mkdir, writeFile } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { delimiter, dirname, isAbsolute, join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { loadStagedHost, sha256 } from './lib/staged-host.mjs';
 
 const PNG = Buffer.from(
@@ -172,6 +173,37 @@ function titleElement(inspected) {
   return target;
 }
 
+// P3-009 scene.template is a complete, round-trippable scene.update/project.revise
+// input. Engine 0.3.1 (currently reviewed) does not expose it yet; when present
+// (reviewed 0.3.2 staging) these tests assert full-field preservation instead of
+// silently sending a partial replacement that would delete subtitle/badge/logo/shot.
+function hasSceneTemplate(inspected) {
+  return Array.isArray(inspected.scenes) && inspected.scenes.some((scene) => scene.template !== null && typeof scene.template === 'object');
+}
+
+function sceneTemplateFor(scene, overrides) {
+  const source = scene && scene.template !== null && typeof scene.template === 'object' ? scene.template : null;
+  const template = source === null ? { title: scene.title, duration: scene.duration } : { ...source };
+  Object.assign(template, overrides || {});
+  delete template.sceneId;
+  return template;
+}
+
+function sceneTemplateSummary(inspected) {
+  const scene = inspected.scenes[0];
+  return {
+    available: hasSceneTemplate(inspected),
+    template: scene && scene.template !== undefined ? scene.template : null,
+  };
+}
+
+/** Load the real staged Tool definition so project.revise goes through the same scope checks as the model path. */
+async function createStagedTool(staging, bridge) {
+  const module = await import(pathToFileURL(join(staging, 'bundle', 'host', 'tool.js')).href);
+  assert(typeof module.createVideoTool === 'function', 'staged bundle does not export createVideoTool');
+  return module.createVideoTool(bridge);
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const staging = resolve(args.staging);
@@ -220,6 +252,18 @@ async function main() {
     evidence.scenes = inspected.scenes.map((scene) => ({ sceneId: scene.sceneId, duration: scene.duration }));
     assert(inspected.scenes.length === 3 && inspected.duration === 15, `expected three 5s scenes/15s, got ${inspected.scenes.length}/${inspected.duration}`);
 
+    // Rich optional Scene fields: a partial replacement silently deletes these,
+    // so every later Scene update must copy the authoritative template.
+    await invoke(bridge, 'scene.update', {
+      projectId,
+      expectedRevision: inspected.revision,
+      operationId: opId('scene-rich'),
+      sceneId: inspected.scenes[0].sceneId,
+      template: sceneTemplateFor(inspected.scenes[0], { subtitle: '保留副标题', badge: '保留标签' }),
+    });
+    inspected = await invoke(bridge, 'inspect', { projectId });
+    evidence.richScene = sceneTemplateSummary(inspected);
+
     // Scene-level background yellow.
     const firstScene = inspected.scenes[0];
     const sceneUpdate = await invoke(bridge, 'scene.update', {
@@ -227,7 +271,7 @@ async function main() {
       expectedRevision: inspected.revision,
       operationId: opId('scene-yellow'),
       sceneId: firstScene.sceneId,
-      template: { title: firstScene.title, duration: firstScene.duration, color: '#ffd400', accent: '#111111' },
+      template: sceneTemplateFor(firstScene, { color: '#ffd400', accent: '#111111' }),
     });
     evidence.sceneYellow = { revision: sceneUpdate.revision, changeSummary: sceneUpdate.changeSummary };
     inspected = await invoke(bridge, 'inspect', { projectId });
@@ -261,6 +305,37 @@ async function main() {
     assert(redoTarget.text === '人工编辑标题', 'redo did not restore the human edit');
     evidence.history = { undoRevision: undo.revision, redoRevision: redo.revision, afterUndo: undoTarget.text, afterRedo: redoTarget.text };
 
+    // R1: change only the Scene background from the authoritative complete
+    // template; subtitle/badge and the human layout/style must survive.
+    const templateBeforeColor = sceneTemplateSummary(afterRedo);
+    const colorUpdate = await invoke(bridge, 'scene.update', {
+      projectId,
+      expectedRevision: afterRedo.revision,
+      operationId: opId('scene-color-preserve'),
+      sceneId: afterRedo.scenes[0].sceneId,
+      template: sceneTemplateFor(afterRedo.scenes[0], { color: '#ffd400' }),
+    });
+    inspected = await invoke(bridge, 'inspect', { projectId });
+    const afterColorScene = inspected.scenes[0];
+    const afterColorTarget = inspected.elements.find((element) => element.stableId === target.stableId);
+    evidence.sceneTemplateColor = {
+      revision: colorUpdate.revision,
+      available: templateBeforeColor.available,
+      templateBefore: templateBeforeColor.template,
+      templateAfter: afterColorScene.template !== undefined ? afterColorScene.template : null,
+      humanLayout: afterColorTarget.layout,
+      humanStyleColor: afterColorTarget.style === null ? null : afterColorTarget.style.color,
+    };
+    assert(afterColorTarget.layout && afterColorTarget.layout.left === 120 && afterColorTarget.style && afterColorTarget.style.color === '#112233', 'scene.update color dropped the human layout/style override');
+    if (templateBeforeColor.available) {
+      assert(afterColorScene.template.color === '#ffd400', `scene color was not updated: ${JSON.stringify(afterColorScene.template)}`);
+      assert(afterColorScene.template.subtitle === '保留副标题' && afterColorScene.template.badge === '保留标签', `scene color update dropped optional fields: ${JSON.stringify(afterColorScene.template)}`);
+      assert(afterColorScene.template.sceneId === undefined, 'scene.template must not expose sceneId');
+      assert(inspected.scenes[1].title === 'Scene 2' && inspected.scenes[2].title === 'Scene 3', 'scene color update changed another Scene');
+    } else {
+      evidence.sceneTemplateColor.skipped = 'reviewed engine 0.3.1 has no P3-009 scene.template; full-field preservation assertions activate when the reviewed 0.3.2 staging is frozen';
+    }
+
     // Asset upload receipt + import.
     const upload = await bridge.uploadAsset(
       new Request('http://127.0.0.1/api/dsh-video/asset-upload', {
@@ -277,7 +352,7 @@ async function main() {
     assert(upload.ok && receipt.receiptId, `asset upload failed: ${JSON.stringify(receipt)}`);
     const imported = await invoke(bridge, 'asset.import', {
       projectId,
-      expectedRevision: afterRedo.revision,
+      expectedRevision: inspected.revision,
       operationId: opId('asset-import'),
       receiptId: receipt.receiptId,
     });
@@ -286,17 +361,94 @@ async function main() {
     inspected = await invoke(bridge, 'inspect', { projectId });
     assert(inspected.files.some((file) => file.path === imported.asset.path), 'imported asset is not in the project manifest');
 
-    // Use the imported asset in the first scene's shot.
+    // Use the imported asset in the first scene's shot, again copying the
+    // complete template so no other Scene field is dropped.
     const sceneAfterAsset = inspected.scenes[0];
     const useAsset = await invoke(bridge, 'scene.update', {
       projectId,
       expectedRevision: inspected.revision,
       operationId: opId('scene-shot'),
       sceneId: sceneAfterAsset.sceneId,
-      template: { title: sceneAfterAsset.title, duration: sceneAfterAsset.duration, color: '#ffd400', accent: '#111111', shot: imported.asset.path },
+      template: sceneTemplateFor(sceneAfterAsset, { shot: imported.asset.path, color: '#ffd400', accent: '#111111' }),
     });
     evidence.sceneShot = { revision: useAsset.revision, shot: imported.asset.path };
     inspected = await invoke(bridge, 'inspect', { projectId });
+
+    // R1 continued: the real Host Tool project.revise path after a human edit.
+    const tool = await createStagedTool(staging, bridge);
+    const toolInspect = await tool.execute(
+      { action: 'inspect', projectId },
+      { agent: { session: { id: session.sessionId } } }
+    );
+    assert(toolInspect.result && toolInspect.result.revision === inspected.revision, 'Tool inspect did not return the current revision');
+    const toolScene = toolInspect.result.scenes[0];
+    const reviseTemplate = sceneTemplateFor(toolScene, { title: 'AI 续改标题' });
+    const toolRevise = await tool.execute(
+      {
+        action: 'project.revise',
+        projectId,
+        baseRevision: toolInspect.result.revision,
+        expectedRevision: toolInspect.result.revision,
+        operationId: opId('tool-revise'),
+        sceneId: toolScene.sceneId,
+        template: reviseTemplate,
+      },
+      { agent: { session: { id: session.sessionId } } }
+    );
+    inspected = await invoke(bridge, 'inspect', { projectId });
+    const revisedTarget = inspected.elements.find((element) => element.stableId === target.stableId);
+    const revisedScene = inspected.scenes[0];
+    evidence.toolRevise = {
+      written: toolRevise.result.written,
+      revision: toolRevise.result.revision,
+      conflicts: toolRevise.result.conflicts,
+      templateAvailable: hasSceneTemplate(inspected),
+      title: revisedScene.title,
+      humanLayout: revisedTarget.layout,
+      humanStyleColor: revisedTarget.style === null ? null : revisedTarget.style.color,
+      template: revisedScene.template !== undefined ? revisedScene.template : null,
+    };
+    assert(toolRevise.result.written === true, `Tool project.revise did not write: ${JSON.stringify(toolRevise.result)}`);
+    assert(revisedScene.title === 'AI 续改标题', 'Tool project.revise did not apply the AI title');
+    assert(revisedTarget.layout && revisedTarget.layout.left === 120, 'Tool project.revise dropped the human layout override');
+    assert(revisedTarget.style && revisedTarget.style.color === '#112233', 'Tool project.revise dropped the human style override');
+    if (hasSceneTemplate(inspected)) {
+      assert(revisedScene.template.subtitle === '保留副标题' && revisedScene.template.badge === '保留标签', `Tool project.revise dropped optional Scene fields: ${JSON.stringify(revisedScene.template)}`);
+      assert(revisedScene.template.shot === imported.asset.path, 'Tool project.revise dropped the Scene shot');
+    } else {
+      evidence.toolRevise.skippedOptionalFields = 'reviewed engine 0.3.1 has no P3-009 scene.template; optional-field preservation assertions activate when the reviewed 0.3.2 staging is frozen';
+    }
+
+    // R3 real-wiring: preview ownership. The managed worker project directory is
+    // trusted for this project only; a job artifact is trusted through the job
+    // registry; a same-root other-project file must be denied.
+    const projectDir = bridge.managedProjects && bridge.managedProjects.projects ? bridge.managedProjects.projects.get(projectId) : null;
+    const other = await invoke(bridge, 'project.create', { templateId: 'product-launch-v1', title: 'Other Project' });
+    const otherInspect = await invoke(bridge, 'inspect', { projectId: other.projectId });
+    const otherFrame = await invoke(bridge, 'frame', { projectId: other.projectId, revision: otherInspect.revision, time: 0.5 });
+    const otherJob = await waitJob(bridge, otherFrame.jobId, 120000);
+    assert(otherJob.state === 'succeeded', `other project frame did not succeed: ${otherJob.state}`);
+    const otherArtifactPath = join(staging, 'engine-worker', 'artifacts', 'output', `${otherFrame.jobId}.png`);
+    const previewOther = await invoke(bridge, 'preview', { projectId, sessionId: session.sessionId, path: otherArtifactPath }).then(
+      (value) => ({ ok: true, value }),
+      (error) => ({ ok: false, code: error.code })
+    );
+    evidence.previewOwnership = { projectDir, otherProjectId: other.projectId, crossProjectArtifact: previewOther.ok ? 'ALLOWED' : previewOther.code };
+    assert(previewOther.ok === false && /^E_PREVIEW/.test(previewOther.code), `cross-project artifact preview was not denied: ${JSON.stringify(previewOther)}`);
+    if (typeof projectDir === 'string') {
+      const ownFile = join(projectDir, imported.asset.path);
+      const previewOwn = await invoke(bridge, 'preview', { projectId, sessionId: session.sessionId, path: ownFile });
+      evidence.previewOwnership.ownProjectFile = { served: typeof previewOwn.sha256 === 'string', fileName: previewOwn.fileName };
+      assert(typeof previewOwn.sha256 === 'string' && previewOwn.dataUrl.startsWith('data:image/png;base64,'), 'this project\'s own project file preview was denied');
+      const escape = await invoke(bridge, 'preview', { projectId, sessionId: session.sessionId, path: '/etc/hosts' }).then(
+        (value) => ({ ok: true, value }),
+        (error) => ({ ok: false, code: error.code })
+      );
+      evidence.previewOwnership.escape = escape.ok ? 'ALLOWED' : escape.code;
+      assert(escape.ok === false && /^E_PREVIEW/.test(escape.code), 'arbitrary absolute path preview was not denied');
+    } else {
+      evidence.previewOwnership.projectDirUnavailable = 'bridge.managedProjects projects map unavailable; own-project positive path skipped';
+    }
 
     // Snapshot registration and exact byte/CSP checks through the fake Host routes.
     const snapshot = await invoke(bridge, 'preview.snapshot', { projectId, revision: inspected.revision, ttlMs: 120000 });
@@ -356,6 +508,18 @@ async function main() {
     assert(reopened.revision === inspected.revision && finalInspect.revision === inspected.revision, 'close/reopen changed the managed project revision');
     assert(finalInspect.scenes.length === 3 && finalInspect.files.some((file) => file.path === imported.asset.path), 'reopened project lost scenes or imported asset');
     await invoke(bridge, 'close', { projectId });
+
+    // R4: an explicit dispose must drain accepted work and remove every
+    // published route so nothing can be served after the plugin stops.
+    const inFlightBeforeDispose = bridge.state().inFlight;
+    await bridge.dispose();
+    evidence.dispose = {
+      inFlightBeforeDispose,
+      inFlightAfter: bridge.state().inFlight,
+      routesAfter: host.routes.length,
+      disposed: bridge.disposed === true,
+    };
+    assert(bridge.state().inFlight === 0 && host.routes.length === 0 && bridge.disposed === true, `dispose left live routes/work: ${JSON.stringify(evidence.dispose)}`);
     evidence.ok = true;
     evidence.finishedAt = new Date().toISOString();
   } catch (error) {
