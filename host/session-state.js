@@ -12,7 +12,7 @@
  * error until the deployment fixes it; it is never silently cleared.
  */
 
-import { mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { BridgeError } from './errors.js';
@@ -38,6 +38,11 @@ function stateError(code, message) {
 
 function emptyState() {
   return { version: SESSION_STATE_VERSION, projects: {}, sessions: {} };
+}
+
+/** Deep copy of the small plain-JSON state; keeps committed readers isolated. */
+function cloneState(state) {
+  return JSON.parse(JSON.stringify(state));
 }
 
 function nowMs() {
@@ -195,12 +200,20 @@ export class SessionStateStore {
     return record === undefined ? null : record.projectId;
   }
 
+  /**
+   * Serialize one mutation against an isolated candidate copy. The mutation is
+   * applied to the copy, written durably, and only then published as the
+   * authoritative in-memory state. A failed rename or size check therefore
+   * cannot leave a ghost mapping that Tool scope checks would trust.
+   */
   queueWrite(mutate) {
     const task = this.queue.then(async () => {
-      const state = await this.ensureReady();
+      const committed = await this.ensureReady();
       if (this.disposed) throw stateError('E_SESSION_STATE_DISPOSED', 'Session state storage is disposed');
-      const result = mutate(state);
-      await this.write(state);
+      const candidate = cloneState(committed);
+      const result = mutate(candidate);
+      await this.write(candidate);
+      this.state = candidate;
       return result;
     });
     this.queue = task.catch(() => undefined);
@@ -213,8 +226,17 @@ export class SessionStateStore {
     const serialized = JSON.stringify(state, null, 2) + '\n';
     if (Buffer.byteLength(serialized, 'utf8') > MAX_STATE_BYTES) throw stateError('E_SESSION_STATE_LIMIT', 'Session state would exceed the size limit');
     const temporary = `${this.path}.tmp-${process.pid}-${randomBytes(6).toString('hex')}`;
-    await writeFile(temporary, serialized, { encoding: 'utf8', mode: 0o600 });
-    await rename(temporary, this.path);
+    try {
+      await writeFile(temporary, serialized, { encoding: 'utf8', mode: 0o600 });
+      await rename(temporary, this.path);
+    } catch (error) {
+      try {
+        await rm(temporary, { force: true });
+      } catch (_cleanupError) {
+        /* the original failure is what the caller must see */
+      }
+      throw error;
+    }
   }
 
   /** Add one session to a project and make it active when requested. */

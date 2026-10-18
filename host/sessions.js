@@ -15,7 +15,7 @@ import { realpath, stat } from 'node:fs/promises';
 import { isAbsolute } from 'node:path';
 import { createRequire } from 'node:module';
 import { BridgeError, logSummary } from './errors.js';
-import { SESSION_ID_PATTERN, SESSION_STATE_VERSION, SessionStateStore } from './session-state.js';
+import { MAX_SESSIONS_PER_PROJECT, SESSION_ID_PATTERN, SESSION_STATE_VERSION, SessionStateStore } from './session-state.js';
 
 const require = createRequire(import.meta.url);
 let bundleVersion = 'unknown';
@@ -97,6 +97,9 @@ export class SessionService {
     this.creating = new Map();
     this.created = new Map();
     this.cwdPromise = null;
+    this.closing = false;
+    this.disposed = false;
+    this.disposePromise = null;
   }
 
   service(name) {
@@ -134,6 +137,12 @@ export class SessionService {
     const error = this.configurationError();
     if (error !== null) throw error;
     return this.config;
+  }
+
+  /** Refuse work admitted after shutdown began; accepted work drains instead. */
+  requireActive() {
+    if (this.closing || this.disposed) throw sessionError('E_SESSION_STATE_DISPOSED', 'The video session service is stopping');
+    return true;
   }
 
   controller() {
@@ -208,7 +217,7 @@ export class SessionService {
 
   /** Register the live project-context contribution once; safe to call repeatedly. */
   ensurePromptContext() {
-    if (this.contextDispose !== null) return;
+    if (this.contextDispose !== null || this.closing || this.disposed) return;
     const systemPrompt = this.service('systemPrompt');
     if (systemPrompt === null || typeof systemPrompt !== 'object' || typeof systemPrompt.context !== 'function') return;
     try {
@@ -258,9 +267,13 @@ export class SessionService {
     }
   }
 
-  rememberCreated(requestId, value) {
+  dedupeKey(projectId, requestId) {
+    return `${projectId}\u0000${requestId}`;
+  }
+
+  rememberCreated(projectId, requestId, value) {
     if (requestId === undefined) return;
-    this.created.set(requestId, { value, at: Date.now() });
+    this.created.set(this.dedupeKey(projectId, requestId), { value, at: Date.now() });
     while (this.created.size > MAX_CREATE_DEDUPE) {
       const oldest = this.created.keys().next().value;
       this.created.delete(oldest);
@@ -269,6 +282,7 @@ export class SessionService {
 
   async list(projectId) {
     this.requireEnabled();
+    this.requireActive();
     const project = await this.store.project(projectId);
     const archived = this.archivedSessionIds();
     const items = [];
@@ -286,16 +300,30 @@ export class SessionService {
   }
 
   async create(projectId, requestId) {
-    const config = this.requireEnabled();
+    this.requireEnabled();
+    this.requireActive();
     if (requestId !== undefined && (typeof requestId !== 'string' || REQUEST_ID_PATTERN.test(requestId) === false)) {
       throw sessionError('E_PARAMS', 'Invalid session create request id');
     }
+    // Every known, unrecoverable mapping fault must be rejected before the Host
+    // creates anything: a corrupt file, an unknown version, an unregistered
+    // project or the per-project cap cannot be repaired by an extra Session.
+    const project = await this.store.project(projectId);
+    if (project.sessionIds.length >= MAX_SESSIONS_PER_PROJECT) {
+      throw sessionError('E_SESSION_STATE_LIMIT', 'This project has too many creation Sessions');
+    }
     if (requestId !== undefined) {
-      const previous = this.created.get(requestId);
-      if (previous !== undefined) return previous.value;
+      const previous = this.created.get(this.dedupeKey(projectId, requestId));
+      if (previous !== undefined) {
+        if (previous.value.projectId !== projectId) {
+          throw sessionError('E_SESSION_ALREADY_BOUND', 'This create request id belongs to another project');
+        }
+        return previous.value;
+      }
     }
     const existing = this.creating.get(projectId);
     if (existing !== undefined) return existing;
+    const ordinal = project.sessionIds.length + 1;
     const task = (async () => {
       const cwd = await this.sessionCwd();
       const controller = this.controller();
@@ -310,13 +338,9 @@ export class SessionService {
       if (typeof sessionId !== 'string' || SESSION_ID_PATTERN.test(sessionId) === false) {
         throw sessionError('E_SESSION_RESPONSE', 'The Host returned an invalid Session identity');
       }
-      let ordinal = 1;
-      try {
-        const project = await this.store.project(projectId);
-        ordinal = project.sessionIds.length + 1;
-      } catch (_error) {
-        ordinal = 1;
-      }
+      // The mapping publish happens only after the durable write committed
+      // (SessionStateStore copy-on-write). A disk failure here is reported
+      // honestly; the Host Session may already exist and is not claimed rolled back.
       const mapping = await this.store.addSession(projectId, sessionId, true);
       const value = {
         enabled: true,
@@ -333,7 +357,7 @@ export class SessionService {
       } catch (error) {
         this.report(error, 'rename');
       }
-      this.rememberCreated(requestId, value);
+      this.rememberCreated(projectId, requestId, value);
       this.ensurePromptContext();
       return value;
     })();
@@ -347,6 +371,7 @@ export class SessionService {
 
   async select(projectId, sessionId) {
     this.requireEnabled();
+    this.requireActive();
     const mapping = await this.store.selectSession(projectId, sessionId);
     this.ensurePromptContext();
     return {
@@ -374,20 +399,31 @@ export class SessionService {
     throw sessionError('E_METHOD', 'Unknown session action');
   }
 
-  async dispose() {
-    if (this.contextDispose !== null) {
-      const dispose = this.contextDispose;
-      this.contextDispose = null;
+  dispose() {
+    if (this.disposePromise !== null) return this.disposePromise;
+    this.closing = true;
+    this.disposePromise = (async () => {
+      // Accepted, non-cancellable creates (and their renames) must settle and
+      // persist before the store or prompt context is torn down. Otherwise a
+      // late write would fail against a disposed store and the real Host would
+      // keep an unbound Session outside this plugin lifetime.
+      await Promise.allSettled([...this.creating.values()]);
       try {
-        dispose();
+        await this.store.dispose();
       } catch (error) {
-        this.report(error, 'prompt context cleanup');
+        this.report(error, 'state dispose');
       }
-    }
-    try {
-      await this.store.dispose();
-    } catch (error) {
-      this.report(error, 'state dispose');
-    }
+      if (this.contextDispose !== null) {
+        const dispose = this.contextDispose;
+        this.contextDispose = null;
+        try {
+          dispose();
+        } catch (error) {
+          this.report(error, 'prompt context cleanup');
+        }
+      }
+      this.disposed = true;
+    })();
+    return this.disposePromise;
   }
 }

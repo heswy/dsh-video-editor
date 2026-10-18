@@ -565,7 +565,16 @@ export class VideoBridge {
     if (SESSION_METHODS.includes(method)) {
       if (settings.source === 'tool') throw new BridgeError('E_METHOD', 'Session management is not a model tool action', { stage: 'params' });
       this.requireConfig();
-      return this.sessions.handle(method, normalized);
+      // Session operations are accepted work too: track them in the same
+      // inFlight set so dispose refuses new calls, drains accepted creates and
+      // only then lets SessionService tear down its store/context.
+      const sessionTask = (async () => this.sessions.handle(method, normalized))();
+      this.inFlight.add(sessionTask);
+      try {
+        return await sessionTask;
+      } finally {
+        this.inFlight.delete(sessionTask);
+      }
     }
     if (method === 'status' || method === 'cancel') {
       const record = this.jobs.get(normalized.jobId);

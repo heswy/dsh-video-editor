@@ -17,11 +17,12 @@
  */
 
 import { createHash } from 'node:crypto';
-import { mkdtemp, mkdir, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, readdir, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { pathToFileURL } from 'node:url';
 import { VideoBridge } from '../host/bridge.js';
+import { SessionStateStore } from '../host/session-state.js';
 import { buildWorkerEnv } from '../host/env.js';
 import { createRequestRoute, createArtifactRoute, statusForError } from '../host/routes.js';
 import { createVideoTool, TOOL_NAME } from '../host/tool.js';
@@ -849,6 +850,194 @@ async function main() {
     assert(!JSON.stringify(diagnose).includes('message'), 'diagnosis must not include message text');
     await bridge.dispose();
     assert(bag.contextDisposers.length === 1, 'prompt context was not disposed with the bridge');
+  });
+
+  await run('R1: a failed durable write never publishes the mapping and cleans its temp file', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'dsh-video-state-fault-'));
+    const statePath = join(root, 'state.json');
+    const store = new SessionStateStore({ path: statePath, allowedProjects: new Set([PROJECT]) });
+    await store.ready;
+    await mkdir(statePath);
+    let failed;
+    try {
+      await store.addSession(PROJECT, 'session-one', true);
+    } catch (error) {
+      failed = error;
+    }
+    assert(failed !== undefined, 'a failed durable write was reported as success');
+    assert((await store.projectForSession('session-one')) === null, 'a failed write published an in-memory mapping');
+    const project = await store.project(PROJECT);
+    assert(project.sessionIds.length === 0, 'a failed write changed the committed project');
+    const leftovers = (await readdir(root)).filter((name) => name.startsWith('state.json.tmp-'));
+    assert(leftovers.length === 0, `a failed write leaked temporary files: ${leftovers.join(', ')}`);
+    await rm(statePath, { recursive: true, force: true });
+    await store.addSession(PROJECT, 'session-two', true);
+    assert((await store.projectForSession('session-two')) === PROJECT, 'a later queued write did not commit after the failure');
+    await store.dispose();
+    await rm(root, { recursive: true, force: true });
+  });
+
+  await run('R1: readers see the committed state while a candidate write is pending', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'dsh-video-state-pending-'));
+    const store = new SessionStateStore({ path: join(root, 'state.json'), allowedProjects: new Set([PROJECT]) });
+    await store.ready;
+    let release;
+    const gate = new Promise((resolve) => { release = resolve; });
+    const write = store.write.bind(store);
+    store.write = async (candidate) => {
+      await gate;
+      return write(candidate);
+    };
+    const first = store.addSession(PROJECT, 'session-a', true);
+    const before = await store.project(PROJECT);
+    assert(before.sessionIds.length === 0, 'a pending candidate was visible to readers');
+    const second = store.addSession(PROJECT, 'session-b', true);
+    release();
+    await Promise.all([first, second]);
+    const after = await store.project(PROJECT);
+    assert(after.sessionIds.join(',') === 'session-a,session-b', `queued writes did not compose: ${after.sessionIds.join(',')}`);
+    await store.dispose();
+    await rm(root, { recursive: true, force: true });
+  });
+
+  await run('R2: an accepted Session create drains on dispose and persists before teardown', async () => {
+    const workspace = await makeWorkspace();
+    let releaseCreate;
+    let enteredCreate;
+    const entered = new Promise((resolve) => { enteredCreate = resolve; });
+    const gate = new Promise((resolve) => { releaseCreate = resolve; });
+    const controller = {
+      created: 0,
+      async create() {
+        this.created += 1;
+        enteredCreate();
+        await gate;
+        return { sessionId: 'session-late' };
+      },
+      async rename() {
+        return { title: 'x', seq: 1 };
+      },
+      async inspect(sessionId) {
+        return { meta: { id: sessionId }, events: [] };
+      },
+    };
+    const bag = makeCtx(workspace, { sessionController: controller });
+    const { bridge } = makeBridge(workspace, { handler: () => ({}) }, bag.ctx);
+    const pending = bridge.invoke('session.create', { projectId: PROJECT, requestId: 'drain-create' }, { source: 'http' }).then(
+      (value) => ({ ok: true, value }),
+      (error) => ({ ok: false, error })
+    );
+    await entered;
+    assert(bridge.inFlight.size === 1, `session create was not admitted to inFlight (${bridge.inFlight.size})`);
+    const dispose = bridge.dispose();
+    const disposeAgain = bridge.dispose();
+    assert(dispose === disposeAgain, 'repeated dispose returned different promises');
+    await new Promise((resolve) => setImmediate(resolve));
+    assert(bridge.disposed === false, 'dispose completed before the accepted Session create settled');
+    const refused = await rejects(() => bridge.invoke('doctor', {}));
+    assert(refused.code === 'E_WORKER_DISPOSED', `new work was accepted while closing: ${refused.code}`);
+    releaseCreate();
+    const result = await pending;
+    await dispose;
+    assert(result.ok === true && result.value.sessionId === 'session-late', `accepted create did not settle: ${result.ok ? '' : result.error.code}`);
+    const stored = JSON.parse(await readFile(workspace.sessionStatePath, 'utf8'));
+    assert(stored.projects[PROJECT].sessionIds.includes('session-late'), 'accepted create was not persisted before teardown');
+    assert(bridge.disposed === true, 'bridge was not disposed');
+  });
+
+  await run('R2: a delayed rename is drained and late prompt context cannot register', async () => {
+    const workspace = await makeWorkspace();
+    let releaseRename;
+    let enteredRename;
+    const entered = new Promise((resolve) => { enteredRename = resolve; });
+    const gate = new Promise((resolve) => { releaseRename = resolve; });
+    const controller = {
+      async create() {
+        return { sessionId: 'session-rename' };
+      },
+      async rename() {
+        enteredRename();
+        await gate;
+        return { title: 'x', seq: 1 };
+      },
+      async inspect(sessionId) {
+        return { meta: { id: sessionId }, events: [] };
+      },
+    };
+    const bag = makeCtx(workspace, { sessionController: controller });
+    const { bridge } = makeBridge(workspace, { handler: () => ({}) }, bag.ctx);
+    await bridge.invoke('session.list', { projectId: PROJECT }, { source: 'http' });
+    assert(bag.contexts.length === 1, 'prompt context was not registered by the first session operation');
+    const pending = bridge.invoke('session.create', { projectId: PROJECT, requestId: 'drain-rename' }, { source: 'http' });
+    await entered;
+    const dispose = bridge.dispose();
+    await new Promise((resolve) => setImmediate(resolve));
+    assert(bridge.disposed === false, 'dispose completed before the delayed rename settled');
+    releaseRename();
+    await pending;
+    await dispose;
+    const stored = JSON.parse(await readFile(workspace.sessionStatePath, 'utf8'));
+    assert(stored.projects[PROJECT].sessionIds.includes('session-rename'), 'mapping was not persisted before context cleanup');
+    assert(bag.contextDisposers.length === 1, 'prompt context was not disposed exactly once');
+    assert(bag.contexts.length === 1, 'a late create registered prompt context after cleanup');
+  });
+
+  await run('R3: known mapping faults are rejected before the Host creates a Session', async () => {
+    const workspace = await makeWorkspace();
+    const corruptLiteral = '{broken';
+    await writeFile(workspace.sessionStatePath, corruptLiteral);
+    let bag = makeCtx(workspace);
+    let bridge = makeBridge(workspace, { handler: () => ({}) }, bag.ctx).bridge;
+    const corrupt = await rejects(() => bridge.invoke('session.create', { projectId: PROJECT, requestId: 'corrupt-key' }, { source: 'http' }));
+    assert(corrupt.code === 'E_SESSION_STATE_CORRUPT', `corrupt state did not block create: ${corrupt.code}`);
+    assert(bag.sessionController.created.length === 0, 'a Host Session was created despite a corrupt mapping');
+    assert((await readFile(workspace.sessionStatePath, 'utf8')) === corruptLiteral, 'corrupt mapping file was modified');
+    await bridge.dispose();
+
+    await writeFile(workspace.sessionStatePath, JSON.stringify({ version: 99, projects: {}, sessions: {} }));
+    bag = makeCtx(workspace);
+    bridge = makeBridge(workspace, { handler: () => ({}) }, bag.ctx).bridge;
+    const versionError = await rejects(() => bridge.invoke('session.create', { projectId: PROJECT, requestId: 'version-key' }, { source: 'http' }));
+    assert(versionError.code === 'E_SESSION_STATE_VERSION', `unknown version did not block create: ${versionError.code}`);
+    assert(bag.sessionController.created.length === 0, 'a Host Session was created despite an unknown state version');
+    await bridge.dispose();
+
+    const projects = { [PROJECT]: { sessionIds: [], activeSessionId: null, createdAt: 1, updatedAt: 1 } };
+    const sessions = {};
+    for (let index = 0; index < 200; index += 1) {
+      const sessionId = 'session-cap-' + index;
+      projects[PROJECT].sessionIds.push(sessionId);
+      sessions[sessionId] = { projectId: PROJECT, createdAt: 1 };
+    }
+    projects[PROJECT].activeSessionId = 'session-cap-0';
+    await writeFile(workspace.sessionStatePath, JSON.stringify({ version: 1, projects, sessions }));
+    bag = makeCtx(workspace);
+    bridge = makeBridge(workspace, { handler: () => ({}) }, bag.ctx).bridge;
+    const limit = await rejects(() => bridge.invoke('session.create', { projectId: PROJECT, requestId: 'limit-key' }, { source: 'http' }));
+    assert(limit.code === 'E_SESSION_STATE_LIMIT', `project cap did not block create: ${limit.code}`);
+    assert(bag.sessionController.created.length === 0, 'a Host Session was created despite the per-project cap');
+    await bridge.dispose();
+  });
+
+  await run('R4: requestId dedupe is scoped to one project', async () => {
+    const workspace = await makeWorkspace({ projects: { a: 'projects-a/a', b: 'projects-b/b' } });
+    const bag = makeCtx(workspace, { controller: { mint: (counter) => 'session-' + counter } });
+    const { bridge } = makeBridge(workspace, { handler: () => ({}) }, bag.ctx);
+    const first = await bridge.invoke('session.create', { projectId: 'a', requestId: 'same-key' }, { source: 'http' });
+    const second = await bridge.invoke('session.create', { projectId: 'b', requestId: 'same-key' }, { source: 'http' });
+    assert(first.projectId === 'a' && second.projectId === 'b', 'requestId dedupe returned another project result');
+    assert(first.sessionId !== second.sessionId, 'cross-project dedupe reused the other project Session');
+    assert(bag.sessionController.created.length === 2, 'cross-project create did not reach the controller twice');
+    const retry = await bridge.invoke('session.create', { projectId: 'a', requestId: 'same-key' }, { source: 'http' });
+    assert(retry.sessionId === first.sessionId, 'same-project retry did not reuse the cached result');
+    assert(bag.sessionController.created.length === 2, 'same-project retry reached the controller again');
+    const [left, right] = await Promise.all([
+      bridge.invoke('session.create', { projectId: 'a' }, { source: 'http' }),
+      bridge.invoke('session.create', { projectId: 'a' }, { source: 'http' }),
+    ]);
+    assert(left.sessionId === right.sessionId, 'concurrent same-project creates were not single-flight');
+    assert(bag.sessionController.created.length === 3, 'concurrent same-project creates reached the controller twice');
+    await bridge.dispose();
   });
 
   await run('R3: verifier executes the staged Host bytes and rejects tampered snapshots', async () => {
