@@ -1,22 +1,13 @@
 # p0-mode-shell：当前接手
 
-更新：2026-10-17。继续当前目录、`dsh/p0-mode-shell` 和 PR #3，不新建树、不重开 P2-006。
+更新：2026-10-18。沿用当前目录、`dsh/p0-mode-shell` / PR#3，当前head `b204760`；路径和规则读协调分支DEVELOPMENT。
 
-## 已交付与复审结论
+P2-007已通过总调度[独立复审](../reviews/P2-007-review-01.md)：103/103+版本10/10、包17/17与提交一致；仓库原脚本独立复建及新staging真实链通过。P2-006的交付R1关闭；0.2.2可作受控候选，但本轮不安装，当前0.2.1和旧目录保持。
 
-- P2-006 实现 `97c0609`、记录 `16d60aa`；根包 0.2.2。总调度已独立复跑静态 37、client 46、Host 20，共 103/103，固定包 17/17 字节一致。客户端修复通过；交付流程 R1 需修，仍不安装候选包。
-- 本轮只同步 AGENTS 入口，HEAD 可因文档前移，功能代码没有变更。
-- 0.2.2 staging 使用临时副本修改 stage-dev 的版本 0.2.1 硬编码；总调度已独立复现仓库原脚本在0.2.2失败。见 [P2-006 复审](../reviews/P2-006-review-01.md)。
-- 最近确认的真实安装仍为 0.2.1 的固定 staging。保留当前安装与所有回滚目录，不覆盖或清理 artifacts。
+## 下一任务（待用户转发启动）
 
-## 当前下一任务：P2-007（待用户转发启动）
+fetch后通过git show读最新STATUS、DEVELOPMENT、PRODUCT、FRONTEND-DESIGN，存档并执行 [P3-005-A](../tasks/P3-005A-native-conversation-contract.md)：只读核对当前Host原生Conversation Factory/SessionProvider、工程会话历史、模型选择、审批/附件与素材归属，给精确接入提案。
 
-从协调分支读取 [P2-007](../tasks/P2-007-staging-version-reproducibility.md)，新白名单已允许修改 staging 脚本及回归。基线 `2c46daa`，沿用本树/本分支/PR #3，根版本0.2.2、引擎54f4671不变；不重写已通过客户端。修门禁、补行为回归、用仓库原脚本生成新不可变staging并跑真实链，再交回复审。当前安装与旧候选保持原状。
+只写任务/研究记录和必要只读探针，不改根插件/Host/engine，不安装、不创建用户会话、不调模型。引擎新固定基础为已审df4b74f/两包0.2.1，但这不授权在旧staging直接替换引擎。p1-engine并行做受控画布验证，不交叉修改。
 
-## 新产品方向
-
-先通过 `git show origin/codex/project-foundation:<路径>` 读 STATUS、DEVELOPMENT、PRODUCT、FRONTEND-DESIGN。
-
-左侧大画布直接选中/原位编辑，画面下只留播放控制和进度条；右侧 AI 始终可见，有会话历史和宿主模型选择。素材左上抽屉按需展开。**不做底部场景卡片，不继续右侧目标下拉+属性表单主路径。** 多 Scene 是工程结构，并非必须画卡片。
-
-P3-005 正式实现指南尚未下发；目标运行 Host 的原生 Conversation/SessionProvider/模型嵌入需核实，且画布依赖 P3-004 快照。本轮只执行用户转发的 P2-007 小修；不因看到概念图或 ROADMAP 就自行扩展 v0.3 界面。
+后续正式界面不再以目标下拉和右属性表单为主：左直接编辑、右AI常驻、素材抽屉、无场景卡片。原P2-006/P2-007任务不重开。普通commit/push更新PR#3后由用户交回复审。
