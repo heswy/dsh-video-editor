@@ -356,7 +356,13 @@ async function runChromeSnapshot({ browser, host, outRoot, runDirectory, snapsho
     };
   } finally {
     if (page !== null) await page.close().catch(() => {});
-    if (server !== null) await new Promise((resolveClose) => server.close(resolveClose)).catch(() => {});
+    // The browser stays alive between snapshot loads, so Chrome keeps an idle
+    // keep-alive socket to this per-case server; Node's server.close() would
+    // otherwise wait forever for it. Destroy open sockets explicitly.
+    if (server !== null) {
+      if (typeof server.closeAllConnections === 'function') server.closeAllConnections();
+      await new Promise((resolveClose) => server.close(resolveClose)).catch(() => {});
+    }
   }
 }
 
@@ -457,6 +463,7 @@ async function main() {
     bridge = new staged.VideoBridge({ ctx: host.ctx, rawConfig: stateRoot.config });
     const createVideoTool = await loadStagedTool(stagingRoot);
     tool = createVideoTool(bridge);
+    console.log('[phase] staged bridge + Tool ready');
     checks.check('staged Tool definition exposes the conversation-first workflow wording', typeof tool.description === 'string'
       && tool.description.includes('project.compose') && tool.description.includes('project.source')
       && tool.description.includes('expectedRevision') && /left preview follows/i.test(tool.description)
@@ -551,6 +558,7 @@ async function main() {
       label: 'genre-a-inline-svg',
     });
     recordChromeSnapshot(checks, chromeEvidence, chromeA, 'genre-a-inline-svg');
+    console.log('[phase] genre A published + real-Chrome snapshot played');
 
     // ─── 4. genre B publish through the same Tool path ─────────────────────
     const fixtureB = genreB();
@@ -606,7 +614,11 @@ async function main() {
     const baselineRevision = revB2;
     const baselineHtml = modifiedB2.html;
     const variants = failureFixtures(fixtureB.html);
+    console.log('[phase] failure matrix start (' + variants.length + ' variants)');
+    let variantCount = 0;
     for (const variant of variants) {
+      variantCount += 1;
+      if (variantCount % 8 === 0) console.log('[phase] failure matrix progress ' + variantCount + '/' + variants.length);
       if (variant.id === 'empty-html') continue; // handled with malformed params below
       const call = await callTool(tool, {
         action: 'project.compose',
@@ -658,7 +670,9 @@ async function main() {
     checks.check('repeated operationId with the same payload is idempotent (same revision, cached result)', replayB3.ok === true && replayResult !== null && replayResult.revision === revB3, { ok: replayB3.ok, revision: replayResult?.revision, expected: revB3, written: replayResult?.written, unchanged: replayResult?.unchanged });
     checks.check('idempotent replay performs no second write (revision and history unchanged)', inspectAfterReplay.revision === revB3 && historyAfterReplay.entries.length === historyAfterB3.entries.length, { revision: inspectAfterReplay.revision, expectedRevision: revB3, historyBefore: historyAfterB3.entries.length, historyAfter: historyAfterReplay.entries.length });
 
-    const reusedPayloadB3 = modifyGenreBAgain(modifyGenreB(fixtureB.html).html);
+    // A genuinely DIFFERENT body for the same operationId: the round-2 document
+    // (TIDE/accent-2) differs from the round-3 payload (CURRENT/accent-3).
+    const reusedPayloadB3 = { html: modifiedB2.html };
     const reused = await callTool(tool, {
       action: 'project.compose',
       projectId,
@@ -666,7 +680,7 @@ async function main() {
       operationId: opB3,
       html: reusedPayloadB3.html,
     }, sessionId);
-    checks.check('reusing one operationId with a different payload is E_OPERATION_REUSED', reused.ok === false && reused.code === 'E_OPERATION_REUSED', { actualCode: reused.code, message: reused.message.slice(0, 300) });
+    checks.check('reusing one operationId with a different payload is E_OPERATION_REUSED', reused.ok === false && reused.code === 'E_OPERATION_REUSED', { actualCode: reused.code, message: String(reused.message || '').slice(0, 300) });
 
     const unchangedCall = await callTool(tool, {
       action: 'project.compose',
@@ -779,6 +793,7 @@ async function main() {
     checks.check('published entry on disk is byte-identical to the submitted document', sha256(projectEntryBytes) === sha256(Buffer.from(finalHtml, 'utf8')) && projectEntryBytes.length === Buffer.byteLength(finalHtml, 'utf8'), { diskBytes: projectEntryBytes.length, submittedBytes: Buffer.byteLength(finalHtml, 'utf8') });
 
     // ─── 12. real Chrome load of the final genre B snapshot ────────────────
+    console.log('[phase] final snapshot verified; loading genre B in real Chrome');
     const chromeB = await runChromeSnapshot({
       browser,
       host,
@@ -804,6 +819,7 @@ async function main() {
 
     // ─── 14. close/reopen persistence ──────────────────────────────────────
     const beforeCloseInspect = await invokeHttp(bridge, 'inspect', { projectId });
+    console.log('[phase] close/reopen persistence');
     const closed = await invokeHttp(bridge, 'close', { projectId });
     const reopened = await invokeHttp(bridge, 'open', { projectId });
     const reopenedInspect = await invokeHttp(bridge, 'inspect', { projectId });
@@ -820,6 +836,7 @@ async function main() {
     });
     evidence.reopen = { revision: reopenedInspect.revision, sourceBytes: reopenedSource === null ? null : reopenedSource.bytes, sourceEqual: reopenedSource !== null ? reopenedSource.html === finalHtml : null };
     await invokeHttp(bridge, 'close', { projectId });
+    console.log('[phase] all assertions done; building evidence');
 
     checks.check('every recorded acceptance check passed', true, { checks: checks.checks.length });
   } catch (error) {
@@ -830,7 +847,10 @@ async function main() {
     console.error('harness failed:', evidence.fatalError.message);
   } finally {
     if (browser !== null) await browser.close().catch(() => {});
-    if (server !== null) await new Promise((resolveClose) => server.close(resolveClose)).catch(() => {});
+    if (server !== null) {
+      if (typeof server.closeAllConnections === 'function') server.closeAllConnections();
+      await new Promise((resolveClose) => server.close(resolveClose)).catch(() => {});
+    }
     let teardown = null;
     if (bridge !== null) {
       const beforeDispose = bridge.state();

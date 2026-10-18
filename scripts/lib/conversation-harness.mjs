@@ -353,11 +353,13 @@ export function compareStagingSources(before, after) {
   return { same: changed.length === 0, changed, beforeCount: before.length, afterCount: after.length };
 }
 
-/** Find one bridge route by exact path and fetch it through its own handler. */
-export async function fetchRoute(routes, path, init) {
+/** Find one bridge route by exact path and fetch it through its own handler.
+ * `pathWithQuery` may carry the fixed-runtime instance/nonce handshake. */
+export async function fetchRoute(routes, pathWithQuery, init) {
+  const path = String(pathWithQuery).split('?')[0];
   const route = routes.find((candidate) => candidate.path === path);
   assert(route !== undefined, 'route is not registered: ' + path);
-  const request = new Request('http://127.0.0.1' + path, init || { method: 'GET' });
+  const request = new Request('http://127.0.0.1' + pathWithQuery, init || { method: 'GET' });
   return route.fetch(request);
 }
 

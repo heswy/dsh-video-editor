@@ -27,7 +27,10 @@
 
   var ReactLite = window.ReactLite;
   var createElement = ReactLite.createElement;
-  var container = document.querySelector('#root > .dv-root');
+  // The product VideoWorkspace renders its own `.dv-root`; mount into a neutral
+  // container so the querySelector('.dv-root') state reader finds the product
+  // component, not the harness host element.
+  var container = document.getElementById('root');
   var MODULE = null;
   var dictionary = null;
   var root = null;
@@ -115,7 +118,9 @@
   // ── instrumented fetch: request log + one-shot host-shaped failures ──────
   window.fetch = function instrumentedFetch(input, init) {
     var url = typeof input === 'string' ? input : (input && input.url) || '';
-    var isRequest = url.indexOf(REQUEST_PATH) !== -1;
+    // The staged client calls the route RELATIVELY (`api/dsh-video/request`), so
+    // match the route suffix rather than an absolute path.
+    var isRequest = url.indexOf('api/dsh-video/request') !== -1;
     var method = null;
     var params = null;
     if (isRequest && init && typeof init.body === 'string') {
@@ -328,6 +333,48 @@
     return { ok: false, elapsedMs: Date.now() - started, state: last || readState() };
   }
 
+  // Bind the real iframe load event as soon as the component creates the
+  // sandboxed preview frame, so a load that happens before the harness asks is
+  // still observable (phase=ready is set before the document finishes loading).
+  var frameLoadCount = 0;
+  function bindFrameLoad(frame) {
+    if (frame === null || frame === undefined || frame.__harnessLoadBound === true) return;
+    frame.__harnessLoadBound = true;
+    frame.__harnessLoadedAt = undefined;
+    frame.addEventListener('load', function onFrameLoad() {
+      frameLoadCount += 1;
+      frame.__harnessLoadedAt = Date.now();
+    });
+  }
+  if (typeof MutationObserver === 'function') {
+    var frameObserver = new MutationObserver(function observeFrames() {
+      var frames = document.querySelectorAll('.dv-stage-frame');
+      for (var index = 0; index < frames.length; index += 1) bindFrameLoad(frames[index]);
+    });
+    frameObserver.observe(document.documentElement, { childList: true, subtree: true });
+  }
+
+  /**
+   * Wait until the current preview iframe fired its real `load` event after
+   * `since` (all subresources incl. the GSAP asset are loaded).
+   */
+  async function waitFrameLoad(since, timeoutMs) {
+    var started = Date.now();
+    var deadline = started + (timeoutMs || 8000);
+    while (Date.now() < deadline) {
+      var frames = document.querySelectorAll('.dv-stage-frame');
+      var frame = frames.length > 0 ? frames[frames.length - 1] : null;
+      if (frame !== null) {
+        bindFrameLoad(frame);
+        if (frame.__harnessLoadedAt !== undefined && frame.__harnessLoadedAt >= since) {
+          return { ok: true, elapsedMs: Date.now() - started, loadedAt: frame.__harnessLoadedAt, loadCount: frameLoadCount };
+        }
+      }
+      await sleep(40);
+    }
+    return { ok: false, elapsedMs: Date.now() - started, loadCount: frameLoadCount };
+  }
+
   function seekTo(value) {
     var seek = document.querySelector('.dv-seek');
     if (seek === null) return false;
@@ -470,6 +517,7 @@
       waitCanvas: waitCanvas,
       waitError: waitError,
       waitTime: waitTime,
+      waitFrameLoad: waitFrameLoad,
       seekTo: seekTo,
       rect: querySelectorRect,
       inject: inject,
