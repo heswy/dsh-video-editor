@@ -1836,7 +1836,7 @@ window.__ModuleLoader__.load({
       function postCommand(type, payload) {
         return new Promise(function commandPromise(resolve) {
           const frame = iframeRef.current;
-          if (frame === null || typeof frame.contentWindow === 'undefined' || readyRef.current === false) {
+          if (frame === null || typeof frame.contentWindow === 'undefined') {
             resolve(null);
             return;
           }
@@ -1982,6 +1982,25 @@ window.__ModuleLoader__.load({
           if (snapshot === null) return function noMessages() {};
           const frame = iframeRef.current;
           if (frame === null) return function noFrame() {};
+          function restoreRuntimeState() {
+            const restore = snapshot.restore;
+            const target = restore && Number.isFinite(restore.time) ? Math.min(restore.time, duration) : 0;
+            void postCommand('seek', { time: target }).then(function restoreSelection() {
+              if (restore && restore.stableId) {
+                const element = elements.find(function same(item) {
+                  return item.stableId === restore.stableId;
+                });
+                if (element !== undefined && element.layout && Number.isFinite(element.layout.left) && Number.isFinite(element.layout.top)) {
+                  const rect = element.layout;
+                  if (rect.width > 0 && rect.height > 0) {
+                    void postCommand('hitTest', { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }).then(function applyHit(payload) {
+                      if (payload && payload.hit) setSelectedSafe(payload.hit);
+                    });
+                  }
+                }
+              }
+            });
+          }
           function handleMessage(event) {
             if (event.source !== frame.contentWindow) return;
             const data = event.data;
@@ -1998,30 +2017,17 @@ window.__ModuleLoader__.load({
             }
             if (data.type === 'ready') {
               readyRef.current = true;
-              const payload = data.payload || {};
               setPhase('ready');
-              const restore = snapshot.restore;
-              const target = restore && Number.isFinite(restore.time) ? Math.min(restore.time, duration) : 0;
-              void postCommand('seek', { time: target }).then(function restoreSelection() {
-                if (restore && restore.stableId) {
-                  const element = elements.find(function same(item) {
-                    return item.stableId === restore.stableId;
-                  });
-                  if (element !== undefined) {
-                    const hit = element;
-                    const rect = hit.layout && Number.isFinite(hit.layout.left) ? { x: hit.layout.left, y: hit.layout.top, width: hit.layout.width || 0, height: hit.layout.height || 0 } : null;
-                    if (rect !== null && rect.width > 0 && rect.height > 0) {
-                      void postCommand('hitTest', { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 }).then(function applyHit(payload) {
-                        if (payload && payload.hit) setSelectedSafe(payload.hit);
-                      });
-                    }
-                  }
-                }
-              });
+              restoreRuntimeState();
             } else if (data.type === 'seeked' || data.type === 'state') {
               const payload = data.payload || {};
               if (Number.isFinite(payload.time)) setTime(payload.time);
               if (typeof payload.playing === 'boolean') setPlaying(payload.playing);
+              if (readyRef.current === false) {
+                readyRef.current = true;
+                setPhase('ready');
+                restoreRuntimeState();
+              }
             } else if (data.type === 'playing') {
               setPlaying(true);
             } else if (data.type === 'paused') {
@@ -2453,6 +2459,11 @@ window.__ModuleLoader__.load({
             src: snapshot.src,
             sandbox: 'allow-scripts',
             referrerPolicy: 'no-referrer',
+            onLoad: function runtimeLoaded() {
+              setTimeout(function recoverState() {
+                void postCommand('state');
+              }, 120);
+            },
           }),
           h(
             'div',
