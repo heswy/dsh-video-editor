@@ -273,6 +273,83 @@ async function waitForPreviewRelease(page, mark, snapshotId, timeoutMs) {
   return { ok: false, requests };
 }
 
+/** Release requests for one snapshot inside the page request-log window. */
+async function releaseHits(page, mark, snapshotId) {
+  const requests = await evaluate(page, (markIndex) => window.__CASE__.requestsSince(markIndex), mark);
+  return {
+    requests,
+    hits: requests.filter((entry) => entry.method === 'preview.release' && entry.params && entry.params.snapshotId === snapshotId),
+  };
+}
+
+/**
+ * Wait (bounded) until exactly `expected` preview.release requests exist for one
+ * snapshot. `expected === 0` observes the retention window without releasing.
+ */
+async function waitForReleaseCount(page, mark, snapshotId, expected, timeoutMs) {
+  const deadline = Date.now() + (timeoutMs || 6000);
+  let last = { requests: [], hits: [] };
+  while (Date.now() < deadline) {
+    last = await releaseHits(page, mark, snapshotId);
+    if (last.hits.length >= expected) {
+      if (expected === 0) await sleep(300);
+      return { ok: last.hits.length === expected, count: last.hits.length, hits: last.hits, requests: last.requests };
+    }
+    await sleep(100);
+  }
+  return { ok: false, count: last.hits.length, hits: last.hits, requests: last.requests };
+}
+
+function activeFrameOf(state) {
+  return state.activeFrames.length > 0 ? state.activeFrames[0] : null;
+}
+
+/** Instance handshake (instance/nonce) of the visible frame, for stale-message forgeries. */
+function handshakeOf(state) {
+  const frame = activeFrameOf(state);
+  if (frame === null || typeof frame.src !== 'string') return null;
+  const match = /[?&]instance=([^&]+)&nonce=([a-f0-9]{32})/.exec(frame.src);
+  return match === null ? null : { instanceId: match[1], nonce: match[2] };
+}
+
+/**
+ * R2F: the visible preview geometry must always describe the ACTIVE instance.
+ * The client sizes the iframe element at composition CSS pixels and letterboxes
+ * it with a CSS transform, so the inline style width/height, the stage aspect
+ * ratio, seek.max and the duration label are the observable metadata surface.
+ */
+function checkActiveGeometry(checks, label, state, expected) {
+  const frame = activeFrameOf(state);
+  const stage = state.stage;
+  const seekMax = state.seek === null ? null : Number(state.seek.max);
+  const timeText = String(state.timeText || '');
+  const durationLabel = '/ ' + Number(expected.duration).toFixed(2);
+  checks.check(label + ': active iframe inline size stays the ACTIVE composition ' + expected.width + 'x' + expected.height, frame !== null && frame.elementWidth === expected.width + 'px' && frame.elementHeight === expected.height + 'px', { activeFrames: state.activeFrames, expected: { width: expected.width, height: expected.height } });
+  checks.check(label + ': stage letterbox keeps the ACTIVE composition aspect ratio', stage !== null && Math.abs(stage.width / stage.height - expected.width / expected.height) < 0.03, { stage, expectedAspect: expected.width / expected.height });
+  checks.check(label + ': seek max and duration label use the ACTIVE duration ' + expected.duration + 's', seekMax === expected.duration && timeText.indexOf(durationLabel) !== -1, { seekMax, timeText, expectedDuration: expected.duration });
+  checks.check(label + ': exactly one visible active iframe and no candidate frame', state.activeFrameCount === 1 && state.candidateFrameCount === 0 && frame !== null && frame.visible === true, { activeFrameCount: state.activeFrameCount, candidateFrameCount: state.candidateFrameCount, visible: frame === null ? null : frame.visible });
+  return { frame, seekMax, timeText };
+}
+
+/** R2F: shell markers must stay truthful during retention and after a switch. */
+function checkR2fMarkers(checks, label, state, expected) {
+  checks.check(label + ': markers are truthful (phase/revision)', state.phase === expected.phase && state.revision === expected.revision, { phase: state.phase, revision: state.revision, expected });
+  if (expected.targetRevision !== undefined) {
+    checks.check(label + ': data-canvas-target-revision names the pending requested revision', state.targetRevision === expected.targetRevision, { targetRevision: state.targetRevision, expected: expected.targetRevision });
+  }
+}
+
+/** R2F: stale messages from the pre-switch instance handshake must be ignored. */
+async function forgeOldInstanceMessages(page, handshake) {
+  if (handshake === null) return false;
+  await evaluate(page, (oldHandshake) => {
+    window.postMessage({ v: 1, kind: 'evt', instanceId: oldHandshake.instanceId, nonce: oldHandshake.nonce, type: 'seeked', payload: { time: 9.99, playing: true } }, '*');
+    window.postMessage({ v: 1, kind: 'evt', instanceId: oldHandshake.instanceId, nonce: oldHandshake.nonce, type: 'ready', payload: { runtimeVersion: 'stale', width: 1, height: 1, duration: 999 } }, '*');
+  }, handshake);
+  await sleep(450);
+  return true;
+}
+
 /** Seek through the REAL preview range control (real mouse click on the input). */
 async function seekPreviewTo(page, seconds) {
   const state = await evaluate(page, () => window.__CASE__.state());
@@ -349,6 +426,7 @@ async function main() {
     latency: [],
     rounds: [],
     r2: null,
+    r2f: null,
     requests: [],
     network: null,
     gestures: null,
@@ -985,6 +1063,143 @@ async function main() {
       screenshots: [retentionShot, retrySwitchShot, runtimeShot, autoSwitchShot, initialErrorShot, initialRecoveredShot],
     };
 
+    // ─── R2F: per-instance preview metadata isolation (geometry/duration) ──
+    // The retained active preview must keep ITS OWN width/height/duration while a
+    // candidate with different geometry fails or is still loading; only a
+    // successful candidate promotes all display metadata atomically.
+    console.log('[phase] R2F metadata-isolation probes start');
+    const r2fChecksStart = checks.checks.length;
+    const r2f = { cases: [], final: null };
+    evidence.r2f = r2f;
+    const genreAGeometry = { width: 1280, height: 720, duration: 6 };
+    const genreBGeometry = { width: 720, height: 1280, duration: 5 };
+    await evaluate(page, () => window.__CASE__.clearInjections());
+    const r2fState = async () => evaluate(page, () => window.__CASE__.state());
+    async function r2fWaitSwitch(expectedRevision, sinceMs) {
+      const waited = await evaluate(page, (expected) => window.__CASE__.waitCanvas({ phase: 'ready', revision: expected, notice: false, maxCandidateFrames: 0 }, 30000), expectedRevision);
+      if (waited.ok === true && sinceMs !== undefined) await evaluate(page, (since) => window.__CASE__.waitFrameLoad(since, 12000), sinceMs);
+      return waited;
+    }
+    async function r2fObserveRetention(label, activeRevision, activeGeometry, targetRevision, mark, oldSnapshotId, handshake, screenshotName) {
+      const notice = await evaluate(page, () => window.__CASE__.waitNotice(30000));
+      const state = notice.state;
+      checkAcceptance('B4', 'R2F ' + label + ': retention notice appears while the old preview stays mounted', notice.ok === true && state.noticeVisible === true, { noticeOk: notice.ok, notices: state.notices });
+      checkR2fMarkers(checks, 'R2F ' + label, state, { phase: 'ready', revision: activeRevision, targetRevision });
+      checkActiveGeometry(checks, 'R2F ' + label + ' (failed candidate retention)', state, activeGeometry);
+      checks.check('R2F ' + label + ': notice is role=alert with retry and no full-error replacement', state.notices.length > 0 && state.notices[0].role === 'alert' && state.notices[0].retry !== null && state.fullErrorVisible === false, { notice: state.notices[0] || null, fullErrorVisible: state.fullErrorVisible });
+      const noRelease = await waitForReleaseCount(page, mark, oldSnapshotId, 0, 1200);
+      checks.check('R2F ' + label + ': the retained old snapshot is NOT released during retention', noRelease.ok === true && noRelease.count === 0, { releaseCount: noRelease.count, hits: noRelease.hits.map((entry) => entry.params && entry.params.snapshotId) });
+      const playable = await assertRetainedPlayable(page, pauseText);
+      checks.check('R2F ' + label + ': the retained old frame is playable with its own duration label', playable.ok === true && String(playable.timeText || '').indexOf('/ ' + activeGeometry.duration.toFixed(2)) !== -1, { playable: { ok: playable.ok, timeText: playable.timeText } });
+      const whilePlaying = await r2fState();
+      checkActiveGeometry(checks, 'R2F ' + label + ' (while playing the retained frame)', whilePlaying, activeGeometry);
+      const noticeScreenshot = await screenshotPage(page, join(evidenceDirectory, screenshotName));
+      return { state, notice: state.notices[0] || null, playable, noReleaseCount: noRelease.count, noticeScreenshot };
+    }
+    async function r2fObserveSwitch(label, expectedGeometry, expectedRevision, mark, oldSnapshotId, handshake, screenshotName, sinceMs) {
+      const switched = await evaluate(page, (expected) => window.__CASE__.waitCanvas({ phase: 'ready', revision: expected, notice: false, maxCandidateFrames: 0 }, 30000), expectedRevision);
+      if (switched.ok === true && sinceMs !== undefined) await evaluate(page, (since) => window.__CASE__.waitFrameLoad(since, 12000), sinceMs);
+      const state = switched.state;
+      checkAcceptance('B4', 'R2F ' + label + ': the successful candidate promotes atomically', switched.ok === true, { ok: switched.ok, state: { phase: state.phase, revision: state.revision, targetRevision: state.targetRevision } });
+      checkR2fMarkers(checks, 'R2F ' + label + ' (switch)', state, { phase: 'ready', revision: expectedRevision });
+      checks.check('R2F ' + label + ': target marker resolves to the switched revision (or clears)', state.targetRevision === expectedRevision || state.targetRevision === '' || state.targetRevision === null, { targetRevision: state.targetRevision, expected: expectedRevision });
+      const geometry = checkActiveGeometry(checks, 'R2F ' + label + ' (switch)', state, expectedGeometry);
+      const release = await waitForReleaseCount(page, mark, oldSnapshotId, 1, 7000);
+      await sleep(450);
+      const recount = await waitForReleaseCount(page, mark, oldSnapshotId, 1, 400);
+      checks.check('R2F ' + label + ': the old snapshot is released exactly once AFTER the successful switch', release.ok === true && release.count === 1 && recount.count === 1, { releaseCount: release.count, recount: recount.count, hits: release.hits.map((entry) => ({ snapshotId: entry.params && entry.params.snapshotId, ok: entry.responseOk })) });
+      checks.check('R2F ' + label + ': Host snapshot routes stay bounded after the switch (<=4 records)', bridge.snapshots.records.size <= 4, { snapshotRecords: bridge.snapshots.records.size });
+      const forged = await forgeOldInstanceMessages(page, handshake);
+      const after = await r2fState();
+      checks.check('R2F ' + label + ': stale old-instance messages cannot disturb the switched preview', forged === true && after.revision === expectedRevision && after.seek !== null && Number(after.seek.max) === expectedGeometry.duration && String(after.timeText || '').indexOf('/ ' + expectedGeometry.duration.toFixed(2)) !== -1, { forged, after: { revision: after.revision, seekMax: after.seek === null ? null : after.seek.max, timeText: after.timeText } });
+      const screenshot = await screenshotPage(page, join(evidenceDirectory, screenshotName));
+      return { state, geometry, releaseCount: release.count, screenshot };
+    }
+
+    // (a) Injected preview.snapshot failure for a 1280x720/6s candidate while a
+    // ready 720x1280/5s genre-B composition is displayed.
+    const r2fBaseA = await r2fState();
+    checkActiveGeometry(checks, 'R2F-A baseline (genre B active)', r2fBaseA, genreBGeometry);
+    const r2fBaseAHandshake = handshakeOf(r2fBaseA);
+    const r2fBaseASnapshot = activeFrameOf(r2fBaseA).snapshotId;
+    const r2fMarkA = await evaluate(page, () => window.__CASE__.mark());
+    await evaluate(page, () => window.__CASE__.inject({ method: 'preview.snapshot', code: 'E_PREVIEW_NOT_FOUND', message: 'Injected snapshot failure (R2F-A)', times: 1 }));
+    const r2fCandidatesA = await composeThroughTool(tool, sessionId, projectId, r2fBaseA.revision, genreA().html, 'r2f-a-fail');
+    const r2fRetentionA = await r2fObserveRetention('A(snapshot-failure)', r2fBaseA.revision, genreBGeometry, r2fCandidatesA.publishedRevision, r2fMarkA, r2fBaseASnapshot, r2fBaseAHandshake, '10-r2f-a-retention-genreB-720x1280.png');
+    const r2fRetryMarkA = await evaluate(page, () => window.__CASE__.mark());
+    const r2fRetryAtA = Date.now();
+    const r2fRetryRectA = r2fRetentionA.notice.retry.rect;
+    await page.mouse.click(r2fRetryRectA.centerX, r2fRetryRectA.centerY);
+    const r2fSwitchA = await r2fObserveSwitch('A(snapshot-failure)', genreAGeometry, r2fCandidatesA.publishedRevision, r2fRetryMarkA, r2fBaseASnapshot, r2fBaseAHandshake, '11-r2f-a-switched-genreA-1280x720.png', r2fRetryAtA);
+    r2f.cases.push({ id: 'A', failure: 'injected-preview-snapshot', activeBefore: { revision: r2fBaseA.revision, ...genreBGeometry }, candidate: { revision: r2fCandidatesA.publishedRevision, ...genreAGeometry }, retentionNoRelease: r2fRetentionA.noReleaseCount, switched: { revision: r2fSwitchA.state.revision, ...genreAGeometry }, releaseCount: r2fSwitchA.releaseCount, screenshots: [r2fRetentionA.noticeScreenshot.path, r2fSwitchA.screenshot.path] });
+
+    // Return to a ready genre B (a normal, successful geometry switch back).
+    const r2fBackBStart = Date.now();
+    const r2fBackB = await composeThroughTool(tool, sessionId, projectId, r2fCandidatesA.publishedRevision, genreB().html, 'r2f-b-return');
+    const r2fBackBReady = await r2fWaitSwitch(r2fBackB.publishedRevision, r2fBackBStart);
+    const r2fBaseB = await r2fState();
+    checks.check('R2F: a normal publish switches the visible metadata back to genre B 720x1280/5s', r2fBackBReady.ok === true && r2fBaseB.revision === r2fBackB.publishedRevision, { ok: r2fBackBReady.ok, revision: r2fBaseB.revision, expected: r2fBackB.publishedRevision });
+    checkActiveGeometry(checks, 'R2F-B baseline (genre B active again)', r2fBaseB, genreBGeometry);
+    const r2fBaseBHandshake = handshakeOf(r2fBaseB);
+    const r2fBaseBSnapshot = activeFrameOf(r2fBaseB).snapshotId;
+
+    // (b) Synthetic candidate RUNTIME failure for a 1280x720/6s candidate.
+    const r2fMarkB = await evaluate(page, () => window.__CASE__.mark());
+    await evaluate(page, () => window.__CASE__.inject({ method: 'preview.snapshot', kind: 'fake-snapshot', entryUrl: '/harness/broken-candidate/index.html', times: 1 }));
+    const r2fCandidatesB = await composeThroughTool(tool, sessionId, projectId, r2fBaseB.revision, genreA().html, 'r2f-b-runtime');
+    const r2fRetentionB = await r2fObserveRetention('B(candidate-runtime-error)', r2fBaseB.revision, genreBGeometry, r2fCandidatesB.publishedRevision, r2fMarkB, r2fBaseBSnapshot, r2fBaseBHandshake, '12-r2f-b-retention-genreB-720x1280.png');
+    const r2fRetryMarkB = await evaluate(page, () => window.__CASE__.mark());
+    const r2fRetryAtB = Date.now();
+    const r2fRetryRectB = r2fRetentionB.notice.retry.rect;
+    await page.mouse.click(r2fRetryRectB.centerX, r2fRetryRectB.centerY);
+    const r2fSwitchB = await r2fObserveSwitch('B(candidate-runtime-error)', genreAGeometry, r2fCandidatesB.publishedRevision, r2fRetryMarkB, r2fBaseBSnapshot, r2fBaseBHandshake, '13-r2f-b-switched-genreA-1280x720.png', r2fRetryAtB);
+    r2f.cases.push({ id: 'B', failure: 'synthetic-candidate-runtime-error', activeBefore: { revision: r2fBaseB.revision, ...genreBGeometry }, candidate: { revision: r2fCandidatesB.publishedRevision, ...genreAGeometry }, retentionNoRelease: r2fRetentionB.noReleaseCount, switched: { revision: r2fSwitchB.state.revision, ...genreAGeometry }, releaseCount: r2fSwitchB.releaseCount, screenshots: [r2fRetentionB.noticeScreenshot.path, r2fSwitchB.screenshot.path] });
+
+    // Return to genre B again, then (c) a DELAYED successful candidate response:
+    // during the waiting period the old geometry/duration must stay frozen.
+    const r2fBackB2Start = Date.now();
+    const r2fBackB2 = await composeThroughTool(tool, sessionId, projectId, r2fCandidatesB.publishedRevision, genreB().html, 'r2f-c-return');
+    const r2fBackB2Ready = await r2fWaitSwitch(r2fBackB2.publishedRevision, r2fBackB2Start);
+    const r2fBaseC = await r2fState();
+    checks.check('R2F: second normal publish restores genre B 720x1280/5s before the delayed-candidate case', r2fBackB2Ready.ok === true && r2fBaseC.revision === r2fBackB2.publishedRevision, { ok: r2fBackB2Ready.ok, revision: r2fBaseC.revision, expected: r2fBackB2.publishedRevision });
+    checkActiveGeometry(checks, 'R2F-C baseline (genre B active again)', r2fBaseC, genreBGeometry);
+    const r2fBaseCHandshake = handshakeOf(r2fBaseC);
+    const r2fBaseCSnapshot = activeFrameOf(r2fBaseC).snapshotId;
+    const r2fMarkC = await evaluate(page, () => window.__CASE__.mark());
+    const r2fCaseCStartedAt = Date.now();
+    await evaluate(page, () => window.__CASE__.inject({ method: 'preview.snapshot', kind: 'delay-snapshot', delayMs: 2600, times: 1 }));
+    const r2fCandidatesC = await composeThroughTool(tool, sessionId, projectId, r2fBaseC.revision, genreA().html, 'r2f-c-delayed');
+    const r2fWaiting = await evaluate(page, (expected) => window.__CASE__.waitCanvas({ phase: 'ready', revision: expected.active, targetRevision: expected.target, notice: false, minActiveFrames: 1 }, 15000), { active: r2fBaseC.revision, target: r2fCandidatesC.publishedRevision });
+    checkAcceptance('B4', 'R2F C(delayed-success): while the candidate response is delayed the old preview stays mounted with a pending target marker', r2fWaiting.ok === true && r2fWaiting.state.revision === r2fBaseC.revision && r2fWaiting.state.targetRevision === r2fCandidatesC.publishedRevision, { ok: r2fWaiting.ok, revision: r2fWaiting.state.revision, targetRevision: r2fWaiting.state.targetRevision, expected: { active: r2fBaseC.revision, target: r2fCandidatesC.publishedRevision } });
+    checkActiveGeometry(checks, 'R2F-C waiting (genre B active)', r2fWaiting.state, genreBGeometry);
+    await sleep(500);
+    const r2fWaitingLater = await r2fState();
+    checkActiveGeometry(checks, 'R2F-C waiting (+500ms, genre B active)', r2fWaitingLater, genreBGeometry);
+    const r2fWaitingNoRelease = await waitForReleaseCount(page, r2fMarkC, r2fBaseCSnapshot, 0, 800);
+    checks.check('R2F C: no old-snapshot release while the candidate response is delayed', r2fWaitingNoRelease.ok === true && r2fWaitingNoRelease.count === 0, { releaseCount: r2fWaitingNoRelease.count });
+    const r2fWaitingPlay = await assertRetainedPlayable(page, pauseText);
+    checks.check('R2F C: the old frame stays playable while the candidate response is delayed', r2fWaitingPlay.ok === true && String(r2fWaitingPlay.timeText || '').indexOf('/ 5.00') !== -1, { playable: { ok: r2fWaitingPlay.ok, timeText: r2fWaitingPlay.timeText } });
+    const r2fWaitingScreenshot = await screenshotPage(page, join(evidenceDirectory, '14-r2f-c-delayed-waiting-genreB-720x1280.png'));
+    const r2fSwitchC = await r2fObserveSwitch('C(delayed-success)', genreAGeometry, r2fCandidatesC.publishedRevision, r2fMarkC, r2fBaseCSnapshot, r2fBaseCHandshake, '15-r2f-c-switched-genreA-1280x720.png', r2fCaseCStartedAt);
+    // The candidate iframe observed at creation must have been sized from ITS OWN
+    // 1280x720 metadata and hidden (never from the active 720x1280 geometry).
+    const r2fCandidateObservations = await evaluate(page, () => window.__CASE__.candidateObservations());
+    const r2fSwitchedSnapshotId = activeFrameOf(r2fSwitchC.state) === null ? null : activeFrameOf(r2fSwitchC.state).snapshotId;
+    const r2fOwnCandidateObservation = r2fCandidateObservations.filter((entry) => entry.snapshotId === r2fSwitchedSnapshotId).pop() || null;
+    checks.check('R2F C: the hidden candidate iframe is sized from ITS OWN 1280x720 metadata (never the active geometry)', r2fOwnCandidateObservation !== null && r2fOwnCandidateObservation.elementWidth === '1280px' && r2fOwnCandidateObservation.elementHeight === '720px' && r2fOwnCandidateObservation.visible === false && (r2fOwnCandidateObservation.visibility === 'hidden' || r2fOwnCandidateObservation.ariaHidden === 'true'), { observation: r2fOwnCandidateObservation, candidateObservations: r2fCandidateObservations.slice(-6) });
+    r2f.cases.push({ id: 'C', failure: 'delayed-successful-candidate', activeBefore: { revision: r2fBaseC.revision, ...genreBGeometry }, candidate: { revision: r2fCandidatesC.publishedRevision, ...genreAGeometry }, waitingNoRelease: r2fWaitingNoRelease.count, waitingTimeText: r2fWaiting.state.timeText, waitingSeekMax: r2fWaiting.state.seek === null ? null : r2fWaiting.state.seek.max, candidateOwnGeometry: r2fOwnCandidateObservation === null ? null : { elementWidth: r2fOwnCandidateObservation.elementWidth, elementHeight: r2fOwnCandidateObservation.elementHeight, visible: r2fOwnCandidateObservation.visible }, switched: { revision: r2fSwitchC.state.revision, ...genreAGeometry }, releaseCount: r2fSwitchC.releaseCount, screenshots: [r2fWaitingScreenshot.path, r2fSwitchC.screenshot.path] });
+
+    // Final: the last success must be a full atomic switch to genre A metadata.
+    const r2fFinal = await r2fState();
+    const r2fFinalGeometry = checkActiveGeometry(checks, 'R2F final (after delayed-success switch)', r2fFinal, genreAGeometry);
+    const r2fHostInspect = await invokeHttp(bridge, 'inspect', { projectId });
+    checks.check('R2F: final canvas revision equals the Host project revision (no stale metadata source)', r2fFinal.revision === r2fHostInspect.revision && Number(r2fFinalGeometry.seekMax) === 6, { canvasRevision: r2fFinal.revision, hostRevision: r2fHostInspect.revision, seekMax: r2fFinalGeometry.seekMax, timeText: r2fFinalGeometry.timeText });
+    r2f.final = { revision: r2fFinal.revision, geometry: genreAGeometry, seekMax: r2fFinalGeometry.seekMax, timeText: r2fFinalGeometry.timeText, snapshotRecords: bridge.snapshots.records.size, activeSnapshotId: activeFrameOf(r2fFinal) === null ? null : activeFrameOf(r2fFinal).snapshotId };
+    const r2fAddedChecks = checks.checks.slice(r2fChecksStart);
+    const r2fFailedChecks = r2fAddedChecks.filter((entry) => entry.ok !== true);
+    checkAcceptance('B4', 'R2F: per-instance metadata isolation holds across every retention/waiting/switch observation (active geometry, seek max, duration label)', r2fFailedChecks.length === 0, { total: r2fAddedChecks.length, failed: r2fFailedChecks.map((entry) => entry.name) });
+    console.log('[phase] R2F metadata-isolation probes done: cases=' + r2f.cases.length + ' final=' + r2fFinal.revision.slice(0, 12) + ' seekMax=' + r2fFinalGeometry.seekMax + ' checks=' + r2fAddedChecks.length + ' failed=' + r2fFailedChecks.length);
+
     // ─── B5: no deferred manual controls + gesture safety ──────────────────
     const forbiddenSelectors = [
       '.dv-editor', '.dv-stagebar', '.dv-controls', '.dv-selection', '.dv-overlay', '.dv-inline-editor',
@@ -1151,6 +1366,7 @@ async function main() {
         initialFailureRecovered: evidence.r2.initialFailure !== null && evidence.r2.initialFailure.recoverOk === true,
       } : null,
       stress: evidence.stress ? { switches: evidence.stress.switches.length, doubleRetry: evidence.stress.doubleRetry, unmountDuringFailure: evidence.stress.unmountDuringFailure } : null,
+      r2f: evidence.r2f ? { cases: evidence.r2f.cases.map((entry) => ({ id: entry.id, failure: entry.failure, activeBefore: entry.activeBefore, retentionNoRelease: entry.retentionNoRelease, switched: entry.switched, releaseCount: entry.releaseCount })), final: evidence.r2f.final } : null,
       network: evidence.network ? { external: evidence.network.external.length, writeRequests: evidence.network.writeRequests, apiRequestsByMethod: evidence.network.apiRequestsByMethod } : null,
       extraction: evidence.extraction ? { clientSha256: evidence.extraction.clientSha256?.slice(0, 16), factorySha256: evidence.extraction.factorySha256?.slice(0, 16), factoryLines: evidence.extraction.factoryLines } : null,
       engineCommit: evidence.engineCommit,

@@ -139,6 +139,17 @@
         if (injection.remaining > 0 && injection.method === method) {
           injection.remaining -= 1;
           injection.hits += 1;
+          if (injection.kind === 'delay-snapshot') {
+            entry.injected = 'DELAYED_SNAPSHOT';
+            entry.kind = 'delay-snapshot';
+            fetchLog.push(entry);
+            var delayMs = Number.isFinite(Number(injection.delayMs)) ? Number(injection.delayMs) : 2000;
+            return new Promise(function delayedResponse(resolveDelayed) {
+              setTimeout(function sendAfterDelay() {
+                resolveDelayed(realFetch(input, init));
+              }, delayMs);
+            });
+          }
           if (injection.kind === 'fake-snapshot') {
             // R2 candidate-runtime-error probe: answer the snapshot request with a
             // synthetic SUCCESS whose entry document loads but whose fixed runtime
@@ -295,6 +306,9 @@
       display: style.display,
       pointerEvents: style.pointerEvents,
       ariaHidden: node.getAttribute('aria-hidden'),
+      elementWidth: node.style.width,
+      elementHeight: node.style.height,
+      elementTransform: node.style.transform,
       rect,
       visible: style.visibility !== 'hidden' && style.display !== 'none' && rect !== null && rect.width > 0 && rect.height > 0,
       loadedAt: node.__harnessLoadedAt || null,
@@ -445,6 +459,30 @@
   // sandboxed preview frame, so a load that happens before the harness asks is
   // still observable (phase=ready is set before the document finishes loading).
   var frameLoadCount = 0;
+  // R2F: snapshot of each candidate iframe at creation time (before promotion),
+  // so the harness can prove the hidden candidate is sized from ITS OWN metadata.
+  var candidateObservations = [];
+  function recordCandidateFrame(node) {
+    if (node === null || node === undefined) return;
+    if (node.__harnessCandidateRecorded === true) return;
+    if (typeof node.className !== 'string') return;
+    var classes = node.className.split(/\s+/);
+    if (classes.indexOf('dv-stage-frame-candidate') === -1) return;
+    node.__harnessCandidateRecorded = true;
+    var described = describeFrame(node);
+    candidateObservations.push({
+      at: Date.now(),
+      snapshotId: described.snapshotId,
+      src: described.src,
+      elementWidth: described.elementWidth,
+      elementHeight: described.elementHeight,
+      elementTransform: described.elementTransform,
+      visibility: described.visibility,
+      ariaHidden: described.ariaHidden,
+      visible: described.visible,
+    });
+    if (candidateObservations.length > 50) candidateObservations.shift();
+  }
   function bindFrameLoad(frame) {
     if (frame === null || frame === undefined || frame.__harnessLoadBound === true) return;
     frame.__harnessLoadBound = true;
@@ -457,7 +495,10 @@
   if (typeof MutationObserver === 'function') {
     var frameObserver = new MutationObserver(function observeFrames() {
       var frames = document.querySelectorAll('.dv-stage-frame, .dv-stage-frame-candidate');
-      for (var index = 0; index < frames.length; index += 1) bindFrameLoad(frames[index]);
+      for (var index = 0; index < frames.length; index += 1) {
+        bindFrameLoad(frames[index]);
+        recordCandidateFrame(frames[index]);
+      }
     });
     frameObserver.observe(document.documentElement, { childList: true, subtree: true });
   }
@@ -503,6 +544,7 @@
       method: spec.method,
       kind: typeof spec.kind === 'string' ? spec.kind : 'host-shaped-error',
       entryUrl: typeof spec.entryUrl === 'string' ? spec.entryUrl : null,
+      delayMs: Number.isFinite(Number(spec.delayMs)) ? Number(spec.delayMs) : null,
       code: spec.code || 'E_PREVIEW_NOT_FOUND',
       message: spec.message || 'Injected preview failure',
       uncertain: spec.uncertain === true,
@@ -518,7 +560,7 @@
 
   function injectionState() {
     return injections.map(function describe(item) {
-      return { method: item.method, kind: item.kind, code: item.code, entryUrl: item.entryUrl, remaining: item.remaining, hits: item.hits };
+      return { method: item.method, kind: item.kind, code: item.code, entryUrl: item.entryUrl, delayMs: item.delayMs, remaining: item.remaining, hits: item.hits };
     });
   }
 
@@ -642,6 +684,7 @@
       waitFrameLoad: waitFrameLoad,
       waitNotice: waitNotice,
       seekTo: seekTo,
+      candidateObservations: function candidateObservationList() { return candidateObservations.slice(); },
       rect: querySelectorRect,
       inject: inject,
       clearInjections: clearInjections,
