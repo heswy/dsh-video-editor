@@ -38,3 +38,72 @@ E. **实际UI证据**：真实组件浏览器证明自动首次预览、两轮�
 交固定提交、新包/新staging及摘要、分项检查、两种作品/连续续改与失败证据，普通push codex/video-studio并更新统一草稿PR。原目录/原分支/原作品不覆盖。总调度复审的是这条通用闭环，不是测试总数或两个例子的截图。
 
 只授权功能开发与任务副本本地验证，不安装/启停/重启、不改profile/用户工程、不新增真实模型请求、不merge main、不自动派发其它Agent或跨会话联络。无安全定向输入通道时提供用户人工步骤，禁止全局坐标/键盘/个人剪贴板。
+
+---
+
+## 开发记录（video-studio 开发会话，2026-10-18）· 自述，待总调度复审
+
+执行范围：按本任务实现，未安装、未改 profile/用户工程、未发真实模型请求、未 merge main。
+详细契约、版本、验证分层与未测项见 [research/2026-10-18-conversation-first-mvp.md](../research/2026-10-18-conversation-first-mvp.md)。
+
+### 实现摘要
+
+- **同一提交路径**：Engine `project.compose`（完整 HTML composition 契约校验 → 原子写入口 →
+  字节回读 → 私有快照证明 → 历史记录；restore 失败才标 `uncertain`）+ `project.source`
+  （当前权威 HTML/revision，48 KiB 界）。worker/client 升 0.4.0，协议 JSONL v1 不变（24 方法）。
+- **Host/Tool**：`video_engine` 增加 `project.compose`/`project.source`；Host 预校验 html 预算与类型、
+  沿用 Agent Session→工程作用域；compose 成功后刷新 prompt facts；`project.list` 返回
+  `{projects:[{projectId,updatedAt}], defaultProjectId}` 供首开自动选择；绑定会话 prompt context
+  写入完整工作流、契约、skeleton 与冲突恢复，并明确禁止 shell 改工程文件。
+- **Client**：左侧统一为只读 `previewOnly` 画布（不再以 `scenes` 存在为判据），按 revision 自动
+  轮询并换快照；删除旧 PNG/表单编辑器渲染分支与 demo 入口；首开自动打开最近/记住工程并载入或
+  自动创建一次绑定会话，无工程时自动创建一次「空工程+会话」；右侧原生会话/历史/模型不变。
+- 手动画布实现与 typed edit/scene API 保留在默认 `previewOnly:false` 代码路径与引擎中，仅从产品
+  UI 移除入口（本轮不为其新增功能/测试）。
+
+### 固定提交（本地，待 push）
+
+| 内容 | commit |
+|---|---|
+| engine 0.4.0 compose/source + 测试 | `9efb172` |
+| Host bridge/tool/prompt + checks | `32f4f77` |
+| Client 只读自动预览/首开流程 + checks | `97a2ec0` |
+| P3-012 独立 harness + 交付门禁更新 | `8799260` |
+| alpha.4 staging gate（根版本 + 审核版本对） | `79c6e20` |
+
+### 检查结果（本轮实际输出）
+
+| 层 | 命令 | 结果 |
+|---|---|---|
+| Engine worker 契约 | `node --test --test-concurrency=1 test/*.test.mjs`（packages/video-engine-worker） | 44 pass / 0 fail |
+| Engine compose 集成 | 同上 `test/compose.integration.mjs` | 4 / 4 |
+| Engine client | 同上（packages/video-engine-client） | 22 pass / 0 fail / 1 opt-in skip |
+| Host 契约 | `node scripts/check-host.mjs` | 52 / 52（基线 46 保留 + 6 新增） |
+| Client 冒烟 | `node scripts/smoke-client.mjs` | 71 / 71（按新范围替换 16 个旧手动编辑器用例，清单见交付消息） |
+| 静态/打包 | `node scripts/check.mjs`、`node scripts/test-stage-version.mjs` | 50 / 50、10 / 10 |
+| 统一门禁 | `npm run check` | 全绿 |
+| 开发 staging 现有链回归 | `test-canvas-browser`、`test-canvas-chain`、`test-host-engine`（固定提交 staging） | 均 ok=true（证据在共享 artifacts/p2-b/evidence/） |
+| 开发 staging 手动画布套件 | `test-canvas-workspace` | 本轮按任务不要求重跑/扩展手动拖拽用例，未作为交付关口（默认 false 路径仍保留） |
+| P3-012 独立验证（chain） | `scripts/test-conversation-chain.mjs --staging <fixed>` | ok=true，**230/230**：同工程 3 轮 compose（A/B/B-mod）、28/28 失败矩阵原子性、幂等/冲突/作用域、snapshot 字节、真 Chrome 双题材 ready/seek/play、prompt context、close/reopen |
+| P3-012 独立验证（preview） | `scripts/test-conversation-preview.mjs --staging <fixed>` | ok=true，**41/41**，B1–B5：首开自动 ready 651ms、发布→左侧 ready 1483/1296ms、play/pause/seek、失败+恢复、产品面板 0 手动控件/0 写请求；7 张真实页面截图 |
+
+### 交付物
+
+- 新引擎包（固定提交重打）：`artifacts/p3-012/packages/`；staging 快照
+  `artifacts/p2-b/staging-p3-012-<engine8>-<root8>/`（INTEGRITY.json 记录 commit/versions/摘要）；
+  最终 staging 在源码冻结后重建，路径/摘要以交付消息为准。
+- push `codex/video-studio` 并更新统一草稿 PR（原 PR 保留）。
+- 本轮只完成**单元/契约 + 开发 staging 真组件浏览器**两层；真实 DSH 安装、真实模型对话、真机
+  验收仍需总调度复审后按授权安排。安装/模型请求不在本任务授权内。
+
+### 复审关注点（已知边界，不谎报）
+
+1. 48 KiB 的 AI 编辑上限是 MVP 边界；旧更大工程可预览但 `project.source` 明确 `E_LIMIT`。
+2. `preview.status:"ready"` 只证明契约+SDK+快照管线可服务，不是浏览器播放证明；播放由左侧
+   snapshot+runtime 证实，失败显示可恢复错误。
+3. compose 是全文档替换：prompt 已要求保留无关内容，但复杂回归仍取决于模型质量；真实模型闭环
+   未在本轮授权内验证。
+4. 旧手动画布路径仍保留代码与 P3-008 runtime 契约覆盖，产品 UI 不可达；本轮未重跑全部手动拖拽
+   浏览器用例。
+5. `test-canvas-workspace.mjs` 本轮未作为交付证据（任务明确不要求），默认 false 路径由
+   `test-canvas-browser`/`smoke-client` 的 runtime 契约与 wiring 用例覆盖。
