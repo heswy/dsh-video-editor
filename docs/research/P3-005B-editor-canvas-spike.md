@@ -80,6 +80,14 @@
 - CSP：`default-src 'none'; script-src <host> 'sha256-<inline timeline>'; style-src <host> 'unsafe-inline'; img-src <host> data:; connect-src 'none'; frame-ancestors 'self'; base-uri 'none'`。加载期只请求 Host 路由（session/entry/assets/runtime/page），外部请求 0；断网后播放/seek/选中仍工作。
 - bridge 不暴露 Host/Node/模型权限：沙箱内无 Node API、无宿主桥；Host 反向只投递白名单命令；runtime 不联网（CSP `connect-src 'none'`）。
 
+## 下一阶段文件拆分建议（提案，不代表已授权）
+
+- **Engine（p1-engine）**：新增 `src/editing-ops.mjs`（layout/style typed op 的严格校验、capability 判定、composition-px/边界/最小尺寸规则）；`projects.mjs` 的 `edit` 写路径接入 `recordWrite`/幂等/history；`scenes.mjs` 生成器需保留元素级 deltas（或显式拒绝冲突）；`merge.mjs` 的 stableId 签名已含 `inlineStyles`，补 layout/style 冲突用例；`protocol.schema.json` 增 params/result 与 schema 一致性测试。仍由 worker 单写者 + expectedRevision 权威。
+- **Client（p1-engine）**：`src/index.mjs` 增加对应 typed 方法（如 `layoutEdit`/`styleEdit` 或统一 `edit` ops），保持“客户端不读 HTML、不缓存 revision”。
+- **Host（p0-mode-shell）**：拆 `host/preview-route.*`（snapshot registry、按 manifest 精确字节路由、CSP/hash 注入、撤销语义）、`host/canvas-session.*`（实例生命周期、instanceId/nonce、revision 切换与旧实例撤销、消息台账/迟到处理）、共享 `contract.*`（由本 spike 的 v1 合约演进，字段/版本冻结后再写插件 UI）；Host 业务入口与 Agent Tool 共用同一写入路径。
+- **UI（p0-mode-shell）**：`StageView`（16:9 画布、letterbox 映射）、`SelectionOverlay`（描边/手柄/选中态）、`InlineTextEditor`（双击原位、Esc/Enter/失焦语义、失败草稿保留）、`PlaybackBar`（播放/暂停/seek，无底部场景卡片）、`MaterialDrawer`；选中对象作为 AI chip 上下文；不引入右侧属性表单主路径。
+- **测试/证据**：Host 侧复用本 spike 的合约测试与浏览器 runner 思路；engine 侧补 typed op 的写入/冲突/undo/merge/限额测试；真机验收仍按真机红线（绑定页面、非全局坐标）。
+
 ## 未测项 / 风险
 
 - 未接入真实 DSH：宿主 CSP/焦点/主题/多插件共存、真实 Host 的精确资产路由与会话生命周期均未测。
