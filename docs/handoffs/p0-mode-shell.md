@@ -1,18 +1,13 @@
 # p0-mode-shell：当前接手
 
-更新：2026-10-18。当前交付HEAD `eb8d2d8`，分支 `dsh/p0-mode-shell` / PR#3；继续本树。开工fetch后按AGENTS读取协调STATUS/DEVELOPMENT，不merge协调分支。
+更新：2026-10-18。交付HEAD `831d275`、修复 `b382686`，沿用分支 `dsh/p0-mode-shell` / PR#3。fetch后按AGENTS读取协调STATUS/DEVELOPMENT，不merge协调分支。
 
-## 当前动作：P3-006-A集中修复
+## 当前动作：等待具体候选安装验收授权
 
-读取 [P3-006-A复审](../reviews/P3-006A-review-01.md)，按原 [任务指南](../tasks/P3-006A-native-creation-conversation.md) 的白名单一次修复R1–R4：
+[P3-006-A修复复审](../reviews/P3-006A-review-02.md)通过，R1–R4关闭。总调度独立123/123、版本10/10、原四故障场景修复探针、固定包19/19和staging摘要通过。不要重复修复或调查。
 
-1. 映射候选状态写盘成功后才发布，失败不改变history/active/Tool授权；处理失败临时文件。
-2. Session操作加入准入/排空，停用等待已接受create/rename收束，最后再清理store/context。
-3. 损坏/未知版本/上限等已知错误在宿主创建Session前拒绝，不吞读取失败继续创建。
-4. requestId去重隔离工程或明确冲突，不返回另一工程的Session。
+下一步 [P3-006-A LIVE](../tasks/P3-006A-live-validation.md) 已写好；**用户尚未明确授权，不安装、不创建真实Session或调用模型。** 授权后执行固定b382686候选的Plugin Manager安装、原生会话/历史/模型/Tool闭环与一次启停恢复，不重启应用。
 
-独立117/117+版本10/10、19文件固定包和staging摘要通过，但故障探针四项复现，候选尚未验收。复现脚本位于同级artifacts/reviews/2026-10-18/P3-006A/repro.mjs，真实候选模块+受控controller，无真实Session。
+候选：同级artifacts/p2-b/staging-54f4671-b382686/bundle，根0.3.0-alpha.1、引擎54f4671/0.1.1；摘要和回滚/安全步骤见指南。旧候选/实际安装不覆盖。真机行为仍未验收，左侧依然PNG，不能宣传实时画布/全产品已完成。
 
-修复、故障回归、原任务/研究记录、新提交目录固定包/staging与Host真实链一并交回；引擎仍固定54f4671/0.1.1，未发布alpha.1可保留版本。不新增调查轮次、不改p1-engine，不覆盖任何旧候选/安装staging。
-
-普通commit/push更新PR#3；不安装/启停/重启、不改profile、不创建用户真实会话、不调模型、不merge。修复复审通过后才进入具体候选安装验收。左画布/右AI/历史/原生模型/素材抽屉、无底部场景卡片的产品方向不变。
+最多两个专用测试会话、两次测试模型请求属于待授权范围；不用个人会话、全局输入或剪贴板，审批由用户人工处理。无安全定向通道时提供短人工步骤，不凑假证据。只更新本任务/研究/证据并push PR#3，不merge。p1-engine继续B，不交叉写。
