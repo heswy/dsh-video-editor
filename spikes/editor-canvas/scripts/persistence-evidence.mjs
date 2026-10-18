@@ -26,6 +26,27 @@ const check = (condition, message) => {
   if (!condition) throw new Error(message);
 };
 
+// Pre-existing managed-template renderer/template issue observed during
+// P3-006-B review: the MP4 has a bottom black band while worker frames do not.
+// Record it explicitly instead of claiming full-frame parity.
+function bottomBlackRows(image) {
+  const { width, height, channels, data } = image;
+  let rows = 0;
+  for (let y = height - 1; y >= 0; y--) {
+    let black = true;
+    for (let x = 0; x < width; x++) {
+      const index = (y * width + x) * channels;
+      if (data[index] > 8 || data[index + 1] > 8 || data[index + 2] > 8) {
+        black = false;
+        break;
+      }
+    }
+    if (!black) break;
+    rows += 1;
+  }
+  return rows;
+}
+
 async function waitJob(client, jobId) {
   for (let attempt = 0; attempt < 1200; attempt++) {
     const view = await client.status(jobId);
@@ -254,6 +275,9 @@ async function main() {
     ]);
     const renderedImage = decodePng(await readFile(renderedFramePath));
     const renderedRed = redTextBBox(renderedImage);
+    const workerImage = decodedAfter[1.5];
+    const renderedBottomBlackRows = bottomBlackRows(renderedImage);
+    const workerBottomBlackRows = bottomBlackRows(workerImage);
     check(renderedRed && renderedRed.count > 200, "rendered frame misses the red title");
     check(
       Math.abs(renderedRed.minX - evidence.frames.comparison[1.5].redTitleBBox.minX) <= 24,
@@ -274,6 +298,13 @@ async function main() {
         file: "rendered-1.5s.png",
         redTitleBBox: renderedRed,
         workerFrameRedTitleBBox: evidence.frames.comparison[1.5].redTitleBBox,
+        renderedBottomBlackRows,
+        workerBottomBlackRows,
+        knownIssue:
+          renderedBottomBlackRows > 0
+            ? `pre-existing renderer/template bottom crop (${renderedBottomBlackRows}px at 720p); worker frames have ${workerBottomBlackRows}px; unrelated to layout/style persistence, needs its own ticket`
+            : null,
+        note: "the rendered title base x matches the worker frame; full-frame parity is NOT claimed because of the pre-existing bottom band",
       },
     };
 

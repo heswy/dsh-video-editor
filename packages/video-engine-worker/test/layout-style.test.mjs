@@ -506,6 +506,123 @@ test("scene create/update/reorder preserve overrides; dropping an overridden obj
   }
 });
 
+test("explicit override markers keep values equal to template defaults and protect them from later default changes", async () => {
+  const f = await managed("layout-marker");
+  try {
+    const project = await created(f.c);
+    const projectId = project.projectId;
+    let revision = await addShotScene(f.c, projectId, project.revision);
+    let current = await inspected(f.c, projectId);
+    // Default subtitle color is the scene accent (#bfdbfe for scene-1 palette).
+    const defaultAccent = element(current, "scene-1-subtitle").style.color;
+    assert.equal(defaultAccent, "#bfdbfe");
+
+    // Explicitly pick a color that equals the current default: without the
+    // marker this would be indistinguishable from "not overridden".
+    const marked = await f.c.call("edit", {
+      projectId,
+      expectedRevision: revision,
+      operationId: "marker-style",
+      ops: [
+        {
+          type: "style",
+          target: "scene-1-subtitle",
+          styles: { color: defaultAccent },
+        },
+        {
+          type: "layout",
+          target: "scene-1-title",
+          unit: "composition-px",
+          box: { left: 88 },
+        },
+      ],
+    });
+    assert.equal(marked.ok, true, JSON.stringify(marked));
+    revision = marked.result.revision;
+    const htmlWithMarkers = await readProjectHtml(f, projectId);
+    assert.match(htmlWithMarkers, /data-dv-managed="[^"]*color[^"]*"/);
+    assert.match(htmlWithMarkers, /data-dv-managed="[^"]*left[^"]*"/);
+
+    // A later scene-level accent change must not silently rewrite the explicit
+    // subtitle color, while the unmarked badge still follows the accent.
+    const accentRed = await f.c.call("scene.update", {
+      projectId,
+      expectedRevision: revision,
+      operationId: "marker-accent-red",
+      sceneId: "scene-1",
+      template: sceneSpec({ accent: "#ff0000" }),
+    });
+    assert.equal(accentRed.ok, true, JSON.stringify(accentRed));
+    revision = accentRed.result.revision;
+    current = await inspected(f.c, projectId);
+    assert.equal(element(current, "scene-1-subtitle").style.color, defaultAccent);
+    assert.equal(element(current, "scene-1-badge").style.color, "#ff0000");
+
+    const accentGreen = await f.c.call("scene.update", {
+      projectId,
+      expectedRevision: revision,
+      operationId: "marker-accent-green",
+      sceneId: "scene-1",
+      template: sceneSpec({ accent: "#00ff00" }),
+    });
+    assert.equal(accentGreen.ok, true, JSON.stringify(accentGreen));
+    revision = accentGreen.result.revision;
+    current = await inspected(f.c, projectId);
+    assert.equal(element(current, "scene-1-subtitle").style.color, defaultAccent);
+    assert.equal(element(current, "scene-1-badge").style.color, "#00ff00");
+
+    // Even though the marked color equals the template default, dropping the
+    // object via scene.update is refused instead of silently losing the choice.
+    const drop = await f.c.call("scene.update", {
+      projectId,
+      expectedRevision: revision,
+      operationId: "marker-drop",
+      sceneId: "scene-1",
+      template: { title: "去掉副标题", duration: 5, badge: "AI", logo: "assets/logo.png" },
+    });
+    assert.equal(drop.ok, false, JSON.stringify(drop));
+    assert.equal(drop.error.code, "E_OVERRIDE_CONFLICT");
+    assert.equal((await inspected(f.c, projectId)).revision, revision);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test("marker-less projects edited outside the protocol still keep differing managed values", async () => {
+  const f = await managed("layout-legacy-fallback");
+  try {
+    const project = await created(f.c);
+    const projectId = project.projectId;
+    let revision = await addShotScene(f.c, projectId, project.revision);
+    // Simulate a pre-marker/external HTML edit: change the title base left
+    // without the controlled override attribute.
+    const before = await readProjectHtml(f, projectId);
+    const edited = before.replace(
+      /(<h1[^>]*data-hf-id="scene-1-title"[^>]*style="[^"]*?left:)88px/,
+      "$1240px",
+    );
+    assert.notEqual(edited, before, "test fixture edit did not apply");
+    await import("node:fs/promises").then(({ writeFile }) =>
+      writeFile(resolve(f.projectsRoot, projectId, "index.html"), edited),
+    );
+    const changed = await f.c.call("inspect", { projectId });
+    revision = changed.result.revision;
+    const updated = await f.c.call("scene.update", {
+      projectId,
+      expectedRevision: revision,
+      operationId: "fallback-scene",
+      sceneId: "scene-1",
+      template: sceneSpec({ title: "外部编辑后重生成" }),
+    });
+    assert.equal(updated.ok, true, JSON.stringify(updated));
+    const current = await inspected(f.c, projectId);
+    assert.equal(element(current, "scene-1-title").layout.left, 240);
+    assert.equal(element(current, "scene-1-title").text, "外部编辑后重生成");
+  } finally {
+    await f.cleanup();
+  }
+});
+
 test("project.revise merges human layout/style with AI text, conflicts per field and protects overrides", async () => {
   const f = await managed("layout-merge");
   try {

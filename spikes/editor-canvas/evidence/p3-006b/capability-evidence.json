@@ -1,6 +1,6 @@
 {
   "kind": "p3-006b-capability-probe",
-  "startedAt": "2026-10-18T03:28:06.791Z",
+  "startedAt": "2026-10-18T03:46:46.395Z",
   "engine": {
     "worker": "dsh-video-engine-worker@0.3.0",
     "client": "dsh-video-engine-client@0.3.0",
@@ -74,7 +74,7 @@
       }
     },
     "layoutStyle": {
-      "revision": "243a11adcabf447c5611f0f35f0aac5d1fc604281a42ee9866543db15beb87ac",
+      "revision": "b1430404d960b38b03b9923e2530c66825e62a008dd76a8097daea601be75f8b",
       "title": {
         "text": "持久化标题",
         "layout": {
@@ -147,7 +147,7 @@
     }
   ],
   "sceneRegeneration": {
-    "revision": "489179d938da1a0e553ae2c132f5f60115e062c6d51a089c299d0e5a5b301658",
+    "revision": "c8c29d855a8ec86d0b8fe1fe9350fd706a1175257849837a75b20b743e25578a",
     "title": {
       "text": "改名后场景",
       "layout": {
@@ -266,9 +266,9 @@
       "flush",
       "dispose"
     ],
-    "styledHtmlHash": "5a9ca4e1e9de8023ca47d7f7e3c6610736615d1b567e723a2f4a88afd6cea34a",
-    "regenerationRevision": "0b862c1837700db775bd8cc85d55c7de3d08c0a0bd77afe613fb1cf76f5b96fc",
-    "titleStyleAfterRegeneration": "<h1 id=\"scene-1-title\" class=\"clip\" data-hf-id=\"scene-1-title\" data-start=\"0\" data-duration=\"5\" style=\"position: absolute; left: 320px; top: 240px; margin: 0; width: 980px; font-size: 88px; line-height: 1.12; font-weight: 700; color: #0000ff; text-align: center\">",
+    "styledHtmlHash": "5086cd91da75345157b3eaafefcce671ca8fecee0e710c8821f93c8b0a9a8a2c",
+    "regenerationRevision": "8a2db97f1030a446a6e2b57791fc49f4bf8edfb40fdeb4da9323ca990ea02b8f",
+    "titleStyleAfterRegeneration": "<h1 data-dv-managed=\"color fontSize fontWeight left textAlign top\" id=\"scene-1-title\" class=\"clip\" data-hf-id=\"scene-1-title\" data-start=\"0\" data-duration=\"5\" style=\"position: absolute; left: 320px; top: 240px; margin: 0; width: 980px; font-size: 88px; line-height: 1.12; font-weight: 700; color: #0000ff; text-align: center\">",
     "supportedStylePreserved": true,
     "unsupportedTransformDropped": true,
     "note": "0.3.0 regenerates scenes but transplants supported manual layout/style deltas; arbitrary CSS outside the controlled model (e.g. rotate) is still dropped and must not be used for persistence."
@@ -393,6 +393,6 @@
       "layout:E_UNSUPPORTED_EDIT"
     ]
   },
-  "finishedAt": "2026-10-18T03:28:08.412Z",
+  "finishedAt": "2026-10-18T03:46:47.737Z",
   "evidenceFile": "evidence/p3-006b/capability-evidence.json"
 }

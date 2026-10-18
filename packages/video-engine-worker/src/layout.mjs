@@ -16,6 +16,12 @@ import { fail } from "./errors.mjs";
 export const LAYOUT_PROPS = ["left", "top", "width", "height"];
 export const STYLE_PROPS = ["color", "fontSize", "fontWeight", "textAlign"];
 export const LAYOUT_UNIT = "composition-px";
+// Controlled override representation carried in the authoritative HTML: a
+// space-separated list of managed properties that were explicitly set by an
+// edit op (not inherited from the template default). This is what distinguishes
+// "human picked a value equal to the current template default" from "template
+// default", so a later scene-level change cannot silently rewrite human choice.
+export const OVERRIDE_ATTRIBUTE = "data-dv-managed";
 export const MAX_CANVAS_WIDTH = 3840;
 export const MAX_CANVAS_HEIGHT = 2160;
 const COLOR = /^#[0-9a-fA-F]{6}$/;
@@ -44,6 +50,18 @@ export function formatPx(value) {
 
 export function formatNumber(value) {
   return String(round3(value));
+}
+
+const MANAGED_KEYS = new Set([...LAYOUT_PROPS, ...STYLE_PROPS]);
+
+export function parseOverrideAttribute(value) {
+  if (typeof value !== "string") return null;
+  const tokens = value.trim().split(/\s+/).filter(Boolean);
+  return new Set(tokens.filter((token) => MANAGED_KEYS.has(token)));
+}
+
+export function formatOverrideAttribute(properties) {
+  return [...properties].filter((key) => MANAGED_KEYS.has(key)).sort().join(" ");
 }
 
 function isObject(value) {
@@ -270,13 +288,18 @@ export function collectManualOverrides(parsed, defaultParsed) {
     if (!info) continue;
     const current = managedValues(element.inlineStyles, info);
     const base = defaults.get(element.stableId);
+    const marked = parseOverrideAttribute(element.attributes?.[OVERRIDE_ATTRIBUTE]);
     const layout = {};
     const style = {};
     let has = false;
     for (const key of LAYOUT_PROPS) {
       const value = current.layout?.[key];
       if (value === null || value === undefined) continue;
-      if (base?.layout?.[key] !== value) {
+      // With the explicit marker, a property is an override even when its value
+      // equals the current template default. Files without the marker (written
+      // by external tools/older flows) keep the diff-vs-default fallback.
+      const changed = marked ? marked.has(key) : base?.layout?.[key] !== value;
+      if (changed) {
         layout[key] = value;
         has = true;
       }
@@ -284,7 +307,8 @@ export function collectManualOverrides(parsed, defaultParsed) {
     for (const key of STYLE_PROPS) {
       const value = current.style?.[key];
       if (value === null || value === undefined) continue;
-      if (base?.style?.[key] !== value) {
+      const changed = marked ? marked.has(key) : base?.style?.[key] !== value;
+      if (changed) {
         style[key] = value;
         has = true;
       }

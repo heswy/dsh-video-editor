@@ -49,13 +49,16 @@ import { mergeSceneDocuments } from "./merge.mjs";
 import { DEFAULT_PREVIEW_TTL_MS, Previews } from "./previews.mjs";
 import {
   LAYOUT_PROPS,
+  OVERRIDE_ATTRIBUTE,
   STYLE_PROPS,
   collectManualOverrides,
+  formatOverrideAttribute,
   formatNumber,
   layoutToSdkStyles,
   managedValues,
   mergedLayout,
   overrideSummary,
+  parseOverrideAttribute,
   styleToSdkStyles,
   templateElementInfo,
   validateLayoutBounds,
@@ -139,10 +142,15 @@ async function transplantManagedOverrides({ currentParsed, nextHtml }) {
   for (const [stableId, entry] of overrides) {
     const nextElement = nextById.get(stableId);
     const nextInfo = nextElement ? managedInfo(nextElement) : null;
-    const styles = {
-      ...(nextInfo?.layout ? layoutToSdkStyles(entry.layout) : {}),
-      ...(nextInfo?.style ? styleToSdkStyles(entry.style) : {}),
-    };
+    const layout =
+      nextInfo?.layout && Object.keys(entry.layout).length
+        ? layoutToSdkStyles(entry.layout)
+        : {};
+    const style =
+      nextInfo?.style && Object.keys(entry.style).length
+        ? styleToSdkStyles(entry.style)
+        : {};
+    const styles = { ...layout, ...style };
     if (!Object.keys(styles).length) {
       dropped.push({
         stableId,
@@ -152,13 +160,21 @@ async function transplantManagedOverrides({ currentParsed, nextHtml }) {
       });
       continue;
     }
-    updates.set(stableId, styles);
+    const marker = formatOverrideAttribute([
+      ...(nextInfo?.layout ? Object.keys(entry.layout) : []),
+      ...(nextInfo?.style ? Object.keys(entry.style) : []),
+    ]);
+    updates.set(stableId, { styles, marker });
   }
   if (!updates.size) return { html: nextHtml, applied: 0, dropped };
   const comp = await openComposition(nextHtml);
   try {
     comp.batch(() => {
-      for (const [stableId, styles] of updates) comp.setStyle(stableId, styles);
+      for (const [stableId, update] of updates) {
+        comp.setStyle(stableId, update.styles);
+        if (update.marker)
+          comp.setAttribute(stableId, OVERRIDE_ATTRIBUTE, update.marker);
+      }
     });
     const html = comp.serialize();
     return { html, applied: updates.size, dropped };
@@ -472,6 +488,7 @@ export class Projects {
         const timing = new Map();
         const layoutPatches = new Map();
         const stylePatches = new Map();
+        const markerPatches = new Map();
         const counts = { text: 0, timing: 0, layout: 0, style: 0 };
         for (const op of p.ops) {
           const el = comp.getElement(op.target);
@@ -532,6 +549,14 @@ export class Projects {
               height: parsed.height,
             });
             layoutPatches.set(op.target, { ...previous, ...patch });
+            const marker =
+              markerPatches.get(op.target) ??
+              parseOverrideAttribute(
+                parsedElement.attributes?.[OVERRIDE_ATTRIBUTE],
+              ) ??
+              new Set();
+            for (const key of Object.keys(patch)) marker.add(key);
+            markerPatches.set(op.target, marker);
             counts.layout += 1;
           } else {
             const patch = validateStylePatch(op.styles);
@@ -539,6 +564,14 @@ export class Projects {
               ...(stylePatches.get(op.target) ?? {}),
               ...patch,
             });
+            const marker =
+              markerPatches.get(op.target) ??
+              parseOverrideAttribute(
+                parsedElement.attributes?.[OVERRIDE_ATTRIBUTE],
+              ) ??
+              new Set();
+            for (const key of Object.keys(patch)) marker.add(key);
+            markerPatches.set(op.target, marker);
             counts.style += 1;
           }
         }
@@ -561,6 +594,12 @@ export class Projects {
             comp.setStyle(target, layoutToSdkStyles(patch));
           for (const [target, patch] of stylePatches)
             comp.setStyle(target, styleToSdkStyles(patch));
+          for (const [target, marker] of markerPatches)
+            comp.setAttribute(
+              target,
+              OVERRIDE_ATTRIBUTE,
+              formatOverrideAttribute(marker),
+            );
         });
         await comp.flush();
         if (errors.length)

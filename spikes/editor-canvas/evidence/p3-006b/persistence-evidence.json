@@ -1,6 +1,6 @@
 {
   "kind": "p3-006b-persistence-evidence",
-  "startedAt": "2026-10-18T03:23:44.966Z",
+  "startedAt": "2026-10-18T03:42:53.244Z",
   "independence": "real worker/client + Chrome frames + FFmpeg render; not a mocked canvas",
   "engine": {
     "worker": "dsh-video-engine-worker@0.3.0",
@@ -133,11 +133,15 @@
         "width": 569,
         "height": 89,
         "count": 18980
-      }
+      },
+      "renderedBottomBlackRows": 86,
+      "workerBottomBlackRows": 0,
+      "knownIssue": "pre-existing renderer/template bottom crop (86px at 720p); worker frames have 0px; unrelated to layout/style persistence, needs its own ticket",
+      "note": "the rendered title base x matches the worker frame; full-frame parity is NOT claimed because of the pre-existing bottom band"
     }
   },
   "sceneRegeneration": {
-    "revision": "361d816ad559264e5b58f6f9b4053167f27403f453760f1109c184d0a0b7e64c",
+    "revision": "4bc54992ece48b2d04ae5334f9b160ca8699cf579c861f81851f29cc52e8a0e6",
     "title": {
       "text": "改名后仍然保留布局",
       "layout": {
@@ -179,13 +183,13 @@
       "textAlign": "left"
     },
     "stepRevisions": {
-      "base": "361d816ad559264e5b58f6f9b4053167f27403f453760f1109c184d0a0b7e64c",
-      "humanLayout": "3aa58a2a4b1e7372e5644a078ffb508e037ef16021fd5b4664d0a8f55725de32",
-      "merged": "2880fb4417cc8549fbb55d8d5f0b185a8f8db4a9c6c54bad34b5dc1b431e1a25"
+      "base": "4bc54992ece48b2d04ae5334f9b160ca8699cf579c861f81851f29cc52e8a0e6",
+      "humanLayout": "51d82fa676976f2861c8f277aaa2bd1a34e1022f007bf9168f470a42f70b5d04",
+      "merged": "4f52a959da0cd5953d87a9988d432c0b045a0eab864dcef1be8236a55beee675"
     }
   },
   "history": {
-    "undoRevision": "3aa58a2a4b1e7372e5644a078ffb508e037ef16021fd5b4664d0a8f55725de32",
+    "undoRevision": "51d82fa676976f2861c8f277aaa2bd1a34e1022f007bf9168f470a42f70b5d04",
     "undoTitle": {
       "text": "改名后仍然保留布局",
       "layout": {
@@ -195,7 +199,7 @@
         "height": null
       }
     },
-    "redoRevision": "2880fb4417cc8549fbb55d8d5f0b185a8f8db4a9c6c54bad34b5dc1b431e1a25",
+    "redoRevision": "4f52a959da0cd5953d87a9988d432c0b045a0eab864dcef1be8236a55beee675",
     "redoTitle": {
       "text": "AI 续改文案",
       "layout": {
@@ -205,12 +209,12 @@
         "height": null
       }
     },
-    "undoEntryRevision": "3aa58a2a4b1e7372e5644a078ffb508e037ef16021fd5b4664d0a8f55725de32",
-    "redoEntryRevision": "2880fb4417cc8549fbb55d8d5f0b185a8f8db4a9c6c54bad34b5dc1b431e1a25"
+    "undoEntryRevision": "51d82fa676976f2861c8f277aaa2bd1a34e1022f007bf9168f470a42f70b5d04",
+    "redoEntryRevision": "4f52a959da0cd5953d87a9988d432c0b045a0eab864dcef1be8236a55beee675"
   },
   "failures": [],
   "inspectAfterEdit": {
-    "revision": "ab4e79bcaa7ff8d35502ad2324d467f9aa69f809196c8c7820c5806e85821024",
+    "revision": "cf2e49c4e8e686c9bae628b314548c99a549e8a8a7f29219e56d48b071cb279d",
     "title": {
       "text": "人工布局标题",
       "layout": {
@@ -235,6 +239,6 @@
       }
     }
   },
-  "finishedAt": "2026-10-18T03:24:21.378Z",
+  "finishedAt": "2026-10-18T03:43:32.625Z",
   "evidenceFile": "evidence/p3-006b/persistence-evidence.json"
 }

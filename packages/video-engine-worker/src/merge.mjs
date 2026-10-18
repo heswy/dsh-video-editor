@@ -3,6 +3,7 @@ import { fail } from "./errors.mjs";
 import { validateDocumentHtml } from "./scenes.mjs";
 import {
   LAYOUT_PROPS,
+  OVERRIDE_ATTRIBUTE,
   STYLE_PROPS,
   formatNumber,
   formatPx,
@@ -116,8 +117,11 @@ function fieldsOf(element) {
   fields.set("timing.duration", attributeNumber(element.attributes["data-duration"]));
   fields.set("classNames", element.classNames.join(" "));
   for (const [name, value] of Object.entries(element.attributes)) {
+    // The override marker is controlled metadata for regeneration, not merge
+    // content: the merged element keeps the human marker and merged managed
+    // values decide whether a property is still an explicit override.
     if (
-      ["id", "class", "style", "data-start", "data-duration"].includes(name) ||
+      ["id", "class", "style", "data-start", "data-duration", OVERRIDE_ATTRIBUTE].includes(name) ||
       name.startsWith("data-hf-")
     )
       continue;

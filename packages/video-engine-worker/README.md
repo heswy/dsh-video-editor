@@ -176,6 +176,7 @@ worker 新配置模式（管理工程，Host 不直接改这些文件）：
 ### 单一权威与重生成
 
 - **工程 HTML 的 inline style 是唯一真相**：不引入第二份覆盖数据库或隐藏元数据；revision 覆盖 HTML 字节，history 快照、preview snapshot、frame/render 均直接反映写入结果。
+- 显式覆盖用受控属性 **`data-dv-managed="left top color ..."`** 记录“由 edit op 显式设置的受管属性”：即使值恰好等于当前模板默认，也仍视为人工选择，后续 Scene 级默认值变化（如 accent 改变）不会静默改写或删除；重生成时该标记随元素迁移。无此属性的文件（外部手改/旧数据）按“与当前模板默认值的差异”回退识别。该属性是单 HTML 内的受控表示，不是协议字段，也不是用户 API。
 - `scene.create/update/reorder/remove` 与 `project.revise` 重生成文档时，会把当前文档中相对模板默认值的**人工 layout/style 差量**移植到保留 stableId 上（不丢人工位置/字号）；重排保持覆盖归属 stableId。
 - `scene.update` 若模板删除了带人工 layout/style 的对象 → `E_OVERRIDE_CONFLICT`（不静默恢复模板默认）；`scene.remove` 是显式整 Scene 删除，允许执行并在 `changeSummary.droppedOverrides` 报告影响。
 - `project.revise` 三方合并按 **text / timing.start / timing.duration / attributes / class / layout.* / style.* / 其余 inline style** 逐字段比较：人工改位置/样式而 AI 只改文案时可合并、两者都保留；相同字段两边改不同 → `written:false + conflicts[{field,human,ai,humanValue,aiValue}]`；AI 候选删除人工改过或 base 已有人工覆盖的对象 → `AI_DELETE_HUMAN_MODIFY`。其它 Scene 保持逐字节不变。
