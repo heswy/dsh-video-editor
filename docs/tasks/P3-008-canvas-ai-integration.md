@@ -51,8 +51,8 @@
 
 ### 关键实现
 
-- **Host（提交 `9458291` + `568a325`）**：managed worker 配置（projectsRoot/registryPath/outputRoot/assetInboxRoot），Host 从 worker 管理注册表发现/校验工程并加入可信 allowlist；project.create/list、asset.import、scene.create/update/remove/reorder、project.revise、history/undo/redo、preview.snapshot/release 全部走同一 dispatcher；project.create/asset/preview 为 UI-only（Tool 不能调用）。快照按 worker manifest 逐文件 hex/bytes 校验后注册精确鉴权 Fetch 路由；entry 注入固定 runtime、CSP `connect-src 'none'`/inline hash/`allow-scripts` iframe。素材上传只收 PNG/JPEG（签名/扩展名、≤8 MiB）到受控 inbox，返回短期 receipt；asset.import 只收 receipt。edit 的 typed ops 增加 layout/style，Tool 同步支持 text/timing/layout/style 与 scene/history/revise actions。prompt context 增加新鲜 revision、Scenes、可编辑 stableId/capabilities、素材摘要和“优先 stableId typed edit 保留人工布局”的引导。
-- **Client（提交 `568a325`）**：managed 工程进入画布工作区：sandboxed snapshot iframe + 固定 runtime 消息契约（WindowProxy+instanceId+nonce+seq，origin 不作认证）、letterbox composition-px 映射、播放/暂停/seek、点击 hitTest 选中、双击原位文字编辑（Enter 提交/Esc 取消）、拖拽/缩放手柄 layout 提交、颜色/字号 style、Scene 底色和新增 Scene、undo/redo、PNG/JPEG 素材抽屉上传/列出/用作 shot、真实 MP4 导出。AI 修改通过 revision 轮询重新 inspect/换快照；播放中禁止写。旧 legacy demo（无 scenes）保留原 PNG/文本/时间路径，不伪装 layout/style 能力。嵌入文件预览（C）不回归。
+- **Host（提交 `8ab5f1a`）**：managed worker 配置（projectsRoot/registryPath/outputRoot/assetInboxRoot），Host 从 worker 管理注册表发现/校验工程并加入可信 allowlist；project.create/list、asset.import、scene.create/update/remove/reorder、project.revise、history/undo/redo、preview.snapshot/release 全部走同一 dispatcher；project.create/asset/preview 为 UI-only（Tool 不能调用）。快照按 worker manifest 逐文件 hex/bytes 校验后注册精确鉴权 Fetch 路由；entry 注入固定 runtime、CSP `connect-src 'none'`/inline hash/`allow-scripts` iframe。素材上传只收 PNG/JPEG（签名/扩展名、≤8 MiB）到受控 inbox，返回短期 receipt；asset.import 只收 receipt。edit 的 typed ops 增加 layout/style，Tool 同步支持 text/timing/layout/style 与 scene/history/revise actions。prompt context 增加新鲜 revision、Scenes、可编辑 stableId/capabilities、素材摘要和“优先 stableId typed edit 保留人工布局”的引导。
+- **Client（提交 `8ab5f1a`）**：managed 工程进入画布工作区：sandboxed snapshot iframe + 固定 runtime 消息契约（WindowProxy+instanceId+nonce+seq，origin 不作认证）、letterbox composition-px 映射、播放/暂停/seek、点击 hitTest 选中、双击原位文字编辑（Enter 提交/Esc 取消）、拖拽/缩放手柄 layout 提交、颜色/字号 style、Scene 底色和新增 Scene、undo/redo、PNG/JPEG 素材抽屉上传/列出/用作 shot、真实 MP4 导出。AI 修改通过 revision 轮询重新 inspect/换快照；播放中禁止写。旧 legacy demo（无 scenes）保留原 PNG/文本/时间路径，不伪装 layout/style 能力。嵌入文件预览（C）不回归。
 
 ### 验证
 
@@ -62,11 +62,11 @@
 | Client smoke | **56/56** | 新增 managed 新工程→Session 绑定→画布 shell/sandbox iframe/snapshot 请求/播放/素材入口 |
 | Host 契约 | **38/38** | 新增 layout/style 参数、Tool UI-only 拒绝、snapshot 注册/CSP/字节/release、inbox 上传与 receipt 导入、非图片拒绝 |
 | 版本门禁 | **10/10** | `node scripts/test-stage-version.mjs`（alpha.3） |
-| 固定候选 | `dsh-video-0.3.0-alpha.3.tgz`：**86,901 B / 23 files / SHA-256 `28b89d6f…b18ae9b`** | `artifacts/p2-b/568a325/`；23/23 与提交 568a325 逐字节一致 |
-| 新 staging | `artifacts/p2-b/staging-74294e6-568a325`；INTEGRITY **`6478074b…52aaa959`**、config `397c09a7…c06e7`、patch `76241d34…95008`、managed registry `bc7100a5…fd776`、inner registry `5d6166e3…0d3334` | root 568a325 / engine 74294e6 / bundle 0.3.0-alpha.3 / client/worker 0.3.0；pinned 源码/版本门禁通过 |
-| 真实 Host→engine 链（旧 demo 兼容） | **ok=true** | `artifacts/p2-b/evidence/engine-run-2026-10-18T04-52-17-006Z.json`（SHA `241d42c3…48b36c`），帧/MP4/cancel/close 不变 |
-| 受控新工程全链 | **ok=true** | `artifacts/p2-b/evidence/canvas-chain-2026-10-18T04-52-42-038Z.json`（SHA `41d77dc2…1f76536`）：project.create→Session 绑定→3 Scene/15s→换黄 revision→人工 text+layout+style→undo/redo→PNG asset.import→shot→snapshot 路由/CSP/字节→frame（背景像素 `255,212,0`）→MP4 161,844 B/`0e0d6333…` 450 帧/15s→history 6 条→close/reopen revision 不变 |
-| 真浏览器 runtime | **ok=true** | `artifacts/p2-b/evidence/canvas-browser-2026-10-18T04-52-47-580Z.json`（SHA `398c2fbf…ceb1c`）：Chrome 155 加载沙箱 iframe，ready 1280×720/5s，seek 3s 命中 `scene-1-title`，播放 0.43s 推进，外部网络 0，console error 0 |
+| 固定候选 | `dsh-video-0.3.0-alpha.3.tgz`：**86,943 B / 23 files / SHA-256 `68887366…889c3f08`** | `artifacts/p2-b/8ab5f1a/`；23/23 与提交 8ab5f1a 逐字节一致 |
+| 新 staging | `artifacts/p2-b/staging-74294e6-8ab5f1a`；INTEGRITY **`8f328d80…d9baaa0e`**、config `3bfc67eb…4378e1d`、patch `0db518a3…544da`、managed registry `f5b2f6b4…a2edfc`、inner registry `a0d691da…8a0b6b` | root 8ab5f1a / engine 74294e6 / bundle 0.3.0-alpha.3 / client/worker 0.3.0；pinned 源码/版本门禁通过 |
+| 真实 Host→engine 链（旧 demo 兼容） | **ok=true** | `artifacts/p2-b/evidence/engine-run-2026-10-18T04-55-59-463Z.json`（SHA `afadbd4f…dbf29`），帧/MP4/cancel/close 不变 |
+| 受控新工程全链 | **ok=true** | `artifacts/p2-b/evidence/canvas-chain-2026-10-18T04-56-14-621Z.json`（SHA `2d632f6b…997a0`）：project.create→Session 绑定→3 Scene/15s→换黄 revision→人工 text+layout+style→undo/redo→PNG asset.import→shot→snapshot 路由/CSP/字节→frame（背景像素 `255,212,0`）→MP4 161,844 B/`0e0d6333…` 450 帧/15s→history 6 条→close/reopen revision 不变 |
+| 真浏览器 runtime | **ok=true** | `artifacts/p2-b/evidence/canvas-browser-2026-10-18T04-56-15-926Z.json`（SHA `b54beea5…9f1d5`）：Chrome 155 加载沙箱 iframe，ready 1280×720/5s，seek 3s 命中 `scene-1-title`，播放 0.43s 推进，外部网络 0，console error 0 |
 | 真实帧/渲染产物 | PNG 14,970 B/`e9538abb…`；MP4 161,844 B/`0e0d6333…`（H.264 1280×720/450 帧/15s） | 本地证据 `artifacts/p2-b/evidence/p3-008-artifacts/frame-yellow-1.5s.png`、`render-15s.mp4` |
 | C 候选保留 | alpha.2 包/staging 未覆盖 | `artifacts/p2-b/3310280/...`、`artifacts/p2-b/staging-54f4671-3310280` 未动 |
 

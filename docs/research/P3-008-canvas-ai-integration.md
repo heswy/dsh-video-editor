@@ -1,6 +1,6 @@
 # P3-008 交付证据：受控引擎画布、直接编辑、原生 AI 与素材抽屉
 
-日期：2026-10-18（Asia/Shanghai）。执行：p0-mode-shell（`dsh/p0-mode-shell` / PR #3）。功能提交 **`9458291`（Host 接线） + `568a325`（画布/客户端/测试）**；根版本 **`0.3.0-alpha.3`**，引擎固定已审 **`74294e6` / client·worker `0.3.0`**。本文件是开发交付证据，不是安装验收、真实模型闭环或 v0.3 全体验收。
+日期：2026-10-18（Asia/Shanghai）。执行：p0-mode-shell（`dsh/p0-mode-shell` / PR #3）。功能提交 **`8ab5f1a`（含 Host 接线与画布/客户端/测试）**；根版本 **`0.3.0-alpha.3`**，引擎固定已审 **`74294e6` / client·worker `0.3.0`**。本文件是开发交付证据，不是安装验收、真实模型闭环或 v0.3 全体验收。
 
 ## 1. 结论
 
@@ -13,11 +13,11 @@
 
 | 项 | 值 |
 |---|---|
-| 根候选 | `dsh-video-0.3.0-alpha.3.tgz`：**86,901 B / 23 files / SHA-256 `28b89d6f9e02fa0d034fc0bfda558ce6f3fe7eb9f4a068d7d19047317b18ae9b`**；23/23 与提交 `568a325` 逐字节一致 |
-| 源码提交 | `9458291f6bccdc99262995cba99b0381f29f47a8`（Host）→ `568a325f32fd2afd5b7830a7bcde045144a779ac`（canvas/client/tests） |
+| 根候选 | `dsh-video-0.3.0-alpha.3.tgz`：**86,943 B / 23 files / SHA-256 `68887366d98fc742be354cce4ea1926e6f1ed322a5279310eb6b5102889c3f08`**；23/23 与提交 `8ab5f1a` 逐字节一致 |
+| 源码提交 | `8ab5f1aaae23c25cd57142cc7920533922acbec5`（含 Host 接线与 canvas/client/tests；先前 `9458291`、`568a325` 为其历史组成） |
 | 引擎 | `74294e6339eb2ce2c86f6e546609e7e55a460e68`；client/worker **0.3.0** |
-| staging | `artifacts/p2-b/staging-74294e6-568a325`；INTEGRITY **`6478074bd5a2d665318432d3c55fee7d5c4e841a130201bf794e88df52aaa959`**；config `397c09a70dfca5f00b0aabdd8081045234b718ed4d6e769b2d2ebfeb000c06e7`；staged patch `76241d34ca566e7ed18fb61d0076b28f0ff594760b21b2cc1e2278b45f595008` |
-| managed registry | `managed/registry.json` `bc7100a5c7ae46c05fa04985f837c51da0e9134ed4beccf9fa7ca227584fd776`；inner projects `5d6166e3bfd0070f4e084e2c18fd3f2b67d2c9692a7503d149778a45880d3334` |
+| staging | `artifacts/p2-b/staging-74294e6-8ab5f1a`；INTEGRITY **`8f328d80346ced750bea0623b066ad59abdfda780c19d8ead2da4874d9baaa0e`**；config `3bfc67eb134e5bb8da7526fe3a5c9935057140c3a015cf73ce16dbc304378e1d`；staged patch `0db518a3cca390cfe986df9edeccb33a37f1e2c3ca055743d1c88362839544da` |
+| managed registry | `managed/registry.json` `f5b2f6b49e17fd0e7a1c02728ba9a5adf33563fc4c9e19d4fd33bf58d7a2edfc`；inner projects `a0d691daba98f0909c2158b8c2c07e6978b3455631e705745191ba81cd8a0b6b` |
 | 交付时 staging 状态 | 仅 `demo` 受控 legacy fixture（与 restore 副本逐字节一致）、output/previews 清空、session-state 不存在；INTEGRITY 记录的 bundle/config/patch/registry 摘要有效 |
 | 旧安装 | profile 仍为 **alpha.1 / engine 54f4671** link `staging-54f4671-b382686`；未安装/未替换/未重启 |
 | C 保留 | `dsh-video-0.3.0-alpha.2.tgz`（61,611 B/`e375adfd…`）与 `staging-54f4671-3310280` 未覆盖 |
@@ -62,14 +62,14 @@
 |---|---|---|
 | `npm run check` | **42 + 56 + 38 = 136/136** | 静态 42（含 canvas/runtime/Host 方法门禁）、Client smoke 56（含 managed 新工程→Session→画布 shell/iframe/snapshot/播放/素材入口）、Host 契约 38（含 layout/style 参数、Tool UI-only 拒绝、snapshot CSP/字节/release、inbox receipt） |
 | 版本门禁 | **10/10** | alpha.3 |
-| 旧 demo Host→engine 兼容链 | ok=true | `artifacts/p2-b/evidence/engine-run-2026-10-18T04-52-17-006Z.json`，SHA `241d42c3…48b36c` |
-| 受控新工程全链 | ok=true | `artifacts/p2-b/evidence/canvas-chain-2026-10-18T04-52-42-038Z.json`，SHA `41d77dc2…f76536` |
-| 真浏览器 runtime | ok=true | `artifacts/p2-b/evidence/canvas-browser-2026-10-18T04-52-47-580Z.json`，SHA `398c2fbf…ceb1c` |
+| 旧 demo Host→engine 兼容链 | ok=true | `artifacts/p2-b/evidence/engine-run-2026-10-18T04-55-59-463Z.json`，SHA `afadbd4f…dbf29` |
+| 受控新工程全链 | ok=true | `artifacts/p2-b/evidence/canvas-chain-2026-10-18T04-56-14-621Z.json`，SHA `2d632f6b…997a0` |
+| 真浏览器 runtime | ok=true | `artifacts/p2-b/evidence/canvas-browser-2026-10-18T04-56-15-926Z.json`，SHA `b54beea5…9f1d5` |
 | 真实帧/渲染产物 | frame 14,970 B/`e9538abb…`；MP4 161,844 B/`0e0d6333…` | `artifacts/p2-b/evidence/p3-008-artifacts/frame-yellow-1.5s.png`、`render-15s.mp4`；与 canvas-chain 证据一致 |
 
 ### 受控新工程链关键数据（canvas-chain）
 
-- 新工程 `proj-mvdcmscn-c02249f7`，初始 revision `51686ab6…a28236e`；绑定 Session `session-canvas-5af2deb4-1`；3 Scene 各 5s，总 15s。
+- 新工程 `proj-mvdcrgwh-1d4c757b`，初始 revision `51686ab6…a28236e`；绑定 Session `session-canvas-42c68558-1`；3 Scene 各 5s，总 15s。
 - 换背景黄：`scene.update` → revision `51b0d542…c3bcdf`。
 - 人工同对象 `scene-1-title` text+layout+style（left 120/top 260/width 900、color `#112233`、fontSize 64）→ revision `c2f02526…326d379`；undo 回到 `51b0d542…` 文案恢复默认，redo 回 `c2f02526…` 且人工文案回来。
 - PNG 上传/导入：`assets/canvas-test.png` 68 B / SHA `71a8ae4e…986aa7f`，revision `3afd4366…42d77b`；用于 `scene-1` shot → revision `b4a06abd…5f115f75b`。
