@@ -9,7 +9,8 @@ import { WorkerClient } from "../src/index.mjs";
 
 const fakeWorker = resolve(import.meta.dirname, "fixtures/protocol-worker.mjs");
 
-async function fake(mode) {
+async function fake(mode, timeouts) {
+  const budget = timeouts || {};
   const dir = await mkdtemp(resolve(tmpdir(), "dsh-engine-client-"));
   const registry = resolve(dir, "registry.json");
   await writeFile(registry, JSON.stringify({ mode }));
@@ -18,8 +19,11 @@ async function fake(mode) {
       nodeExecutable: process.execPath,
       workerEntry: fakeWorker,
       registryPath: registry,
-      startupTimeoutMs: 200,
-      requestTimeoutMs: 200,
+      // Timing-sensitive negative tests keep the tight 200 ms budget. The
+      // env/cwd context tests spawn a real worker and assert a healthy handshake,
+      // so they pass a generous budget instead of flaking on a loaded machine.
+      startupTimeoutMs: budget.startupTimeoutMs ?? 200,
+      requestTimeoutMs: budget.requestTimeoutMs ?? 200,
       shutdownTimeoutMs: 200,
       forceKillTimeoutMs: 200,
       maxPending: 8,
@@ -141,7 +145,7 @@ test("invalid executable returns a structured startup failure", async () => {
 });
 
 test("spawn uses an explicit complete env and cwd copied at construction", async () => {
-  const f = await fake("context");
+  const f = await fake("context", { startupTimeoutMs: 5000, requestTimeoutMs: 5000 });
   const dir = await mkdtemp(resolve(tmpdir(), "dsh-engine-client-cwd-"));
   // The complete env below must replace process.env, so this variable must not
   // reach the child.
@@ -169,7 +173,7 @@ test("spawn uses an explicit complete env and cwd copied at construction", async
 });
 
 test("omitting env keeps the inherited standalone environment", async () => {
-  const f = await fake("context");
+  const f = await fake("context", { startupTimeoutMs: 5000, requestTimeoutMs: 5000 });
   const client = new WorkerClient({ ...f.client.options });
   process.env.DSH_MARK = "inherited-value";
   try {
