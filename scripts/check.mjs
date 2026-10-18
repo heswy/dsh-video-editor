@@ -131,8 +131,8 @@ check('bundle manifest declares patch and client', () => {
   return `platform=web, inject=[${pkg.dsh.client.inject.join(', ')}]`;
 });
 
-check('package version advanced for the P3-006-C file preview candidate', () => {
-  assert(pkg.version === '0.3.0-alpha.2', `expected version 0.3.0-alpha.2, found "${pkg.version}"`);
+check('package version advanced for the P3-008 canvas integration candidate', () => {
+  assert(pkg.version === '0.3.0-alpha.3', `expected version 0.3.0-alpha.3, found "${pkg.version}"`);
   return pkg.version;
 });
 
@@ -176,7 +176,7 @@ check('package files list covers every shipped artifact', () => {
     const covered = pkg.files.some((pattern) => listMatchingFiles(pattern).includes(artifact));
     assert(covered, `files list does not cover required artifact "${artifact}"`);
   }
-  const extra = ['scripts/check.mjs', 'scripts/smoke-client.mjs', 'scripts/check-host.mjs', 'scripts/stage-dev.mjs', 'scripts/test-host-engine.mjs', 'scripts/test-stage-version.mjs', 'scripts/lib/staged-host.mjs', 'scripts/lib/stage-version.mjs'];
+  const extra = ['scripts/check.mjs', 'scripts/smoke-client.mjs', 'scripts/check-host.mjs', 'scripts/stage-dev.mjs', 'scripts/test-host-engine.mjs', 'scripts/test-stage-version.mjs', 'scripts/lib/staged-host.mjs', 'scripts/lib/stage-version.mjs', 'scripts/test-canvas-chain.mjs', 'scripts/test-canvas-browser.mjs'];
   for (const tool of extra) {
     assert(exists(tool), `local check tool "${tool}" is missing from the workspace`);
     const packaged = pkg.files.some((pattern) => listMatchingFiles(pattern).includes(tool));
@@ -344,11 +344,13 @@ check('R1: the display menu moves focus in and returns it on close', () => {
   assert(clientSource.includes("event.key === 'Tab'"), 'Tab close must be handled so focus cannot stay on the removed item');
   assert(clientSource.includes('focusTrigger'), 'closing must restore focus to the trigger');
   assert(clientSource.includes('tabIndex: -1'), 'menu items should be programmatically focused, not tab stops');
-  assert(
-    clientSource.includes('document.addEventListener') === false && clientSource.includes('window.addEventListener') === false,
-    'the menu must not install global listeners (nothing may leak on unmount)'
-  );
-  return 'open focuses item; Escape/Tab close and refocus trigger; no global listeners';
+  assert(clientSource.includes('document.addEventListener') === false, 'no document listener is allowed');
+  const canvasStart = clientSource.indexOf('function CanvasWorkspace');
+  const canvasEnd = clientSource.indexOf('function VideoWorkspace');
+  assert(canvasStart >= 0 && canvasEnd > canvasStart, 'canvas component boundary not found for listener audit');
+  const outsideCanvas = clientSource.slice(0, canvasStart) + clientSource.slice(canvasEnd);
+  assert(outsideCanvas.includes('window.addEventListener') === false, 'global listeners outside the scoped canvas runtime channel are forbidden');
+  return 'open focuses item; Escape/Tab close and refocus trigger; no unscoped global listeners';
 });
 
 check('P0-005: sidebar icon follows the host owner props and native stroke', () => {
@@ -418,7 +420,10 @@ check('P2-002-B: Host modules do not import DSH-internal packages', () => {
 check('P2-006 R2: cancelled jobs are neutral, failures stay localized', () => {
   assert(clientSource.includes("current.state === 'cancelled'"), 'cancelled terminal state handling missing');
   assert(clientSource.includes('setError(null);'), 'cancelled state does not clear/suppress the error');
-  assert(clientSource.includes("state !== 'succeeded'") === false, 'waitForJob still treats every non-success as an error');
+  const waitStart = clientSource.indexOf('async function waitForJob');
+  const waitEnd = clientSource.indexOf('async function cancelCurrentJob', waitStart);
+  assert(waitStart >= 0 && waitEnd > waitStart, 'waitForJob boundary not found');
+  assert(clientSource.slice(waitStart, waitEnd).includes("state !== 'succeeded'") === false, 'waitForJob still treats every non-success as an error');
   for (const key of ['video.error.frameFailed', 'video.error.renderFailed', 'video.error.timedOut']) {
     assert(clientSource.includes(key), `localized terminal error key missing: ${key}`);
   }
@@ -451,11 +456,11 @@ check('P2-005: frame-time preview is real and bounded; no fake playback/timeline
   for (const needle of ['dsh-video-frame-time', 'video.frameTime', 'parseFrameTime', 'defaultFrameTime', 'frameTimeDraft']) {
     assert(clientSource.includes(needle), `client.js is missing frame-time preview wiring "${needle}"`);
   }
-  for (const forbidden of ['播放', '时间线', '自动轮播', '暂停', 'seek']) {
+  for (const forbidden of ['时间线', '自动轮播']) {
     assert(clientSource.includes(forbidden) === false, `client.js advertises unsupported playback/timeline capability "${forbidden}"`);
   }
   assert(clientSource.includes("time: time,"), 'frame request does not carry the selected time');
-  return 'bounded frame-time input; no fake player/autoplay/timeline';
+  return 'bounded frame-time input; real canvas playback only under a worker snapshot';
 });
 
 check('P2-002-B: the editor exposes only the real controlled-project loop', () => {
@@ -536,6 +541,23 @@ check('P3-006-C: embedded file preview is local, Session-scoped and byte-bounded
   assert(config.includes("'maxPreviewBytes'"), 'the trusted preview byte limit is missing');
   assert(routes.includes('E_PREVIEW_DENIED') && routes.includes('E_PREVIEW_UNSUPPORTED') && routes.includes('E_PREVIEW_LIMIT'), 'preview error statuses are missing');
   return 'local capture, session/project scope, realpath roots, magic-byte validation, byte limit';
+});
+
+check('P3-008: managed canvas is snapshot-bound, sandboxed and Host-authoritative', () => {
+  const bridge = read('host/bridge.js');
+  const snapshot = read('host/snapshot.js');
+  const stage = read('scripts/stage-dev.mjs');
+  assert(clientSource.includes('function CanvasWorkspace'), 'canvas workspace component missing');
+  assert(clientSource.includes("sandbox: 'allow-scripts'"), 'snapshot iframe must use allow-scripts only');
+  assert(clientSource.includes('postCommand') && clientSource.includes('hitTest'), 'runtime command channel is missing');
+  assert(clientSource.includes('preview.snapshot'), 'client does not request worker snapshots');
+  assert(clientSource.includes('event.source !== frame.contentWindow'), 'canvas messages are not bound to the iframe WindowProxy');
+  assert(clientSource.includes('data-canvas-revision'), 'canvas does not expose its snapshot revision');
+  assert(bridge.includes("'project.create'") && bridge.includes("'scene.create'") && bridge.includes("'preview.snapshot'") && bridge.includes("'asset.import'"), 'Host managed method allowlist is incomplete');
+  assert(bridge.includes('readManagedProjectMap') && bridge.includes('discoverManagedProjects'), 'managed project registry/allowlist discovery missing');
+  assert(snapshot.includes('content-security-policy') && snapshot.includes("connect-src 'none'") && snapshot.includes('inlineScriptHashes'), 'snapshot route is missing CSP/hash hardening');
+  assert(stage.includes("clientPackage.version === '0.3.0'") && stage.includes('projectsRoot'), 'staging does not prepare managed 0.3.0 snapshots');
+  return 'snapshot iframe, fixed runtime/route CSP, managed project discovery, Host methods';
 });
 
 for (const [name, detail] of passes) console.log(`PASS  ${name}${detail === 'ok' ? '' : `  [${detail}]`}`);

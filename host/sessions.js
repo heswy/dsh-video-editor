@@ -254,9 +254,17 @@ export class SessionService {
         lines.push(`Last known project revision: ${facts.revision}.`);
         if (Number.isFinite(facts.duration)) lines.push(`Project duration: ${facts.duration}s.`);
         if (Number.isFinite(facts.width) && Number.isFinite(facts.height)) lines.push(`Frame: ${facts.width}x${facts.height}.`);
+        if (Array.isArray(facts.scenes) && facts.scenes.length > 0) {
+          const scenes = facts.scenes.slice(0, 12).map((scene) => `${scene.sceneId} \"${scene.title}\" ${scene.start ?? '?'}-${scene.start !== null && scene.duration !== null ? Math.round((scene.start + scene.duration) * 1000) / 1000 : '?'}s`);
+          lines.push(`Scenes: ${scenes.join('; ')}.`);
+        }
+        if (Array.isArray(facts.images) && facts.images.length > 0) {
+          lines.push(`Imported images: ${facts.images.slice(0, 16).join(', ')}.`);
+        }
         if (Array.isArray(facts.targets) && facts.targets.length > 0) {
           const targets = facts.targets.slice(0, 12).map((target) => `${target.stableId} [${target.capabilities.join(',')}]`);
           lines.push(`Known editable targets: ${targets.join('; ')}.`);
+          lines.push('Prefer typed edit ops on a stableId for text/layout/style so human layout and colors are preserved; use scene.update only for scene-level defaults.');
         }
       } else {
         lines.push('Inspect the project before editing so the revision and target ids are current.');

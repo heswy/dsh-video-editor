@@ -4,7 +4,7 @@
 
 用户确定的入口（P0-005，延续到本阶段）：DSH 左侧原生导航中，在「上下文洞察」之后、「工作区」分组之前，单行 **Vedio Editor** + 细线条视频图标。原顶部「普通｜视频」胶囊已移除。入口是产品工作区导航，不改变 Agent preset、模型或权限。
 
-当前阶段：**P3-006-C** 修复嵌入创作会话中的 PNG/本地图片预览，开发候选版本 **0.3.0-alpha.2**（引擎仍固定 `54f4671` / 两包 `0.1.1`）；本机安装仍是上一受控候选，本轮**未安装、未启停、未改 profile、未创建真实用户会话、未调用模型**。运行时契约基线为 DSH Desktop **0.2.1-rc.2**（应用包与运行 Host 已分别核对，见 `docs/research/P3-005A-native-conversation-contract.md`）。
+当前阶段：**P3-008** 把新引擎接成可持续编辑的真实视频工作区（受控工程、左画布实时播放/直接编辑、右原生 AI、素材抽屉），开发候选版本 **0.3.0-alpha.3**，引擎固定已审 **`74294e6` / 两包 `0.3.0`**；本机安装仍是上一受控候选（alpha.1/旧引擎），本轮**未安装、未启停、未改 profile、未创建真实用户会话、未调用模型**。运行时契约基线为 DSH Desktop **0.2.1-rc.2**（应用包与运行 Host 已分别核对，见 `docs/research/P3-005A-native-conversation-contract.md`）。
 
 - [当前状态与下一步](docs/STATUS.md)
 - [开发与协作规则](docs/DEVELOPMENT.md)
@@ -16,20 +16,20 @@
 - [P2-002 Host 契约调查](docs/research/P2-002-host-bridge-contract.md)
 - [P3-005-A 原生会话契约调查](docs/research/P3-005A-native-conversation-contract.md)
 
-## 本版交付（0.3.0-alpha.2，本地开发候选）
+## 本版交付（0.3.0-alpha.3，本地开发候选）
 
 | 项 | 值 |
 |---|---|
 | 包名 / Loader 行 id / Client 模块 id | `dsh-video` |
-| Bundle 版本 | `0.3.0-alpha.2` |
-| Host 路由 | `POST /api/dsh-video/request`、`GET/HEAD /api/dsh-video/artifact?jobId=…` |
-| Host 请求方法 | doctor/open/inspect/edit/frame/render/status/cancel/close，以及面板专用的 session.list/session.create/session.select/session.diagnose 与仅限 UI 的 preview（嵌入会话图片预览） |
+| Bundle 版本 | `0.3.0-alpha.3` |
+| Host 路由 | `POST /api/dsh-video/request`、`GET/HEAD /api/dsh-video/artifact?jobId=…`、`POST /api/dsh-video/asset-upload`、`GET/HEAD /api/dsh-video/preview/<snapshotId>/<manifest path>`、`GET/HEAD /api/dsh-video/canvas-runtime.js` |
+| Host 请求方法 | doctor/open/inspect/edit/frame/render/status/cancel/close、session.*、preview（文件预览），以及 P3-008 的 project.create/project.list/asset.import/scene.create/scene.update/scene.remove/scene.reorder/project.revise/history/undo/redo/preview.snapshot/preview.release；asset 上传与 preview.snapshot 为 UI-only，Tool 不能调用 |
 | Tool | `video_engine`（同一 dispatcher；非 doctor action 必须来自绑定工程的受信 Agent Session） |
 | 侧栏入口 | `sidebar.panellist`，`id: dsh-video`、`order: 30`、label `Vedio Editor` |
 | 面板 key | `main` keyed slot 的 `dsh-video`；另声明私有 session child，仅用于取得原生 `SessionProvider` kit |
-| 引擎依赖 | 独立 `dsh-video-engine-client` / `dsh-video-engine-worker`，仅开发 staging 快照内解析；本任务仍固定已审 `54f4671` / 两包 `0.1.1` |
+| 引擎依赖 | 独立 `dsh-video-engine-client` / `dsh-video-engine-worker`，仅开发 staging 快照内解析；本任务固定已审 `74294e6` / 两包 `0.3.0` |
 
-`index.js` 是 Host half：一个 plugin-local `VideoBridge` 同时服务精确 Fetch 路由和 Tool；`host/` 保存校验、错误映射、环境清理、worker 适配、产物发布，以及插件自有的会话映射（`host/sessions.js`、`host/session-state.js`）与局部图片预览（`host/preview.js`）。`client.js` 是手写浏览器半（`window.__ModuleLoader__.load` 格式），只 `require('react')`，通过文档相对 `fetch('api/dsh-video/request')` 调用 Host；右侧 AI 直接渲染宿主原生 `conversation.content` Factory，不自建聊天。
+`index.js` 是 Host half：一个 plugin-local `VideoBridge` 同时服务精确 Fetch 路由和 Tool；`host/` 保存校验、错误映射、环境清理、worker 适配、产物发布、会话映射、局部图片预览、受控项目/素材收件箱与预览快照路由。`client.js` 是手写浏览器半（`window.__ModuleLoader__.load` 格式），只 `require('react')`，通过文档相对 `fetch('api/dsh-video/request')` 调用 Host；右侧 AI 直接渲染宿主原生 `conversation.content` Factory，不自建聊天。
 
 ### Host 可信配置（由安装/部署提供）
 
@@ -47,8 +47,11 @@
     allowedProjects: [demo]                        # 非空；UI/Tool 只能引用这些 id
     sessionStatePath: /absolute/private/session-state.json   # 插件自有的工程↔会话映射（原子写）
     sessionCwd: /absolute/private/creation-cwd                # Host 创建创作会话的受信 cwd
+    # P3-008 受控工程/素材（0.3.0 managed 模式；worker registry 文件同时声明这些根）
+    projectsRoot: /absolute/managed/projects                  # 受控工程目录；worker 注册表条目必须 realpath 在此根内
+    assetInboxRoot: /absolute/private/asset-inbox             # Host 上传收件箱；UI 不能传任意路径
     # 可选上限：startupTimeoutMs/requestTimeoutMs/shutdownTimeoutMs/maxRequestBytes/
-    # maxArtifactBytes/maxResultBytes/maxPreviewBytes/maxPending 等，见 host/config.js
+    # maxArtifactBytes/maxResultBytes/maxPreviewBytes/maxAssetBytes/maxPending 等，见 host/config.js
 ```
 
 - `workerNode` 经 `ctx.subprocess.resolveExecutable` 验证后才启动 worker；Host 构造**完整、清理后的子进程环境**（去掉 `ELECTRON_*`、`NODE_*`、`DSH_*`、`npm_*` 等继承项，不修改 `process.env`），并显式传 `cwd`。
@@ -73,6 +76,15 @@
 - 只按**实际文件字节**嗅探 PNG/JPEG/GIF/WebP 并核对扩展名，不接受重命名为图片的 HTML；超过 `maxPreviewBytes`（默认 8 MiB）直接拒绝。返回有界 data URL，不把 Host 绝对路径作为浏览器 URL。
 - 图片显示在右 AI 区域的局部 dialog 中，关闭即回到原会话；不导航普通对话、不占第三列、不替换左工程预览。当前只支持图片内嵌预览；PDF/Office/视频等明确显示“暂不支持内嵌预览”，不假装已支持全部原生文件类型。
 
+### 受控画布、工程与素材（P3-008）
+
+- **工程**：0.3.0 managed 模式下，Host `project.list/project.create` 只接受受控模板 `product-launch-v1`，并从 worker 管理的注册表发现/校验 `projectsRoot` 下的工程；新工程先由 worker 真实创建，再创建并绑定原生创作 Session。UI 只采用 worker 返回的 projectId；创建/绑定失败保留已创建工程并诚实报错，可重试会话绑定。
+- **画布**：`preview.snapshot` 让 worker 生成私有只读快照；Host 按 manifest 逐文件校验 bytes/sha256 后注册精确 Fetch 路由，entry 注入固定 runtime 并下发严格 CSP（`connect-src 'none'`、inline script hash、`frame-ancestors 'self'`）。客户端以 `sandbox="allow-scripts"`（无 allow-same-origin）加载，按 composition CSS px 做 letterbox/hitTest；播放/暂停/seek 由 runtime 自身时钟驱动，不靠 PNG 轮询冒充播放。
+- **直接编辑**：文字/位置/尺寸/颜色/字号通过 worker `edit` 的 `text/layout/style` typed ops 提交，携带 `expectedRevision`+`operationId`；成功换新 revision 并重载快照，失败保留原状并显示可恢复错误。播放中禁止写；Scene 级底色走 `scene.update`，不把调色副产物当工程已改。
+- **AI 同工程**：右 AI 仍使用原生 Conversation；Host 在 Tool/UI 两条路径上按 Session→工程持久映射校验，Tool 的 `edit` 已支持 text/timing/layout/style，并新增受控 scene/history/revise actions。会话 prompt context 注入新鲜 revision、Scene、可编辑 stableId/capabilities 与素材摘要，引导 AI 优先在同一 stableId 上做 typed edit 以保留人工布局。
+- **素材**：Host `POST /api/dsh-video/asset-upload` 只接受 PNG/JPEG（≤8 MiB、签名/扩展名一致），写入受信 inbox 并返回短期 receipt；`asset.import` 只收 receipt，worker 再按自己的 assetInboxRoot 复制并重算 revision。UI/Tool 都不能传绝对路径或任意 URL；不支持视频/音频/SVG。
+- **兼容**：旧 legacy demo（无 scenes）仍按原 PNG/文本/时间编辑路径打开，不伪装具备 layout/style 能力；新受控工程默认进入画布工作区。
+
 ### Host 请求与 Tool
 
 - 请求体为 JSON `{ "method": "...", "params": { ... } }`，正文默认上限 64 KiB；拒绝额外字段、未知方法、任意 path/URL。项目参数只能是配置 allowlist 的 id；`status`/`cancel`/`artifact` 还必须对应该 Host 实例已登记、由本实例启动的 job。
@@ -95,13 +107,13 @@
 node scripts/stage-dev.mjs   --engine-commit <reviewed-P2-003-sha>   --bundle-version <reviewed-bundle-version>   --node /absolute/real/node   --browser /absolute/chrome   [--font /absolute/font] [--out /absolute/staging-dir]
 ```
 
-`--bundle-version` 必须显式给出，且与所固定提交根 `package.json` 的版本（当前 **0.3.0-alpha.2**）完全一致；非法 semver 或不一致会在创建输出目录、安装依赖之前失败，脚本不会猜测或隐式接受任意版本。后续升级根版本时同步传入新版本，不删除这项校验。
+`--bundle-version` 必须显式给出，且与所固定提交根 `package.json` 的版本（当前 **0.3.0-alpha.3**）完全一致；非法 semver 或不一致会在创建输出目录、安装依赖之前失败，脚本不会猜测或隐式接受任意版本。后续升级根版本时同步传入新版本，不删除这项校验。
 
 脚本要求根 worktree 干净、引擎包版本为复审的 `0.1.1` 且暴露 `./worker` / `./package.json` 导出；用该提交的 client/worker 快照 + `npm ci --ignore-scripts` 准备依赖闭包与受控 fixture，生成：
 
 ```text
 <staging>/
-  bundle/                  # 0.3.0-alpha.2 根 bundle；仅此快照内加本地依赖与 node_modules 链接
+  bundle/                  # 0.3.0-alpha.3 根 bundle；仅此快照内加本地依赖与 node_modules 链接
   engine-client/           # 固定 engine commit 快照
   engine-worker/           # 固定 engine commit 快照 + 依赖闭包 + artifacts fixture/registry/output
   config.json              # 仅此快照的绝对路径 Host 配置（含 sessionStatePath/sessionCwd）
@@ -121,7 +133,7 @@ node scripts/test-host-engine.mjs --staging /absolute/staging-dir
 
 ## 安装（需用户明确授权；由 DSH 界面执行）
 
-本仓库未做 profile 修改，0.3.0-alpha.2 未安装。复审通过并完成 staging 后：
+本仓库未做 profile 修改，0.3.0-alpha.3 未安装。复审通过并完成 staging 后：
 
 1. 侧栏 **Plugins → Add plugin**，填入 staging 的 `bundle/` 绝对路径（开发 link）或审阅通过的固定包；
 2. **Install**，完成后 **Enable now**；
@@ -140,7 +152,7 @@ node scripts/test-host-engine.mjs --staging /absolute/staging-dir
 
 - **停用**：Plugins 页面关闭 `dsh-video`。Host 停止接受新请求并 `await` 一次 worker dispose；UI/侧栏/路由/Tool/会话引用与 prompt context 随 fiber 释放。worker 只在插件停用/移除时收尾，切换视频面板或返回对话不会停止共享 worker。
 - **重新启用**：再次打开开关；worker 在第一次业务请求时惰性启动，不随面板挂载启动；历史与映射从 `sessionStatePath` 恢复，草稿由宿主会话保留。
-- **回滚**：保留并恢复当前已安装的受控候选；移除 0.3.0-alpha.2 bundle 后重新安装上一固定 tarball，或按 Plugin Manager 历史选择回退。浏览器偏好可删除 `localStorage['dsh-video.ui.v1']`；如需清理插件映射，可在插件停用后按运维流程删除 `sessionStatePath`（不会删除 DSH Session）。
+- **回滚**：保留并恢复当前已安装的受控候选；移除 0.3.0-alpha.3 bundle 后重新安装上一固定 tarball，或按 Plugin Manager 历史选择回退。浏览器偏好可删除 `localStorage['dsh-video.ui.v1']`；如需清理插件映射，可在插件停用后按运维流程删除 `sessionStatePath`（不会删除 DSH Session）。
 - **数据影响**：本插件不写 DSH session 事件、不写 profile；工程内容只由受控 worker 写入其配置的 registry 工程目录；云不可用或映射文件损坏时不会静默删除任何会话或工程。
 
 ## 本地检查（零构建，无安装）

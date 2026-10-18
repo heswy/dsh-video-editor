@@ -24,6 +24,14 @@ const ACTIONS = Object.freeze([
   'status',
   'cancel',
   'close',
+  'scene.create',
+  'scene.update',
+  'scene.remove',
+  'scene.reorder',
+  'project.revise',
+  'history',
+  'undo',
+  'redo',
 ]);
 
 const TOOL_PARAMETERS = Object.freeze({
@@ -56,15 +64,36 @@ const TOOL_PARAMETERS = Object.freeze({
     },
     ops: {
       type: 'array',
-      description: 'One to thirty-two typed text/timing edits for an existing element.',
+      description: 'One to thirty-two typed text/timing/layout/style edits for an existing element.',
       items: {
         type: 'object',
         properties: {
-          type: { type: 'string', enum: ['text', 'timing'] },
+          type: { type: 'string', enum: ['text', 'timing', 'layout', 'style'] },
           target: { type: 'string', description: 'Stable element id from inspect.' },
           text: { type: 'string', description: 'Replacement text for a text edit.' },
           start: { type: 'number', description: 'New start time in seconds for a timing edit.' },
           duration: { type: 'number', description: 'New duration in seconds for a timing edit.' },
+          unit: { const: 'composition-px', description: 'Layout unit.' },
+          box: {
+            type: 'object',
+            properties: {
+              left: { type: 'number' },
+              top: { type: 'number' },
+              width: { type: 'number' },
+              height: { type: 'number' },
+            },
+            additionalProperties: false,
+          },
+          styles: {
+            type: 'object',
+            properties: {
+              color: { type: 'string' },
+              fontSize: { type: 'number' },
+              fontWeight: { type: 'integer' },
+              textAlign: { type: 'string', enum: ['left', 'center', 'right'] },
+            },
+            additionalProperties: false,
+          },
         },
         required: ['type', 'target'],
         additionalProperties: false,
@@ -72,6 +101,27 @@ const TOOL_PARAMETERS = Object.freeze({
     },
     time: { type: 'number', description: 'Frame time in seconds.' },
     timeoutMs: { type: 'integer', description: 'Worker job deadline in milliseconds.' },
+    sceneId: { type: 'string', description: 'Stable Scene id for scene operations.' },
+    afterSceneId: { type: 'string', description: 'Insert a new Scene after this Scene id.' },
+    order: { type: 'array', items: { type: 'string' }, description: 'Complete Scene order (unique ids).' },
+    baseRevision: { type: 'string', description: 'AI base revision for project.revise.' },
+    limit: { type: 'integer', description: 'History entry limit (1-64).' },
+    template: {
+      type: 'object',
+      description: 'Controlled product-launch-v1 Scene template; omitted optional fields fall back to template defaults.',
+      properties: {
+        title: { type: 'string' },
+        duration: { type: 'number' },
+        subtitle: { type: 'string' },
+        badge: { type: 'string' },
+        color: { type: 'string' },
+        accent: { type: 'string' },
+        logo: { type: 'string' },
+        shot: { type: 'string' },
+      },
+      required: ['title', 'duration'],
+      additionalProperties: false,
+    },
   },
   required: ['action'],
   additionalProperties: false,
@@ -87,6 +137,14 @@ const ACTION_FIELDS = Object.freeze({
   status: ['jobId'],
   cancel: ['jobId'],
   close: ['projectId'],
+  'scene.create': ['projectId', 'expectedRevision', 'operationId', 'sceneId', 'afterSceneId', 'template'],
+  'scene.update': ['projectId', 'expectedRevision', 'operationId', 'sceneId', 'template'],
+  'scene.remove': ['projectId', 'expectedRevision', 'operationId', 'sceneId'],
+  'scene.reorder': ['projectId', 'expectedRevision', 'operationId', 'order'],
+  'project.revise': ['projectId', 'baseRevision', 'expectedRevision', 'operationId', 'sceneId', 'template'],
+  history: ['projectId', 'limit'],
+  undo: ['projectId', 'expectedRevision', 'operationId'],
+  redo: ['projectId', 'expectedRevision', 'operationId'],
 });
 
 function formatError(error) {
@@ -135,7 +193,7 @@ export function createVideoTool(bridge) {
   return {
     name: TOOL_NAME,
     description:
-      'Open, inspect, edit, frame, render, observe, cancel and close a controlled video project configured by the Host. Accepts only configured project ids and locally registered job ids; never accepts paths or URLs.',
+      'Open, inspect, edit (text/timing/layout/style), frame, render, observe, cancel, close, and operate on Scenes/history of a controlled video project configured by the Host. Accepts only configured project ids; never accepts paths or URLs.',
     parameters: TOOL_PARAMETERS,
     output: {
       schema: { type: 'object', additionalProperties: true },

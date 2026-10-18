@@ -1095,12 +1095,28 @@ export class VideoBridge {
       const capabilities = Array.isArray(element.capabilities) ? element.capabilities.filter((value) => typeof value === 'string').slice(0, 8) : [];
       targets.push({ stableId: element.stableId.slice(0, 128), capabilities });
     }
+    const scenes = Array.isArray(result.scenes)
+      ? result.scenes.slice(0, 12).map((scene) => ({
+          sceneId: typeof scene.sceneId === 'string' ? scene.sceneId.slice(0, 64) : '',
+          title: typeof scene.title === 'string' ? scene.title.slice(0, 200) : '',
+          start: Number.isFinite(Number(scene.start)) ? Number(scene.start) : null,
+          duration: Number.isFinite(Number(scene.duration)) ? Number(scene.duration) : null,
+        })).filter((scene) => scene.sceneId !== '')
+      : [];
+    const images = Array.isArray(result.files)
+      ? result.files
+          .filter((file) => file !== null && typeof file.path === 'string' && /\.(png|jpe?g)$/i.test(file.path))
+          .slice(0, 16)
+          .map((file) => file.path.slice(0, 256))
+      : [];
     this.projectFactsById.set(projectId, {
       revision,
       width: Number.isFinite(Number(result.width)) ? Number(result.width) : null,
       height: Number.isFinite(Number(result.height)) ? Number(result.height) : null,
       duration: Number.isFinite(Number(result.duration)) ? Number(result.duration) : null,
       targets,
+      scenes,
+      images,
     });
   }
 
@@ -1114,6 +1130,8 @@ export class VideoBridge {
       height: facts.height,
       duration: facts.duration,
       targets: facts.targets.map((target) => ({ stableId: target.stableId, capabilities: target.capabilities.slice() })),
+      scenes: facts.scenes.map((scene) => ({ ...scene })),
+      images: facts.images.slice(),
     };
   }
 

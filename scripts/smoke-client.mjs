@@ -802,6 +802,33 @@ function makeSessionKit() {
   return { SessionProvider, renderFactorySlot, calls };
 }
 
+function managedScenes() {
+  return [1, 2, 3].map((index) => ({ sceneId: 'scene-' + index, order: index - 1, start: (index - 1) * 5, duration: 5, title: 'Scene ' + index, elements: [] }));
+}
+
+function managedInspected() {
+  return {
+    projectId: 'proj-smoke',
+    revision: 'c'.repeat(64),
+    width: 1280,
+    height: 720,
+    duration: 15,
+    scenes: managedScenes(),
+    elements: [
+      {
+        stableId: 'scene-1-title',
+        sceneId: 'scene-1',
+        text: 'Scene 1',
+        timing: { start: 0, duration: 5 },
+        capabilities: ['text', 'layout', 'style'],
+        layout: { left: 88, top: 196, width: 1104, height: 120 },
+        style: { color: '#ffffff', fontSize: 64, fontWeight: 600, textAlign: 'left' },
+      },
+    ],
+    files: ['assets/gsap.min.js', 'index.html'].map((path) => ({ path: path, bytes: 100, sha256: 'd'.repeat(64) })),
+  };
+}
+
 function sessionFetch(options) {
   const config = options || {};
   const fetchFunction = makeHostFetch((request) => {
@@ -835,6 +862,37 @@ function sessionFetch(options) {
     }
     if (method === 'session.diagnose') {
       return Promise.resolve({ ok: true, result: { enabled: true, contract: 1 } });
+    }
+    if (method === 'project.list') {
+      return Promise.resolve({ ok: true, result: { projects: [{ projectId: 'proj-smoke' }, { projectId: 'demo' }] } });
+    }
+    if (method === 'project.create') {
+      config.projectCreated = true;
+      return Promise.resolve({ ok: true, result: { projectId: 'proj-smoke', revision: 'c'.repeat(64), scenes: managedScenes().slice(0, 1) } });
+    }
+    if (method === 'open') {
+      const id = request.body.params.projectId;
+      config.openedProject = id;
+      return Promise.resolve({ ok: true, result: { projectId: id, revision: 'c'.repeat(64) } });
+    }
+    if (method === 'inspect') {
+      return Promise.resolve({ ok: true, result: managedInspected() });
+    }
+    if (method === 'preview.snapshot') {
+      config.snapshotRequests = (config.snapshotRequests || []).concat([request.body.params]);
+      return Promise.resolve({
+        ok: true,
+        result: {
+          snapshotId: 'a'.repeat(32),
+          projectId: request.body.params.projectId,
+          revision: request.body.params.revision,
+          entry: 'index.html',
+          entryUrl: '/api/dsh-video/preview/' + 'a'.repeat(32) + '/index.html',
+          routeBase: '/api/dsh-video/preview',
+          files: [],
+          expiresAt: new Date(Date.now() + 60000).toISOString(),
+        },
+      });
     }
     if (method === 'preview') {
       config.previewCalls = (config.previewCalls || []).concat([request.body.params]);
@@ -1389,7 +1447,8 @@ test('P2-002-B: no project keeps the quiet empty state and fetches nothing until
   const tree = editor.tree();
   assert(textOf(findNode(tree, (node) => node.props && node.props.className === 'dv-empty')) === '尚无工程', 'quiet empty state missing');
   assert(buttonByText(tree, '打开示例') !== null, 'open-example action missing');
-  assert(hostFetch.calls.length === 0, 'empty panel made a business request before the explicit action');
+  const earlyCalls = hostFetch.calls.filter((call) => call.body.method !== 'project.list');
+  assert(earlyCalls.length === 0, 'empty panel made a business request before the explicit action');
   assert(findNode(tree, (node) => node.props && node.props.className === 'dv-project-title') === null, 'empty panel invented a project title');
 });
 
@@ -1576,14 +1635,14 @@ test('P2-005: returning to the panel restores the chosen time and frame', async 
   tree = editor.rerender();
   const imageBefore = findNode(tree, (node) => node.props && node.props.className === 'dv-frame');
   assert(imageBefore !== null, 'frame missing before remount');
-  const callsBefore = hostFetch.calls.length;
+  const callsBefore = hostFetch.calls.filter((call) => call.body.method !== 'project.list').length;
   const remounted = mountInteractivePanel(editor.loaded, editor.env);
   const remountedTree = remounted.render();
   const input = elementById(remountedTree, 'dsh-video-frame-time');
   assert(input !== null && input.props.value === '4.00', `restored time was ${input && input.props.value}`);
   const imageAfter = findNode(remountedTree, (node) => node.props && node.props.className === 'dv-frame');
   assert(imageAfter !== null && imageAfter.props.src === imageBefore.props.src, 'restored frame changed');
-  assert(hostFetch.calls.length === callsBefore, 'remount issued a new frame request');
+  assert(hostFetch.calls.filter((call) => call.body.method !== 'project.list').length === callsBefore, 'remount issued a new frame request');
 });
 test('P2-002-B: save edits with expectedRevision/operationId and refresh from the new inspect', async () => {
   const revisionA = 'a'.repeat(64);
@@ -1913,11 +1972,11 @@ test('P2-002-B: returning to the panel restores the visible project without a se
   await buttonByText(editor.tree(), '打开示例').props.onClick();
   await settle();
   editor.rerender();
-  const requestCount = hostFetch.calls.length;
+  const requestCount = hostFetch.calls.filter((call) => call.body.method !== 'project.list').length;
   const remounted = mountInteractivePanel(editor.loaded, editor.env);
   const tree = remounted.render();
   assert(textOf(findNode(tree, (node) => node.props && node.props.className === 'dv-project-title')) === '让创意成为影像', 'remount lost the visible project');
-  assert(hostFetch.calls.length === requestCount, 'remount issued a new business request instead of restoring the view');
+  assert(hostFetch.calls.filter((call) => call.body.method !== 'project.list').length === requestCount, 'remount issued a new business request instead of restoring the view');
 });
 
 test('P2-002-B: configuration errors are shown without breaking the shell', async () => {
@@ -2080,7 +2139,7 @@ test('P3-006-A: history lists mapped Sessions and a superseded switch cannot win
   assert(provider !== undefined && provider.session.sessionId === 'session-ccc', `superseded switch won: ${provider && provider.session.sessionId}`);
   assert(textOf(findNode(finalTree, (node) => node.props && node.props.className === 'dv-ai-session')) === '工程 · 三', 'the latest Session title is not visible');
   assert(hostFetch.config.selectCalls.includes('session-bbb') && hostFetch.config.selectCalls.includes('session-ccc'), 'both switches were not attempted');
-  const businessCalls = hostFetch.calls.filter((call) => !call.body.method.startsWith('session.'));
+  const businessCalls = hostFetch.calls.filter((call) => !call.body.method.startsWith('session.') && call.body.method !== 'project.list');
   assert(businessCalls.length === 0, 'switching Sessions issued a project business request');
 });
 
@@ -2219,6 +2278,39 @@ function closePreviewTree(tree) {
   assert(close !== null, 'preview close control missing');
   close.props.onClick();
 }
+
+
+
+test('P3-008: new project creates a managed canvas and asks the worker for a snapshot', async () => {
+  const sessions = makeSessionsService({ list: [] });
+  const hostFetch = sessionFetch({ activeSessionId: null, sessions: [], newSessionId: 'session-canvas-smoke' });
+  const kit = makeSessionKit();
+  const editor = mountSessionEditor(hostFetch, { sessions, kit });
+  await settle();
+  editor.rerender();
+  await settle();
+  const tree = editor.rerender();
+  const create = buttonByText(tree, translateFor(editor.env)('video.project.new'));
+  assert(create !== null, 'new managed-project action missing from the empty state');
+  create.props.onClick();
+  await settle();
+  await settle();
+  editor.rerender();
+  await settle();
+  const after = editor.rerender();
+  assert(hostFetch.config.projectCreated === true, 'project.create was not called');
+  assert(hostFetch.config.snapshotRequests && hostFetch.config.snapshotRequests.length >= 1, 'worker snapshot was not requested for the canvas');
+  assert(hostFetch.config.snapshotRequests[0].projectId === 'proj-smoke', `snapshot project was ${hostFetch.config.snapshotRequests[0].projectId}`);
+  const shell = findNode(after, (node) => node.props && node.props.className === 'dv-canvas-shell');
+  assert(shell !== null, 'managed canvas shell was not rendered');
+  const frame = findNode(after, (node) => node.props && node.props.className === 'dv-stage-frame');
+  assert(frame !== null && frame.props.sandbox === 'allow-scripts', 'sandboxed snapshot iframe missing');
+  assert(typeof frame.props.src === 'string' && frame.props.src.startsWith('/api/dsh-video/preview/') && frame.props.src.includes('instance='), 'snapshot iframe src is not the bound preview route');
+  assert(findNode(after, (node) => node.props && node.props['data-canvas-revision'] === 'c'.repeat(64)) !== null, 'canvas revision marker missing');
+  assert(buttonByText(after, translateFor(editor.env)('video.canvas.play')) !== null, 'playback control missing');
+  assert(buttonByText(after, translateFor(editor.env)('video.canvas.materials')) !== null, 'material drawer action missing');
+  assert(hostFetch.config.createCalls === 1, 'creating the managed project did not create exactly one bound Session');
+});
 
 
 //#endregion

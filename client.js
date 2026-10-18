@@ -120,6 +120,38 @@ window.__ModuleLoader__.load({
       'video.ai.archived': '已归档',
       'video.ai.missing': '不可用',
       'video.ai.listEmpty': '当前工程还没有创作会话。',
+      'video.project.label': '工程',
+      'video.project.new': '新建工程',
+      'video.project.untitled': '未命名工程',
+      'video.project.open': '打开工程',
+      'video.canvas.play': '播放',
+      'video.canvas.pause': '暂停',
+      'video.canvas.timeline': '时间轴',
+      'video.canvas.undo': '撤销',
+      'video.canvas.redo': '重做',
+      'video.canvas.materials': '素材',
+      'video.canvas.addScene': '添加场景',
+      'video.canvas.export': '导出 MP4',
+      'video.canvas.exporting': '正在导出…',
+      'video.canvas.download': '下载 MP4',
+      'video.canvas.loading': '正在加载画布…',
+      'video.canvas.retry': '重试',
+      'video.canvas.frameTitle': '视频预览',
+      'video.canvas.runtimeError': '画布运行时错误。',
+      'video.canvas.invalidStyle': '请输入有效样式。',
+      'video.canvas.uploadFailed': '上传失败。',
+      'video.canvas.exportFailed': '导出失败。',
+      'video.canvas.sceneColor': '场景底色',
+      'video.canvas.textStyle': '文字样式',
+      'video.canvas.apply': '应用',
+      'video.canvas.hint': '点击画布选择对象；双击文字原位修改。',
+      'video.canvas.busy': '处理中…',
+      'video.canvas.close': '关闭',
+      'video.canvas.upload': '上传 PNG/JPEG',
+      'video.canvas.uploading': '正在上传…',
+      'video.canvas.noAssets': '还没有图片素材。',
+      'video.canvas.useAsset': '用作画面',
+      'video.canvas.newSceneTitle': '新场景',
       'video.error.session': '创作会话暂不可用。',
       'video.error.sessionConfig': '创作会话尚未配置。',
       'video.error.sessionState': '创作会话记录无法读取，请检查 Host 存储。',
@@ -198,6 +230,38 @@ window.__ModuleLoader__.load({
       'video.ai.archived': 'Archived',
       'video.ai.missing': 'Unavailable',
       'video.ai.listEmpty': 'This project has no creation conversation yet.',
+      'video.project.label': 'Project',
+      'video.project.new': 'New project',
+      'video.project.untitled': 'Untitled project',
+      'video.project.open': 'Open project',
+      'video.canvas.play': 'Play',
+      'video.canvas.pause': 'Pause',
+      'video.canvas.timeline': 'Timeline',
+      'video.canvas.undo': 'Undo',
+      'video.canvas.redo': 'Redo',
+      'video.canvas.materials': 'Assets',
+      'video.canvas.addScene': 'Add scene',
+      'video.canvas.export': 'Export MP4',
+      'video.canvas.exporting': 'Exporting…',
+      'video.canvas.download': 'Download MP4',
+      'video.canvas.loading': 'Loading canvas…',
+      'video.canvas.retry': 'Retry',
+      'video.canvas.frameTitle': 'Video preview',
+      'video.canvas.runtimeError': 'The canvas runtime reported an error.',
+      'video.canvas.invalidStyle': 'Enter a valid style.',
+      'video.canvas.uploadFailed': 'The upload failed.',
+      'video.canvas.exportFailed': 'The export failed.',
+      'video.canvas.sceneColor': 'Scene background',
+      'video.canvas.textStyle': 'Text style',
+      'video.canvas.apply': 'Apply',
+      'video.canvas.hint': 'Click the canvas to select an object; double-click text to edit it in place.',
+      'video.canvas.busy': 'Working…',
+      'video.canvas.close': 'Close',
+      'video.canvas.upload': 'Upload PNG/JPEG',
+      'video.canvas.uploading': 'Uploading…',
+      'video.canvas.noAssets': 'No image assets yet.',
+      'video.canvas.useAsset': 'Use as picture',
+      'video.canvas.newSceneTitle': 'New scene',
       'video.error.session': 'Creation conversations are temporarily unavailable.',
       'video.error.sessionConfig': 'Creation conversations are not configured.',
       'video.error.sessionState': 'The creation conversation record could not be read. Check the Host storage.',
@@ -786,6 +850,141 @@ window.__ModuleLoader__.load({
   max-width:none;
   text-align:left;
 }
+
+.dv-projectbar{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:8px;
+  padding:8px 16px 0;
+}
+.dv-project-picker{display:flex;align-items:center;gap:6px;min-width:0;color:var(--dsw-alias-label-secondary,#a4a4ad);font-size:.8em;}
+.dv-project-picker select{
+  min-width:120px;
+  max-width:240px;
+  height:26px;
+  border:1px solid color-mix(in srgb, var(--dsw-alias-border-l1, rgba(127,127,140,.32)) 82%, transparent);
+  border-radius:7px;
+  background:var(--dsw-alias-bg-layer-1,#232327);
+  color:var(--dsw-alias-label-primary,#f2f2f5);
+  font:inherit;
+  font-size:.9em;
+}
+.dv-canvas-shell{
+  display:flex;
+  flex:1;
+  flex-direction:column;
+  min-width:0;
+  min-height:0;
+  padding:8px 16px 14px;
+  gap:8px;
+  position:relative;
+}
+.dv-canvas-bar{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:6px;
+  flex:none;
+}
+.dv-canvas-bar .dv-button{min-height:28px;padding:0 9px;font-size:.8em;}
+.dv-seek{flex:1;min-width:120px;accent-color:var(--dsw-alias-state-business-primary,#6f8cff);}
+.dv-time{color:var(--dsw-alias-label-secondary,#a4a4ad);font-size:.78em;font-variant-numeric:tabular-nums;white-space:nowrap;}
+.dv-export-link{text-decoration:none;display:inline-flex;align-items:center;}
+.dv-canvas-wrap{
+  display:flex;
+  flex:1;
+  align-items:center;
+  justify-content:center;
+  min-width:0;
+  min-height:0;
+  overflow:hidden;
+  border:1px solid color-mix(in srgb, var(--dsw-alias-border-l1, rgba(127,127,140,.28)) 64%, transparent);
+  border-radius:10px;
+  background:var(--dsw-alias-bg-base,#1a1a1c);
+}
+.dv-stage{position:relative;overflow:hidden;background:#000;box-shadow:0 12px 32px -24px rgba(0,0,0,.65);}
+.dv-stage-frame{position:absolute;inset:0;width:100%;height:100%;border:0;background:#000;}
+.dv-overlay{position:absolute;inset:0;cursor:default;touch-action:none;}
+.dv-selection{
+  position:absolute;
+  border:1.5px solid var(--dsw-alias-state-business-primary,#6f8cff);
+  background:transparent;
+  cursor:move;
+  box-shadow:0 0 0 1px rgba(0,0,0,.25);
+}
+.dv-handle{
+  position:absolute;
+  width:9px;
+  height:9px;
+  border-radius:2px;
+  border:1px solid var(--dsw-alias-state-business-primary,#6f8cff);
+  background:var(--dsw-alias-bg-layer-1,#232327);
+}
+.dv-handle-nw{left:-5px;top:-5px;cursor:nwse-resize;}
+.dv-handle-ne{right:-5px;top:-5px;cursor:nesw-resize;}
+.dv-handle-sw{left:-5px;bottom:-5px;cursor:nesw-resize;}
+.dv-handle-se{right:-5px;bottom:-5px;cursor:nwse-resize;}
+.dv-inline-editor{
+  position:absolute;
+  z-index:2;
+  min-width:80px;
+  padding:2px 4px;
+  border:1px solid var(--dsw-alias-state-business-primary,#6f8cff);
+  border-radius:3px;
+  background:var(--dsw-alias-bg-overlay,#232327);
+  color:var(--dsw-alias-label-primary,#f2f2f5);
+  font:inherit;
+  resize:none;
+}
+.dv-canvas-status{
+  margin:auto;
+  padding:14px;
+  color:var(--dsw-alias-label-secondary,#a4a4ad);
+  font-size:.84em;
+  text-align:center;
+}
+.dv-canvas-status .dv-button{margin-top:10px;}
+.dv-canvas-tools{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:10px;
+  min-height:28px;
+  flex:none;
+  font-size:.8em;
+}
+.dv-tool-field{display:flex;align-items:center;gap:6px;color:var(--dsw-alias-label-secondary,#a4a4ad);}
+.dv-tool-field input[type="color"]{width:28px;height:24px;padding:1px;border:1px solid color-mix(in srgb, var(--dsw-alias-border-l1, rgba(127,127,140,.32)) 80%, transparent);border-radius:5px;background:transparent;}
+.dv-size-input{width:52px;height:24px;border:1px solid color-mix(in srgb, var(--dsw-alias-border-l1, rgba(127,127,140,.32)) 80%, transparent);border-radius:5px;background:var(--dsw-alias-bg-layer-1,#232327);color:var(--dsw-alias-label-primary,#f2f2f5);font:inherit;font-size:.95em;padding:0 4px;}
+.dv-tool-hint{color:var(--dsw-alias-label-tertiary,#7f7f88);}
+.dv-tool-error{color:var(--dsw-alias-state-error-primary,#e06c75);}
+.dv-drawer{
+  position:absolute;
+  top:44px;
+  left:16px;
+  bottom:44px;
+  z-index:4;
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  width:min(260px, calc(100% - 32px));
+  padding:10px;
+  overflow:auto;
+  border:1px solid color-mix(in srgb, var(--dsw-alias-border-l1, rgba(127,127,140,.28)) 82%, transparent);
+  border-radius:10px;
+  background:var(--dsw-alias-bg-overlay, var(--dsw-alias-bg-layer-1,#232327));
+  box-shadow:0 12px 32px -20px rgba(0,0,0,.5);
+}
+.dv-drawer-head{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:.86em;}
+.dv-upload{display:inline-flex;align-items:center;justify-content:center;min-height:28px;padding:0 8px;border:1px solid color-mix(in srgb, var(--dsw-alias-border-l1, rgba(127,127,140,.32)) 82%, transparent);border-radius:7px;color:var(--dsw-alias-label-primary,#f2f2f5);cursor:pointer;font-size:.8em;}
+.dv-upload input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;}
+.dv-asset-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px;}
+.dv-asset-row{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0;padding:2px 0;}
+.dv-asset-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.78em;}
+.dv-asset-row .dv-button{min-height:24px;padding:0 7px;font-size:.74em;}
+.dv-empty-actions{display:flex;flex-wrap:wrap;gap:8px;}
+.dv-managed-stage{display:flex;flex:1;flex-direction:column;min-width:0;min-height:0;}
 @media (prefers-reduced-motion: reduce){
   .dv-root{animation:none;}
 }
@@ -1538,6 +1737,902 @@ window.__ModuleLoader__.load({
       );
     }
 
+    //#region P3-008 canvas workspace
+    // The canvas is a sandboxed snapshot document plus a fixed Host-injected
+    // runtime. This component owns only the editor layer: letterbox mapping,
+    // selection, inline text, drag/resize commits, playback control and the
+    // material drawer. Project/revision truth stays in the Host worker.
+    function canvasInstanceId() {
+      const random = Math.random().toString(36).slice(2, 10);
+      return ('dvcanvas-' + random).padEnd(12, '0').slice(0, 32);
+    }
+
+    function canvasNonce() {
+      const values = new Uint8Array(16);
+      try {
+        if (globalThis.crypto && typeof globalThis.crypto.getRandomValues === 'function') {
+          globalThis.crypto.getRandomValues(values);
+        } else {
+          for (let index = 0; index < values.length; index += 1) values[index] = Math.floor(Math.random() * 256);
+        }
+      } catch (_error) {
+        for (let index = 0; index < values.length; index += 1) values[index] = Math.floor(Math.random() * 256);
+      }
+      return Array.prototype.map.call(values, function hex(value) {
+        return value.toString(16).padStart(2, '0');
+      }).join('');
+    }
+
+    function canvasNumber(value, fallback) {
+      return Number.isFinite(Number(value)) ? Number(value) : fallback;
+    }
+
+    function CanvasWorkspace(props) {
+      const t = props.t;
+      const projectId = props.projectId;
+      const inspected = props.inspected;
+      const onReload = props.onReload;
+      const onError = props.onError;
+      const scenes = Array.isArray(inspected.scenes) ? inspected.scenes : [];
+      const elements = Array.isArray(inspected.elements) ? inspected.elements : [];
+      const files = Array.isArray(inspected.files) ? inspected.files : [];
+      const images = files.filter(function imageAsset(file) {
+        return typeof file.path === 'string' && /\.(png|jpe?g)$/i.test(file.path);
+      });
+
+      const [snapshot, setSnapshot] = React.useState(null);
+      const [phase, setPhase] = React.useState('loading');
+      const [frameError, setFrameError] = React.useState(null);
+      const [time, setTime] = React.useState(0);
+      const [playing, setPlaying] = React.useState(false);
+      const [selected, setSelected] = React.useState(null);
+      const [drag, setDrag] = React.useState(null);
+      const [editor, setEditor] = React.useState(null);
+      const [busy, setBusy] = React.useState(null);
+      const [actionError, setActionError] = React.useState(null);
+      const [stageSize, setStageSize] = React.useState({ width: 0, height: 0 });
+      const [drawerOpen, setDrawerOpen] = React.useState(false);
+      const [uploadBusy, setUploadBusy] = React.useState(false);
+      const [sceneChoice, setSceneChoice] = React.useState(scenes[0] ? scenes[0].sceneId : null);
+      const [sceneColor, setSceneColor] = React.useState('#1d4ed8');
+      const [styleColor, setStyleColor] = React.useState('#ffffff');
+      const [styleSize, setStyleSize] = React.useState(64);
+      const [exportState, setExportState] = React.useState(null);
+
+      const iframeRef = React.useRef(null);
+      const stageRef = React.useRef(null);
+      const wrapRef = React.useRef(null);
+      const overlayRef = React.useRef(null);
+      const instanceRef = React.useRef(null);
+      const nonceRef = React.useRef(null);
+      const seqRef = React.useRef(0);
+      const pendingRef = React.useRef(new Map());
+      const timeRef = React.useRef(0);
+      const selectedRef = React.useRef(null);
+      const readyRef = React.useRef(false);
+      const snapshotToken = React.useRef(0);
+      const suppressClickRef = React.useRef(false);
+      const pollRef = React.useRef(null);
+      const revision = inspected.revision;
+      const width = canvasNumber(inspected.width, 1280);
+      const height = canvasNumber(inspected.height, 720);
+      const duration = canvasNumber(inspected.duration, 0);
+      const scale = stageSize.width > 0 && stageSize.height > 0 ? Math.min(stageSize.width / width, stageSize.height / height) : 0;
+      const displayWidth = scale > 0 ? width * scale : 0;
+      const displayHeight = scale > 0 ? height * scale : 0;
+
+      timeRef.current = time;
+      selectedRef.current = selected;
+
+      function setSelectedSafe(next) {
+        selectedRef.current = next;
+        setSelected(next);
+        if (next !== null && next.style) {
+          setStyleColor(typeof next.style.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(next.style.color) ? next.style.color : '#ffffff');
+          setStyleSize(canvasNumber(next.style.fontSize, 64));
+        }
+      }
+
+      function postCommand(type, payload) {
+        return new Promise(function commandPromise(resolve) {
+          const frame = iframeRef.current;
+          if (frame === null || typeof frame.contentWindow === 'undefined' || readyRef.current === false) {
+            resolve(null);
+            return;
+          }
+          const seq = ++seqRef.current;
+          const pending = pendingRef.current;
+          const timer = setTimeout(function timeout() {
+            pending.delete(seq);
+            resolve(null);
+          }, 4000);
+          pending.set(seq, { resolve: resolve, timer: timer });
+          try {
+            frame.contentWindow.postMessage(
+              {
+                v: 1,
+                kind: 'cmd',
+                instanceId: instanceRef.current,
+                nonce: nonceRef.current,
+                seq: seq,
+                type: type,
+                payload: payload || {},
+              },
+              '*'
+            );
+          } catch (_error) {
+            clearTimeout(timer);
+            pending.delete(seq);
+            resolve(null);
+          }
+        });
+      }
+
+      function hideSelection() {
+        setSelectedSafe(null);
+        setEditor(null);
+        setDrag(null);
+      }
+
+      function selectedElement() {
+        if (selected === null) return null;
+        return elements.find(function same(element) {
+          return element.stableId === selected.stableId;
+        }) || null;
+      }
+
+      function isTextSelected() {
+        const element = selectedElement();
+        return element !== null && Array.isArray(element.capabilities) && element.capabilities.includes('text');
+      }
+
+      function isLayoutSelected() {
+        const element = selectedElement();
+        return element !== null && Array.isArray(element.capabilities) && element.capabilities.includes('layout');
+      }
+
+      function isStyleSelected() {
+        const element = selectedElement();
+        return element !== null && Array.isArray(element.capabilities) && element.capabilities.includes('style');
+      }
+
+      function currentScene() {
+        const found = scenes.find(function contains(scene) {
+          return time >= scene.start && time < scene.start + scene.duration;
+        });
+        return found || scenes[0] || null;
+      }
+
+      React.useEffect(
+        function measureStage() {
+          const element = wrapRef.current;
+          if (element === null || element === undefined) return function noMeasure() {};
+          function measure() {
+            try {
+              const rect = element.getBoundingClientRect();
+              setStageSize({ width: Math.max(0, rect.width), height: Math.max(0, rect.height) });
+            } catch (_error) {
+              /* A non-DOM test host has no box; render the composition at its
+                 natural aspect so the canvas still mounts for contract tests. */
+              setStageSize({ width: Math.max(320, canvasNumber(inspected.width, 1280)), height: Math.max(180, canvasNumber(inspected.height, 720)) });
+            }
+          }
+          measure();
+          let observer = null;
+          if (typeof ResizeObserver === 'function' && element !== null) {
+            observer = new ResizeObserver(measure);
+            observer.observe(element);
+          } else if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+            window.addEventListener('resize', measure);
+          }
+          return function stopMeasure() {
+            if (observer !== null) observer.disconnect();
+            else if (typeof window !== 'undefined' && typeof window.removeEventListener === 'function') window.removeEventListener('resize', measure);
+          };
+        },
+        []
+      );
+
+      async function loadSnapshot(targetRevision, restore) {
+        const token = ++snapshotToken.current;
+        readyRef.current = false;
+        setPhase('loading');
+        setFrameError(null);
+        if (playing) {
+          setPlaying(false);
+          void postCommand('pause');
+        }
+        try {
+          const next = await hostRequest('preview.snapshot', { projectId: projectId, revision: targetRevision, ttlMs: 300000 });
+          if (token !== snapshotToken.current) return;
+          const instance = canvasInstanceId();
+          const nonce = canvasNonce();
+          instanceRef.current = instance;
+          nonceRef.current = nonce;
+          seqRef.current = 0;
+          pendingRef.current = new Map();
+          setSnapshot({
+            snapshotId: next.snapshotId,
+            revision: next.revision,
+            entryUrl: next.entryUrl,
+            routeBase: next.routeBase,
+            src: next.entryUrl + '?instance=' + encodeURIComponent(instance) + '&nonce=' + nonce,
+            restore: restore || null,
+          });
+          setPhase('ready');
+        } catch (error) {
+          if (token !== snapshotToken.current) return;
+          setPhase('error');
+          setFrameError(hostError(error));
+        }
+      }
+
+      React.useEffect(
+        function reloadOnRevision() {
+          void loadSnapshot(revision, { time: timeRef.current, stableId: selectedRef.current ? selectedRef.current.stableId : null });
+          return function cancelSnapshot() {
+            snapshotToken.current += 1;
+          };
+        },
+        [projectId, revision]
+      );
+
+      React.useEffect(
+        function bindRuntimeMessages() {
+          if (snapshot === null) return function noMessages() {};
+          const frame = iframeRef.current;
+          if (frame === null) return function noFrame() {};
+          function handleMessage(event) {
+            if (event.source !== frame.contentWindow) return;
+            const data = event.data;
+            if (data === null || typeof data !== 'object' || data.kind !== 'evt') return;
+            if (data.instanceId !== instanceRef.current || data.nonce !== nonceRef.current) return;
+            if (Number.isInteger(data.seq) === false) return;
+            if (typeof data.type !== 'string') return;
+            const pending = pendingRef.current;
+            if (Number.isInteger(data.replyTo) && pending.has(data.replyTo)) {
+              const entry = pending.get(data.replyTo);
+              pending.delete(data.replyTo);
+              clearTimeout(entry.timer);
+              entry.resolve(data.payload);
+            }
+            if (data.type === 'ready') {
+              readyRef.current = true;
+              const payload = data.payload || {};
+              setPhase('ready');
+              const restore = snapshot.restore;
+              const target = restore && Number.isFinite(restore.time) ? Math.min(restore.time, duration) : 0;
+              void postCommand('seek', { time: target }).then(function restoreSelection() {
+                if (restore && restore.stableId) {
+                  const element = elements.find(function same(item) {
+                    return item.stableId === restore.stableId;
+                  });
+                  if (element !== undefined) {
+                    const hit = element;
+                    const rect = hit.layout && Number.isFinite(hit.layout.left) ? { x: hit.layout.left, y: hit.layout.top, width: hit.layout.width || 0, height: hit.layout.height || 0 } : null;
+                    if (rect !== null && rect.width > 0 && rect.height > 0) {
+                      void postCommand('hitTest', { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 }).then(function applyHit(payload) {
+                        if (payload && payload.hit) setSelectedSafe(payload.hit);
+                      });
+                    }
+                  }
+                }
+              });
+            } else if (data.type === 'seeked' || data.type === 'state') {
+              const payload = data.payload || {};
+              if (Number.isFinite(payload.time)) setTime(payload.time);
+              if (typeof payload.playing === 'boolean') setPlaying(payload.playing);
+            } else if (data.type === 'playing') {
+              setPlaying(true);
+            } else if (data.type === 'paused') {
+              setPlaying(false);
+              if (data.payload && Number.isFinite(data.payload.time)) setTime(data.payload.time);
+            } else if (data.type === 'hit') {
+              const payload = data.payload || {};
+              setSelectedSafe(payload.hit || null);
+            } else if (data.type === 'error') {
+              const payload = data.payload || {};
+              setActionError({ code: payload.code || 'E_RUNTIME', message: payload.message || t('video.canvas.runtimeError') });
+            }
+          }
+          if (typeof window === 'undefined' || typeof window.addEventListener !== 'function') return function noWindow() {};
+          window.addEventListener('message', handleMessage);
+          return function unbind() {
+            window.removeEventListener('message', handleMessage);
+            for (const entry of pendingRef.current.values()) clearTimeout(entry.timer);
+            pendingRef.current.clear();
+          };
+        },
+        [snapshot, stageSize.width, stageSize.height]
+      );
+
+      React.useEffect(
+        function pollDuringPlayback() {
+          if (!playing) return function noPoll() {};
+          const timer = setInterval(function pollState() {
+            void postCommand('state');
+          }, 250);
+          return function stopPoll() {
+            clearInterval(timer);
+          };
+        },
+        [playing]
+      );
+
+      function stagePoint(event) {
+        const stage = stageRef.current;
+        if (stage === null || scale <= 0) return null;
+        const rect = stage.getBoundingClientRect();
+        const x = (event.clientX - rect.left) / scale;
+        const y = (event.clientY - rect.top) / scale;
+        if (x < 0 || y < 0 || x > width || y > height) return null;
+        return { x: x, y: y };
+      }
+
+      function onOverlayClick(event) {
+        if (editor !== null || drag !== null) return;
+        if (suppressClickRef.current) {
+          suppressClickRef.current = false;
+          return;
+        }
+        const point = stagePoint(event);
+        if (point === null) return;
+        void postCommand('hitTest', point).then(function applyHit(payload) {
+          setSelectedSafe(payload && payload.hit ? payload.hit : null);
+        });
+      }
+
+      function beginDrag(event, mode) {
+        if (selected === null || playing || isLayoutSelected() === false) return;
+        const point = stagePoint(event);
+        if (point === null) return;
+        event.preventDefault();
+        event.stopPropagation();
+        if (overlayRef.current !== null && typeof overlayRef.current.setPointerCapture === 'function') {
+          try {
+            overlayRef.current.setPointerCapture(event.pointerId);
+          } catch (_error) {
+            /* pointer capture is best effort */
+          }
+        }
+        const rect = selected.rect;
+        setEditor(null);
+        setDrag({
+          mode: mode,
+          pointerId: event.pointerId,
+          start: point,
+          rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+          preview: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+          stableId: selected.stableId,
+          moved: false,
+        });
+      }
+
+      function onOverlayPointerMove(event) {
+        if (drag === null) return;
+        const point = stagePoint(event);
+        if (point === null) return;
+        const dx = point.x - drag.start.x;
+        const dy = point.y - drag.start.y;
+        let next = { x: drag.rect.x, y: drag.rect.y, width: drag.rect.width, height: drag.rect.height };
+        if (drag.mode === 'move') {
+          next.x = Math.max(0, Math.min(width - next.width, drag.rect.x + dx));
+          next.y = Math.max(0, Math.min(height - next.height, drag.rect.y + dy));
+        } else {
+          if (drag.mode.includes('w')) {
+            const x = Math.max(0, Math.min(drag.rect.x + dx, drag.rect.x + drag.rect.width - 1));
+            next.x = x;
+            next.width = drag.rect.x + drag.rect.width - x;
+          }
+          if (drag.mode.includes('e')) next.width = Math.max(1, Math.min(width - next.x, drag.rect.width + dx));
+          if (drag.mode.includes('n')) {
+            const y = Math.max(0, Math.min(drag.rect.y + dy, drag.rect.y + drag.rect.height - 1));
+            next.y = y;
+            next.height = drag.rect.y + drag.rect.height - y;
+          }
+          if (drag.mode.includes('s')) next.height = Math.max(1, Math.min(height - next.y, drag.rect.height + dy));
+        }
+        const moved = Math.abs(dx) > 1 || Math.abs(dy) > 1;
+        setDrag({ ...drag, preview: next, moved: drag.moved || moved });
+      }
+
+      async function commitLayout(preview) {
+        const element = selectedRef.current;
+        if (element === null) return;
+        setBusy('layout');
+        setActionError(null);
+        try {
+          await hostRequest('edit', {
+            projectId: projectId,
+            expectedRevision: revision,
+            operationId: operationId(),
+            ops: [
+              {
+                type: 'layout',
+                target: element.stableId,
+                unit: 'composition-px',
+                box: {
+                  left: Math.round(preview.x * 1000) / 1000,
+                  top: Math.round(preview.y * 1000) / 1000,
+                  width: Math.round(preview.width * 1000) / 1000,
+                  height: Math.round(preview.height * 1000) / 1000,
+                },
+              },
+            ],
+          });
+          await onReload();
+        } catch (error) {
+          setActionError(hostError(error));
+          onError(hostError(error));
+        } finally {
+          setBusy(null);
+        }
+      }
+
+      function onOverlayPointerUp(event) {
+        if (drag === null) return;
+        const current = drag;
+        setDrag(null);
+        if (current.moved) {
+          suppressClickRef.current = true;
+          void commitLayout(current.preview);
+        }
+      }
+
+      async function submitText() {
+        if (editor === null || busy !== null) return;
+        const value = editor.value;
+        const stableId = editor.stableId;
+        setEditor(null);
+        setBusy('text');
+        setActionError(null);
+        try {
+          await hostRequest('edit', {
+            projectId: projectId,
+            expectedRevision: revision,
+            operationId: operationId(),
+            ops: [{ type: 'text', target: stableId, text: value }],
+          });
+          await onReload();
+        } catch (error) {
+          setActionError(hostError(error));
+          onError(hostError(error));
+        } finally {
+          setBusy(null);
+        }
+      }
+
+      async function applyStyle() {
+        if (selected === null || busy !== null) return;
+        setBusy('style');
+        setActionError(null);
+        try {
+          const styles = {};
+          if (/^#[0-9a-fA-F]{6}$/.test(styleColor)) styles.color = styleColor;
+          const fontSize = Number(styleSize);
+          if (Number.isFinite(fontSize) && fontSize >= 8 && fontSize <= 256) styles.fontSize = fontSize;
+          if (Object.keys(styles).length === 0) throw { code: 'E_PARAMS', message: t('video.canvas.invalidStyle') };
+          await hostRequest('edit', {
+            projectId: projectId,
+            expectedRevision: revision,
+            operationId: operationId(),
+            ops: [{ type: 'style', target: selected.stableId, styles: styles }],
+          });
+          await onReload();
+        } catch (error) {
+          setActionError(hostError(error));
+          onError(hostError(error));
+        } finally {
+          setBusy(null);
+        }
+      }
+
+      async function applySceneColor() {
+        const scene = currentScene();
+        if (scene === null || busy !== null) return;
+        setBusy('scene');
+        setActionError(null);
+        try {
+          const template = { title: scene.title, duration: scene.duration, color: sceneColor };
+          await hostRequest('scene.update', {
+            projectId: projectId,
+            expectedRevision: revision,
+            operationId: operationId(),
+            sceneId: scene.sceneId,
+            template: template,
+          });
+          await onReload();
+        } catch (error) {
+          setActionError(hostError(error));
+          onError(hostError(error));
+        } finally {
+          setBusy(null);
+        }
+      }
+
+      async function addScene() {
+        if (busy !== null) return;
+        setBusy('scene-add');
+        setActionError(null);
+        try {
+          await hostRequest('scene.create', {
+            projectId: projectId,
+            expectedRevision: revision,
+            operationId: operationId(),
+            template: { title: t('video.canvas.newSceneTitle'), duration: 5 },
+          });
+          await onReload();
+        } catch (error) {
+          setActionError(hostError(error));
+          onError(hostError(error));
+        } finally {
+          setBusy(null);
+        }
+      }
+
+      async function historyStep(kind) {
+        if (busy !== null) return;
+        setBusy(kind);
+        setActionError(null);
+        try {
+          const history = await hostRequest('history', { projectId: projectId, limit: 20 });
+          await hostRequest(kind, {
+            projectId: projectId,
+            expectedRevision: history.revision,
+            operationId: operationId(),
+          });
+          await onReload();
+        } catch (error) {
+          setActionError(hostError(error));
+          onError(hostError(error));
+        } finally {
+          setBusy(null);
+        }
+      }
+
+      async function uploadImage(event) {
+        const input = event.target;
+        const file = input && input.files && input.files[0];
+        if (!file) return;
+        setUploadBusy(true);
+        setActionError(null);
+        try {
+          const response = await fetch('api/dsh-video/asset-upload', {
+            method: 'POST',
+            headers: {
+              'content-type': file.type || 'application/octet-stream',
+              'x-dsh-project-id': projectId,
+              'x-dsh-file-name': file.name,
+            },
+            credentials: 'same-origin',
+            body: file,
+          });
+          const receipt = await response.json();
+          if (response.ok === false || !receipt || typeof receipt.receiptId !== 'string') {
+            throw (receipt && receipt.error) || { code: 'E_ASSET_UPLOAD', message: t('video.canvas.uploadFailed') };
+          }
+          await hostRequest('asset.import', {
+            projectId: projectId,
+            expectedRevision: revision,
+            operationId: operationId(),
+            receiptId: receipt.receiptId,
+          });
+          await onReload();
+        } catch (error) {
+          setActionError(hostError(error));
+          onError(hostError(error));
+        } finally {
+          setUploadBusy(false);
+          try {
+            input.value = '';
+          } catch (_error) {
+            /* file input reset is best effort */
+          }
+        }
+      }
+
+      async function useAsset(assetPath) {
+        const scene = currentScene();
+        if (scene === null || busy !== null) return;
+        setBusy('asset-use');
+        setActionError(null);
+        try {
+          const template = { title: scene.title, duration: scene.duration, shot: assetPath };
+          if (/^#[0-9a-fA-F]{6}$/.test(sceneColor)) template.color = sceneColor;
+          await hostRequest('scene.update', {
+            projectId: projectId,
+            expectedRevision: revision,
+            operationId: operationId(),
+            sceneId: scene.sceneId,
+            template: template,
+          });
+          await onReload();
+        } catch (error) {
+          setActionError(hostError(error));
+          onError(hostError(error));
+        } finally {
+          setBusy(null);
+        }
+      }
+
+      async function exportVideo() {
+        if (busy !== null) return;
+        setBusy('render');
+        setActionError(null);
+        setExportState({ state: 'running' });
+        try {
+          const job = await hostRequest('render', { projectId: projectId, revision: revision });
+          const jobId = job.jobId;
+          let result = job;
+          for (let attempt = 0; attempt < 240; attempt += 1) {
+            await new Promise(function wait(resolve) {
+              setTimeout(resolve, 500);
+            });
+            result = await hostRequest('status', { jobId: jobId });
+            if (['succeeded', 'failed', 'cancelled', 'timed_out'].includes(result.state)) break;
+          }
+          if (result.state !== 'succeeded') throw { code: 'E_RENDER', message: t('video.canvas.exportFailed') };
+          setExportState({ state: 'ready', jobId: jobId, url: 'api/dsh-video/artifact?jobId=' + encodeURIComponent(jobId) });
+        } catch (error) {
+          setExportState({ state: 'error' });
+          setActionError(hostError(error));
+          onError(hostError(error));
+        } finally {
+          setBusy(null);
+        }
+      }
+
+      function togglePlayback() {
+        if (playing) {
+          setPlaying(false);
+          void postCommand('pause');
+        } else {
+          setPlaying(true);
+          void postCommand('play');
+        }
+      }
+
+      function seekTo(nextTime) {
+        const value = Math.max(0, Math.min(duration, Number(nextTime) || 0));
+        setTime(value);
+        void postCommand('seek', { time: value });
+      }
+
+      function openTextEditor() {
+        if (selected === null || isTextSelected() === false) return;
+        setPlaying(false);
+        void postCommand('pause');
+        setEditor({
+          stableId: selected.stableId,
+          value: typeof selected.text === 'string' ? selected.text : '',
+          rect: selected.rect,
+        });
+      }
+
+      function selectionRect() {
+        if (drag !== null) return drag.preview;
+        return selected === null ? null : selected.rect;
+      }
+
+      const selectedBox = selectionRect();
+      const selectedScale = scale;
+
+      function canvasBody() {
+        if (phase === 'error') {
+          return h(
+            'div',
+            { className: 'dv-canvas-status', role: 'alert' },
+            h('p', null, errorText(frameError || { code: 'E_SNAPSHOT' }, t)),
+            h(
+              'button',
+              {
+                type: 'button',
+                className: 'dv-button dv-button-quiet',
+                onClick: function retrySnapshot() {
+                  void loadSnapshot(revision, { time: time, stableId: selected ? selected.stableId : null });
+                },
+              },
+              t('video.canvas.retry')
+            )
+          );
+        }
+        if (snapshot === null || displayWidth === 0 || displayHeight === 0) {
+          return h('p', { className: 'dv-canvas-status', role: 'status' }, t('video.canvas.loading'));
+        }
+        return h(
+          'div',
+          {
+            className: 'dv-stage',
+            ref: stageRef,
+            style: { width: displayWidth + 'px', height: displayHeight + 'px' },
+          },
+          h('iframe', {
+            ref: iframeRef,
+            className: 'dv-stage-frame',
+            title: t('video.canvas.frameTitle'),
+            src: snapshot.src,
+            sandbox: 'allow-scripts',
+            referrerPolicy: 'no-referrer',
+          }),
+          h(
+            'div',
+            {
+              className: 'dv-overlay',
+              ref: overlayRef,
+              onClick: onOverlayClick,
+              onPointerMove: onOverlayPointerMove,
+              onPointerUp: onOverlayPointerUp,
+              onPointerCancel: function cancelPointer() {
+                setDrag(null);
+              },
+            },
+            selectedBox !== null
+              ? h(
+                  'div',
+                  {
+                    className: 'dv-selection',
+                    style: {
+                      left: selectedBox.x * selectedScale + 'px',
+                      top: selectedBox.y * selectedScale + 'px',
+                      width: selectedBox.width * selectedScale + 'px',
+                      height: selectedBox.height * selectedScale + 'px',
+                    },
+                    onPointerDown: function startMove(event) {
+                      beginDrag(event, 'move');
+                    },
+                    onDoubleClick: openTextEditor,
+                  },
+                  ['nw', 'ne', 'sw', 'se'].map(function handle(position) {
+                    return h('span', {
+                      key: position,
+                      className: 'dv-handle ' + 'dv-handle-' + position,
+                      onPointerDown: function startResize(event) {
+                        beginDrag(event, position);
+                      },
+                    });
+                  })
+                )
+              : null,
+            editor !== null
+              ? h('textarea', {
+                  className: 'dv-inline-editor',
+                  style: {
+                    left: editor.rect.x * selectedScale + 'px',
+                    top: editor.rect.y * selectedScale + 'px',
+                    width: Math.max(80, editor.rect.width * selectedScale) + 'px',
+                    height: Math.max(28, editor.rect.height * selectedScale) + 'px',
+                  },
+                  value: editor.value,
+                  autoFocus: true,
+                  onChange: function updateEditor(event) {
+                    setEditor({ ...editor, value: event.target.value });
+                  },
+                  onKeyDown: function editorKeys(event) {
+                    if (event.key === 'Escape') {
+                      event.preventDefault();
+                      setEditor(null);
+                    } else if (event.key === 'Enter' && event.shiftKey === false) {
+                      event.preventDefault();
+                      void submitText();
+                    }
+                  },
+                })
+              : null
+          )
+        );
+      }
+
+      const scene = currentScene();
+      return h(
+        'section',
+        { className: 'dv-canvas-shell', 'data-canvas-revision': revision, 'data-canvas-phase': phase },
+        h(
+          'div',
+          { className: 'dv-canvas-bar' },
+          h('button', { type: 'button', className: 'dv-button dv-button-quiet', onClick: togglePlayback, disabled: phase !== 'ready' }, playing ? t('video.canvas.pause') : t('video.canvas.play')),
+          h(
+            'input',
+            {
+              className: 'dv-seek',
+              type: 'range',
+              min: '0',
+              max: String(duration || 1),
+              step: '0.01',
+              value: String(Math.min(time, duration || 1)),
+              'aria-label': t('video.canvas.timeline'),
+              disabled: phase !== 'ready',
+              onChange: function seek(event) {
+                seekTo(event.target.value);
+              },
+            }
+          ),
+          h('span', { className: 'dv-time' }, formatSeconds(time) + ' / ' + formatSeconds(duration)),
+          h('button', { type: 'button', className: 'dv-button dv-button-quiet', onClick: function undo() { void historyStep('undo'); }, disabled: busy !== null, title: t('video.canvas.undo') }, t('video.canvas.undo')),
+          h('button', { type: 'button', className: 'dv-button dv-button-quiet', onClick: function redo() { void historyStep('redo'); }, disabled: busy !== null, title: t('video.canvas.redo') }, t('video.canvas.redo')),
+          h('button', { type: 'button', className: 'dv-button dv-button-quiet', onClick: function drawer() { setDrawerOpen(!drawerOpen); }, 'aria-expanded': drawerOpen ? 'true' : 'false' }, t('video.canvas.materials')),
+          h('button', { type: 'button', className: 'dv-button dv-button-quiet', onClick: function add() { void addScene(); }, disabled: busy !== null }, t('video.canvas.addScene')),
+          exportState && exportState.state === 'ready'
+            ? h('a', { className: 'dv-button dv-button-primary dv-export-link', href: exportState.url, download: 'dsh-video.mp4' }, t('video.canvas.download'))
+            : h('button', { type: 'button', className: 'dv-button dv-button-primary', onClick: function render() { void exportVideo(); }, disabled: busy !== null }, exportState && exportState.state === 'running' ? t('video.canvas.exporting') : t('video.canvas.export'))
+        ),
+        h('div', { className: 'dv-canvas-wrap', ref: wrapRef }, canvasBody()),
+        h(
+          'div',
+          { className: 'dv-canvas-tools' },
+          scene === null
+            ? null
+            : h(
+                'label',
+                { className: 'dv-tool-field' },
+                h('span', null, t('video.canvas.sceneColor')),
+                h('input', {
+                  type: 'color',
+                  value: sceneColor,
+                  onChange: function pickSceneColor(event) {
+                    setSceneColor(event.target.value);
+                  },
+                }),
+                h('button', { type: 'button', className: 'dv-button dv-button-quiet', onClick: function applyScene() { void applySceneColor(); }, disabled: busy !== null }, t('video.canvas.apply'))
+              ),
+          isTextSelected() && selected !== null
+            ? h(
+                'div',
+                { className: 'dv-tool-field' },
+                h('span', null, t('video.canvas.textStyle')),
+                h('input', { type: 'color', value: styleColor, onChange: function pickColor(event) { setStyleColor(event.target.value); } }),
+                h('input', {
+                  className: 'dv-size-input',
+                  type: 'number',
+                  min: '8',
+                  max: '256',
+                  step: '1',
+                  value: String(styleSize),
+                  onChange: function pickSize(event) {
+                    setStyleSize(Number(event.target.value));
+                  },
+                }),
+                h('button', { type: 'button', className: 'dv-button dv-button-quiet', onClick: function apply() { void applyStyle(); }, disabled: busy !== null }, t('video.canvas.apply'))
+              )
+            : h('span', { className: 'dv-tool-hint' }, t('video.canvas.hint')),
+          actionError !== null ? h('span', { className: 'dv-tool-error', role: 'alert' }, errorText(actionError, t)) : null,
+          busy !== null ? h('span', { className: 'dv-tool-hint' }, t('video.canvas.busy')) : null
+        ),
+        drawerOpen
+          ? h(
+              'aside',
+              { className: 'dv-drawer', 'aria-label': t('video.canvas.materials') },
+              h(
+                'div',
+                { className: 'dv-drawer-head' },
+                h('span', null, t('video.canvas.materials')),
+                h('button', { type: 'button', className: 'dv-icon-button', onClick: function close() { setDrawerOpen(false); }, 'aria-label': t('video.canvas.close') }, '×')
+              ),
+              h(
+                'label',
+                { className: 'dv-upload' },
+                uploadBusy ? t('video.canvas.uploading') : t('video.canvas.upload'),
+                h('input', { type: 'file', accept: 'image/png,image/jpeg', onChange: uploadImage, disabled: uploadBusy })
+              ),
+              images.length === 0
+                ? h('p', { className: 'dv-tool-hint' }, t('video.canvas.noAssets'))
+                : h(
+                    'ul',
+                    { className: 'dv-asset-list' },
+                    images.map(function assetRow(file) {
+                      return h(
+                        'li',
+                        { key: file.path, className: 'dv-asset-row' },
+                        h('span', { className: 'dv-asset-name', title: file.path }, file.path.split('/').pop()),
+                        h('button', { type: 'button', className: 'dv-button dv-button-quiet', onClick: function use() { void useAsset(file.path); }, disabled: busy !== null }, t('video.canvas.useAsset'))
+                      );
+                    })
+                  )
+            )
+          : null
+      );
+    }
+    //#endregion
+
     function VideoWorkspace(props) {
       const t = props.t;
       const onBack = props.onBack;
@@ -1566,6 +2661,13 @@ window.__ModuleLoader__.load({
       const aliveRef = React.useRef(true);
       const jobTokenRef = React.useRef(0);
       const resumedRef = React.useRef(false);
+      const [projectId, setProjectId] = React.useState(typeof remembered.projectId === 'string' ? remembered.projectId : DEMO_PROJECT_ID);
+      const [projectChoices, setProjectChoices] = React.useState([]);
+      const [projectBusy, setProjectBusy] = React.useState(null);
+      const projectIdRef = React.useRef(projectId);
+      projectIdRef.current = projectId;
+      const latestRevisionRef = React.useRef(remembered.project && typeof remembered.project.revision === 'string' ? remembered.project.revision : null);
+      if (project !== null && typeof project.revision === 'string') latestRevisionRef.current = project.revision;
       const [sessionState, setSessionState] = React.useState(remembered.sessionState || { status: 'idle', items: [], activeSessionId: null, error: null });
       const [activeSessionId, setActiveSessionId] = React.useState(typeof remembered.activeSessionId === 'string' ? remembered.activeSessionId : null);
       const [sessionBusy, setSessionBusy] = React.useState(null);
@@ -1636,8 +2738,37 @@ window.__ModuleLoader__.load({
         function loadCreationSessions() {
           void refreshSessions();
           void diagnoseSessions();
+          void refreshProjectChoices();
         },
         []
+      );
+
+      // Managed canvases observe the worker revision while the embedded AI can
+      // write through the same project. A changed revision reloads the snapshot
+      // instead of letting an old iframe/PNG stand in for the current project.
+      React.useEffect(
+        function pollManagedCanvasRevision() {
+          const managed = project !== null && Array.isArray(project.scenes) && project.scenes.length > 0;
+          if (managed === false) return function noManagedPoll() {};
+          let cancelled = false;
+          const timer = setInterval(function pollRevision() {
+            hostRequest('inspect', { projectId: projectId }).then(
+              function inspected(next) {
+                if (cancelled || !aliveRef.current || next === null || typeof next !== 'object') return;
+                if (next.revision !== latestRevisionRef.current) {
+                  latestRevisionRef.current = next.revision;
+                  setProject(next);
+                }
+              },
+              function ignored() {}
+            );
+          }, 2500);
+          return function stopManagedPoll() {
+            cancelled = true;
+            clearInterval(timer);
+          };
+        },
+        [projectId, project !== null && Array.isArray(project.scenes) && project.scenes.length > 0]
       );
 
       // A panel switch is a view switch: the worker keeps the project and jobs,
@@ -1656,6 +2787,7 @@ window.__ModuleLoader__.load({
           durationDraft: durationDraft,
           sessionState: sessionState,
           activeSessionId: activeSessionId,
+          projectId: projectId,
         };
       });
 
@@ -1878,6 +3010,10 @@ window.__ModuleLoader__.load({
         try {
           const opened = await hostRequest('open', { projectId: DEMO_PROJECT_ID });
           inspected = await hostRequest('inspect', { projectId: opened.projectId });
+          if (aliveRef.current) {
+            setProjectId(opened.projectId);
+            await loadSessionsFor(opened.projectId);
+          }
           initialTime = defaultFrameTime(inspected, frameTimeDraft);
           if (aliveRef.current) {
             setFrameTimeDraft(formatSeconds(initialTime));
@@ -2058,19 +3194,19 @@ window.__ModuleLoader__.load({
         }
       }
 
-      async function refreshSessions() {
+      async function loadSessionsFor(targetProjectId) {
         const token = ++sessionListToken.current;
         if (sessionKitAvailable === false) {
           setSessionState({ status: 'unavailable', items: [], activeSessionId: null, error: null });
-          return;
+          return null;
         }
         if (sessions === null || typeof sessions.retain !== 'function') {
           setSessionState({ status: 'unavailable', items: [], activeSessionId: null, error: null });
-          return;
+          return null;
         }
         try {
-          const result = await hostRequest('session.list', { projectId: DEMO_PROJECT_ID });
-          if (token !== sessionListToken.current || !aliveRef.current) return;
+          const result = await hostRequest('session.list', { projectId: targetProjectId });
+          if (token !== sessionListToken.current || !aliveRef.current) return null;
           const items = Array.isArray(result.sessions) ? result.sessions : [];
           const active = typeof result.activeSessionId === 'string' ? result.activeSessionId : null;
           setSessionState({ status: 'ready', items: items, activeSessionId: active, error: null, contract: result.contract || null });
@@ -2078,8 +3214,9 @@ window.__ModuleLoader__.load({
             if (typeof previous === 'string' && items.some(function known(item) { return item.sessionId === previous; })) return previous;
             return active;
           });
+          return result;
         } catch (requestError) {
-          if (token !== sessionListToken.current || !aliveRef.current) return;
+          if (token !== sessionListToken.current || !aliveRef.current) return null;
           const code = requestError && requestError.code;
           setSessionState({
             status: code === 'E_SESSION_CONFIG' ? 'disabled' : 'error',
@@ -2087,7 +3224,81 @@ window.__ModuleLoader__.load({
             activeSessionId: null,
             error: hostError(requestError),
           });
+          return null;
         }
+      }
+
+      function refreshSessions() {
+        return loadSessionsFor(projectId);
+      }
+
+      async function refreshProjectChoices() {
+        try {
+          const result = await hostRequest('project.list', {});
+          if (!aliveRef.current) return;
+          const items = Array.isArray(result.projects) ? result.projects.filter((item) => item !== null && typeof item.projectId === 'string') : [];
+          setProjectChoices(items);
+        } catch (_error) {
+          /* the project list is advisory; the canvas state reports real errors */
+        }
+      }
+
+      async function openManagedProject(nextProjectId) {
+        if (projectBusy !== null) return;
+        if (typeof nextProjectId !== 'string' || nextProjectId.length === 0) return;
+        setProjectBusy('open');
+        setError(null);
+        jobTokenRef.current += 1;
+        try {
+          const opened = await hostRequest('open', { projectId: nextProjectId });
+          const inspected = await hostRequest('inspect', { projectId: opened.projectId });
+          if (!aliveRef.current) return;
+          setProjectId(opened.projectId);
+          setProject(inspected);
+          setFrame(null);
+          setJob(null);
+          setActiveSessionId(null);
+          setSessionState({ status: 'loading', items: [], activeSessionId: null, error: null });
+          await loadSessionsFor(opened.projectId);
+        } catch (requestError) {
+          if (aliveRef.current) setError(hostError(requestError));
+        } finally {
+          if (aliveRef.current) setProjectBusy(null);
+        }
+      }
+
+      async function createManagedProject() {
+        if (projectBusy !== null) return;
+        setProjectBusy('create');
+        setError(null);
+        jobTokenRef.current += 1;
+        try {
+          const created = await hostRequest('project.create', { templateId: 'product-launch-v1', title: t('video.project.untitled') });
+          const inspected = await hostRequest('inspect', { projectId: created.projectId });
+          if (!aliveRef.current) return;
+          setProjectId(created.projectId);
+          setProject(inspected);
+          setFrame(null);
+          setJob(null);
+          setActiveSessionId(null);
+          setSessionState({ status: 'loading', items: [], activeSessionId: null, error: null });
+          await loadSessionsFor(created.projectId);
+          const session = await hostRequest('session.create', { projectId: created.projectId, requestId: operationId() });
+          if (!aliveRef.current) return;
+          await loadSessionsFor(created.projectId);
+          if (aliveRef.current) setActiveSessionId(session.sessionId);
+          await refreshProjectChoices();
+        } catch (requestError) {
+          if (aliveRef.current) setError(hostError(requestError));
+        } finally {
+          if (aliveRef.current) setProjectBusy(null);
+        }
+      }
+
+      async function reloadCanvasProject() {
+        const next = await hostRequest('inspect', { projectId: projectIdRef.current });
+        if (!aliveRef.current) return;
+        setProject(next);
       }
 
       async function createSession() {
@@ -2100,9 +3311,9 @@ window.__ModuleLoader__.load({
         setSessionBusy('create');
         setError(null);
         try {
-          const result = await hostRequest('session.create', { projectId: DEMO_PROJECT_ID, requestId: operationId() });
+          const result = await hostRequest('session.create', { projectId: projectId, requestId: operationId() });
           if (!aliveRef.current) return;
-          const listResult = await hostRequest('session.list', { projectId: DEMO_PROJECT_ID });
+          const listResult = await hostRequest('session.list', { projectId: projectId });
           if (!aliveRef.current) return;
           const items = Array.isArray(listResult.sessions) ? listResult.sessions : [];
           setSessionState({ status: 'ready', items: items, activeSessionId: listResult.activeSessionId || result.sessionId, error: null, contract: listResult.contract || null });
@@ -2126,7 +3337,7 @@ window.__ModuleLoader__.load({
         setSessionBusy('select');
         setError(null);
         try {
-          const result = await hostRequest('session.select', { projectId: DEMO_PROJECT_ID, sessionId: sessionId });
+          const result = await hostRequest('session.select', { projectId: projectId, sessionId: sessionId });
           if (token !== sessionSwitchToken.current || !aliveRef.current) return;
           previewToken.current += 1;
           setPreview(null);
@@ -2155,7 +3366,7 @@ window.__ModuleLoader__.load({
           return;
         }
         setPreview({ phase: 'loading', sessionId: sessionId, fileName: fileName });
-        hostRequest('preview', { projectId: DEMO_PROJECT_ID, sessionId: sessionId, path: path }).then(
+        hostRequest('preview', { projectId: projectId, sessionId: sessionId, path: path }).then(
           function previewReady(result) {
             if (token !== previewToken.current || !aliveRef.current || activeSessionIdRef.current !== sessionId) return;
             if (result === null || typeof result !== 'object' || typeof result.dataUrl !== 'string' || typeof result.mediaType !== 'string') {
@@ -2390,6 +3601,44 @@ window.__ModuleLoader__.load({
         );
       }
 
+      function projectBar() {
+        const options = projectChoices.slice();
+        if (options.some(function has(item) { return item.projectId === projectId; }) === false) {
+          options.unshift({ projectId: projectId });
+        }
+        return h(
+          'div',
+          { className: 'dv-projectbar', key: 'projects' },
+          h(
+            'label',
+            { className: 'dv-project-picker' },
+            h('span', null, t('video.project.label')),
+            h(
+              'select',
+              {
+                value: projectId,
+                disabled: projectBusy !== null,
+                'aria-label': t('video.project.open'),
+                onChange: function switchProject(event) {
+                  const next = event.target.value;
+                  if (next === projectId) return;
+                  if (next === DEMO_PROJECT_ID) void openSample();
+                  else void openManagedProject(next);
+                },
+              },
+              options.map(function option(item) {
+                return h('option', { key: item.projectId, value: item.projectId }, item.projectId);
+              })
+            )
+          ),
+          h(
+            'button',
+            { type: 'button', className: 'dv-button dv-button-quiet', onClick: function createProject() { void createManagedProject(); }, disabled: projectBusy !== null },
+            projectBusy === 'create' ? t('video.opening') : t('video.project.new')
+          )
+        );
+      }
+
       function stageContent() {
         if (project === null) {
           return h(
@@ -2399,15 +3648,46 @@ window.__ModuleLoader__.load({
             errorNotice(),
             h('p', { className: 'dv-empty' }, t('video.empty')),
             h(
-              'button',
-              {
-                type: 'button',
-                className: 'dv-button dv-button-primary',
-                disabled: busy !== null,
-                onClick: openSample,
-              },
-              busy === 'open' ? t('video.opening') : t('video.open')
+              'div',
+              { className: 'dv-empty-actions' },
+              h(
+                'button',
+                {
+                  type: 'button',
+                  className: 'dv-button dv-button-primary',
+                  disabled: busy !== null || projectBusy !== null,
+                  onClick: openSample,
+                },
+                busy === 'open' ? t('video.opening') : t('video.open')
+              ),
+              h(
+                'button',
+                {
+                  type: 'button',
+                  className: 'dv-button dv-button-quiet',
+                  disabled: busy !== null || projectBusy !== null,
+                  onClick: function createFromEmpty() {
+                    void createManagedProject();
+                  },
+                },
+                projectBusy === 'create' ? t('video.opening') : t('video.project.new')
+              )
             )
+          );
+        }
+        if (Array.isArray(project.scenes) && project.scenes.length > 0) {
+          return h(
+            'div',
+            { className: 'dv-managed-stage', key: 'canvas' },
+            h(CanvasWorkspace, {
+              t: t,
+              projectId: projectId,
+              inspected: project,
+              onReload: reloadCanvasProject,
+              onError: function canvasError(nextError) {
+                setError(nextError);
+              },
+            })
           );
         }
         return h(
@@ -2550,6 +3830,7 @@ window.__ModuleLoader__.load({
           className: 'dv-root',
           'data-simplified': ui.simplifiedEffects ? 'true' : 'false',
           'data-panel': PANEL_ID,
+          'data-project-id': projectId,
           'data-session': sessionKitAvailable === false ? 'unavailable' : sessionState.status,
           'data-session-kit': sessionKitAvailable ? 'available' : 'missing',
           'data-session-active': activeSessionId === null ? '' : activeSessionId,
@@ -2632,7 +3913,7 @@ window.__ModuleLoader__.load({
         h(
           'main',
           { className: 'dv-main', key: 'main' },
-          h('div', { className: 'dv-left', key: 'left' }, stageContent()),
+          h('div', { className: 'dv-left', key: 'left' }, projectBar(), stageContent()),
           aiPanel()
         )
       );

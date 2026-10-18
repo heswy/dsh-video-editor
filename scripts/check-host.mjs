@@ -249,7 +249,10 @@ function makeCtx(workspace, options) {
       fetch: {
         register(route) {
           routes.push(route);
-          return () => {};
+          return () => {
+            const index = routes.indexOf(route);
+            if (index >= 0) routes.splice(index, 1);
+          };
         },
       },
     },
@@ -864,6 +867,145 @@ async function main() {
     assert(invalid.code === 'E_PARAMS', 'invalid preview path was not rejected');
     const otherPreview = await bridge.invoke('preview', { projectId: OTHER, sessionId: otherSession, path: file }, { source: 'http' });
     assert(otherPreview.sha256 === PNG_HASH, 'other project preview did not read its own registered Session');
+  });
+
+
+  await run('P3-008: layout/style edit ops are validated and scoped like the worker contract', async () => {
+    const workspace = await makeWorkspace();
+    const bag = makeCtx(workspace);
+    const { bridge } = makeBridge(workspace, { handler: () => ({}) }, bag.ctx);
+    const normalized = bridge.validate('edit', {
+      projectId: PROJECT,
+      expectedRevision: REVISION,
+      operationId: 'layout-style-1',
+      ops: [
+        { type: 'layout', target: 'scene-1-title', unit: 'composition-px', box: { left: 120, top: 240 } },
+        { type: 'style', target: 'scene-1-title', styles: { color: '#FFD400', fontSize: 48 } },
+      ],
+    });
+    assert(normalized.ops.length === 2 && normalized.ops[0].type === 'layout' && normalized.ops[1].styles.color === '#ffd400', 'layout/style ops were not normalized');
+    const badLayout = await rejects(async () => bridge.validate('edit', { projectId: PROJECT, expectedRevision: REVISION, operationId: 'bad-layout', ops: [{ type: 'layout', target: 'x', unit: 'px', box: { left: 1 } }] }));
+    assert(badLayout.code === 'E_PARAMS', 'invalid layout unit was accepted');
+    const badStyle = await rejects(async () => bridge.validate('edit', { projectId: PROJECT, expectedRevision: REVISION, operationId: 'bad-style', ops: [{ type: 'style', target: 'x', styles: { color: 'red' } }] }));
+    assert(badStyle.code === 'E_PARAMS', 'invalid style color was accepted');
+  });
+
+  await run('P3-008: UI-only managed methods are refused from the model Tool source', async () => {
+    const workspace = await makeWorkspace();
+    const bag = makeCtx(workspace);
+    const { bridge } = makeBridge(workspace, { handler: () => ({}) }, bag.ctx);
+    for (const [method, params] of [
+      ['project.create', { templateId: 'product-launch-v1' }],
+      ['project.list', {}],
+      ['preview.snapshot', { projectId: PROJECT, revision: REVISION }],
+      ['asset.import', { projectId: PROJECT, expectedRevision: REVISION, operationId: 'asset-x', receiptId: '00000000-0000-4000-8000-000000000000' }],
+    ]) {
+      const error = await rejects(() => bridge.invoke(method, params, { source: 'tool', agentSessionId: 'session-unbound' }));
+      assert(error.code === 'E_METHOD', `${method} was not refused from Tool source: ${error.code}`);
+    }
+  });
+
+  await run('P3-008: preview snapshots are verified, routed with CSP/runtime and released', async () => {
+    const workspace = await makeWorkspace();
+    const snapshotId = 'a'.repeat(32);
+    const snapshotDir = join(workspace.outputRoot, 'previews', snapshotId);
+    await mkdir(snapshotDir, { recursive: true });
+    const entry = Buffer.from('<!doctype html><html><body><main data-composition-id="x"></main><script>window.__timelines={};</script></body></html>');
+    const asset = Buffer.from('export const x = 1;');
+    await writeFile(join(snapshotDir, 'index.html'), entry);
+    await mkdir(join(snapshotDir, 'assets'), { recursive: true });
+    await writeFile(join(snapshotDir, 'assets', 'gsap.min.js'), asset);
+    const manifest = {
+      snapshotId,
+      projectId: PROJECT,
+      revision: REVISION,
+      entry: 'index.html',
+      files: [
+        { path: 'index.html', bytes: entry.length, sha256: createHash('sha256').update(entry).digest('hex') },
+        { path: 'assets/gsap.min.js', bytes: asset.length, sha256: createHash('sha256').update(asset).digest('hex') },
+      ],
+      expiresAt: new Date(Date.now() + 60000).toISOString(),
+    };
+    const bag = makeCtx(workspace);
+    const { bridge } = makeBridge(workspace, {
+      handler: (method) => {
+        if (method === 'preview.snapshot') return manifest;
+        if (method === 'preview.release') return { snapshotId, released: true };
+        return {};
+      },
+    }, bag.ctx);
+    const result = await bridge.invoke('preview.snapshot', { projectId: PROJECT, revision: REVISION }, { source: 'http' });
+    assert(result.snapshotId === snapshotId && result.entryUrl === `/api/dsh-video/preview/${snapshotId}/index.html`, 'snapshot registration did not return the route');
+    const entryRoute = bag.routes.find((route) => route.path === result.entryUrl);
+    assert(entryRoute !== undefined, 'snapshot entry route was not registered');
+    const response = await entryRoute.fetch(new Request(`http://127.0.0.1${result.entryUrl}?instance=browserinstance&nonce=${'b'.repeat(32)}`));
+    assert(response.status === 200, `snapshot entry status ${response.status}`);
+    const html = await response.text();
+    assert(html.includes('/api/dsh-video/canvas-runtime.js'), 'runtime was not injected into the entry');
+    assert((response.headers.get('content-security-policy') || '').includes("connect-src 'none'"), 'snapshot CSP is missing');
+    const assetRoute = bag.routes.find((route) => route.path.endsWith('/assets/gsap.min.js'));
+    const assetResponse = await assetRoute.fetch(new Request(`http://127.0.0.1${assetRoute.path}`));
+    assert(assetResponse.status === 200 && Buffer.compare(Buffer.from(await assetResponse.arrayBuffer()), asset) === 0, 'snapshot asset bytes do not match');
+    await bridge.invoke('preview.release', { snapshotId }, { source: 'http' });
+    assert(bag.routes.every((route) => route.path !== result.entryUrl), 'released snapshot route is still registered');
+  });
+
+  await run('P3-008: asset inbox validates bytes/receipts and feeds asset.import without a Host path', async () => {
+    const workspace = await makeWorkspace();
+    const inbox = join(workspace.root, 'asset-inbox');
+    await mkdir(inbox, { recursive: true });
+    const bag = makeCtx(workspace);
+    const { bridge } = makeBridge(workspace, {
+      handler: (method, params) => {
+        if (method === 'asset.import') {
+          bag.receivedAssetImport = params;
+          return { projectId: PROJECT, revision: REVISION, asset: { path: 'assets/canvas-test.png', name: 'canvas-test.png', bytes: PNG.length, sha256: PNG_HASH, mediaType: 'image/png' }, assets: [], historyCursor: 2 };
+        }
+        return {};
+      },
+    }, bag.ctx);
+    bag.ctx.get('__noop');
+    // Rebuild with an inbox root because makeWorkspace has no asset root by default.
+    const inboxBridge = new VideoBridge({
+      ctx: bag.ctx,
+      rawConfig: Object.assign({}, workspace.config, { assetInboxRoot: inbox }),
+      engineLoader: async () => ({
+        WorkerClient: class extends FakeClient {
+          constructor(options) {
+            super(options, {
+              handler: (method, params) => {
+                if (method === 'asset.import') {
+                  bag.receivedAssetImport = params;
+                  return { projectId: PROJECT, revision: REVISION, asset: { path: 'assets/canvas-test.png', name: 'canvas-test.png', bytes: PNG.length, sha256: PNG_HASH, mediaType: 'image/png' }, assets: [], historyCursor: 2 };
+                }
+                return {};
+              },
+            });
+          }
+        },
+        workerEntry: workspace.workerEntry,
+        workerVersion: '0.3.0',
+        clientVersion: '0.3.0',
+      }),
+    });
+    const upload = await inboxBridge.uploadAsset(new Request('http://127.0.0.1/api/dsh-video/asset-upload', {
+      method: 'POST',
+      headers: { 'content-type': 'image/png', 'x-dsh-project-id': PROJECT, 'x-dsh-file-name': 'canvas-test.png' },
+      body: PNG,
+    }));
+    const receipt = await upload.json();
+    assert(upload.ok && receipt.receiptId, `inbox upload failed: ${JSON.stringify(receipt)}`);
+    const imported = await inboxBridge.invoke('asset.import', { projectId: PROJECT, expectedRevision: REVISION, operationId: 'asset-test-1', receiptId: receipt.receiptId }, { source: 'http' });
+    assert(imported.asset.path === 'assets/canvas-test.png', 'asset.import result was not returned');
+    assert(bag.receivedAssetImport && bag.receivedAssetImport.sourceName && bag.receivedAssetImport.sourceName.includes('canvas-test.png'), 'worker did not receive the controlled inbox basename');
+    assert(!JSON.stringify(bag.receivedAssetImport).includes(workspace.root), 'worker asset.import received an absolute project path');
+    const badUpload = await inboxBridge.uploadAsset(new Request('http://127.0.0.1/api/dsh-video/asset-upload', {
+      method: 'POST',
+      headers: { 'content-type': 'image/png', 'x-dsh-project-id': PROJECT, 'x-dsh-file-name': 'fake.png' },
+      body: Buffer.from('<!doctype html><script>1</script>'),
+    }));
+    assert(badUpload.ok === false, 'non-image upload was accepted');
+    await inboxBridge.dispose();
   });
 
   await run('tool scope: cross-project actions and foreign jobs are refused from the trusted mapping', async () => {
