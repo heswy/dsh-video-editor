@@ -1,13 +1,15 @@
 # p0-mode-shell：当前接手
 
-更新：2026-10-18。交付HEAD `831d275`、修复 `b382686`，沿用分支 `dsh/p0-mode-shell` / PR#3。fetch后按AGENTS读取协调STATUS/DEVELOPMENT，不merge协调分支。
+更新：2026-10-18。当前LIVE交付 `2cd718a`，已安装功能 `b382686` / 0.3.0-alpha.1、engine54f4671/0.1.1，沿用本树、分支与PR#3。开工fetch读协调STATUS/DEVELOPMENT，不merge或新建tree。
 
-## 当前动作：已授权，开始具体候选安装验收
+## 当前动作：P3-006-C修复原生文件打开
 
-[P3-006-A修复复审](../reviews/P3-006A-review-02.md)通过，R1–R4关闭。总调度独立123/123、版本10/10、原四故障场景修复探针、固定包19/19和staging摘要通过。不要重复修复或调查。
+先读 [LIVE复核](../reviews/P3-006A-live-review-01.md)，再执行 [P3-006-C](../tasks/P3-006C-embedded-file-preview.md)。用户已实测图片卡报“sidebarRight: no session surface is mounted”，不能将嵌入体验标为全PASS。总调度已核源码：sidebarRight全局controller只在普通Conversation主面板设置onScreen，main视频面板下undefined；原生chat openFile仍调该service。
 
-下一步 [P3-006-A LIVE](../tasks/P3-006A-live-validation.md) 已写好；**用户已明确回复“我授权。完全授权。”，本指南范围可直接执行，不再重复确认。** 执行固定b382686候选的Plugin Manager安装、原生会话/历史/模型/Tool闭环与一次启停恢复，不重启应用。
+一次交付实际可工作的局部图片/文件预览候选和回归，不再完整调查。根alpha.2、engine仍54f4671；不采用尚未通过复审的p1新引擎。不要猴补全局服务/抢mainView/替换宿主，不开放任意路径读取、不常驻第三列。具体scope/验收/故障边界见指南。
 
-候选：同级artifacts/p2-b/staging-54f4671-b382686/bundle，根0.3.0-alpha.1、引擎54f4671/0.1.1；摘要和回滚/安全步骤见指南。旧候选/实际安装不覆盖。真机行为仍未验收，左侧依然PNG，不能宣传实时画布/全产品已完成。
+不安装/启停/重启新候选，不新增模型请求，不修改已安装staging、用户图片或工程。保留当前回滚与测试会话。旧验收的用户授权不等于所有后续安装或全局输入权限。不得再用全局键盘/坐标、个人剪贴板或抢前台；无定向通道时给用户短人工步骤。
 
-最多两个专用测试会话、两次测试模型请求已获授权；不用个人会话、全局输入或剪贴板，审批由用户人工处理。无安全定向通道时提供短人工步骤，不凑假证据。只更新本任务/研究/证据并push PR#3，不merge。p1-engine继续B，不交叉写。
+当前换黄色失败源于已装旧engine和legacy demo，需后续新engine/受控工程/Host/Tool/画布整合，不引导直接写index.html绕过工程入口，不把调色副产物说成工程修改。p1继续覆盖语义R1/R2返修，不交叉写。
+
+普通commit/push PR#3交回代码/包/新staging/测试和未测项；功能候选审过后再安排安装验收。不要对用户已开始创作的demo执行prepare-fixture重置。
