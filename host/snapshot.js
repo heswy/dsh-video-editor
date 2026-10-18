@@ -20,6 +20,17 @@ const BASE = '/api/dsh-video/preview';
 const RUNTIME_PATH = '/api/dsh-video/canvas-runtime.js';
 const SNAPSHOT_ID = /^[a-f0-9]{32}$/;
 const INSTANCE_ID = /^[a-z0-9][a-z0-9-]{7,63}$/;
+/**
+ * Retained preview snapshots per project.
+ *
+ * The client keeps the last READY preview mounted (and playable) while a new
+ * revision is fetched/preloaded; replacing the routes at registration time would
+ * pull the assets out from under that still-visible frame. Retain the previous
+ * snapshots until the client explicitly releases them after a successful switch
+ * (or the project closes / the worker TTL expires), bounded to this many so a
+ * long session cannot grow the route table without limit.
+ */
+export const MAX_SNAPSHOTS_PER_PROJECT = 4;
 const NONCE = /^[a-f0-9]{32}$/;
 const MAX_FILE_BYTES = 64 * 1024 * 1024;
 const MIME = Object.freeze({
@@ -73,6 +84,7 @@ export class SnapshotRoutes {
   constructor(connection) {
     this.connection = connection;
     this.records = new Map();
+    this.projectSnapshots = new Map();
     this.disposers = [];
   }
 
@@ -109,7 +121,12 @@ export class SnapshotRoutes {
 
   /**
    * Validate one worker snapshot and publish exact authenticated routes.
-   * Replaces any prior snapshot routes for the same project.
+   *
+   * Prior snapshots for the same project stay registered (bounded by
+   * MAX_SNAPSHOTS_PER_PROJECT) so the client can keep the last ready frame
+   * visible until the new runtime is ready; the client releases the old
+   * snapshot after a successful switch. The oldest retained snapshot is evicted
+   * only when the per-project bound is exceeded.
    */
   async register(projectId, snapshot, previewRoot) {
     if (!this.available) throw new Error('preview routes are unavailable');
@@ -149,7 +166,6 @@ export class SnapshotRoutes {
     if (files.has(snapshot.entry) === false) throw new Error('snapshot entry is not in the manifest');
     if (total > 128 * 1024 * 1024) throw new Error('snapshot exceeds preview byte limit');
 
-    this.revokeProject(projectId);
     const record = {
       projectId,
       snapshotId: snapshot.snapshotId,
@@ -170,6 +186,13 @@ export class SnapshotRoutes {
       record.disposers.push(disposer);
     }
     this.records.set(snapshot.snapshotId, record);
+    const retained = this.projectSnapshots.get(projectId) || [];
+    retained.push(snapshot.snapshotId);
+    this.projectSnapshots.set(projectId, retained);
+    while (retained.length > MAX_SNAPSHOTS_PER_PROJECT) {
+      const oldest = retained.shift();
+      if (oldest !== undefined) this.revoke(oldest);
+    }
     return {
       snapshotId: snapshot.snapshotId,
       projectId,
@@ -260,17 +283,31 @@ export class SnapshotRoutes {
       }
     }
     this.records.delete(snapshotId);
+    const retained = this.projectSnapshots.get(record.projectId);
+    if (retained !== undefined) {
+      const index = retained.indexOf(snapshotId);
+      if (index >= 0) retained.splice(index, 1);
+      if (retained.length === 0) this.projectSnapshots.delete(record.projectId);
+    }
     return true;
   }
 
   revokeProject(projectId) {
-    const ids = [...this.records.values()].filter((record) => record.projectId === projectId).map((record) => record.snapshotId);
+    const retained = this.projectSnapshots.get(projectId);
+    const ids = retained !== undefined ? [...retained] : [];
+    if (ids.length === 0) {
+      for (const record of this.records.values()) {
+        if (record.projectId === projectId) ids.push(record.snapshotId);
+      }
+    }
     for (const id of ids) this.revoke(id);
+    this.projectSnapshots.delete(projectId);
     return ids;
   }
 
   dispose() {
     for (const id of [...this.records.keys()]) this.revoke(id);
+    this.projectSnapshots.clear();
     for (const dispose of this.disposers.splice(0).reverse()) {
       try {
         dispose();

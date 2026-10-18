@@ -430,6 +430,7 @@ export class SessionService {
         `1. Call video_engine {"action":"inspect","projectId":"${projectId}"} to read the current revision. Call {"action":"project.source","projectId":"${projectId}"} when you need the current full HTML; it returns that revision, so it is the reliable base for a modification.`,
         `2. Produce the COMPLETE HTML document for the new version, then submit it once with {"action":"project.compose","projectId":"${projectId}","expectedRevision":"<current revision>","operationId":"<unique id>","html":"<!doctype html>..."}.`,
         '3. The left preview follows the published revision automatically. Only tell the user the video is updated after project.compose returns publishedRevision; if it returns an error, fix the document and retry. Never claim success from intent alone.',
+        '3b. project.compose may return history: {status:"degraded"} when only the auxiliary edit history could not be recorded. The publishedRevision is still authoritative: report the video as updated and say history is temporarily unavailable; do not claim the publish failed and do not try to rewrite the document to fix history.',
         '4. If project.compose returns E_REVISION_CONFLICT, call project.source again, apply your change to that newer HTML, and resubmit with its revision; never retry with the stale revision or overwrite blindly.',
         'Composition contract (the Host validates before publishing; invalid input is rejected atomically):',
         '- one complete HTML document of 1..49152 UTF-8 bytes;',

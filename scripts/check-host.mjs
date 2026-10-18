@@ -1308,6 +1308,75 @@ async function main() {
     assert(bag.routes.every((route) => route.path !== result.entryUrl), 'released snapshot route is still registered');
   });
 
+  await run('P3-012 R2: preview snapshots are retained for the last ready frame, released explicitly and bounded', async () => {
+    const workspace = await makeWorkspace();
+    const bag = makeCtx(workspace);
+    const revisionFor = (letter) => letter.repeat(64);
+    const idFor = (letter) => letter.repeat(32);
+    const manifestFor = (letter) => {
+      const content = Buffer.from(`<!doctype html><html><body><main data-composition-id="x"></main><script>window.__timelines={};</script><!--${letter}--></body></html>`);
+      return {
+        snapshotId: idFor(letter),
+        projectId: PROJECT,
+        revision: revisionFor(letter),
+        entry: 'index.html',
+        files: [{ path: 'index.html', bytes: content.length, sha256: createHash('sha256').update(content).digest('hex') }],
+        expiresAt: new Date(Date.now() + 60000).toISOString(),
+      };
+    };
+    const writeSnapshot = async (letter) => {
+      const directory = join(workspace.outputRoot, 'previews', idFor(letter));
+      await mkdir(directory, { recursive: true });
+      const manifest = manifestFor(letter);
+      await writeFile(join(directory, 'index.html'), Buffer.from(`<!doctype html><html><body><main data-composition-id="x"></main><script>window.__timelines={};</script><!--${letter}--></body></html>`));
+      return manifest;
+    };
+    const manifests = new Map();
+    for (const letter of ['a', 'b', 'c', 'd', 'e', 'f']) manifests.set(revisionFor(letter), await writeSnapshot(letter));
+    const { bridge } = makeBridge(workspace, {
+      handler: (method, params) => {
+        if (method === 'preview.snapshot') {
+          const manifest = manifests.get(params.revision);
+          if (manifest === undefined) return new Error('unknown revision');
+          return manifest;
+        }
+        if (method === 'preview.release') {
+          if (params.snapshotId === idFor('f')) {
+            const error = new Error('snapshot already expired');
+            error.code = 'E_SNAPSHOT_NOT_FOUND';
+            error.stage = 'preview';
+            return error;
+          }
+          return { snapshotId: params.snapshotId, released: true };
+        }
+        return {};
+      },
+    }, bag.ctx);
+    const register = (letter) => bridge.invoke('preview.snapshot', { projectId: PROJECT, revision: revisionFor(letter) }, { source: 'http' });
+    const routePathsFor = (letter) => bag.routes.filter((route) => typeof route.path === 'string' && route.path.includes(`/preview/${idFor(letter)}/`)).map((route) => route.path);
+    const hasRoutes = (letter) => routePathsFor(letter).length > 0;
+
+    await register('a');
+    await register('b');
+    assert(hasRoutes('a') && hasRoutes('b'), 'registering a new snapshot removed the previous snapshot routes (last ready frame would lose its assets)');
+    await bridge.invoke('preview.release', { snapshotId: idFor('a') }, { source: 'http' });
+    assert(hasRoutes('a') === false && hasRoutes('b') === true, 'explicit release did not remove only the released snapshot');
+
+    for (const letter of ['c', 'd', 'e']) await register(letter);
+    assert(['b', 'c', 'd', 'e'].every((letter) => hasRoutes(letter)), 'retained snapshots were evicted below the per-project bound');
+    await register('f');
+    assert(hasRoutes('b') === false, 'the oldest retained snapshot was not evicted at the per-project bound');
+    assert(['c', 'd', 'e', 'f'].every((letter) => hasRoutes(letter)), 'the per-project retained snapshot set is not bounded to four');
+
+    const stale = await bridge.invoke('preview.release', { snapshotId: idFor('f') }, { source: 'http' });
+    assert(stale.released === false, 'a worker TTL/duplicate release was not reported as released:false');
+    assert(hasRoutes('f') === false, 'a stale worker release left the Host snapshot route registered');
+
+    for (const letter of ['c', 'd', 'e']) await bridge.invoke('preview.release', { snapshotId: idFor(letter) }, { source: 'http' });
+    assert(bag.routes.every((route) => typeof route.path !== 'string' || route.path.includes('/preview/') === false || route.path.endsWith('/canvas-runtime.js')), 'released snapshot routes are still registered');
+    await bridge.dispose();
+  });
+
   await run('P3-008: asset inbox validates bytes/receipts and feeds asset.import without a Host path', async () => {
     const workspace = await makeWorkspace();
     const inbox = join(workspace.root, 'asset-inbox');
@@ -1660,6 +1729,7 @@ async function main() {
       'expectedRevision',
       'publishedRevision',
       'E_REVISION_CONFLICT',
+      'history: {status:"degraded"}',
       '49152',
       'data-composition-id',
       'window.__timelines',

@@ -1288,7 +1288,19 @@ export class VideoBridge {
     }
     if (method === 'preview.release') {
       if (settings.source === 'tool') throw new BridgeError('E_METHOD', 'Preview release is a UI-only action', { stage: 'params' });
-      const released = await this.callClient('preview.release', normalized);
+      // Revoke the Host route even when the worker snapshot is already gone
+      // (TTL expiry / duplicate release): cleanup stays idempotent and no stale
+      // route is left behind. Other worker failures still surface after cleanup.
+      let released;
+      try {
+        released = await this.callClient('preview.release', normalized);
+      } catch (error) {
+        this.snapshots.revoke(normalized.snapshotId);
+        if (error instanceof BridgeError && error.code === 'E_SNAPSHOT_NOT_FOUND') {
+          return publicResult(this.requireConfig().maxResultBytes, { snapshotId: normalized.snapshotId, released: false }, settings.source);
+        }
+        throw error;
+      }
       this.snapshots.revoke(normalized.snapshotId);
       return publicResult(this.requireConfig().maxResultBytes, released, settings.source);
     }
