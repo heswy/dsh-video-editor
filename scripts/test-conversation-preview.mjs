@@ -260,6 +260,19 @@ async function assertRetainedPlayable(page, pauseText) {
   return { ok: played.ok === true, timeText: played.state.timeText, revision: played.state.revision, activeFrames: played.state.activeFrameCount, state: played.state };
 }
 
+/** Wait (bounded) for one fire-and-forget preview.release request in the page log. */
+async function waitForPreviewRelease(page, mark, snapshotId, timeoutMs) {
+  const deadline = Date.now() + (timeoutMs || 5000);
+  let requests = [];
+  while (Date.now() < deadline) {
+    requests = await evaluate(page, (markIndex) => window.__CASE__.requestsSince(markIndex), mark);
+    const hit = requests.find((entry) => entry.method === 'preview.release' && entry.params && entry.params.snapshotId === snapshotId);
+    if (hit !== undefined) return { ok: true, request: hit, requests };
+    await sleep(100);
+  }
+  return { ok: false, requests };
+}
+
 /** Seek through the REAL preview range control (real mouse click on the input). */
 async function seekPreviewTo(page, seconds) {
   const state = await evaluate(page, () => window.__CASE__.state());
@@ -791,8 +804,9 @@ async function main() {
       const retrySwitch = await evaluate(page, (expected) => window.__CASE__.waitCanvas({ phase: 'ready', revision: expected, notice: false, maxCandidateFrames: 0 }, 30000), retentionRevision.publishedRevision);
       if (retrySwitch.ok === true) await evaluate(page, (since) => window.__CASE__.waitFrameLoad(since, 10000), retrySwitchMark);
       retrySwitchState = retrySwitch.state;
-      const retrySwitchRequests = await evaluate(page, (mark) => window.__CASE__.requestsSince(mark), retrySwitchMark);
-      oldSnapshotReleased = retrySwitchRequests.some((entry) => entry.method === 'preview.release' && entry.params && entry.params.snapshotId === activeBeforeFailure.snapshotId && entry.responseOk === true);
+      const retryRelease = await waitForPreviewRelease(page, retrySwitchMark, activeBeforeFailure.snapshotId, 5000);
+      const retrySwitchRequests = retryRelease.requests;
+      oldSnapshotReleased = retryRelease.ok === true && retryRelease.request.responseOk === true;
       checkAcceptance('B4', 'R2: explicit retry switches to the requested revision (markers/iframe updated, candidate gone)', retrySwitch.ok === true && retrySwitchState.revision === retentionRevision.publishedRevision && retrySwitchState.snapshotId !== activeBeforeFailure.snapshotId && retrySwitchState.candidateFrameCount === 0, { ok: retrySwitch.ok, revision: retrySwitchState.revision, expected: retentionRevision.publishedRevision, snapshotId: retrySwitchState.snapshotId, previousSnapshot: activeBeforeFailure.snapshotId, candidateFrames: retrySwitchState.candidateFrameCount });
       checkAcceptance('B4', 'R2: the old Host snapshot is released after a successful switch (preview.release observed)', oldSnapshotReleased === true, { releases: retrySwitchRequests.filter((entry) => entry.method === 'preview.release').map((entry) => ({ snapshotId: entry.params && entry.params.snapshotId, ok: entry.responseOk, code: entry.responseErrorCode })) });
       retrySwitchShot = await screenshotPage(page, join(evidenceDirectory, '05-r2-switched.png'));
@@ -822,8 +836,9 @@ async function main() {
     checkAcceptance('B4', 'R2: candidate-runtime-error markers/notice are truthful and the failed candidate is discarded', runtimeNotice.ok === true && runtimeNoticeState.targetRevision === runtimeRevision.publishedRevision && runtimeNoticeState.noticeVisible === true && runtimeNoticeState.notices.length > 0 && runtimeNoticeState.notices[0].retry !== null && runtimeNoticeState.candidateFrameCount === 0, { targetRevision: runtimeNoticeState.targetRevision, requestedRevision: runtimeRevision.publishedRevision, notice: runtimeNoticeState.notices[0] ?? null, candidateFrames: runtimeNoticeState.candidateFrameCount });
     const runtimeRetainedPlayable = await assertRetainedPlayable(page, pauseText);
     checkAcceptance('B4', 'R2: the old preview stays playable during a candidate runtime failure', runtimeRetainedPlayable.ok === true && runtimeRetainedPlayable.activeFrames >= 1, { runtimeRetainedPlayable: { ok: runtimeRetainedPlayable.ok, timeText: runtimeRetainedPlayable.timeText, revision: runtimeRetainedPlayable.revision } });
-    const runtimeRequests = await evaluate(page, (mark) => window.__CASE__.requestsSince(mark), runtimeMark);
-    const candidateDiscarded = runtimeRequests.some((entry) => entry.method === 'preview.release' && entry.params && entry.params.snapshotId === 'f'.repeat(32));
+    const candidateRelease = await waitForPreviewRelease(page, runtimeMark, 'f'.repeat(32), 5000);
+    const runtimeRequests = candidateRelease.requests;
+    const candidateDiscarded = candidateRelease.ok === true;
     checks.check('R2: the failed synthetic candidate snapshot is released (discard attempted)', candidateDiscarded === true || runtimeNoticeState.candidateFrameCount === 0, { candidateReleaseObserved: candidateDiscarded, requests: runtimeRequests.filter((entry) => entry.method === 'preview.release').map((entry) => entry.params && entry.params.snapshotId) });
     r2Evidence.candidateRuntimeError = { requestedRevision: runtimeRevision.publishedRevision, activeRevision: runtimeNoticeState.revision, notice: runtimeNoticeState.notices[0] ?? null, retainedPlayable: runtimeRetainedPlayable.ok, screenshot: runtimeShot };
 
@@ -834,8 +849,9 @@ async function main() {
     const autoSwitch = await evaluate(page, (expected) => window.__CASE__.waitCanvas({ phase: 'ready', revision: expected, notice: false, maxCandidateFrames: 0 }, 30000), goodRevision.publishedRevision);
     if (autoSwitch.ok === true) await evaluate(page, (since) => window.__CASE__.waitFrameLoad(since, 10000), autoSwitchMark);
     const autoSwitchState = autoSwitch.state;
-    const autoSwitchRequests = await evaluate(page, (mark) => window.__CASE__.requestsSince(mark), autoSwitchMark);
-    const autoReleasedOld = autoSwitchRequests.some((entry) => entry.method === 'preview.release' && entry.params && entry.params.snapshotId === activeBeforeRuntime.snapshotId);
+    const autoRelease = await waitForPreviewRelease(page, autoSwitchMark, activeBeforeRuntime.snapshotId, 5000);
+    const autoSwitchRequests = autoRelease.requests;
+    const autoReleasedOld = autoRelease.ok === true;
     const autoSwitchShot = await screenshotPage(page, join(evidenceDirectory, '07-r2-following-good-revision.png'));
     checkAcceptance('B4', 'R2: a following good revision auto-switches to the new ready snapshot without any user action', autoSwitch.ok === true && autoSwitchState.revision === goodRevision.publishedRevision && autoSwitchState.snapshotId !== activeBeforeRuntime.snapshotId && autoSwitchState.noticeVisible === false && autoSwitchState.candidateFrameCount === 0, { ok: autoSwitch.ok, revision: autoSwitchState.revision, expected: goodRevision.publishedRevision, snapshotId: autoSwitchState.snapshotId, previous: activeBeforeRuntime.snapshotId, notice: autoSwitchState.noticeVisible });
     checkAcceptance('B4', 'R2: auto-switch releases the previously retained snapshot after promotion', autoReleasedOld === true, { releases: autoSwitchRequests.filter((entry) => entry.method === 'preview.release').map((entry) => ({ snapshotId: entry.params && entry.params.snapshotId, ok: entry.responseOk, code: entry.responseErrorCode })) });
@@ -889,8 +905,9 @@ async function main() {
         const stressReady = await evaluate(page, (expected) => window.__CASE__.waitCanvas({ phase: 'ready', revision: expected, notice: false, maxCandidateFrames: 0 }, 30000), stressResult.publishedRevision);
         if (stressReady.ok === true) await evaluate(page, (since) => window.__CASE__.waitFrameLoad(since, 10000), stressMark);
         const stressState = stressReady.state;
-        const stressRequests = await evaluate(page, (mark) => window.__CASE__.requestsSince(mark), stressMark);
-        const releaseForPrevious = stressRequests.some((entry) => entry.method === 'preview.release' && entry.params && entry.params.snapshotId === stressPrevSnapshot);
+        const stressRelease = await waitForPreviewRelease(page, stressMark, stressPrevSnapshot, 5000);
+        const stressRequests = stressRelease.requests;
+        const releaseForPrevious = stressRelease.ok === true;
         stress.switches.push({ round: index + 1, ok: stressReady.ok, revision: stressState.revision, expected: stressResult.publishedRevision, snapshotId: stressState.snapshotId, releasedPrevious: releaseForPrevious, records: bridge.snapshots.records.size, previewRoutes: host.routes.filter((candidate) => typeof candidate.path === 'string' && candidate.path.indexOf('/api/dsh-video/preview/') === 0).length });
         checkAcceptance('B4', 'R2 stress round ' + (index + 1) + ': publish→auto-switch keeps markers truthful and releases the previous snapshot', stressReady.ok === true && stressState.revision === stressResult.publishedRevision && stressState.candidateFrameCount === 0 && releaseForPrevious === true, { round: index + 1, state: { revision: stressState.revision, snapshotId: stressState.snapshotId }, previousSnapshot: stressPrevSnapshot, releasedPrevious: releaseForPrevious });
         stressPrevSnapshot = stressState.snapshotId;
@@ -944,6 +961,7 @@ async function main() {
     await evaluate(page, () => window.__CASE__.mount());
     const initialError = await evaluate(page, () => window.__CASE__.waitError(40000));
     const initialErrorState = initialError.state;
+    const remountToErrorMs = Date.now() - remountStartedAt;
     const initialErrorShot = await screenshotPage(page, join(evidenceDirectory, '08-r2-initial-failure.png'));
     checkAcceptance('B4', 'R2: with no valid preview yet an initial failure shows the full recoverable error (phase=error, no stale iframe)', initialError.ok === true && initialErrorState.phase === 'error' && initialErrorState.fullErrorVisible === true && initialErrorState.activeFrameCount === 0 && initialErrorState.canvasStatusRetry !== null, { ok: initialError.ok, phase: initialErrorState.phase, fullErrorVisible: initialErrorState.fullErrorVisible, activeFrames: initialErrorState.activeFrameCount, hasRetry: initialErrorState.canvasStatusRetry !== null });
     let initialRecovered = { ok: false, state: initialErrorState };
@@ -955,7 +973,7 @@ async function main() {
     }
     const initialRecoveredShot = await screenshotPage(page, join(evidenceDirectory, '09-r2-initial-failure-recovered.png'));
     checkAcceptance('B4', 'R2: initial-failure retry recovers to a ready preview (no dead end)', initialRecovered.ok === true && initialRecovered.state.fullErrorVisible === false && initialRecovered.state.activeFrameCount >= 1, { ok: initialRecovered.ok, phase: initialRecovered.state.phase, revision: initialRecovered.state.revision, activeFrames: initialRecovered.state.activeFrameCount });
-    r2Evidence.initialFailure = { remountLatencyMs: initialError.elapsedMs, initialErrorMs: initialError.elapsedMs, recoverOk: initialRecovered.ok, screenshots: [initialErrorShot, initialRecoveredShot] };
+    r2Evidence.initialFailure = { remountToErrorMs, errorWaitMs: initialError.elapsedMs, retryRecoverMs: initialRecovered.elapsedMs, recoverOk: initialRecovered.ok, screenshots: [initialErrorShot, initialRecoveredShot] };
     console.log('[phase] R2 retention/markers/switch/release/initial-failure evidence captured');
     evidence.recovery = {
       mode: 'r2-retention-and-switch',
