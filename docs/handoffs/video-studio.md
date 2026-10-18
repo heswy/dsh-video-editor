@@ -1,12 +1,11 @@
 # video-studio：唯一当前交接
 
-更新：2026-10-18。当前任务仍[P3-012 对话优先MVP](../tasks/P3-012-conversation-first-mvp.md)，左只读预览/右对话生成续改，用户手动编辑延期。
+更新：2026-10-18。P3-012范围保持：右对话生成/续改，左自动只读播放预览，用户手动编辑延期。
 
-最新交付e4b8a07 / 固定运行时d84ec5d，根alpha.4/引擎0.4.0；统一草稿PR为 **#4**（已确认），旧#1/#2/#3保留。总调度[复审](../reviews/P3-012-review-01.md)：正常链230/230、原浏览器41/41、基础174+版本10、worker44/compose5/client22+skip及包/staging通过；但还需补两项失败保护：
+交付1175596，固定root d49be12 / engine0deef8f，PR#4。总调度[第二轮复审](../reviews/P3-012-review-02.md)：R1关闭；正常261/261、原预览压力68/68、基础178+版本10、worker46/compose6/client22+skip和包/staging通过。**只补R2-follow-up：active预览的宽高/时长仍用了最新target props。**
 
-1. **R1** compose写入新entry后recordWrite失败返回普通E_INTERNAL，真实内容已变且不带uncertain。补权威commit点/历史阶段结算，失败回退或明确已发布/历史降级，不让接口与source/inspect矛盾。增加历史阶段故障+同id恢复回归。
-2. **R2** snapshot失败时canvasBody错误分支卸载了旧iframe。真实Chrome新增断言失败iframes=0。保持最后ready作品直至新runtime ready才换，失败就近提示，显示版本真实；补snapshot/runtime失败、切换资源/旧消息与恢复回归。
+独立真实Chrome：旧720×1280/5s作品保留时，新1280×720/6s候选快照失败，旧iframe被改成1280×720、seek.max改6。把尺寸/时长绑定每个预览实例，visible舞台/播放采用active、hidden采用candidate，runtime ready成功后统一切换，失败不改旧显示。详见复审复现及断言，不重做调查，不修R1、不加手动控件。
 
-这是原范围补修，不加功能/手动编辑，不重做全部渲染或调查。同一树/分支/PR#4一次交回新固定提交/staging/摘要；源代码与engine一起修，不等其它会话。原正常链和零手动控件验收保持。
+新增不同宽高比/时长在请求失败/runtime失败/等待期间保持旧作品、成功后再切换的真实浏览器回归，保留原68项及资源/消息压力断言。新固定root/staging一次交回；engine可继续0deef8f，无需重包无变化引擎或重跑无关长渲染。
 
-代码路径/权限读DEVELOPMENT，开工fetch后git show协调STATUS与本交接；不要为读文档merge/rebase。更新自己的task/research，普通push允许。旧候选/安装与用户作品只读，不prepare-fixture/覆盖；未授权安装/启停/重启、真实模型请求、profile/用户工程写入、merge main。无安全定向输入时请用户短人工操作，禁止全局坐标/键盘/个人剪贴板。
+沿用video-studio/codex/video-studio，同树/PR#4，fetch读协调STATUS/DEVELOPMENT，不merge/rebase协调分支。更新本任务/research，普通push允许；旧包/staging/用户作品只读，不安装/启停/重启、不新增模型请求、不改profile/用户工程、不merge main、不自动派发/跨会话联络。禁止全局坐标/键盘/个人剪贴板。

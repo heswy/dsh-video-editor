@@ -18,13 +18,13 @@
 
 ## 当前唯一任务
 
-[P3-012 对话优先MVP](tasks/P3-012-conversation-first-mvp.md)，唯一交接[video-studio](handoffs/video-studio.md)。交付 **e4b8a07** / 固定运行时 **d84ec5d**，根 **alpha.4** / 引擎 **0.4.0**，草稿PR **#4**。未安装此候选，当前用户安装最近只读确认为alpha.3。
+[P3-012 对话优先MVP](tasks/P3-012-conversation-first-mvp.md)，唯一交接[video-studio](handoffs/video-studio.md)。交付 **1175596** / 固定root **d49be12** / engine **0deef8f**；根alpha.4 / 两包0.4.0，PR#4。未安装该候选，用户当前安装最近只读确认为alpha.3。
 
-总调度[复审](reviews/P3-012-review-01.md)：基础174/174+版本10/10，worker44/44、compose5/5、client22pass+1skip；真实Host/Tool/worker+Chrome链230/230，原预览浏览器41/41。两种题材共用同一发布/续改/自动预览路径，零手动控件，方向与当前产品一致。尚非真实DSH模型验收。
+总调度[第二轮复审](reviews/P3-012-review-02.md)：基础178/178+版本10/10、worker46/46、compose6/6、client22pass+1skip；正常链261/261、原预览压力68/68；R1历史降级结算通过，同id重试一致。开发浏览器不是实际DSH模型验收。
 
-当前只补 **R1 历史写入失败的发布结算**、**R2 失败时保持最后有效预览**。两项已独立复现，新增Chrome断言42项41pass/1fail；候选暂不安装。统一会话一次补修，不扩展手动编辑/素材或旧demo专用协议。
+**唯一当前补修：R2 active预览尺寸/时长隔离。** 真实Chrome新增断言：旧720×1280/5s作品，在新1280×720/6s候选失败时被套上新viewport和时长。需要每实例元数据及成功ready后统一切换。不是新产品功能、不恢复手动编辑；旧R1不重复修。
 
-开发及任务副本验证/普通push可执行；安装/模型/重启未授权，不重置用户作品；旧P3-007与P3-011均非当前执行指令。
+候选暂不安装；同一会话集中补此项，新root提交/staging交回，engine可保持已审0deef8f。开发副本验证/普通push允许；安装/模型/重启、profile/用户工程修改、merge main未授权。
 
 ## 当前验收口径
 
