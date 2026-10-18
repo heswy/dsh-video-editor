@@ -155,9 +155,9 @@ worker 新配置模式（管理工程，Host 不直接改这些文件）：
 - 生命周期：`close` 清理该工程全部快照；`shutdown`/stdin EOF/SIGINT/SIGTERM/未捕获异常路径清理全部快照；worker 启动时丢弃上一进程遗留的整个 `previews/` 私有目录。清理失败不发布半成品、只记固定阶段诊断（stderr 不写路径或内容）。
 - 未来 Host 是唯一读取者；本 worker 没有预览内容读取或执行新方法，快照也不是安全沙箱。
 
-## P3-006-B：布局/样式持久化（0.3.0）
+## P3-006-B：布局/样式持久化（0.3.1）
 
-两包升 **0.3.0**；JSONL 协议仍为 v1，原有方法/结果与 P2/P3-003/P3-004 语义保持。统一 `edit.ops` 新增两类受控操作，无需新方法：
+两包升 **0.3.1**（P3-006-B 交付 0.3.0，BUG-001 渲染黑带修复升至 0.3.1）；JSONL 协议仍为 v1，原有方法/结果与 P2/P3-003/P3-004 语义保持。统一 `edit.ops` 新增两类受控操作，无需新方法：
 
 ```json
 {"type":"layout","target":"scene-1-title","unit":"composition-px","box":{"left":120,"top":240}}
@@ -183,3 +183,10 @@ worker 新配置模式（管理工程，Host 不直接改这些文件）：
 - `scene.update` 若模板删除了带人工 layout/style 的对象 → `E_OVERRIDE_CONFLICT`（不静默恢复模板默认）；`scene.remove` 是显式整 Scene 删除，允许执行并在 `changeSummary.droppedOverrides` 报告影响。
 - `project.revise` 三方合并按 **text / timing.start / timing.duration / attributes / class / layout.* / style.* / 其余 inline style** 逐字段比较：人工改位置/样式而 AI 只改文案时可合并、两者都保留；相同字段两边改不同 → `written:false + conflicts[{field,human,ai,humanValue,aiValue}]`；AI 候选删除人工改过或 base 已有人工覆盖的对象 → `AI_DELETE_HUMAN_MODIFY`。其它 Scene 保持逐字节不变。
 - layout/style 不修改 GSAP timeline：inline left/top/宽高是静态基座，动画 `y/scaleX/opacity` 继续相对运行；场景时序重生成仍按原规则改 timeline。不支持清除覆盖（无 null 语义）、删除单个元素、字体族/旋转/层级；`scene.*` 重生成仍会重置元素级 timing（沿用既有行为，本轮不扩展）。
+
+## BUG-001：导出底部黑带修复（0.3.1）
+
+- 现象：受控模板 1280×720 MP4 底部 86 行（y=634–719）为黑，worker 同 revision/时刻抽帧完整。
+- 根因（上游 HyperFrames 0.8.167，不改 node_modules）：render 的 static-frame dedup 会创建第二个验证页；该页关闭后主捕获页静默丢失 `page.setViewport(1280,720)` 的 device-metrics override，`window.innerHeight` 降为 633（真实 headless 窗口内容高度），而 `captureBeyondViewport` 已被“内容适配”降为 false，CDP 只绘制视口内 633 行，底部 87 行留黑。
+- 本项目可控适配：worker 对 render job 设置 `HF_STATIC_DEDUP=false`（仅渲染；frame/snapshot 路径不变），避免第二验证页，保持同一 revision/HTML、完整 720p 构图，不裁切/不拉伸/不补色。代价是长静帧渲染失去该去重优化（实测 5s 单场景 render 约 +1–2s；11s 工程仍在 120s 默认超时内）。上游修复后可移除。
+- 回归：`test/render-band.integration.mjs` 覆盖 baseline、人工布局（底部 logo 证明 y>560 内容存在）与 960×720 4:3 静态工程，各两个时刻解码 MP4 帧与同 revision worker frame 对照，并断言底部无黑带、场景背景到底、整帧差异在编码容差内。

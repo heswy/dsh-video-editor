@@ -75,7 +75,7 @@ export class Jobs {
         .map((j) => j.promise),
     );
   }
-  env(temp) {
+  env(temp, kind) {
     return {
       ...process.env,
       TMPDIR: resolve(temp, "tmp"),
@@ -89,6 +89,15 @@ export class Jobs {
       XDG_STATE_HOME: resolve(temp, "state"),
       HYPERFRAMES_FONT_CACHE_DIR: resolve(temp, "fonts"),
       HYPERFRAMES_EXTRACT_CACHE_DIR: "off",
+      // BUG-001: HyperFrames' static-frame-dedup verification opens a second
+      // page, after which the primary capture page silently loses its
+      // 1280x720 device-metrics override (innerHeight falls to the real
+      // headless window content height). The render then keeps CDP's
+      // captureBeyondViewport=false and clips the bottom rows black. Our
+      // controlled adapter disables dedup for render jobs only; capture frames
+      // stay the same revision/HTML and the composition is never cropped,
+      // stretched or filled. Revisit when the upstream page lifecycle is fixed.
+      ...(kind === "render" ? { HF_STATIC_DEDUP: "false" } : {}),
     };
   }
   async run(job, p) {
@@ -172,7 +181,7 @@ export class Jobs {
       const result = await runOwned([process.execPath, cli, ...args], {
         temp: job.temp,
         cwd: packageRoot,
-        env: this.env(job.temp),
+        env: this.env(job.temp, job.kind),
         signal: job.controller.signal,
         timeoutMs: p.timeoutMs ?? 120000,
         onOutput: (s) => {
@@ -216,7 +225,7 @@ export class Jobs {
           {
             temp: job.temp,
             cwd: packageRoot,
-            env: this.env(job.temp),
+            env: this.env(job.temp, job.kind),
             signal: job.controller.signal,
             timeoutMs: 15000,
           },

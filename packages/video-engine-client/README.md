@@ -56,14 +56,14 @@ const client = new WorkerClient({
 
 ## 包入口与版本
 
-`package.json` 版本 0.3.0，`exports` 提供根入口与 manifest 解析：
+`package.json` 版本 0.3.1，`exports` 提供根入口与 manifest 解析：
 
 - `dsh-video-engine-client` → `./src/index.mjs`（根入口不变）
 - `dsh-video-engine-client/package.json` → 自身 manifest
 
 worker 包（`dsh-video-engine-worker`）另行导出 `./worker` → `./src/worker.mjs` 与 `./package.json`；Host 应通过 Node 包解析获得 worker entry，而不是拼接开发路径。worker 入口只用于 resolve，不要在 Host 进程里 import 执行。两个包的 `files` 白名单只含 runtime 源码、协议 schema 与 README，不含 tests、fixtures、scripts、node_modules、缓存、artifacts 或字体。
 
-公共方法：`start`、`doctor`、`open`、`inspect`、`edit`、`frame`、`render`、`status`、`cancel`、`close`、`request`、`dispose`，以及 P3-003 多 Scene/修订方法：`projectCreate`、`assetImport`、`sceneCreate`、`sceneUpdate`、`sceneRemove`、`sceneReorder`、`projectRevise`、`history`、`undo`、`redo`（分别对应 v1 协议的 `project.create`、`asset.import`、`scene.*`、`project.revise`、`history`、`undo`、`redo`），以及 P3-004 预览快照方法：`previewSnapshot`、`previewRelease`（对应 `preview.snapshot`/`preview.release`）。0.3.0 起统一 `edit` 还接受 `layout`/`style` 两类受控 op（无需新方法），`inspect` 元素增加规范化 `layout`/`style` 与 `layout`/`style` capability；全部随 worker 结果透明透传。成功时返回 worker 原始 result；worker 的结构化错误与本包错误均以 `WorkerClientError` reject，包含 `code`、`message`、`stage`。`stdin`/`stdout`/`stderr` 断管会停止该 client、以 `E_TRANSPORT` 结算全部 pending，并只终止其直接 worker；故障被观察到之后的新请求在准入前以 `E_CLIENT_STATE` 拒绝，既不标记为已发送也不重放。未收到可靠响应的 `edit`（超时、断管、坏帧、退出或 teardown）会带 `uncertain: true`：调用方必须重新 inspect/以 expectedRevision 协调，不能假定未写入。未收到 `frame`/`render` jobId 的传输失败带 `jobUnknown: true`，它不声称作业未开始，且客户端无 jobId 可恢复查询或取消。没有自动重试或重放。
+公共方法：`start`、`doctor`、`open`、`inspect`、`edit`、`frame`、`render`、`status`、`cancel`、`close`、`request`、`dispose`，以及 P3-003 多 Scene/修订方法：`projectCreate`、`assetImport`、`sceneCreate`、`sceneUpdate`、`sceneRemove`、`sceneReorder`、`projectRevise`、`history`、`undo`、`redo`（分别对应 v1 协议的 `project.create`、`asset.import`、`scene.*`、`project.revise`、`history`、`undo`、`redo`），以及 P3-004 预览快照方法：`previewSnapshot`、`previewRelease`（对应 `preview.snapshot`/`preview.release`）。0.3.1 起统一 `edit` 还接受 `layout`/`style` 两类受控 op（无需新方法），`inspect` 元素增加规范化 `layout`/`style` 与 `layout`/`style` capability；全部随 worker 结果透明透传。成功时返回 worker 原始 result；worker 的结构化错误与本包错误均以 `WorkerClientError` reject，包含 `code`、`message`、`stage`。`stdin`/`stdout`/`stderr` 断管会停止该 client、以 `E_TRANSPORT` 结算全部 pending，并只终止其直接 worker；故障被观察到之后的新请求在准入前以 `E_CLIENT_STATE` 拒绝，既不标记为已发送也不重放。未收到可靠响应的 `edit`（超时、断管、坏帧、退出或 teardown）会带 `uncertain: true`：调用方必须重新 inspect/以 expectedRevision 协调，不能假定未写入。未收到 `frame`/`render` jobId 的传输失败带 `jobUnknown: true`，它不声称作业未开始，且客户端无 jobId 可恢复查询或取消。没有自动重试或重放。
 
 每个 client 自己生成 request id、按原始字节组行再 UTF-8 解码 stdout，严格验证 v1 envelope。分段、粘包、中文/emoji 跨字节和乱序响应按 id 匹配；坏 JSON、未知/重复 id、错误 envelope 和超长行会以协议错误终止该 client。stderr 也按原始字节截留尾部，`debug()` 可查看 `stderrBytes`/`stderrTruncated` 和 pending 数。
 

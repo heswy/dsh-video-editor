@@ -16,7 +16,7 @@ import { join, resolve } from "node:path";
 
 const clientRoot = resolve(import.meta.dirname, "..");
 const workerRoot = resolve(import.meta.dirname, "../../video-engine-worker");
-const version = "0.3.0";
+const version = "0.3.1";
 const clientFiles = ["README.md", "package.json", "src/index.mjs"];
 const workerFiles = [
   "README.md",
