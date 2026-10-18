@@ -78,3 +78,50 @@
 - 素材只支持 PNG/JPEG；视频/音频/SVG 拒绝。Scene.update 未暴露 color/shot 的读取接口，UI 换 shot/底色使用当前 UI 已知 Scene 字段；重开工程后未知自定义颜色/旧 shot 的保留需后续接口（本版未声称）。
 - BUG-001 黑带未修，本轮 MP4 不声称视觉通过。未改 engine/p1/spike/全局文档；未 merge；已安装 alpha.1 staging 未动。
 - 详细接口/安全/测试数据见 [P3-008 交付证据](../research/P3-008-canvas-ai-integration.md)。
+
+---
+
+## 执行记录（2026-10-18 联合复审 R1–R5 修复轮，p0-mode-shell / PR #3）
+
+**结论：R1–R5 与 parent 消息契约已集中修复，并按规定固定已复审引擎 `d383e3d` / client·worker `0.3.2` 生成新 staging 交回。未安装、未启停/重启、未改 profile/用户工程/个人会话、未发真实模型请求、未 merge、未改 p1 树；旧 C/008 候选、旧 staging 与当前 alpha.1 安装全部保留。**
+
+### 固定源码与候选
+
+| 项 | 值 |
+|---|---|
+| 功能提交 | `a030fd4`（Host R3/R4）+ `2c2771c`（Client R1/R2/R5/R6），修复链见下 |
+| 交付头 | `5f2df9621cce2886cad574d171bb8cdb43f3f14d` |
+| 修复提交 | `a030fd4` Host R3/R4；`2c2771c` Client R1/R2/R5/R6；`329dd0d` staging/回归工具；`454f156` 真实双击；`0e5be80` iframe composition 视口；`5f2df96` harness/chain/静态门禁 |
+| 固定引擎 | `d383e3d53a9401285519ee578d993081c3cb4b51`，client SHA-256 `0830ab71…1311a5`、worker `e4e16141…3716c3`（与 P3-009 复审包摘要一致） |
+| 固定包 | `artifacts/p2-b/5f2df96/dsh-video-0.3.0-alpha.3.tgz`：**103,200 B / 23 files / SHA-256 `b0af95b4c5087bc6446a65fcade8fd931b4d8b556b5dbed8feee865f4a260a45`**；23/23 与提交 `5f2df96` 逐字节一致（`package-check.json` SHA-256 `de0b708a…7867f614`） |
+| 新 staging | `artifacts/p2-b/staging-d383e3d-5f2df96`；INTEGRITY **`f0065803…73b52d`**、config `2dcb316a…1c3171`；root `5f2df96` / engine `d383e3d` / bundle `0.3.0-alpha.3` / client+worker `0.3.2` / rootDirty=false；bundle 22、client 16、worker 35 文件摘要通过，esbuild 可用 |
+
+### 关键实现
+
+- **R1 Scene 完整模板**：`applySceneColor` / `useAsset` 先取当次权威 `inspect`，用 `canvasSceneTemplate()` 复制完整冻结 `scenes[].template`（无 sceneId/未知键），只改 color/shot 并以该 revision 提交；模板缺失/非法时本地化拒绝且不发 `scene.update`，不再用 UI 默认值猜补；`useAsset` 不注入 UI 颜色。
+- **R2 静态基座逆映射**：拖动时保留 `elements[].layout` 静态基座与动画命中矩形，`canvasLayoutPatch()` 计算 patch——移动只写 left/top = base + 动画增量；四角缩放按 sx=动画宽/静态宽、sy=动画高/静态高（未知回退 sx）逆映射 width/height，west/north 再按 scale 逆映射 left/top；不写入动画偏移/transform/伪 auto 尺寸；静态原点或必需 scale 未知时拒绝且不发请求；写失败保留选择与拖动前矩形，不自动重试。
+- **R2 附带真实画布缺陷修复**：快照 iframe 保持 composition 尺寸（1280×720 inline width/height）并由 Host 层 CSS `scale(stage scale)` 缩放；此前 iframe 被拉成 letterbox 后视口尺寸，导致 scale<1 时画面裁切、runtime `elementsFromPoint` 命中在 composition 坐标越界后静默 miss。Canvas stage 独立 class 避免 legacy `.dv-stage` flex/padding 拉伸。
+- **R5 原位编辑失败恢复**：编辑器打开时生成一个 operationId 并在重试中复用（worker 幂等重放 uncertain 写）；成功后才关闭并 reload；失败保留 draft/target/错误与 `.dv-editor-retry`，不自动重放；冲突需显式 retry 触发一次 `onReload`（只刷新权威 revision），再显式提交；Esc 不发任何请求。
+- **R6 parent 消息契约**：按已审 P3-005-B `contract.js` 恢复严格 v1 信封/固定键/允许事件/逐事件载荷形状/每实例单调序号/仅接受相关回复；错误来源、实例、nonce、迟到、重复、超长消息丢弃；pending command 在 unbind、快照替换、destroyed、实例撤销时显式 resolve(null)+清 timer+清 Map，不再悬挂 Promise。
+- **R3 预览归属**：`preview` 由 bridge 计算 owned roots：本工程工程目录、`<sessionCwd>/<projectId>` 工程独立 Session 根、按 jobs 登记归属的 `<jobId>.png|mp4` 产物、本工程 receipt；旧共享 sessionCwd 文件只有在该绑定 Session 自己的 `inspect` 事件明确引用精确绝对路径时才允许（512 events / 256KiB / depth 8 有界扫描，controller 不可用即拒绝）。同根跨工程 artifact/工程目录/receipt、symlink/.. 逃逸、任意绝对路径全部拒绝；本工程文件保持可用。
+- **R4 准入/排空/清理**：`VideoBridge.invoke()` 改为非 async 单点准入，在任何 await 前把 dispatch task 放进唯一 `inFlight`；`dispose()` 先关写入口并取消上传 reader，再排空 inFlight，最后 teardown worker/session/snapshot/inbox；迟到 `preview.snapshot` 返回 `E_WORKER_DISPOSED` 并 release worker 快照，不注册路由/record。AssetInbox 校验可信工程、跟踪 handler/reader、上限 32 receipt、失败/过期/dispose 清理本实例临时文件（不删已复制工程资产），重复 dispose 幂等。
+
+### 验证
+
+| 项 | 结果 | 证据 |
+|---|---|---|
+| `npm run check` | **48 静态 + 75 Client + 44 Host = 167/167**（基线 136；新增 R1/R2/R5/R6 静态门禁、17+2 Client 画布回归、6 Host R3/R4 回归） | 本地实跑，HEAD `5f2df96` |
+| 版本门禁 | **10/10** | `node scripts/test-stage-version.mjs` |
+| 旧 demo Host→engine 链 | ok=true | `artifacts/p2-b/evidence/engine-run-2026-10-18T05-48-18-895Z.json`，SHA `667f3211…aa605` |
+| 受控新工程全链（0.3.2） | ok=true | `canvas-chain-2026-10-18T05-48-47-303Z.json`，SHA `32f7ae32…49bf9`：3 Scene/15s；富字段 template；换色后 subtitle/badge/accent/shot 与人工 layout/style 保留；真实 Tool `project.revise` 续改 `written=true` 且保留人工 layout/style/可选字段；close/reopen revision 不变；同根跨工程 artifact `E_PREVIEW_DENIED`、本工程文件可用、`/etc/hosts` 拒绝；dispose 后 inFlight=0、routes=0 |
+| 真浏览器快照 runtime | ok=true | `canvas-browser-2026-10-18T05-48-48-744Z.json`，SHA `29ab45c3…f2b16` |
+| 真实 CanvasWorkspace 手势/失败恢复（固定 staging） | **10/10 用例、175/175 断言、ok=true** | `staging-d383e3d-5f2df96/evidence/canvas-workspace-2026-10-18T05-48-26-807Z.json`，SHA `e2f0aced…5f051c`；staged client.js SHA `8c4c2b12…cf9957` 与 INTEGRITY 一致，helpers/canvas slice 摘要记录；10 cases：2 动画时刻×2 letterbox 拖动、rule scaleX 逆映射、auto-height 缩放、拖动 E_PERSIST、真实双击文字 E_PERSIST/重试、Esc、真实 revision 冲突两阶段；外部网络 0、非预期 console 0、page error 0、teardown ok、staging 只读审计 75/75 |
+| 真实帧/MP4 完整画面 | ok=true | `artifacts/p2-b/evidence/p3-008-r5/render-check.json`，SHA `4fd0c66f…d57e6`：frame PNG 22,734 B / `9a0dcdf7…edbc0f8`、像素 `(8,8)=RGB 255,212,0`；MP4 **143,794 B / SHA `e2bc1806…20f44b2`**，H.264 1280×720、30/1、450 帧、15s；1.5/7.5/13.5s 抽帧底部 86 行 darkRatio=0 且有可见内容；帧 PNG 证据同目录 `render-frame-{1.5,7.5,13.5}s.png` |
+
+### 未测 / 边界
+
+- **未安装/启停/重启**：本候选未进 profile；真实 DSH 页面点击、拖拽、输入、窄窗/主题/reduced-motion 观感仍需安装验收。浏览器证据是真实 Chrome + 真实 staged Host/worker/runtime + 真实 DOM 手势，但不是真实 DSH 激活。
+- 真实模型请求未执行；“AI 续改”由真实 Host Tool→worker `project.revise`（带 Session scope）证明，不是模型驱动 UI 闭环。
+- 引擎 `scene.template` 只覆盖受控 `product-launch-v1`；legacy demo 仍无 layout/style/Scene 能力。视频/音频/SVG 仍拒绝。
+- iframe/CSP/精确路由是资源隔离，不是 OS 沙箱；任意 HTML/JS 不支持。
+- 当前安装 alpha.1/旧引擎与全部旧 staging/包未动；本轮未 merge、未改 p1/全局协调文档。
