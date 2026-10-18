@@ -9,6 +9,7 @@
 - 只读对象：`/Applications/DeepSeek Harness.app/Contents/Resources/`（`Info.plist`、`app.asar`）。`app.asar` 内的包由本地只读脚本 [spikes/dsh-native-conversation/asar-read.mjs](../../spikes/dsh-native-conversation/asar-read.mjs) 解析头部后按路径读取；不执行包内代码，不读 profile 会话正文/凭据/模型密钥。
 - live 事实：`cordis_inspect_query`（client/host 的 `Service`/`Slots`/`Builtin`）由**当前运行 Host** 回答；Slot 拓扑取自运行中的页面。
 - 协调记忆：本轮 `git fetch origin` 失败（网络错误），按 DEVELOPMENT 规则使用本地缓存的协调提交 `920957d6401b6aa1253b81af48eb91d4d8ec7e72`（2026-10-18 10:01:39 +0800，含 P3-005-A 指南与 p0 handoff）；开发 HEAD 为 `b204760`。
+- 调查由两条**只读**工作流组成：Lead 的 live Inspect + 随包源码核对，以及一个源码侧只读复核（该复核者的 client Inspect 本轮三次 10s 超时，见 §10）。live 超时项按源码标注“未验证”。
 - 官方 skill：`cordis-plugin-development`（随包 `@deepseek-ai/dsh-agent-preset/skills/cordis-plugin-development`，与 Host 同版本 0.2.1-rc.2）；其 `references/ui-plugin.md` 明确浏览器插件用 `ctx.slots.inject/register`、React 来自模块表、非 baseline import 用 `dsh.client.external`。DESKTOP 内 `app.asar` 目录只有文件读取工具能打开，shell/glob/grep 不能。
 
 ## 1. 版本与运行身份（Q1）
@@ -65,6 +66,9 @@
     children: { "main.conversation": { kind: "single", scope: "session-maybe" } } }, ConversationPanel)
   ```
 
+- `main` slot 的 catalog 文档写明：保留的 `conversation` key 承载宿主 Conversation，**其它 key 不获得 Session binding**（`dsh-cordis-client-runner/lib/client.js:4324-4359`）→ 视频面板必须自带显式 Provider，不能依赖 main 的默认绑定。
+- 子级槽 key 不能复用任何**已被声明的槽**：运行时 SlotCore 在 `register` 时对重复 child 声明 throw（`dsh-web-frontend/dist/assets/index-*.js` 内 slots 实现）；用 `dsh-video.*` 命名空间的新 key（如 `dsh-video.chat`）即可，不影响 `conversation` key 或主面板语义。官方同型先例：root single `rightbar` 声明 session child `rightbar.session`，其组件用 `SessionProvider`+`renderSlot`（`dsh-client-ui-sidebar-right/lib/client.js:4913-4924,1583-1600`）。
+
 ### 3.3 事实：SessionProvider 的显式绑定
 
 `dsh-client-ui-session/lib/client.js`：
@@ -78,6 +82,9 @@
   jsx(SessionProvider, { session: resource.value.reference, children: renderSlot("sidebar.chat.conversation", {}) })
   ```
 - `dsh-client-ui-sidebar-right/lib/client.js:1583-1600` 同样用 `SessionProvider session={view.reference}`。
+- `SessionAreaProps { session?: SlotScopeTarget; empty?: () => ReactNode; children: ReactNode }`（runner:2125-2127,2177）；absent 时 `renderSessionArea` 渲染 `empty?.() ?? null`，**不渲染 children**（ui-session:715-718）。
+- 显式判定是 `Object.hasOwn(props,'session')`：`<SessionProvider session={undefined}>` 是**显式绑定 absent**，不是继承外层。
+- released reference 的 `binding` getter 会 throw `Session reference "…" is released`；`reference.ready` 即使 `openState:error` 也会 resolve 到 binding（open 被拒/等待者取消/提前 release 才 reject）→ UI 必须自己检查 `openState/openError`，不能只看 ready resolve。
 
 ### 3.4 事实：Factory 的嵌入行为
 
@@ -85,6 +92,10 @@
 - Composer 是 chain：`renderSlotChain("conversation.composer", {sessionId, session, pendingInteraction}, {fallback: composerBar, fallbackOnly: sessionId === undefined, overlay: true})`（:17846-17854）→ 审批/提问等原生 takeover 在嵌入内同样生效。
 - `views` 默认 `ConversationSessionView`；嵌入可按样例换成固定 Chat 视图，避免宿主 View 偏好影响。
 - **同一 Session 的编辑根**：`inputHub.shellFor(binding)` 以 binding 为键复用唯一 shell（:15757-15801）；README 明确“does not support simultaneous editable roots for one Session”（`dsh-client-ui-conversation/README.md:77,183`）→ 插件必须保证同一 Session **只挂载一个** occurrence（工程切换先 unmount 旧 occurrence）。
+
+- 事实修正：主 Header 在 **factory 外**由 main 壳渲染，因此**任何 occurrence 都不渲染主 Header**（embedded 不是特例）；`variant` 唯一作用是 CSS 类（宽度/内边距/overflow），不影响 Composer/Stop/流式/审批。
+- **`hero: true` 的副作用**：hero workspace chip 的 `selectWorkspace` 调用 `workspaceNavigation.openWorkspace(...)`（ui-conversation:19775-19794），会**导航宿主并切换主会话**。嵌入工程会话必须固定 `hero:false`（或自己实现不导航的 hero）；`phase` 只进 data 属性与 width controls，固定 `'active'` 类型上可行。
+- local `views` 组件的 kit：local registrationKit（renderSlot/renderFactorySlot/SessionProvider/t）+ local session standard hooks/props（useSession/useConversation/useInput/inputActions/sessionId）+ local props（renderer:902-933）。
 
 ### 3.5 建议的最小嵌入骨架（**未经 live 验证**）
 
@@ -114,12 +125,14 @@ function VideoConversationArea({ renderFactorySlot, renderSlot }) {
 function FixedChatView(props) { return props.renderSlot('conversation.session', { view: 'chat' }) }
 ```
 
-说明：声明 `children` 的目的是取得 kit 中的 `SessionProvider`/`renderSlot`（§3.2）；如宿主未来提供更直接的 Provider seat 可简化。**本骨架没有实现**，也没有在真实 Host 中运行；`main` occupant 的 kit 实际是否包含 `SessionProvider`/`renderSlot` 需在实现轮以 live slot 验证（源码规则 + 同 slot 的 ConversationPanel 用法支持该推断）。
+说明：声明 `children` 的目的是取得 kit 中的 `SessionProvider`/`renderSlot`（§3.2）；如宿主未来提供更直接的 Provider seat 可简化。client half 的 Cordis `inject` 需增加 `'sessions'`（仓库 `client.js:1681` 现为 `['slots','layout','locale']`）。**本骨架没有实现**，也没有在真实 Host 中运行；`main` occupant 的 kit 实际是否包含 `SessionProvider`/`renderSlot` 需在实现轮以 live slot 验证（源码规则 + 同 slot 的 ConversationPanel 用法 + sidebar-right 先例支持该推断）。
 
 ### 3.6 manifest external（Q2 补充）
 
 - 事实：`dsh.client.external` 是**字符串数组**（`dsh-client-modules/lib/client.js:67` `optionalStringArray(... "dsh.client.external", decl.external)`）；external 请求按 `<pkg>/client` 归一到动态包 row 或精确静态表键，缺提供方/畸形/自请求/同步环在组合期拒绝（`dsh-client-modules/README.md:50`；解析错误见 `lib/client.js:783-788,833-840`）。
 - 本嵌入路线**不需要任何外部 require**：`renderFactorySlot`/`SessionProvider`/`renderSlot` 由 slot kit 注入，`ctx.sessions` 由服务取得，React 是 baseline。因此 `package.json` 的 `dsh.client.external` 可以保持缺省/空数组；只有将来直接 import `@deepseek-ai/dsh-client-ui-conversation/client` 等才需声明（例如类型不可用、需本地组件 API 时）。
+- parser 形态：`dsh.client` 的 `platform` 为 string，`inject`/`external` 为可选 string 数组，`external` 形如 `["@deepseek-ai/dsh-client-ui-conversation/client"]`（`dsh-client-modules/lib/index.js:62-76`；`<pkg>/client` 与裸 `<pkg>` 归一，自请求/环在组合期拒绝）。
+- 浏览器端 `external` 只用于**到达顺序**：`arriveGraphRow` 先加载依赖（client.js:777-794）；真正 `require` 的解析顺序是 platform seed → 已 materialize → 已注册 factory，**不读 external 声明**（client.js:832-841）。静态 seed 表含 react、react/jsx-runtime、react-dom、react-dom/client、@deepseek-ai/cordis、zod、@tanstack/react-virtual、dsh-client-store、dsh-client-ui-slots、dsh-client-ui-primitives、dsh-client-ui-dockkit（`dsh-web-frontend/dist/assets/index-*.js`）；ui-conversation/ui-session 是动态 row。
 - 注意：桌面 app.asar 未随包 `.d.ts`（`files` 声明有 `lib/types/**/*.d.ts`，实际 asar 只有 `lib/*.js`）→ 实现轮以源码/README 契约 + 运行时校验为准，不能依赖本地类型包。
 
 ### 3.7 事实：审批 takeover 与 Stop/Composer 的关系
@@ -136,21 +149,29 @@ function FixedChatView(props) { return props.renderSlot('conversation.session', 
 
 - `retain(target: SessionId|SubagentAddress, {source, signal?}): SessionReference`：立即返回 owned reference 并开始共享 initial history opening；`reference.ready: Promise<SessionBinding>`；`release(): void`。
 - `using(target, options, operation)`：回调期间持有，失败也释放；`retainInfo(id)` 是只读 retainedBy 计数；`binding(id)`/`scope(id)` 只借用已 retain 的 generation；`fork`/`search`/`refreshProjections` 另有契约。
+- README 明确 source key 可声明合并扩展：`dsh-api-session-controller/README.md:82` “Consumer source keys are declaration-merge extensible; navigation and completion acknowledgement belong to UI consumers, not this Controller.” 运行时任意字符串只作为 `retainedBy[source]` 计数键（client:4059-4087）。
+- `retain` 除了计数，还会**立即开启该 Session 的共享历史 opening（follow/历史）**，不只是“拿引用”（client:3842-3854）；`release()` 幂等并清 record；`ready` 语义见 §3.3。
 - `SessionReferenceSourceMap` 默认只列 `controllerOperation|gateway`，但随包真实调用点使用**声明合并的 source 名**：`ui-workspace` 用 `source: "mainView"`（`dsh-client-ui-workspace/lib/client.js:1653`），`sidebar-right` 用 `source: "sidebarView"`（`:1638`）。源码里 `mainView` retention 同时被 layout/workspace/agent-preset 用来识别“宿主主视图当前会话”（例如 `ui-session/lib/client.js:917,974`；`ui-workspace/lib/client.js:867`）。
-- 建议：Video 插件使用**自己的 source 名**（如 `"videoPanel"`，通过运行时字符串传入手写 JS），既不冒用 `mainView`（会改变宿主“当前会话”语义），又能在 `retainInfo().retainedBy` 里被诊断/清理。运行期 source 只是计数键；没有找到会拒绝未知 source 的运行时校验（未 live 验证）。
+- 已编译包里的真实 source：`mainView`（ui-workspace:1653）、`sidebarView`（sidebar-right:1638）、`sidebarChat`（ui-subagent:762）、`gateway`（Controller 内部 retainAgentScope，client:4021-4024）；`controllerOperation` 类型里有、未发现直接调用点。
+- 建议：Video 插件使用**自己的 source 名**（如 `"videoView"`，通过运行时字符串传入手写 JS），既不冒用 `mainView`（会改变宿主“当前会话”语义），也不借 `gateway/controllerOperation`（内部控制面语义），并能在 `retainInfo().retainedBy` 里被诊断/清理。README 允许 declaration-merge；但声明合并的模块 specifier 未随包分发，纯 JS 手写实现无需类型检查，将来若加 TS 需补声明。运行期没有找到拒绝未知 source 的校验（未 live 验证）。
 
 **建议生命周期**
 
 | 事件 | 动作 |
 |---|---|
-| 打开/切换工程 | 释放旧工程的 `SessionReference`（先 unmount 旧 occurrence），再对目标工程当前会话 `retain`；等 `reference.ready` 失败则展示本地化错误并保留旧画面 |
+| 打开/切换工程 | 先 `retain` 新引用并等 `ready`；以 sessionId 为 key 切到新树（强制卸载旧 occurrence）；旧树卸载后再 `release` 旧引用。ready/open 失败则本地化提示并保留旧画面 |
 | 新建创作会话 | `ctx.sessions.create({cwd?})` → 拿到 SessionId → 写入工程映射 → retain 并挂载 |
 | 选历史会话 | 释放当前 reference，retain 目标 id；不调用任何宿主导航（`layout.selectPanel` 只用于切到视频面板） |
 | 面板切换/离开 | unmount occurrence（dispose render），release reference；不删除会话 |
-| 插件停用/HMR | `ctx.effect` 清理顺序：先 unmount/释放 render，再 release reference；Host 侧会话日志、运行中请求留在 Host，重连后 `retain` 重开 |
+| 插件停用/HMR | `ctx.effect` cleanup 中 release reference 并置 disposed、面板立即渲染 null（避免“已释放仍渲染”窗口）；Host 侧会话日志、运行中请求留在 Host，重连后 `retain` 重开。HMR 会重执行 bundle、旧 React state 丢失，session/workspace/connection state 保留（HMR README:36,48,66） |
 | 关闭会话（产品动作） | 无“关闭会话”原生 API；可停止运行（`cancel`）、归档（会阻断 step，见 §5.4）或仅从工程映射移除（不删宿主会话） |
 
-**同一 Session 双编辑根**：源码只有“一个 shell per binding”和 README 限制；没有发现显式拒绝第二次 mount 的 guard。推断：两个 occurrence 会共享同一个 input shell/editor，行为不被支持；插件必须自己保证唯一挂载（例如面板按 projectId+sessionId 渲染一个 conversation，切换用 key 强制卸载）。
+**同一 Session 双编辑根**
+
+- 事实：`InputHub.shells = new WeakMap()` 以 binding 对象为键，同 Session 两个 occurrence 拿到同一个 binding ⇒ 同一个 `SessionInputShell`/同一 Lexical editor；`ComposerContentEditable` 的 layout effect `editor.setRootElement(el)`，cleanup 置 null（ui-conversation:15725,15757-15801,18088-18090）。**没有“已占用”守卫，不会抛错**。
+- 推断（高置信）：后挂载者会把编辑根“偷走”，先卸载者的 cleanup 会把存活者的 root 置空。README:77 明确“does not support simultaneous editable roots for one Session”。
+- 建议守卫：`ctx.sessions.retainInfo(id).getSnapshot().retainedBy.mainView > 0` 时不渲染嵌入（显示“已在宿主对话中打开”占位）；或产品规定工程会话不出现在宿主历史（§5.3）。
+- shell 不在 occurrence 卸载时销毁，而在 session 作用域销毁时 `shell.dispose()+shells.delete`（:15802-15815）；reference 计数归零才 retire scope（api client:4111-4119）。切换顺序见上表修正。
 
 ## 5. 工程↔创作会话（Q3）
 
@@ -162,12 +183,17 @@ function FixedChatView(props) { return props.renderSlot('conversation.session', 
 - 恢复/打开：`retain` 打开历史（共享 initial history opening）；没有“选择 Session”的副作用 API 被嵌入调用。
 - 关闭：无 remove/delete；`cancel` 只停当前 turn；`archiveSession` 见 5.4。
 - 草稿/滚动/运行中请求：由 ui-conversation/inputHub/Session store 在 Host/Client 各自持久化（README:77-79,97-99）；插件只负责挂载生命周期。**HMR、重连、停用时的行为未 live 验证。**
+- `ctx.uiWorkspace` 的区别（源码事实）：`connectWorkspace` 只是 `sessions.create({workspaceId})`，**不导航**；`openWorkspace`/`startSession` 会 create + `beginNavigation` + `replaceMain`（导航并切换宿主主会话）；`archiveSession` 只影响 Workspace 归档，若归档当前主会话则 `clearMain()`。→ 插件用 `ctx.sessions.create`，**不要**用 `startSession/openWorkspace`（会强制导航）。
+- `create({sessionId})` 的复用仅在“仍 blank、属于目标目录/Workspace、未归档”时成立，否则返回**新的 id**（Host `lib/index.js:755-786`）⇒ 映射必须写回返回 id。
+- `remote.session.rename` 存在，但 client `sessions` 服务没有 rename 包装；bundle 插件能否直接调 Remote namespace 未验证（未测）。
+- 嵌套会话/分叉：`fork` 会继承 cwd；没有“一个工程只能一个会话”的宿主约束。
 
 ### 5.2 建议：映射由插件 Host 持久化
 
 - 工程注册表（Video 自己的 project store）保存 `{projectId, sessionIds: [...], activeSessionId}`；会话元数据（title/cwd/updatedAt）可用宿主列表投影读取，不复制消息正文。
 - 新建会话：`ctx.sessions.create({ cwd })`（cwd 用工程目录或固定占位；**不要**传 `workspaceId` 以自动挂到宿主 Workspace，见 5.3）→ 把 id 写进工程注册表 → 可选 `rename("<工程名> · 创作会话 N")`。
 - 一会话一工程：映射写入时做双向校验；一个 sessionId 只能属于一个 projectId（Host 侧拒绝重复绑定）。
+- 映射持久化可选通道：①**Host 工程存储（首选）**：工程目录下自有文件或 `ctx.storageDomain.open(spec)`（Host Service 目录有 storageDomain.open）；②用 `cwd` 作为工程身份（`SessionSummary.cwd` 可读，但弱约束/可迁移）；③自定义 Session projection（可 `ctx.sessionProjections.register`，但 apply 只消费事件，目前没有直接 set 任意 projection 的 Host API，成本高）。title 只能事后 rename。
 - 切工程不修改宿主当前会话：嵌入只 retain 自己的 SessionReference；不使用 `mainView` source、不调用 `uiWorkspace.openSession/startSession`。
 
 ### 5.3 事实/风险：工程会话在宿主 UI 的可见性
@@ -179,7 +205,8 @@ function FixedChatView(props) { return props.renderSlot('conversation.session', 
 
 ### 5.4 未决：同一 Session 在宿主主视图被手工打开
 
-- 若用户在宿主历史里点开同一工程会话，宿主 `mainView` retain + 插件 retain 会同时存在；ui-conversation 只按 binding 复用唯一 shell，README 声明双编辑根不受支持。**建议**：工程会话命名可识别 + 插件在检测到 `retainInfo(id).retainedBy.mainView > 0` 时给只读提示/要求先关闭宿主视图（具体交互待产品确认）；或按 5.3 的路线避免它出现在宿主历史。
+- 若用户在宿主历史里点开同一工程会话，宿主 `mainView` retain + 插件 retain 会同时存在；ui-conversation 按 binding 复用唯一 shell/editor，README 声明双编辑根不受支持；Lexical `setRootElement` 抢占/清空见 §4。**建议**：工程会话命名可识别 + 插件在检测到 `retainInfo(id).retainedBy.mainView > 0` 时给只读提示/要求先关闭宿主视图（具体交互待产品确认）；或按 5.3 的路线避免它出现在宿主历史。
+- 另一个真实耦合：`completionUnread` 只在 `isMain(sessionId)`（mainView retention）时被清除（ui-session:948-954）⇒ 非 mainView 的嵌入会话完成时，可能进入宿主“未读完成”提醒（宿主侧行为，非布局）。需产品确认可接受，或由宿主/插件提供抑制手段（未找到受支持抑制 API）。
 
 ## 6. 模型与推理强度（Q4）
 
@@ -282,6 +309,8 @@ function FixedChatView(props) { return props.renderSlot('conversation.session', 
 - 未验证：`ctx.sessions.create({cwd})` 创建的会话在宿主侧栏/搜索中的实际可见性；自定义 source 名在运行期的统计/诊断行为；归档会话 retain/读取的实际可用性（gate 只拦 step）。
 - 未实现/未验证：Video Tool 的 session 绑定与审批接线；AI 附件→工程资产的 receipt 通路（`fileUploads.resolve` 在不立刻 prompt 时是否持续可解析）；`attachments.readImage` 依赖 `dsh-attachment-local` 组合；`uiConversation` 服务对 bundle 插件是否可达；会话历史 UI 与标题投影的键路径（projection `title` 已在源码确认，客户端取值需实现轮验证）。
 - 事实修正记录：`AttachmentStore` 的 abstract 方法不产生运行时 JS；“可读”契约由 api-catalog 声明、由 `dsh-attachment-local` 实现，VideoBridge 只能依赖挂载了该实现的 Host 组合。
+- live 限制说明：源码侧复核者本轮 client Inspect 连续三次 10s 超时，未能独立做 live 槽树/绑定验证；其结论以随包源码为据。Lead 自己的 live client Inspect 正常（§1、§3.1），但**均未在启用 dsh-video 的页面上注册/渲染过嵌入骨架**；实现前应做一次最小 live spike（启用插件 → 注册私有 session child → 确认 kit props → 嵌入 occurrence）。
+- HMR/禁用：`dsh-client-modules` 在禁用时移除 entry 并等待异步 effect；`dsh-client-hmr` 重执行 bundle、React state 丢失而 session/workspace/connection 保留（HMR README:36,48,66）。旧 fiber drain 与 React 卸载的精确时序未测。
 - 产品未决：工程会话要不要出现在宿主历史；是否为其建独立 Workspace；宿主主视图与嵌入同一 Session 的冲突提示策略；审批接管期间 composer/Stop 被隐藏时嵌入处是否需要独立 Stop。
 - 本轮没有安装、启停/重启、改 profile、创建/编辑会话、发消息、调模型；也未验证 HMR/停用/重连与浅色/深色/窄窗。
 
@@ -303,3 +332,9 @@ function FixedChatView(props) { return props.renderSlot('conversation.session', 
 | 工具/上下文 | `dsh-tools`（live Inspect `ToolExecutionInput/ToolDefinition`）；`dsh-system-prompt/README.md` |
 | manifest external | `dsh-client-modules/README.md:34,50`；`dsh-client-modules/lib/client.js:67,783-788,833-840` |
 | 官方 skill | `dsh/node_modules/@deepseek-ai/dsh-agent-preset/skills/cordis-plugin-development/references/ui-plugin.md` |
+| slot/kit 类型与运行时 | `dsh-cordis-client-runner/lib/client.js:1773-1791,2064-2067,2125-2178,2189-2203,2225-2227,4324-4359`；shell 静态 seed 的 slots 实现（`dsh-web-frontend/dist/assets/index-*.js`） |
+| Session 生命周期/独立性 | `dsh-api-session-controller/README.md:80-82`；`dsh-client-ui-session/lib/client.js:715-718,837-843,913-954`；`dsh-client-ui-layout/lib/client.js:60,118-119,407-409` |
+| 嵌入/Hero/双编辑根 | `dsh-client-ui-conversation/lib/client.js:15725,15757-15815,17325,17730-17745,17846-17878,18088-18090,19775-19794`；`dsh-client-ui-conversation/README.md:77,85,93` |
+| 工程会话 API | `dsh-client-ui-workspace/lib/client.js:1397-1417,1470-1544,1638-1692`；`dsh-api-session-controller/lib/client.js:3321-3358,3745-3786,3842-3977,4059-4119` |
+| HMR/禁用 | `dsh-client-modules/README.md`（Live plugin composition）；`dsh-client-hmr/README.md:36,48,66` |
+| external/seed 表 | `dsh-client-modules/lib/index.js:62-76,99-101,414-444`；`dsh-client-modules/lib/client.js:777-841`；`dsh-web-frontend/dist/assets/index-*.js` |
