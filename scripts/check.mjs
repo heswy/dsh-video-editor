@@ -134,8 +134,8 @@ check('bundle manifest declares patch and client', () => {
   return `platform=web, inject=[${pkg.dsh.client.inject.join(', ')}]`;
 });
 
-check('package version advanced for the P3-012 conversation-first candidate', () => {
-  assert(pkg.version === '0.3.0-alpha.4', `expected version 0.3.0-alpha.4, found "${pkg.version}"`);
+check('package version advanced for the P3-014 interface candidate', () => {
+  assert(pkg.version === '0.3.0-alpha.5', `expected version 0.3.0-alpha.5, found "${pkg.version}"`);
   return pkg.version;
 });
 

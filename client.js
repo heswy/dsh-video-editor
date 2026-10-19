@@ -122,7 +122,7 @@ window.__ModuleLoader__.load({
       'video.ai.listEmpty': '当前工程还没有创作会话。',
       'video.project.label': '工程',
       'video.project.new': '新建工程',
-      'video.project.untitled': '未命名工程',
+      'video.project.untitled': '未命名作品',
       'video.project.open': '打开工程',
       'video.canvas.play': '播放',
       'video.canvas.pause': '暂停',
@@ -134,8 +134,10 @@ window.__ModuleLoader__.load({
       'video.canvas.export': '导出 MP4',
       'video.canvas.exporting': '正在导出…',
       'video.canvas.download': '下载 MP4',
-      'video.canvas.loading': '正在加载画布…',
+      'video.canvas.loading': '正在准备预览',
       'video.canvas.retry': '重试',
+      'video.canvas.updatingPreview': '正在更新预览',
+      'video.canvas.loadTimeout': '预览准备超时，请重试。',
       'video.canvas.frameTitle': '视频预览',
       'video.canvas.runtimeError': '画布运行时错误。',
       'video.canvas.invalidStyle': '请输入有效样式。',
@@ -161,7 +163,7 @@ window.__ModuleLoader__.load({
       'video.canvas.retryText': '重试保存',
       'video.canvas.revisionRefreshed': '工程已更新，请再次提交保存。',
       'video.preview.booting': '正在准备工程…',
-      'video.preview.empty': '还没有可用画面。',
+      'video.preview.empty': '描述你的想法，画面将在这里出现。',
       'video.preview.retry': '重试',
       'video.error.session': '创作会话暂不可用。',
       'video.error.sessionConfig': '创作会话尚未配置。',
@@ -243,7 +245,7 @@ window.__ModuleLoader__.load({
       'video.ai.listEmpty': 'This project has no creation conversation yet.',
       'video.project.label': 'Project',
       'video.project.new': 'New project',
-      'video.project.untitled': 'Untitled project',
+      'video.project.untitled': 'Untitled film',
       'video.project.open': 'Open project',
       'video.canvas.play': 'Play',
       'video.canvas.pause': 'Pause',
@@ -255,8 +257,10 @@ window.__ModuleLoader__.load({
       'video.canvas.export': 'Export MP4',
       'video.canvas.exporting': 'Exporting…',
       'video.canvas.download': 'Download MP4',
-      'video.canvas.loading': 'Loading canvas…',
+      'video.canvas.loading': 'Preparing preview',
       'video.canvas.retry': 'Retry',
+      'video.canvas.updatingPreview': 'Updating preview',
+      'video.canvas.loadTimeout': 'Preview took too long. Please retry.',
       'video.canvas.frameTitle': 'Video preview',
       'video.canvas.runtimeError': 'The canvas runtime reported an error.',
       'video.canvas.invalidStyle': 'Enter a valid style.',
@@ -282,7 +286,7 @@ window.__ModuleLoader__.load({
       'video.canvas.retryText': 'Retry save',
       'video.canvas.revisionRefreshed': 'The project was updated; submit the save again.',
       'video.preview.booting': 'Preparing the project…',
-      'video.preview.empty': 'No preview is available yet.',
+      'video.preview.empty': 'Describe your idea. Your film will appear here.',
       'video.preview.retry': 'Retry',
       'video.error.session': 'Creation conversations are temporarily unavailable.',
       'video.error.sessionConfig': 'Creation conversations are not configured.',
@@ -337,12 +341,12 @@ window.__ModuleLoader__.load({
   align-items:center;
   gap:8px;
   flex:none;
-  min-height:52px;
-  padding:10px max(16px, var(--dsh-frame-leading-clearance, 0px)) 10px 16px;
+  min-height:56px;
+  padding:8px 20px 8px max(16px, var(--dsh-frame-leading-clearance, 0px));
   border-bottom:1px solid color-mix(in srgb, var(--dsw-alias-border-l1, rgba(127,127,140,.28)) 62%, transparent);
 }
 [data-platform="darwin"] .dv-topbar{
-  padding-top:calc(10px + var(--dsh-frame-top-clearance, 0px));
+  padding-top:calc(8px + var(--dsh-frame-top-clearance, 0px));
 }
 .dv-back{
   display:inline-flex;
@@ -370,6 +374,7 @@ window.__ModuleLoader__.load({
   outline-offset:2px;
 }
 .dv-back-label{white-space:nowrap;}
+.dv-sr-only{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0;}
 .dv-spacer{flex:1;min-width:0;}
 .dv-display{position:relative;display:inline-flex;flex:none;}
 .dv-icon-button{
@@ -462,11 +467,11 @@ window.__ModuleLoader__.load({
   display:flex;
   flex:none;
   flex-direction:column;
-  width:clamp(320px, 34%, 400px);
+  width:clamp(340px, 34%, 440px);
   min-width:0;
   min-height:0;
   border-left:1px solid color-mix(in srgb, var(--dsw-alias-border-l1, rgba(127,127,140,.28)) 62%, transparent);
-  background:var(--dsw-alias-bg-layer-1, #232327);
+  background:var(--dsw-alias-bg-base, #1a1a1c);
   position:relative;
 }
 .dv-ai-head{
@@ -475,8 +480,8 @@ window.__ModuleLoader__.load({
   align-items:center;
   justify-content:space-between;
   gap:8px;
-  min-height:44px;
-  padding:6px 12px;
+  min-height:56px;
+  padding:10px 20px;
   border-bottom:1px solid color-mix(in srgb, var(--dsw-alias-border-l1, rgba(127,127,140,.28)) 40%, transparent);
 }
 .dv-ai-heading{
@@ -500,8 +505,7 @@ window.__ModuleLoader__.load({
   white-space:nowrap;
 }
 .dv-ai-actions{display:flex;flex:none;align-items:center;gap:4px;}
-.dv-history-toggle{width:28px;height:28px;}
-.dv-new-session{min-height:28px;padding:0 8px;font-size:.8em;}
+.dv-history-toggle,.dv-new-session{width:36px;height:36px;}
 .dv-ai-body{
   display:flex;
   flex:1;
@@ -511,6 +515,15 @@ window.__ModuleLoader__.load({
   overflow:hidden;
 }
 .dv-ai-body > *{min-width:0;min-height:0;}
+/* Own full-height boundary; only stable native region attributes are used.
+   Native Composer, approvals, model selection, scroll and editor stay mounted. */
+.dv-conversation{display:flex;flex:1;flex-direction:column;min-width:0;min-height:0;overflow:hidden;}
+.dv-conversation > *{flex:1;min-height:0;}
+.dv-conversation [data-conversation-content]{flex:1;min-height:0;height:100%;}
+.dv-conversation [data-conversation-scroll]{display:flex;flex:1;flex-direction:column;min-height:0;}
+.dv-conversation [data-conversation-scroll] > [data-slot="conversation.session"]{display:flex;flex:1 0 auto;flex-direction:column;min-height:0;}
+.dv-conversation [data-conversation-region="composer"]{flex-shrink:0;margin-top:auto;}
+
 .dv-preview{
   position:absolute;
   inset:0;
@@ -873,25 +886,32 @@ window.__ModuleLoader__.load({
   text-align:left;
 }
 
-.dv-projectbar{
-  display:flex;
-  flex-wrap:wrap;
-  align-items:center;
-  gap:8px;
-  padding:8px 16px 0;
-}
-.dv-project-picker{display:flex;align-items:center;gap:6px;min-width:0;color:var(--dsw-alias-label-secondary,#a4a4ad);font-size:.8em;}
+.dv-projectbar{display:flex;align-items:center;min-width:0;max-width:min(55%, 360px);-webkit-app-region:no-drag;}
+.dv-project-picker{display:flex;align-items:center;min-width:0;max-width:100%;}
 .dv-project-picker select{
+  appearance:none;
+  width:100%;
   min-width:120px;
-  max-width:240px;
-  height:26px;
-  border:1px solid color-mix(in srgb, var(--dsw-alias-border-l1, rgba(127,127,140,.32)) 82%, transparent);
-  border-radius:7px;
-  background:var(--dsw-alias-bg-layer-1,#232327);
+  max-width:320px;
+  height:36px;
+  padding:0 30px 0 10px;
+  border:0;
+  border-radius:8px;
+  background-color:transparent;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none'%3E%3Cpath d='m3 4.5 3 3 3-3' stroke='%2381858c' stroke-width='1.3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-position:right 10px center;
+  background-repeat:no-repeat;
   color:var(--dsw-alias-label-primary,#f2f2f5);
   font:inherit;
-  font-size:.9em;
+  font-size:.92em;
+  font-weight:550;
+  text-overflow:ellipsis;
+  cursor:pointer;
 }
+.dv-project-picker select:hover{background-color:var(--dsw-alias-interactive-bg-hover,rgba(127,127,140,.12));}
+.dv-project-picker select:focus-visible{outline:2px solid var(--dsw-focus-ring-color,var(--dsw-alias-brand-primary,#5b8cff));outline-offset:2px;}
+.dv-project-picker select:disabled{opacity:.55;cursor:wait;}
+.dv-project-picker option{background:var(--dsw-alias-bg-base,#1a1a1c);color:var(--dsw-alias-label-primary,#f2f2f5);}
 .dv-canvas-shell{
   display:flex;
   flex:1;
@@ -910,7 +930,14 @@ window.__ModuleLoader__.load({
   flex:none;
 }
 .dv-canvas-bar .dv-button{min-height:28px;padding:0 9px;font-size:.8em;}
-.dv-seek{flex:1;min-width:120px;accent-color:var(--dsw-alias-state-business-primary,#6f8cff);}
+.dv-seek{flex:1;min-width:60px;height:20px;margin:0;appearance:none;background:transparent;accent-color:var(--dsw-alias-label-primary,#f2f2f5);cursor:pointer;}
+.dv-seek::-webkit-slider-runnable-track{height:3px;border-radius:99px;background:var(--dsw-alias-border-l1,rgba(127,127,140,.28));}
+.dv-seek::-webkit-slider-thumb{appearance:none;width:10px;height:10px;margin-top:-3.5px;border:0;border-radius:50%;background:var(--dsw-alias-label-primary,#f2f2f5);transition:box-shadow var(--dv-dur-fast) var(--dv-ease);}
+.dv-seek::-moz-range-track{height:3px;border-radius:99px;background:var(--dsw-alias-border-l1,rgba(127,127,140,.28));}
+.dv-seek::-moz-range-thumb{width:10px;height:10px;border:0;border-radius:50%;background:var(--dsw-alias-label-primary,#f2f2f5);}
+.dv-seek:hover:not(:disabled)::-webkit-slider-thumb{box-shadow:0 0 0 4px color-mix(in srgb,var(--dsw-alias-label-primary,#f2f2f5) 8%,transparent);}
+.dv-seek:focus-visible{outline:2px solid var(--dsw-focus-ring-color,var(--dsw-alias-brand-primary,#5b8cff));outline-offset:4px;border-radius:4px;}
+.dv-seek:disabled{opacity:.35;cursor:default;}
 .dv-time{color:var(--dsw-alias-label-secondary,#a4a4ad);font-size:.78em;font-variant-numeric:tabular-nums;white-space:nowrap;}
 .dv-export-link{text-decoration:none;display:inline-flex;align-items:center;}
 .dv-canvas-wrap{
@@ -1052,29 +1079,65 @@ window.__ModuleLoader__.load({
 .dv-asset-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.78em;}
 .dv-asset-row .dv-button{min-height:24px;padding:0 7px;font-size:.74em;}
 .dv-empty-actions{display:flex;flex-wrap:wrap;gap:8px;}
-.dv-managed-stage{display:flex;flex:1;flex-direction:column;min-width:0;min-height:0;gap:6px;padding-top:6px;}
-.dv-canvas-shell[data-preview-only="true"]{padding:0 16px 14px;}
-.dv-canvas-shell[data-preview-only="true"] .dv-canvas-wrap{border-radius:12px;}
+.dv-managed-stage{display:flex;flex:1;flex-direction:column;min-width:0;min-height:0;}
+.dv-left{background:color-mix(in srgb,var(--dsw-alias-bg-base,#1a1a1c) 96%,var(--dsw-alias-label-primary,#f2f2f5));}
+.dv-canvas-shell[data-preview-only="true"]{padding:24px;gap:16px;}
+.dv-canvas-shell[data-preview-only="true"] .dv-canvas-wrap{border:0;border-radius:0;background:transparent;}
+.dv-canvas-shell[data-preview-only="true"] .dv-canvas-stage{border-radius:6px;box-shadow:0 12px 36px -20px rgba(0,0,0,.32);}
+.dv-canvas-shell[data-preview-only="true"] .dv-canvas-stage[data-ready="false"]{background:transparent;box-shadow:none;}
+.dv-canvas-shell[data-preview-only="true"] .dv-canvas-bar{
+  align-self:center;
+  flex-wrap:nowrap;
+  gap:14px;
+  width:min(100%, 560px);
+  min-height:52px;
+  padding:6px 16px 6px 8px;
+  border:1px solid color-mix(in srgb,var(--dsw-alias-border-l1,rgba(127,127,140,.28)) 55%,transparent);
+  border-radius:16px;
+  background:var(--dsw-alias-bg-base,#1a1a1c);
+  box-shadow:0 4px 16px -10px rgba(0,0,0,.16);
+}
+.dv-canvas-bar .dv-play{flex:none;width:36px;min-height:36px;padding:0;border:0;border-radius:50%;color:var(--dsw-alias-label-primary,#f2f2f5);}
+.dv-canvas-status{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;line-height:1.6;}
+.dv-canvas-status-overlay{padding:20px;background:transparent;}
+.dv-loader{display:block;width:22px;height:22px;border:1.5px solid color-mix(in srgb,var(--dsw-alias-label-secondary,#a4a4ad) 20%,transparent);border-top-color:var(--dsw-alias-label-secondary,#a4a4ad);border-radius:50%;animation:dv-loading 1s linear infinite;}
+@keyframes dv-loading{to{transform:rotate(360deg);}}
+.dv-root[data-simplified="true"] .dv-loader{animation:none;}
+.dv-preview-progress{position:absolute;top:36px;right:36px;z-index:1;display:flex;align-items:center;gap:7px;padding:6px 10px;border-radius:99px;background:var(--dsw-alias-bg-base,#1a1a1c);color:var(--dsw-alias-label-secondary,#a4a4ad);font-size:.78em;box-shadow:0 2px 8px -4px rgba(0,0,0,.2);}
+.dv-status-dot{width:5px;height:5px;border-radius:50%;background:currentColor;}
+@supports (backdrop-filter: blur(16px)){
+  .dv-root:not([data-simplified="true"]) .dv-canvas-shell[data-preview-only="true"] .dv-canvas-bar{background:color-mix(in srgb,var(--dsw-alias-bg-base,#1a1a1c) 80%,transparent);backdrop-filter:blur(16px);}
+}
+@media (prefers-reduced-transparency: reduce){
+  .dv-root .dv-canvas-shell[data-preview-only="true"] .dv-canvas-bar{background:var(--dsw-alias-bg-base,#1a1a1c);backdrop-filter:none;}
+}
 @media (prefers-reduced-motion: reduce){
-  .dv-root{animation:none;}
+  .dv-root,.dv-loader{animation:none;}
 }
 @container dsh-video (max-width: 900px){
-  .dv-ai{width:clamp(280px, 38%, 340px);}
+  .dv-ai{width:clamp(300px, 38%, 340px);}
+  .dv-canvas-shell[data-preview-only="true"]{padding:16px;gap:12px;}
   .dv-stage{padding:12px;}
   .dv-controls{padding:10px 12px 12px;}
 }
 @container dsh-video (max-width: 700px){
   .dv-main{flex-direction:column;}
+  .dv-left{flex:1 1 48%;min-height:180px;}
   .dv-ai{
     width:auto;
-    max-height:52%;
+    flex:1 1 52%;
+    min-height:220px;
+    max-height:none;
     border-left:0;
     border-top:1px solid color-mix(in srgb, var(--dsw-alias-border-l1, rgba(127,127,140,.28)) 62%, transparent);
   }
   .dv-stage{padding-bottom:8px;}
 }
 @container dsh-video (max-width: 520px){
-  .dv-topbar{padding-left:12px;padding-right:12px;}
+  .dv-topbar{padding-left:max(12px, var(--dsh-frame-leading-clearance, 0px));padding-right:12px;}
+  .dv-projectbar{max-width:calc(100% - 90px);}
+  .dv-canvas-shell[data-preview-only="true"]{padding:12px;gap:8px;}
+  .dv-ai-head{min-height:48px;padding:6px 12px;}
   .dv-back{padding:0 8px;}
   .dv-stage{padding:10px;}
   .dv-controls{padding:8px 10px 10px;}
@@ -1454,6 +1517,29 @@ window.__ModuleLoader__.load({
       if (combined !== undefined) return combined;
       const candidates = editableElements(elements);
       return candidates.length > 0 ? candidates[0] : null;
+    }
+
+    /** Small, consistent currentColor controls; hidden names remain real text. */
+    function StudioIcon(props) {
+      const name = props.name;
+      return h('svg', { width: 18, height: 18, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.6, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': 'true', focusable: 'false' },
+        name === 'play' ? h('path', { d: 'M9 5.5v13l10-6.5z', fill: 'currentColor', stroke: 'none' }) :
+        name === 'pause' ? h('path', { d: 'M9 5.5v13M15 5.5v13', strokeWidth: 2.5 }) :
+        name === 'new' ? h('path', { d: 'M12 5v14M5 12h14' }) :
+        h('rect', { x: 4, y: 6, width: 16, height: 12, rx: 3 })
+      );
+    }
+
+    /** Presentation only: never use UI labels as project identity or write truth. */
+    function studioProjectTitle(project, fallback) {
+      if (project === null || typeof project !== 'object') return fallback;
+      const scene = Array.isArray(project.scenes) ? project.scenes[0] : null;
+      const textElement = Array.isArray(project.elements) ? project.elements.find(function titleText(element) {
+        return element && typeof element.text === 'string' && element.text.trim().length > 0 && element.text.length <= 120 && hasCapability(element, 'text');
+      }) : null;
+      const title = scene && typeof scene.title === 'string' ? scene.title : textElement !== null && textElement !== undefined ? textElement.text : '';
+      const text = title.trim();
+      return text.length > 0 ? text.slice(0, 120) : fallback;
     }
 
     function durationOf(project) {
@@ -2164,11 +2250,11 @@ window.__ModuleLoader__.load({
      */
     function SessionConversationContent(props) {
       if (typeof props.renderFactorySlot !== 'function') return null;
-      return props.renderFactorySlot(
+      return h('div', { className: 'dv-conversation' }, props.renderFactorySlot(
         'conversation.content',
         { variant: 'embedded', phase: props.phase === 'active' ? 'active' : 'settling', hero: false },
         { slots: { views: SessionChatView } }
-      );
+      ));
     }
 
     /** Observe a sessions.list source without requiring the host kit. */
@@ -2824,6 +2910,21 @@ window.__ModuleLoader__.load({
         },
         [projectId, revision]
       );
+
+      // A missing runtime handshake must not leave the workspace loading forever.
+      // Expire this read attempt only: retain the active preview and invalidate
+      // late responses so a timed-out candidate can never promote afterwards.
+      React.useEffect(function boundPreviewWait() {
+        if (phase === 'error' || previewNotice !== null || (activeRef.current !== null && activeRef.current.revision === targetRevision)) return;
+        const token = snapshotToken.current;
+        const timer = setTimeout(function previewTimedOut() {
+          if (token !== snapshotToken.current) return;
+          snapshotToken.current += 1;
+          pendingRequestRef.current = null;
+          failCandidate({ code: 'E_PREVIEW_TIMEOUT', message: t('video.canvas.loadTimeout') });
+        }, 15000);
+        return function stopPreviewWait() { clearTimeout(timer); };
+      }, [targetRevision, phase, previewNotice]);
 
       function handleActiveRuntimeEvent(instance, outcome) {
         if (activeRef.current !== instance) return;
@@ -3606,12 +3707,13 @@ window.__ModuleLoader__.load({
           );
         }
         if ((active === null && candidate === null) || displayWidth === 0 || displayHeight === 0) {
-          return h('p', { className: 'dv-canvas-status', role: 'status' }, t('video.canvas.loading'));
+          return h('p', { className: 'dv-canvas-status', role: 'status' }, h('span', { className: 'dv-loader', 'aria-hidden': 'true' }), t('video.canvas.loading'));
         }
         return h(
           'div',
           {
             className: 'dv-stage dv-canvas-stage',
+            'data-ready': active !== null ? 'true' : 'false',
             ref: stageRef,
             style: { width: displayWidth + 'px', height: displayHeight + 'px' },
           },
@@ -3621,6 +3723,7 @@ window.__ModuleLoader__.load({
             ? h(
                 'p',
                 { className: 'dv-canvas-status dv-canvas-status-overlay', role: 'status', 'data-overlay': 'true' },
+                h('span', { className: 'dv-loader', 'aria-hidden': 'true' }),
                 t('video.canvas.loading')
               )
             : null,
@@ -3738,11 +3841,15 @@ window.__ModuleLoader__.load({
           'data-canvas-target-revision': targetRevision === null || targetRevision === undefined ? '' : String(targetRevision),
           'data-canvas-phase': phase,
           'data-preview-only': previewOnly ? 'true' : 'false',
+          'data-preview-pending': active !== null && active.revision !== targetRevision && previewNotice === null ? 'true' : 'false',
         },
+        h('div', { className: 'dv-canvas-wrap', ref: wrapRef }, canvasBody()),
+        previewNoticeNode(),
+        active !== null && active.revision !== targetRevision && previewNotice === null ? h('span', { className: 'dv-preview-progress', role: 'status' }, h('span', { className: 'dv-status-dot', 'aria-hidden': 'true' }), t('video.canvas.updatingPreview')) : null,
         h(
           'div',
           { className: 'dv-canvas-bar' },
-          h('button', { type: 'button', className: 'dv-button dv-button-quiet', onClick: togglePlayback, disabled: phase !== 'ready' }, playing ? t('video.canvas.pause') : t('video.canvas.play')),
+          h('button', { type: 'button', className: 'dv-button dv-button-quiet dv-play', onClick: togglePlayback, disabled: phase !== 'ready', 'aria-label': playing ? t('video.canvas.pause') : t('video.canvas.play'), title: playing ? t('video.canvas.pause') : t('video.canvas.play') }, h(StudioIcon, { name: playing ? 'pause' : 'play' }), h('span', { className: 'dv-sr-only' }, playing ? t('video.canvas.pause') : t('video.canvas.play'))),
           h(
             'input',
             {
@@ -3770,8 +3877,6 @@ window.__ModuleLoader__.load({
             ? h('a', { className: 'dv-button dv-button-primary dv-export-link', href: exportState.url, download: 'dsh-video.mp4' }, t('video.canvas.download'))
             : h('button', { type: 'button', className: 'dv-button dv-button-primary', onClick: function render() { void exportVideo(); }, disabled: busy !== null }, exportState && exportState.state === 'running' ? t('video.canvas.exporting') : t('video.canvas.export'))
         ),
-        h('div', { className: 'dv-canvas-wrap', ref: wrapRef }, canvasBody()),
-        previewNoticeNode(),
         previewOnly ? null : h(
           'div',
           { className: 'dv-canvas-tools' },
@@ -3869,6 +3974,11 @@ window.__ModuleLoader__.load({
       const [error, setError] = React.useState(remembered.error || null);
       const [projectId, setProjectId] = React.useState(typeof remembered.projectId === 'string' ? remembered.projectId : '');
       const [projectChoices, setProjectChoices] = React.useState([]);
+      const projectTitlesRef = React.useRef(new Map(Array.isArray(remembered.projectTitles) ? remembered.projectTitles : []));
+      if (project !== null && projectId !== '') {
+        projectTitlesRef.current.set(projectId, studioProjectTitle(project, t('video.project.untitled')));
+        if (projectTitlesRef.current.size > 64) projectTitlesRef.current.delete(projectTitlesRef.current.keys().next().value);
+      }
       const [projectBusy, setProjectBusy] = React.useState(null);
       const projectIdRef = React.useRef(projectId);
       projectIdRef.current = projectId;
@@ -4012,6 +4122,7 @@ window.__ModuleLoader__.load({
           project: project,
           error: error,
           projectId: projectId,
+          projectTitles: Array.from(projectTitlesRef.current.entries()),
           sessionState: sessionState,
           activeSessionId: activeSessionId,
         };
@@ -4602,12 +4713,12 @@ window.__ModuleLoader__.load({
           { className: 'dv-ai', 'aria-label': t('video.ai.title'), key: 'ai', onClickCapture: capturePreviewClick },
           h(
             'header',
-            { className: 'dv-ai-head' },
+            { className: 'dv-ai-head', 'aria-label': activeSessionId === null ? t('video.ai.title') : sessionTitle(activeSessionId) },
             h(
               'div',
               { className: 'dv-ai-heading' },
               h('span', { className: 'dv-ai-title' }, t('video.ai.title')),
-              activeSessionId === null ? null : h('span', { className: 'dv-ai-session' }, sessionTitle(activeSessionId))
+              null
             ),
             h(
               'div',
@@ -4616,13 +4727,16 @@ window.__ModuleLoader__.load({
                 'button',
                 {
                   type: 'button',
-                  className: 'dv-button dv-button-quiet dv-new-session',
+                  className: 'dv-icon-button dv-new-session',
+                  'aria-label': t('video.ai.new'),
+                  title: t('video.ai.new'),
                   disabled: sessionBusy !== null || status === 'disabled' || status === 'unavailable' || projectId === '',
                   onClick: function createNew() {
                     void createSessionForProject(projectIdRef.current);
                   },
                 },
-                sessionBusy === 'create' ? t('video.ai.creating') : t('video.ai.new')
+                h(StudioIcon, { name: 'new' }),
+                h('span', { className: 'dv-sr-only' }, sessionBusy === 'create' ? t('video.ai.creating') : t('video.ai.new'))
               ),
               h(
                 'button',
@@ -4651,37 +4765,24 @@ window.__ModuleLoader__.load({
       function projectBar() {
         if (projectId === '' && projectChoices.length === 0) return null;
         const options = projectChoices.slice();
-        if (projectId !== '' && options.some(function has(item) { return item.projectId === projectId; }) === false) {
-          options.unshift({ projectId: projectId });
-        }
-        return h(
-          'div',
-          { className: 'dv-projectbar', key: 'projects' },
-          h(
-            'label',
-            { className: 'dv-project-picker' },
-            h('span', null, t('video.project.label')),
-            h(
-              'select',
-              {
-                value: projectId,
-                disabled: projectBusy !== null,
-                'aria-label': t('video.project.open'),
-                onChange: function switchProject(event) {
-                  const next = event.target.value;
-                  if (next === projectId || next.length === 0) return;
-                  void openProject(next);
-                },
+        if (projectId !== '' && options.some(function has(item) { return item.projectId === projectId; }) === false) options.unshift({ projectId: projectId });
+        return h('div', { className: 'dv-projectbar', key: 'projects' },
+          h('label', { className: 'dv-project-picker' },
+            h('span', { className: 'dv-sr-only' }, t('video.project.label')),
+            h('select', {
+              value: projectId,
+              disabled: projectBusy !== null,
+              'aria-label': t('video.project.open'),
+              onChange: function switchProject(event) {
+                const next = event.target.value;
+                if (next === '__new__') { void createManagedProject(); return; }
+                if (next === projectId || next.length === 0) return;
+                void openProject(next);
               },
-              options.map(function option(item) {
-                return h('option', { key: item.projectId, value: item.projectId }, item.projectId);
-              })
-            )
-          ),
-          h(
-            'button',
-            { type: 'button', className: 'dv-button dv-button-quiet', onClick: function createProject() { void createManagedProject(); }, disabled: projectBusy !== null },
-            projectBusy === 'create' ? t('video.opening') : t('video.project.new')
+            }, options.map(function option(item, index) {
+              const name = projectTitlesRef.current.get(item.projectId) || (t('video.project.untitled') + ' ' + String(index + 1));
+              return h('option', { key: item.projectId, value: item.projectId }, name);
+            }), h('option', { key: '__new__', value: '__new__' }, '+ ' + t('video.project.new')))
           )
         );
       }
@@ -4773,8 +4874,9 @@ window.__ModuleLoader__.load({
               title: t('video.back'),
             },
             h(BackIcon, { key: 'icon' }),
-            h('span', { className: 'dv-back-label', key: 'label' }, t('video.back'))
+            h('span', { className: 'dv-sr-only', key: 'label' }, t('video.back'))
           ),
+          projectBar(),
           h('span', { className: 'dv-spacer', key: 'spacer' }),
           h(
             'div',
@@ -4833,7 +4935,7 @@ window.__ModuleLoader__.load({
         h(
           'main',
           { className: 'dv-main', key: 'main' },
-          h('div', { className: 'dv-left', key: 'left' }, projectBar(), stageContent()),
+          h('div', { className: 'dv-left', key: 'left' }, stageContent()),
           aiPanel()
         )
       );
