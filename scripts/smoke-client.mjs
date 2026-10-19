@@ -572,7 +572,7 @@ function loadClient(options) {
     fetch: typeof config.fetch === 'function' ? config.fetch : undefined,
     console: { log() {}, warn() {}, error() {} },
     setTimeout(callback, delay, ...args) {
-      const handle = setTimeout(callback, delay, ...args);
+      const handle = setTimeout(callback, config.previewTimeoutMs !== undefined && delay === 15000 ? config.previewTimeoutMs : delay, ...args);
       runtime.timers.add(handle);
       return handle;
     },
@@ -1023,7 +1023,7 @@ function sessionFetch(options) {
 
 function mountSessionEditor(hostFetch, options) {
   const config = options || {};
-  const loaded = loadClient({ fetch: hostFetch, stageSize: config.stageSize });
+  const loaded = loadClient({ fetch: hostFetch, stageSize: config.stageSize, previewTimeoutMs: config.previewTimeoutMs });
   const env = createFakeEnvironment({ services: { sessions: config.sessions } });
   loaded.exports.apply(env.ctx);
   const main = registrationOf(env, 'main');
@@ -2169,8 +2169,7 @@ test('P3-006-A: embedded native conversation uses videoView, hero:false and the 
   const tree = editor.tree();
   assert(findNode(tree, (node) => node.props && node.props['data-factory'] === 'conversation.content') !== null, 'factory output missing from the tree');
   assert(findNode(tree, (node) => node.props && node.props.className === 'dv-model') === null, 'the plugin rendered a custom model control');
-  assert(findNode(tree, (node) => node.props && node.props.className === 'dv-ai-session') !== null, 'the mapped Session title is not shown');
-  assert(textOf(findNode(tree, (node) => node.props && node.props.className === 'dv-ai-session')) === '演示工程 · 创作 1', 'history title projection was not used');
+  assert(findNode(tree, (node) => node.props && node.props.className === 'dv-ai-head').props['aria-label'] === '演示工程 · 创作 1', 'history title projection was not retained in the accessible heading');
   assert(hostFetch.calls.some((call) => call.body.method === 'session.list'), 'session history was not loaded from the Host');
 });
 
@@ -2240,7 +2239,7 @@ test('P3-012: an opened project without a Session auto-creates exactly one and a
   assert(findNode(tree, (node) => node.props && node.props['data-session-active'] === 'session-created') !== null, 'the auto-created Session is not active');
   const provider = kit.calls.filter((call) => call.type === 'session-provider').pop();
   assert(provider !== undefined && provider.session.sessionId === 'session-created', 'the native conversation provider did not receive the created Session');
-  assert(textOf(findNode(tree, (node) => node.props && node.props.className === 'dv-ai-session')) === 'session-created', 'the created Session is not visible in the conversation header');
+  assert(findNode(tree, (node) => node.props && node.props.className === 'dv-ai-head').props['aria-label'] === 'session-created', 'the created Session is not visible in the conversation header');
   // A re-render cannot create a second Session for the same project.
   editor.rerender();
   await settle();
@@ -2279,7 +2278,7 @@ test('P3-006-A: history lists mapped Sessions and a superseded switch cannot win
   assert(root !== null && root.props['data-session-active'] === 'session-ccc', `superseded switch won: ${root && root.props['data-session-active']}`);
   const provider = kit.calls.filter((call) => call.type === 'session-provider').pop();
   assert(provider !== undefined && provider.session.sessionId === 'session-ccc', `superseded switch won: ${provider && provider.session.sessionId}`);
-  assert(textOf(findNode(finalTree, (node) => node.props && node.props.className === 'dv-ai-session')) === '工程 · 三', 'the latest Session title is not visible');
+  assert(findNode(finalTree, (node) => node.props && node.props.className === 'dv-ai-head').props['aria-label'] === '工程 · 三', 'the latest Session title is not visible');
   assert(hostFetch.config.selectCalls.includes('session-bbb') && hostFetch.config.selectCalls.includes('session-ccc'), 'both switches were not attempted');
   const projectWrites = hostFetch.calls.filter((call) => ['open', 'project.create', 'edit', 'scene.update', 'scene.create', 'scene.remove', 'frame', 'render'].includes(call.body.method));
   assert(projectWrites.length === 1, `the only project request must be the initial auto-open, got ${projectWrites.map((call) => call.body.method).join(',')}`);
@@ -4042,6 +4041,66 @@ test('P3-008 wiring: the snapshot iframe keeps the composition viewport and is C
 //#endregion
 
 //#endregion
+
+test('UI polish: project navigation uses readable names, retains distinct choices and creates only explicitly', async () => {
+  const sessions = makeSessionsService({ list: ['session-polish'] });
+  const hostFetch = sessionFetch({ activeSessionId: 'session-polish', sessions: ['session-polish'] });
+  hostFetch.config.handler = (request) => {
+    if (request.body.method === 'project.list') return { ok: true, result: { projects: [{ projectId: 'proj-smoke' }, { projectId: 'proj-second' }], defaultProjectId: 'proj-smoke' } };
+    return undefined;
+  };
+  const editor = await mountBootedPanel(hostFetch, { sessions, kit: makeSessionKit() });
+  const tree = editor.tree();
+  const topbar = findNode(tree, (node) => node.props && node.props.className === 'dv-topbar');
+  const select = findNode(topbar, (node) => node.type === 'select');
+  assert(select !== null, 'project switching is still separated from the topbar');
+  const option = findNode(select, (node) => node.type === 'option' && node.props.value === 'proj-smoke');
+  assert(option !== null && textOf(option) === 'Scene 1', 'current project title is not read from inspect');
+  assert(!textOf(select).includes('proj-smoke') && !textOf(select).includes('proj-second'), 'technical project IDs leak into visible navigation');
+  const newOption = findNode(select, (node) => node.type === 'option' && node.props.value === '__new__');
+  assert(newOption !== null, 'new project is not available inside project navigation');
+  assert(hostFetch.calls.filter((call) => call.body.method === 'project.create').length === 0, 'opening navigation created a project');
+  select.props.onChange({ target: { value: '__new__' } });
+  await settlePanel(editor);
+  assert(hostFetch.calls.filter((call) => call.body.method === 'project.create').length === 1, 'explicit new-project selection did not create exactly one project');
+});
+
+test('UI polish: preview controls follow the stage and remain accessible without visible button copy', async () => {
+  const hostFetch = sessionFetch({ activeSessionId: 'session-polish', sessions: ['session-polish'] });
+  const editor = await mountBootedPanel(hostFetch, { sessions: makeSessionsService({ list: ['session-polish'] }), kit: makeSessionKit() });
+  const shell = productCanvas(editor.tree());
+  const children = shell.children.flat(Infinity).filter(Boolean);
+  const stageIndex = children.findIndex((node) => node.props && node.props.className === 'dv-canvas-wrap');
+  const controlsIndex = children.findIndex((node) => node.props && node.props.className === 'dv-canvas-bar');
+  assert(stageIndex >= 0 && controlsIndex > stageIndex, 'playback controls are above the artwork');
+  const controls = children[controlsIndex];
+  const play = findNode(controls, (node) => node.type === 'button');
+  assert(play.props['aria-label'] === translateFor(editor.env)('video.canvas.play'), 'icon-only playback has no accessible name');
+  assert(findNode(play, (node) => node.type === 'svg') !== null, 'playback still uses a text-only button');
+  const ai = findNode(editor.tree(), (node) => node.props && node.props.className === 'dv-ai-head');
+  assert(!textOf(ai).includes('proj-'), 'AI header repeats the technical project identity');
+  assert(findNode(editor.tree(), (node) => node.props && node.props.className === 'dv-conversation') !== null, 'native conversation has no full-height layout boundary');
+});
+
+test('UI polish: a preview that never reports runtime ready becomes retryable and a late instance cannot promote', async () => {
+  const hostFetch = sessionFetch({ activeSessionId: 'session-polish', sessions: ['session-polish'] });
+  const editor = mountSessionEditor(hostFetch, { sessions: makeSessionsService({ list: ['session-polish'] }), kit: makeSessionKit(), previewTimeoutMs: 60 });
+  await settlePanel(editor);
+  const frame = findNode(editor.tree(), (node) => node.type === 'iframe');
+  assert(frame !== null, 'candidate did not begin loading');
+  const expiredFrame = runtimeFrameOf(editor, frame);
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  editor.rerender();
+  dispatchFrameEvent(editor, { frame: expiredFrame, type: 'ready', payload: { runtimeVersion: 'p3-012-runtime.1', width: 1280, height: 720, duration: 15 } });
+  assert(productCanvas(editor.tree()).props['data-canvas-phase'] === 'error', 'preview remains in infinite loading: ' + productCanvas(editor.tree()).props['data-canvas-phase']);
+  assert(findNode(editor.tree(), (node) => node.props && node.props.role === 'alert') !== null, 'timeout has no recoverable feedback');
+  const retry = buttonByText(editor.tree(), translateFor(editor.env)('video.canvas.retry'));
+  assert(retry !== null, 'timeout has no retry');
+  retry.props.onClick();
+  await settlePanel(editor);
+  await ensureCanvasActive(editor);
+  assert(productCanvas(editor.tree()).props['data-canvas-phase'] === 'ready', 'retry did not recover');
+});
 
 async function runTests() {
   for (const [name, fn] of tests) {

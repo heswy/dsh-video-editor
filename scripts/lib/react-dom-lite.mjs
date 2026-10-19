@@ -361,6 +361,10 @@ function eventNamesFor(name, fiber) {
 
 const ATTRIBUTE_ALIASES = {
   className: 'class',
+  viewBox: 'viewBox',
+  strokeWidth: 'stroke-width',
+  strokeLinecap: 'stroke-linecap',
+  strokeLinejoin: 'stroke-linejoin',
   htmlFor: 'for',
   referrerPolicy: 'referrerpolicy',
   tabIndex: 'tabindex',
@@ -555,7 +559,8 @@ function mountHostFiber(vnode, parentDom) {
   const fiber = new HostFiber(vnode.type, vnode.props);
   fiber.key = vnode.key;
   fiber.ref = vnode.ref === undefined ? null : vnode.ref;
-  fiber.dom = document.createElement(vnode.type);
+  const svg = vnode.type === 'svg' || (parentDom.namespaceURI === 'http://www.w3.org/2000/svg' && parentDom.localName !== 'foreignObject');
+  fiber.dom = svg ? document.createElementNS('http://www.w3.org/2000/svg', vnode.type) : document.createElement(vnode.type);
   applyProps(fiber, {}, vnode.props, true);
   fiber.children = reconcileChildren(fiber.dom, [], normalizeChildren(vnode.props.children));
   parentDom.appendChild(fiber.dom);
