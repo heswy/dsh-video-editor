@@ -692,7 +692,13 @@ export class VideoBridge {
     });
     this.managedProjects = null;
     this.projectDirectoryCache = null;
-    this.snapshots = new SnapshotRoutes(this.ctx !== undefined && this.ctx !== null ? this.ctx.connection : undefined);
+    const snapshotWebServer = this.ctx !== undefined && this.ctx !== null && typeof this.ctx.get === 'function'
+      ? this.ctx.get('webServer')
+      : undefined;
+    this.snapshots = new SnapshotRoutes(
+      this.ctx !== undefined && this.ctx !== null ? this.ctx.connection : undefined,
+      snapshotWebServer
+    );
     this.assets = new AssetInbox({
       connection: this.ctx !== undefined && this.ctx !== null ? this.ctx.connection : undefined,
       root: this.config !== null && this.config.assetInboxRoot !== undefined ? this.config.assetInboxRoot : undefined,

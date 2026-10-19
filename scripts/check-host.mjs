@@ -104,6 +104,34 @@ async function run(name, fn) {
   }
 }
 
+/**
+ * Invoke one raw Node webserver exact-route handler and collect its response.
+ * The public snapshot subresources are served by node:http handlers (the
+ * webserver route API), so the regression drives them like a browser request
+ * without any Connection admission/authentication context.
+ */
+function invokeNodeRoute(handler, method, pathname) {
+  return new Promise((resolveInvoke, rejectInvoke) => {
+    const headers = {};
+    const chunks = [];
+    let status = 0;
+    const response = {
+      writeHead(nextStatus, nextHeaders) {
+        status = nextStatus;
+        Object.assign(headers, nextHeaders || {});
+      },
+      end(body) {
+        if (body !== undefined && body !== null) chunks.push(Buffer.isBuffer(body) ? body : Buffer.from(body));
+        resolveInvoke({ status, headers, body: Buffer.concat(chunks) });
+      },
+      on() { return response; },
+      once() { return response; },
+      removeListener() { return response; },
+    };
+    Promise.resolve(handler({ method, url: pathname, headers: {} }, response)).catch(rejectInvoke);
+  });
+}
+
 function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
@@ -251,7 +279,20 @@ function makeCtx(workspace, options) {
     },
   };
   const agentRegistry = settings.agents || { get() { return undefined; } };
+  const webServerRoutes = [];
   const services = { sessionController, workspaceRegistry, systemPrompt, agents: agentRegistry };
+  if (settings.webServer === true) {
+    services.webServer = {
+      routes: webServerRoutes,
+      register(route) {
+        webServerRoutes.push(route);
+        return () => {
+          const index = webServerRoutes.indexOf(route);
+          if (index >= 0) webServerRoutes.splice(index, 1);
+        };
+      },
+    };
+  }
   const ctx = {
     logger: { warn() {} },
     subprocess: {
@@ -285,7 +326,7 @@ function makeCtx(workspace, options) {
       return services[name];
     },
   };
-  return { ctx, routes, tools, cleanups, services, sessionController, systemPrompt, contexts, contextDisposers };
+  return { ctx, routes, tools, cleanups, services, webServerRoutes, sessionController, systemPrompt, contexts, contextDisposers };
 }
 
 /** Bind a real video project Session through the Host route and return its id. */
@@ -1327,6 +1368,72 @@ async function main() {
     assert(assetResponse.status === 200 && Buffer.compare(Buffer.from(await assetResponse.arrayBuffer()), asset) === 0, 'snapshot asset bytes do not match');
     await bridge.invoke('preview.release', { snapshotId }, { source: 'http' });
     assert(bag.routes.every((route) => route.path !== result.entryUrl), 'released snapshot route is still registered');
+  });
+
+  await run('P3-016: preview subresources are public exact routes while the entry stays on the authenticated fence', async () => {
+    const workspace = await makeWorkspace();
+    const snapshotId = 'c'.repeat(32);
+    const snapshotDir = join(workspace.outputRoot, 'previews', snapshotId);
+    await mkdir(join(snapshotDir, 'assets'), { recursive: true });
+    const entry = Buffer.from('<!doctype html><html><body><main data-composition-id="x"></main><script>window.__timelines={};</script></body></html>');
+    const asset = Buffer.from('window.__publicAssetLoaded = true;');
+    await writeFile(join(snapshotDir, 'index.html'), entry);
+    await writeFile(join(snapshotDir, 'assets', 'gsap.min.js'), asset);
+    const manifest = {
+      snapshotId,
+      projectId: PROJECT,
+      revision: REVISION,
+      entry: 'index.html',
+      files: [
+        { path: 'index.html', bytes: entry.length, sha256: createHash('sha256').update(entry).digest('hex') },
+        { path: 'assets/gsap.min.js', bytes: asset.length, sha256: createHash('sha256').update(asset).digest('hex') },
+      ],
+      expiresAt: new Date(Date.now() + 60000).toISOString(),
+    };
+    const bag = makeCtx(workspace, { webServer: true });
+    const { bridge } = makeBridge(workspace, {
+      handler: (method) => {
+        if (method === 'preview.snapshot') return manifest;
+        if (method === 'preview.release') return { snapshotId, released: true };
+        return {};
+      },
+    }, bag.ctx);
+    const result = await bridge.invoke('preview.snapshot', { projectId: PROJECT, revision: REVISION }, { source: 'http' });
+    // Entry stays on the authenticated Connection route.
+    const entryRoute = bag.routes.find((route) => route.path === result.entryUrl);
+    assert(entryRoute !== undefined, 'snapshot entry route was not registered on the authenticated Connection registry');
+    assert(bag.webServerRoutes.every((route) => route.path !== result.entryUrl), 'snapshot entry must not be public');
+    const entryResponse = await entryRoute.fetch(new Request(`http://dsh.internal${result.entryUrl}?instance=browserinstance&nonce=${'b'.repeat(32)}`));
+    assert(entryResponse.status === 200, `authenticated entry status ${entryResponse.status}`);
+    assert((entryResponse.headers.get('content-security-policy') || '').includes("script-src 'self'"), 'entry CSP is not self-scoped');
+    // Declared subresources and the fixed runtime are public exact routes: the
+    // sandboxed iframe is an opaque origin, so /api admission would 403 them as
+    // cross-site before any cookie/Origin trust could pass.
+    const publicRoutes = new Map(bag.webServerRoutes.map((route) => [route.path, route]));
+    const assetPath = `/api/dsh-video/preview/${snapshotId}/assets/gsap.min.js`;
+    const assetRoute = publicRoutes.get(assetPath);
+    assert(assetRoute !== undefined && assetRoute.kind === 'exact' && typeof assetRoute.handler === 'function', 'snapshot asset was not registered as a public exact webserver route');
+    const runtimeRoute = publicRoutes.get('/api/dsh-video/canvas-runtime.js');
+    assert(runtimeRoute !== undefined && runtimeRoute.kind === 'exact' && typeof runtimeRoute.handler === 'function', 'runtime was not registered as a public exact webserver route');
+    assert(bag.routes.every((route) => route.path !== assetPath), 'snapshot asset also stayed on the authenticated Connection registry');
+    // Drive the public handlers with no cookie/Origin/auth headers at all: this
+    // is what the opaque-origin iframe does; a 200 here is the regression.
+    const assetResponse = await invokeNodeRoute(assetRoute.handler, 'GET', assetPath);
+    assert(assetResponse.status === 200, `public asset status ${assetResponse.status}`);
+    assert(Buffer.compare(assetResponse.body, asset) === 0, 'public asset bytes do not match');
+    assert(assetResponse.headers['content-type'] === 'text/javascript; charset=utf-8', `public asset content-type ${assetResponse.headers['content-type']}`);
+    assert(assetResponse.headers['cache-control'] === 'no-store', 'public asset must not be cached');
+    assert(assetResponse.headers['x-content-type-options'] === 'nosniff', 'public asset is missing nosniff');
+    assert(assetResponse.headers['access-control-allow-origin'] === '*', 'public asset is missing permissive CORS for opaque-origin fonts/images');
+    const assetHead = await invokeNodeRoute(assetRoute.handler, 'HEAD', assetPath);
+    assert(assetHead.status === 200 && assetHead.body.length === 0, 'public asset HEAD did not answer headers only');
+    const runtimeResponse = await invokeNodeRoute(runtimeRoute.handler, 'GET', '/api/dsh-video/canvas-runtime.js');
+    assert(runtimeResponse.status === 200, `public runtime status ${runtimeResponse.status}`);
+    assert(runtimeResponse.body.includes('p3-008-runtime.1'), 'public runtime body is not the fixed canvas runtime');
+    assert(runtimeResponse.headers['content-type'] === 'text/javascript; charset=utf-8', 'public runtime content-type is wrong');
+    await bridge.invoke('preview.release', { snapshotId }, { source: 'http' });
+    assert(bag.webServerRoutes.every((route) => route.path !== assetPath), 'released public asset route is still registered');
+    assert(bag.webServerRoutes.some((route) => route.path === '/api/dsh-video/canvas-runtime.js'), 'released snapshot removed the fixed runtime route');
   });
 
   await run('P3-012 R2: preview snapshots are retained for the last ready frame, released explicitly and bounded', async () => {
