@@ -20,6 +20,12 @@ import { loadStagedHost } from './lib/staged-host.mjs';
 
 const INSTANCE = 'p3008browser1';
 const NONCE = '0123456789abcdef0123456789abcdef';
+// Real DSH delivers plugin Fetch-route requests with the bridge's internal
+// sentinel origin (http://dsh.internal); the browser document/iframe origin is
+// the actual Web GUI origin. The toy server keeps serving on 127.0.0.1 while
+// forwarding requests with this internal origin so the CSP regression is
+// exercised exactly as it is in the installed Host (P3-015).
+const BRIDGE_REQUEST_ORIGIN = 'http://dsh.internal';
 
 function usage(message) {
   if (message) console.error(message);
@@ -190,6 +196,7 @@ async function main() {
   };
   let server = null;
   let browser = null;
+  let entryCsp = null;
   try {
     const created = await bridge.invoke('project.create', { templateId: 'product-launch-v1', title: 'P3-008 Browser Canvas' }, { source: 'http' });
     const inspected = await bridge.invoke('inspect', { projectId: created.projectId }, { source: 'http' });
@@ -218,7 +225,7 @@ async function main() {
           res.end('not found');
           return;
         }
-        const request = new Request(`http://127.0.0.1:${server.address().port}${req.url}`, {
+        const request = new Request(`${BRIDGE_REQUEST_ORIGIN}${req.url}`, {
           method: req.method,
           headers: req.headers,
           body: req.method === 'GET' || req.method === 'HEAD' ? undefined : req,
@@ -229,6 +236,9 @@ async function main() {
         response.headers.forEach((value, key) => {
           headers[key] = value;
         });
+        if (url.pathname === snapshot.entryUrl) {
+          entryCsp = headers['content-security-policy'] || null;
+        }
         res.writeHead(response.status, headers);
         const buffer = Buffer.from(await response.arrayBuffer());
         res.end(buffer);
@@ -240,6 +250,7 @@ async function main() {
     await new Promise((resolveListen) => server.listen(0, '127.0.0.1', resolveListen));
     const origin = `http://127.0.0.1:${server.address().port}`;
     evidence.origin = origin;
+    evidence.hostRequestOrigin = BRIDGE_REQUEST_ORIGIN;
 
     browser = await puppeteer.launch({
       executablePath: browserPath,
@@ -277,6 +288,13 @@ async function main() {
     assert(result.seek && Math.abs(result.seek.time - 3) < 0.01, `seek did not land at 3s: ${JSON.stringify(result.seek)}`);
     assert(result.state && result.state.time >= 3.05, `play did not advance the playhead: ${JSON.stringify(result.state)}`);
     assert(evidence.network.external.length === 0, `external network request(s): ${evidence.network.external.join(', ')}`);
+    evidence.entryCsp = entryCsp;
+    assert(typeof evidence.entryCsp === 'string', 'snapshot entry CSP was not observed');
+    for (const directive of ["script-src 'self'", "style-src 'self'", "img-src 'self'", "font-src 'self'"]) {
+      assert(evidence.entryCsp.includes(directive), `snapshot CSP is missing ${directive}: ${evidence.entryCsp}`);
+    }
+    assert(evidence.entryCsp.includes('sha256-'), 'snapshot CSP is missing the inline script hash');
+    assert(evidence.entryCsp.includes('dsh.internal') === false, `snapshot CSP leaked the bridge origin: ${evidence.entryCsp}`);
     evidence.ok = true;
     evidence.finishedAt = new Date().toISOString();
   } catch (error) {
