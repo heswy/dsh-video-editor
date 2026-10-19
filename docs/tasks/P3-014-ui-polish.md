@@ -30,3 +30,8 @@
 - 组件 Chrome **15/15**，源码摘要、检查与6张截图在本树 artifacts/ui-polish/evidence.json；右侧原生对话DOM/Host为显式替身，截图不能当作DSH真机验收。
 - 本轮只读核对本机包版本 `0.2.1-rc.2` 的官方 skill、ui-plugin参考及 conversation region 属性；没有更新宿主/读取凭据或个人会话。
 - 最终已安装状态未改。实际 DSH 中的原生 Composer、审批 takeover、长会话滚动焦点与本轮CSS共存仍需安装后验证；主流程模型验收仍由P3-013跟踪。不以单会话自产测试称独立验收。
+
+
+### 2026-10-19 收口更正
+
+版本门禁此前10/10读取提交前旧HEAD(alpha.4)，不能当作提交后alpha.5证据。仓库收口时已将测试固定版本从alpha.4明确对齐alpha.5并重跑，保留10条原断言，详情见repository-consolidation记录；不改包/运行时代码。当前代码经PR#5/#4整合到main，旧分支任务不再继续。

@@ -1,13 +1,13 @@
 # DSH Video
 
-> UI 候选：`codex/ui-polish` / `0.3.0-alpha.5`，基于已审 `19a7743`，引擎仍固定 `0deef8f` / `0.4.0`。紧凑工程导航、底部播放条、原生对话高度修正与预览超时恢复见 `docs/tasks/P3-014-ui-polish.md`。此分支不表示已安装；下文 alpha.4 的固定路径仍是历史候选，不能混用版本/摘要。
+> 当前代码已收口到 `main`：bundle `0.3.0-alpha.5` / engine `0.4.0`，含对话优先主流程与UI优化。Git合并不代表已安装；固定候选、检查与实际未测范围读 [STATUS](docs/STATUS.md)。下文旧alpha.4路径保留作历史，不能混用版本/摘要。
 
 
 运行在 DeepSeek Harness 内的 AI 视频创作与编辑插件。当前目标是用户通过右侧对话生成视频，左侧自动预览/播放，再通过对话持续修改同一作品；用户手动编辑后续再加。
 
 用户确定的入口（P0-005，延续到本阶段）：DSH 左侧原生导航中，在「上下文洞察」之后、「工作区」分组之前，单行 **Vedio Editor** + 细线条视频图标。原顶部「普通｜视频」胶囊已移除。入口是产品工作区导航，不改变 Agent preset、模型或权限。
 
-当前唯一开发线为 **video-studio / codex/video-studio**。当前任务 **P3-012：对话生成→左侧自动预览/播放→对话续改→自动更新同一作品**；选中、拖拽、原位文字、属性表单等用户手动编辑延期。鹈鹕/球是旧故障回归，功能验收采用通用闭环及不同题材。本候选代码基线根0.3.0-alpha.4、引擎0.4.0：新增受控完整作品提交/读取（project.compose/project.source），左侧改为只读自动预览，交付门禁与开发 staging 通过；**真实 DSH 安装与真实模型对话尚未验收**。最新事实和交接读[STATUS](docs/STATUS.md)、[video-studio](docs/handoffs/video-studio.md)。
+当前只维护 **main** 作为长期主线。右侧原生对话生成/续改，左侧自动预览/播放；用户手动编辑延期。用户实机测试发现问题后，从最新main建立独立codex/<问题名>分支、验证并交PR。规则读[DEVELOPMENT](docs/DEVELOPMENT.md)，当前交接读[handoffs](docs/handoffs/README.md)。真实DSH/模型闭环仍需验收，不把开发组件/工具模拟当作通过。
 
 - [当前状态与下一步](docs/STATUS.md)
 - [开发与协作规则](docs/DEVELOPMENT.md)
