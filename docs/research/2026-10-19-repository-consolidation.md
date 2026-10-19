@@ -22,3 +22,8 @@ PR#5/#4使用merge方式保留原历史，不squash、不强推。PR#1先合入m
 最终main运行时源码须与已验证65dcac4逐字节一致：Client/Host/engine/package/脚本未因文档整合改动。此前184基础、10版本、15布局、261真实链、159预览压力仍适用于相同字节；收口后复跑npm run check与版本门禁。不能因Git收口声明已安装或模型验收通过。
 
 当前可测候选仍是同级artifacts/ui-polish/staging-alpha5/bundle，root65dcac4/engine0deef8f；摘要见P3-014。用户实测前需确认正在运行的实际安装；仓库main与已安装插件并非同一状态。
+
+
+## 收口复核中的版本测试更正
+
+新合并HEAD带alpha.5 manifest后重跑版本门禁，发现scripts/test-stage-version.mjs仍固定alpha.4；此前UI工作树中的10/10是在提交前读取旧HEAD(alpha.4)得到的，不是提交后alpha.5门禁证据。此次仅把明确的REVIEWED_BUNDLE_VERSION对齐alpha.5，保留拒绝非法/错配/不创建目录/不执行npm等全部断言。运行时、包与已审staging字节不变；以本轮提交后10/10结果为准。
