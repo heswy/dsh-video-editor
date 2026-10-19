@@ -3,9 +3,12 @@
  *
  * The worker creates a private snapshot under `<artifactRoot>/previews/<id>/`
  * and returns only relative paths plus SHA-256/byte metadata. This module
- * validates that manifest once, registers one exact authenticated Fetch route
- * per declared file, and verifies bytes/hash again on every request. It also
- * injects the fixed runtime into the entry document and applies a strict CSP.
+ * validates that manifest once, keeps the entry document on the authenticated
+ * Connection Fetch route, publishes the declared subresources (and the fixed
+ * runtime) on exact public webserver routes because the sandboxed iframe is an
+ * opaque origin that the `/api` admission fence refuses as cross-site, and
+ * verifies bytes/hash again on every request. It also injects the fixed runtime
+ * into the entry document and applies a strict CSP.
  *
  * It does not read the projects directory, expose absolute paths, or treat the
  * iframe sandbox as an OS security boundary.
@@ -81,15 +84,58 @@ function injectRuntime(html, runtimeUrl) {
  * Snapshot route manager.
  */
 export class SnapshotRoutes {
-  constructor(connection) {
+  constructor(connection, webServer) {
     this.connection = connection;
+    this.webServer = webServer !== undefined && webServer !== null ? webServer : null;
     this.records = new Map();
     this.projectSnapshots = new Map();
     this.disposers = [];
   }
 
+  /**
+   * Whether the public webserver route table can carry snapshot subresources.
+   *
+   * Real DSH authenticates every request under the `/api` Connection fence and
+   * refuses `sec-fetch-site: cross-site`. The preview iframe is sandboxed with
+   * `allow-scripts` (opaque origin), so its script/img/font subresource requests
+   * are cross-site, carry no SameSite=Strict cookie, and receive 403 from that
+   * fence even though the entry document itself loads. Exact `webServer` routes
+   * are matched before the `/api` prefix, are not subject to the Connection
+   * admission fence, and are therefore the supported carrier for the
+   * capability-addressed snapshot files: the path contains the random snapshotId,
+   * the files are immutable and hash-verified on every request, and the entry
+   * document itself stays on the authenticated Connection route.
+   */
+  get publicFiles() {
+    return this.webServer !== null && typeof this.webServer.register === 'function';
+  }
+
   ensureRuntimeRoute() {
     if (this.runtimeInstalled === true) return;
+    const headers = {
+      'content-type': 'text/javascript; charset=utf-8',
+      'cache-control': 'no-store',
+      'x-content-type-options': 'nosniff',
+    };
+    if (this.publicFiles) {
+      this.runtimeInstalled = true;
+      this.disposers.push(
+        this.webServer.register({
+          kind: 'exact',
+          path: RUNTIME_PATH,
+          handler: async (request, response) => {
+            if (request.method === 'HEAD') {
+              response.writeHead(200, headers);
+              response.end();
+              return;
+            }
+            response.writeHead(200, headers);
+            response.end(CANVAS_RUNTIME_SOURCE);
+          },
+        })
+      );
+      return;
+    }
     if (this.connection === undefined || this.connection === null || this.connection.fetch === undefined) return;
     this.runtimeInstalled = true;
     this.disposers.push(
@@ -98,11 +144,6 @@ export class SnapshotRoutes {
         methods: ['GET', 'HEAD'],
         requestBody: 'buffered',
         fetch: async (request) => {
-          const headers = {
-            'content-type': 'text/javascript; charset=utf-8',
-            'cache-control': 'no-store',
-            'x-content-type-options': 'nosniff',
-          };
           if (request.method === 'HEAD') return new Response(null, { status: 200, headers });
           return new Response(CANVAS_RUNTIME_SOURCE, { status: 200, headers });
         },
@@ -110,9 +151,10 @@ export class SnapshotRoutes {
     );
   }
 
-  /** Whether the connection route registry is available. */
+  /** Whether a route registry is available for the snapshot entry/serve mode. */
   get available() {
-    return this.connection !== undefined && this.connection !== null;
+    return (this.connection !== undefined && this.connection !== null)
+      || (this.webServer !== null && typeof this.webServer.register === 'function');
   }
 
   routePath(snapshotId, filePath) {
@@ -177,12 +219,34 @@ export class SnapshotRoutes {
     };
     for (const [filePath, declared] of files) {
       const route = this.routePath(snapshot.snapshotId, filePath);
-      const disposer = this.connection.fetch.register({
-        path: route,
-        methods: ['GET', 'HEAD'],
-        requestBody: 'buffered',
-        fetch: (request) => this.serveFile(record, filePath, declared, request),
-      });
+      let disposer;
+      if (filePath !== record.entry && this.publicFiles) {
+        // Subresources must bypass the authenticated /api admission fence: the
+        // sandboxed iframe is an opaque origin, so its cross-site script/img/font
+        // requests carry no browser cookie. The random snapshotId in the path is
+        // the capability; registered paths are immutable, TTL-bounded and
+        // re-verified against the manifest on every request.
+        disposer = this.webServer.register({
+          kind: 'exact',
+          path: route,
+          handler: (request, response) => this.serveFileHttp(record, filePath, declared, request, response),
+        });
+      } else if (this.connection !== undefined && this.connection !== null && this.connection.fetch !== undefined) {
+        disposer = this.connection.fetch.register({
+          path: route,
+          methods: ['GET', 'HEAD'],
+          requestBody: 'buffered',
+          fetch: (request) => this.serveFile(record, filePath, declared, request),
+        });
+      } else if (this.publicFiles) {
+        disposer = this.webServer.register({
+          kind: 'exact',
+          path: route,
+          handler: (request, response) => this.serveFileHttp(record, filePath, declared, request, response),
+        });
+      } else {
+        throw new Error('preview routes are unavailable');
+      }
       record.disposers.push(disposer);
     }
     this.records.set(snapshot.snapshotId, record);
@@ -233,6 +297,52 @@ export class SnapshotRoutes {
     };
     if (request.method === 'HEAD') return new Response(null, { status: 200, headers });
     return new Response(bytes, { status: 200, headers });
+  }
+
+  /**
+   * Node-handler equivalent of `serveFile` for public exact webserver routes.
+   *
+   * The response headers stay identical to the authenticated Fetch route
+   * (no-store, nosniff, referrer-policy, permissive ACAO/CORP for fonts/images
+   * loaded from the opaque-origin sandboxed iframe), and the bytes/hash are
+   * verified against the registration manifest on every request.
+   */
+  async serveFileHttp(record, filePath, declared, request, response) {
+    if (Date.now() > Date.parse(record.expiresAt || '') && record.expiresAt !== null) {
+      this.revoke(record.snapshotId);
+      response.writeHead(404, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' });
+      response.end('snapshot expired');
+      return;
+    }
+    let bytes;
+    try {
+      bytes = await readFile(declared.absPath);
+    } catch (_error) {
+      response.writeHead(404, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' });
+      response.end('not found');
+      return;
+    }
+    if (bytes.length !== declared.bytes || sha256(bytes) !== declared.sha256) {
+      response.writeHead(409, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
+      response.end(JSON.stringify({ code: 'E_SNAPSHOT_CORRUPT' }));
+      return;
+    }
+    const headers = {
+      'content-type': contentType(filePath),
+      'content-length': String(bytes.length),
+      'cache-control': 'no-store',
+      'x-content-type-options': 'nosniff',
+      'referrer-policy': 'no-referrer',
+      'access-control-allow-origin': '*',
+      'cross-origin-resource-policy': 'cross-origin',
+    };
+    if (request.method === 'HEAD') {
+      response.writeHead(200, headers);
+      response.end();
+      return;
+    }
+    response.writeHead(200, headers);
+    response.end(bytes);
   }
 
   serveEntry(record, original, request) {

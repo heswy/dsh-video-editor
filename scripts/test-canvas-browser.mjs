@@ -26,6 +26,15 @@ const NONCE = '0123456789abcdef0123456789abcdef';
 // forwarding requests with this internal origin so the CSP regression is
 // exercised exactly as it is in the installed Host (P3-015).
 const BRIDGE_REQUEST_ORIGIN = 'http://dsh.internal';
+// The real DSH /api admission fence refuses cross-site opaque-origin requests
+// and requires the SameSite=Strict browser session cookie. The toy bridge mirrors
+// that boundary for Connection routes: the page/setup responses set a
+// SameSite=Strict cookie, which the entry document navigation carries but the
+// sandboxed iframe's opaque-origin script/img/font subresources do not. Public
+// exact webserver routes (the supported snapshot-subresource carrier) are served
+// before that fence, exactly like the shipped webserver route table.
+const ADMISSION_COOKIE = 'dsh-canvas-admission=1';
+const ADMISSION_HEADER = `dsh-canvas-admission=1`;
 
 function usage(message) {
   if (message) console.error(message);
@@ -83,14 +92,26 @@ function fakeSessionController() {
 
 function fakeCtx() {
   const routes = [];
+  const webServerRoutes = [];
   const services = {
     sessionController: fakeSessionController(),
     workspaceRegistry: { archivedSessionIds: [] },
     systemPrompt: { context() { return () => {}; } },
     agents: { get() { return undefined; } },
+    webServer: {
+      routes: webServerRoutes,
+      register(route) {
+        webServerRoutes.push(route);
+        return () => {
+          const index = webServerRoutes.indexOf(route);
+          if (index >= 0) webServerRoutes.splice(index, 1);
+        };
+      },
+    },
   };
   return {
     routes,
+    webServerRoutes,
     ctx: {
       logger: { warn() {}, error() {} },
       subprocess: { resolveExecutable },
@@ -206,11 +227,21 @@ async function main() {
     evidence.snapshot = { snapshotId: snapshot.snapshotId, entryUrl: snapshot.entryUrl, files: snapshot.files.length };
 
     const routes = new Map(host.routes.map((route) => [route.path, route]));
+    const exactPublicRoutes = new Map(
+      host.webServerRoutes
+        .filter((route) => route.kind === 'exact')
+        .map((route) => [route.path, route])
+    );
+    evidence.publicRoutes = host.webServerRoutes.map((route) => ({ kind: route.kind, path: route.path }));
     server = createServer(async (req, res) => {
       try {
         const url = new URL(req.url, 'http://127.0.0.1');
         if (url.pathname === '/') {
-          res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
+          res.writeHead(200, {
+            'content-type': 'text/html; charset=utf-8',
+            'cache-control': 'no-store',
+            'set-cookie': `${ADMISSION_COOKIE}; Path=/; HttpOnly; SameSite=Strict`,
+          });
           res.end(pageSource(snapshot.entryUrl));
           return;
         }
@@ -219,10 +250,26 @@ async function main() {
           res.end();
           return;
         }
+        // Exact public webserver routes win before the /api prefix, mirroring
+        // WebServer.match (exact table first, then longest prefix).
+        const publicRoute = exactPublicRoutes.get(url.pathname);
+        if (publicRoute !== undefined) {
+          await publicRoute.handler(req, res);
+          return;
+        }
         const route = routes.get(url.pathname);
         if (route === undefined) {
           res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
           res.end('not found');
+          return;
+        }
+        // Authenticated Connection route: require the browser-session cookie and
+        // refuse cross-site opaque-origin subresources like the real /api fence.
+        const cookie = req.headers.cookie || '';
+        const crossSite = req.headers['sec-fetch-site'] === 'cross-site';
+        if (!cookie.split(/;\s*/).includes(ADMISSION_HEADER) || crossSite) {
+          res.writeHead(403, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' });
+          res.end('forbidden');
           return;
         }
         const request = new Request(`${BRIDGE_REQUEST_ORIGIN}${req.url}`, {
@@ -289,7 +336,14 @@ async function main() {
     assert(result.state && result.state.time >= 3.05, `play did not advance the playhead: ${JSON.stringify(result.state)}`);
     assert(evidence.network.external.length === 0, `external network request(s): ${evidence.network.external.join(', ')}`);
     evidence.entryCsp = entryCsp;
+    evidence.admissionFence = {
+      cookie: ADMISSION_COOKIE,
+      connectionRoutes: 'require SameSite=Strict admission cookie and refuse sec-fetch-site: cross-site',
+      publicRoutes: 'exact webserver routes served before the /api admission fence',
+    };
     assert(typeof evidence.entryCsp === 'string', 'snapshot entry CSP was not observed');
+    assert(evidence.publicRoutes.some((route) => route.kind === 'exact' && route.path === '/api/dsh-video/canvas-runtime.js'), 'fixed runtime is not on a public exact route');
+    assert(evidence.publicRoutes.some((route) => /\/assets\/gsap\.min\.js$/.test(route.path)), 'snapshot asset is not on a public exact route');
     for (const directive of ["script-src 'self'", "style-src 'self'", "img-src 'self'", "font-src 'self'"]) {
       assert(evidence.entryCsp.includes(directive), `snapshot CSP is missing ${directive}: ${evidence.entryCsp}`);
     }
