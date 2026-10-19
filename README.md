@@ -1,6 +1,6 @@
 # DSH Video
 
-> 当前代码已收口到 `main`：bundle `0.3.0-alpha.5` / engine `0.4.0`，含对话优先主流程与UI优化。Git合并不代表已安装；固定候选、检查与实际未测范围读 [STATUS](docs/STATUS.md)。下文旧alpha.4路径保留作历史，不能混用版本/摘要。
+> 当前代码已收口到 `main`：bundle `0.3.0-alpha.6` / engine `0.4.0`，含对话优先主流程、UI优化与真实 DSH 预览 CSP 修复。Git合并不代表已安装；固定候选、检查与实际未测范围读 [STATUS](docs/STATUS.md)。下文旧alpha.4路径保留作历史，不能混用版本/摘要。
 
 
 运行在 DeepSeek Harness 内的 AI 视频创作与编辑插件。当前目标是用户通过右侧对话生成视频，左侧自动预览/播放，再通过对话持续修改同一作品；用户手动编辑后续再加。
