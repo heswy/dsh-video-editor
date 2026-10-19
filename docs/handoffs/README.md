@@ -1,9 +1,10 @@
 # 当前交接入口
 
-更新：2026-10-19。主开发/真机验收线保持video-studio，原p0/p1分线停止。
+更新：2026-10-19。用户先实机测试，再按具体问题建立修复分支。
 
-- 主线交接：[video-studio.md](video-studio.md)，下一步[P3-013真实对话验收](../tasks/P3-013-conversation-live-acceptance.md)。P3-012开发候选已通过。
-- 用户直接指定当前Codex完成的UI候选：[ui-polish.md](ui-polish.md)，[P3-014](../tasks/P3-014-ui-polish.md)，PR#5待审；不是自动增加一个开发Agent。
-- 先读协调STATUS/DEVELOPMENT/PRODUCT；路径、权限与本轮职责例外只维护在DEVELOPMENT。
+- 最新代码、规则、项目记忆统一读origin/main；先读STATUS、DEVELOPMENT、PRODUCT。
+- 当前没有已下发的新功能任务；不继续旧p0/p1/video-studio/ui-polish/project-foundation分支。
+- P3-013保留为真实对话验收的行为清单，P3-014记录已整合UI候选；P3-013原alpha.4路径不是alpha.5安装授权。使用哪个候选先核对实际包/版本/摘要。
+- 具体问题修复从main创建codex/<问题名>分支，按需隔离worktree；用户指定Agent负责实现并交PR。路径/权限/复用规则只维护在DEVELOPMENT。
 
-旧p0-mode-shell、p1-engine及programmer handoff均为历史。候选PR/安装/staging分开记录，不跟随移动HEAD拼包，不自动将UI候选替换到真机验收环境。
+本目录旧按工作区/人员命名的handoff全部为历史证据，不作为新的开工指令。保留旧工作树和固定产物供追溯，不自动安装或清理用户作品。

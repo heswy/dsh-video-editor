@@ -1,0 +1,401 @@
+{
+  "kind": "p3-005b-capability-probe",
+  "startedAt": "2026-10-18T02:22:51.871Z",
+  "versions": {
+    "node": "v24.14.0",
+    "worker": {
+      "node": "v24.14.0",
+      "platform": "darwin",
+      "hyperframes": "0.8.167",
+      "sdk": "0.8.167",
+      "gsap": "3.15.0",
+      "fps": 30,
+      "browser": "Google Chrome 155.0.8059.84",
+      "ffmpeg": "ffmpeg version 8.0.1 Copyright (c) 2000-2025 the FFmpeg developers",
+      "ffprobe": "ffprobe version 8.0.1 Copyright (c) 2007-2025 the FFmpeg developers",
+      "templates": [
+        "product-launch-v1"
+      ]
+    }
+  },
+  "worker": {
+    "initial": {
+      "projectId": "proj-mvd7ak6e-901688dc",
+      "revision": "449648a3af6b644615799c180fe71de7c1f1b097ac2be9971410e7cd20d848b2",
+      "duration": 11,
+      "scenes": [
+        {
+          "sceneId": "scene-1",
+          "start": 0,
+          "duration": 5
+        },
+        {
+          "sceneId": "scene-2",
+          "start": 5,
+          "duration": 4
+        },
+        {
+          "sceneId": "scene-3",
+          "start": 9,
+          "duration": 2
+        }
+      ],
+      "capabilities": [
+        {
+          "stableId": "scene-1-badge",
+          "capabilities": [
+            "text"
+          ]
+        },
+        {
+          "stableId": "scene-1-title",
+          "capabilities": [
+            "text",
+            "timing"
+          ]
+        },
+        {
+          "stableId": "scene-1-rule",
+          "capabilities": [
+            "text",
+            "timing"
+          ]
+        },
+        {
+          "stableId": "scene-2-badge",
+          "capabilities": [
+            "text"
+          ]
+        },
+        {
+          "stableId": "scene-2-title",
+          "capabilities": [
+            "text",
+            "timing"
+          ]
+        },
+        {
+          "stableId": "scene-2-subtitle",
+          "capabilities": [
+            "text",
+            "timing"
+          ]
+        },
+        {
+          "stableId": "scene-2-rule",
+          "capabilities": [
+            "text",
+            "timing"
+          ]
+        },
+        {
+          "stableId": "scene-2-shot",
+          "capabilities": []
+        },
+        {
+          "stableId": "scene-3-badge",
+          "capabilities": [
+            "text"
+          ]
+        },
+        {
+          "stableId": "scene-3-title",
+          "capabilities": [
+            "text",
+            "timing"
+          ]
+        },
+        {
+          "stableId": "scene-3-subtitle",
+          "capabilities": [
+            "text",
+            "timing"
+          ]
+        },
+        {
+          "stableId": "scene-3-rule",
+          "capabilities": [
+            "text",
+            "timing"
+          ]
+        }
+      ]
+    },
+    "text": {
+      "revisionBefore": "449648a3af6b644615799c180fe71de7c1f1b097ac2be9971410e7cd20d848b2",
+      "revisionAfter": "e1d001be34b237c43e2d0dd2464137127741222e66ca5ce9fc0d61f83d4d8eb7",
+      "persisted": "文字写回已验证",
+      "operationId": "cap-text"
+    },
+    "timing": {
+      "revisionBefore": "e1d001be34b237c43e2d0dd2464137127741222e66ca5ce9fc0d61f83d4d8eb7",
+      "revisionAfter": "d3718087df4f79526562314c76a62a6ddf2e5e345cd9793eefb75722edbac54a",
+      "persisted": {
+        "start": 5.3,
+        "duration": 3.5
+      }
+    },
+    "unsupportedEditOps": [
+      {
+        "op": "layout",
+        "accepted": false,
+        "code": "E_PARAMS",
+        "message": "Unsupported edit type"
+      },
+      {
+        "op": "style",
+        "accepted": false,
+        "code": "E_PARAMS",
+        "message": "Unsupported edit type"
+      },
+      {
+        "op": "move",
+        "accepted": false,
+        "code": "E_PARAMS",
+        "message": "Unsupported edit type"
+      },
+      {
+        "op": "resize",
+        "accepted": false,
+        "code": "E_PARAMS",
+        "message": "Unsupported edit type"
+      },
+      {
+        "op": "color",
+        "accepted": false,
+        "code": "E_PARAMS",
+        "message": "Unsupported edit type"
+      }
+    ],
+    "sceneLevel": {
+      "revisionAfter": "8b2e3c15b4d9a6f00840f0b9e46d12402e40abd6d4750e00785a0e3a26341363",
+      "colorPersisted": true,
+      "accentPersisted": true,
+      "positionsBefore": {
+        "style": "position:absolute;left:88px;top:196px;margin:0;width:980px;font-size:64px;line-height:1.12;font-weight:600"
+      },
+      "positionsAfter": {
+        "style": "position:absolute;left:88px;top:196px;margin:0;width:980px;font-size:64px;line-height:1.12;font-weight:600"
+      },
+      "note": "scene.update rewrites the whole scene from the template model; it can persist scene color/accent/logo/shot/duration but not element-level layout/styles.",
+      "positionsTemplateFixed": true
+    }
+  },
+  "sdk": {
+    "package": "@hyperframes/sdk",
+    "version": "0.8.167",
+    "methods": [
+      "constructor",
+      "attachHistory",
+      "attachPersistQueue",
+      "_fireError",
+      "setStyle",
+      "setText",
+      "setAttribute",
+      "setTiming",
+      "syncOffset",
+      "moveIntoSync",
+      "slipIntoSync",
+      "removeElement",
+      "addElement",
+      "setVariableValue",
+      "getVariableValue",
+      "listVariables",
+      "removeVariable",
+      "declareVariable",
+      "updateVariableDeclaration",
+      "removeVariableDeclaration",
+      "getVariableDeclarations",
+      "getVariableValues",
+      "validateVariableValues",
+      "getVariableUsage",
+      "_collectCssText",
+      "setPreviewVariables",
+      "getElementTimings",
+      "setElementTiming",
+      "setHold",
+      "addGsapTween",
+      "setGsapTween",
+      "removeGsapTween",
+      "addWithKeyframes",
+      "replaceWithKeyframes",
+      "undo",
+      "redo",
+      "canUndo",
+      "canRedo",
+      "getElements",
+      "getRootElements",
+      "getElement",
+      "find",
+      "getAllAnimationIds",
+      "selection",
+      "element",
+      "getSelection",
+      "setSelection",
+      "updateSelection",
+      "_dispatch",
+      "dispatch",
+      "batch",
+      "resetBatchState",
+      "can",
+      "on",
+      "serialize",
+      "getOverrides",
+      "applyPatches",
+      "flush",
+      "dispose"
+    ],
+    "styleWrite": {
+      "attempted": true,
+      "flushed": true
+    },
+    "copyHashBefore": "617999bd49ffcefb6364ea6dd2597875016100babd4720d51c28b7a406f6fe92",
+    "copyHashAfter": "b76bccb904c47ba7c4bfcb5d9876e7d89f8064ebcc99e2b3ba79ee151d3a6cd7",
+    "persistedTitleStyle": "position: absolute; left: 160px; top: 260px; margin: 0; width: 800px; font-size: 64px; line-height: 1.12; font-weight: 600; height: 96px; color: #ff0000",
+    "persistedElementStyle": {
+      "left": true,
+      "top": true,
+      "width": true,
+      "height": true,
+      "color": true
+    },
+    "note": "The SDK can persist inline element styles on a Host-owned copy, but the shipped worker exposes no typed op for them (see unsupportedEditOps)."
+  },
+  "regeneration": {
+    "openedRevision": "5e0c1b94502406386c4b43e213e5d33aa89422b88e3d55cf5f317661ced37b5e",
+    "revisionAfter": "56672de0b0332244470622cd7ffbeaed24f8c9533913e3ed8b52a0059174f6b0",
+    "titleStyleAfterRegeneration": "position:absolute;left:88px;top:196px;margin:0;width:980px;font-size:64px;line-height:1.12;font-weight:600",
+    "sdkStyleSurvived": false,
+    "note": "scene.update regenerates the whole document from the template model; element-level style/position deltas written by the SDK are overwritten. A future layout/style op must be integrated into the generator + history + merge path, not implemented as an ad-hoc SDK write."
+  },
+  "merge": {
+    "file": "packages/video-engine-worker/src/merge.mjs",
+    "inlineStylesInSignature": true,
+    "snippet": "    inlineStyles: element.inlineStyles,\n    parentId: element.parentId,\n    depth: element.depth,",
+    "note": "human/AI merge compares inlineStyles per stableId; a typed style/layout op would flow through the same element signature and could conflict, while scene.* regeneration currently bypasses element deltas."
+  },
+  "matrix": [
+    {
+      "capability": "文字内容",
+      "currentPath": "edit {type:'text',target,text}",
+      "persisted": true,
+      "evidence": "worker.text.persisted"
+    },
+    {
+      "capability": "元素显式时间",
+      "currentPath": "edit {type:'timing',target,start?,duration?}",
+      "persisted": true,
+      "evidence": "worker.timing.persisted"
+    },
+    {
+      "capability": "Scene 颜色/强调色/Logo/截图/时长/标题",
+      "currentPath": "scene.update（整 Scene 重写）",
+      "persisted": true,
+      "evidence": "worker.sceneLevel"
+    },
+    {
+      "capability": "元素位置 left/top",
+      "currentPath": "无 worker 方法；SDK setStyle 仅在 Host 自有副本生效",
+      "persisted": false,
+      "evidence": "worker.unsupportedEditOps + sdk.styleWrite"
+    },
+    {
+      "capability": "元素尺寸 width/height",
+      "currentPath": "无 worker 方法；SDK setStyle 仅副本",
+      "persisted": false,
+      "evidence": "worker.unsupportedEditOps + sdk.styleWrite"
+    },
+    {
+      "capability": "元素颜色/字体/字重等样式",
+      "currentPath": "无 worker 方法（scene.update 只能改 Scene 级颜色）",
+      "persisted": false,
+      "evidence": "worker.unsupportedEditOps"
+    },
+    {
+      "capability": "拖动/缩放直接操纵",
+      "currentPath": "无协议方法；canvas 仅编辑层暂态 + 提交被拒",
+      "persisted": false,
+      "evidence": "canvas-evidence.json gap.*"
+    },
+    {
+      "capability": "层级/z-index/旋转",
+      "currentPath": "无方法",
+      "persisted": false,
+      "evidence": "worker.unsupportedEditOps"
+    }
+  ],
+  "proposals": {
+    "layoutOp": {
+      "shape": {
+        "type": "layout",
+        "target": "<stableId>",
+        "box": {
+          "left": "number",
+          "top": "number",
+          "width": "number",
+          "height": "number"
+        },
+        "unit": "composition-px"
+      },
+      "constraints": [
+        "composition coordinates are integer-ish CSS px in the document viewport (0..data-width/height)",
+        "only elements with an explicit layout capability (absolutely positioned text/media in the controlled template) accept it",
+        "must go through expectedRevision + operationId idempotency and recordWrite history like text/timing",
+        "must not change GSAP timeline entries: inline left/top are the static base position, GSAP y/scaleX animations are relative transforms",
+        "min size and canvas bounds must be validated; rejects return E_PARAMS/E_REVISION_CONFLICT as today"
+      ]
+    },
+    "styleOp": {
+      "shape": {
+        "type": "style",
+        "target": "<stableId>",
+        "styles": {
+          "<property>": "<string|null>"
+        }
+      },
+      "allowlist": [
+        "color",
+        "fontSize",
+        "fontWeight",
+        "textAlign",
+        "letterSpacing"
+      ],
+      "constraints": [
+        "property/value allowlist validated in the worker, not in the UI",
+        "style changes participate in the existing stableId merge signature (merge.mjs includes inlineStyles)",
+        "scene.update/project.revise regeneration must either preserve element deltas or return an explicit conflict instead of silently dropping them"
+      ]
+    },
+    "hostContract": {
+      "coordinates": "Host↔sandbox messages use composition CSS px; Host maps letterbox/scale; screen coordinates never cross the boundary",
+      "unit": "composition-px, document viewport (data-width×data-height)",
+      "revision": "every commit carries expectedRevision from the displayed snapshot; stale commits surface E_REVISION_CONFLICT"
+    }
+  },
+  "failures": [],
+  "summary": {
+    "persistedCapabilities": [
+      "文字内容",
+      "元素显式时间",
+      "Scene 颜色/强调色/Logo/截图/时长/标题"
+    ],
+    "gapCapabilities": [
+      "元素位置 left/top",
+      "元素尺寸 width/height",
+      "元素颜色/字体/字重等样式",
+      "拖动/缩放直接操纵",
+      "层级/z-index/旋转"
+    ],
+    "unsupportedOpCodes": [
+      "layout:E_PARAMS",
+      "style:E_PARAMS",
+      "move:E_PARAMS",
+      "resize:E_PARAMS",
+      "color:E_PARAMS"
+    ],
+    "sdkStylePersistedButWorkerUnreachable": true,
+    "regenerationDropsElementStyle": true
+  },
+  "finishedAt": "2026-10-18T02:22:54.190Z",
+  "evidenceFile": "evidence/capability-evidence.json"
+}

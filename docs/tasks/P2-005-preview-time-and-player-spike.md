@@ -46,24 +46,7 @@
 
 证据要求：可用 dev-only 原型（`experiments/preview/**`，可安装固定版本 hyperframes 0.8.167 到该目录，`--ignore-scripts`，锁文件入库、node_modules 不入库），在真实 Chrome 本地打开、断网运行，截取 0.5s/2.5s/4.5s 画面或日志；证明 seek/播放与无网络。若 A1/A2 不可行，也必须有失败证据并给 A3 或替代建议。
 
-## 4. 真机验收缺陷 R1（必须修，随 B/0.2.1 一起交付）
-
-2026-10-17 真机深色模式下：主按钮 **「更新画面」**（`.dv-button-primary`）显示为白底、文字几乎不可见的白字（功能正常、可点击，是看不清不是不可用）。
-
-主调度已核对源码与宿主 token：
-
-- `client.js` 约 430–436 行：`background:var(--dsw-alias-brand-primary, #5b8cff); color:var(--dsw-alias-label-on-brand, #fff);`
-- 宿主（Desktop 0.2.1-rc.1）**不存在** `--dsw-alias-label-on-brand`，因此前景始终落到 fallback `#fff`；而深色主题的 `--dsw-alias-brand-primary` 解析为近白色（neutral-bluish-50），造成白底白字。浅色主题正常只是巧合。
-- 宿主实际存在的候选 token：`--dsw-alias-label-primary-inverted`（浅色 #fff / 深色 #353638 一类的反转前景）、`--dsw-alias-brand-primary-invert`、`--dsw-alias-brand-text`、`--dsw-alias-label-primary-foreground`。
-
-要求：
-
-- 用宿主真实存在的 token 或显式正确配对，保证主按钮前景/背景对比：浅色、深色、hover、focus-visible、disabled 都可读；不允许再引用不存在的 token 靠 fallback 蒙对。
-- 检查其它同类 token 用法（`--dsw-alias-label-on-brand` 等不存在变量）与空状态、错误文本、禁用态对比，不扩大成重设计。
-- 验证分层：本地静态断言 + 真实安装后浅色/深色截图对照（0.2.1 重装后由用户看、总调度记录）；无真实主题证据不算修好。
-- 记录在开发记录里：根因、修改的 token、两种主题验证结果、未验证项。
-
-## 5. 交付与验收
+## 4. 交付与验收
 
 1. B 先完成：commit、`npm run check` 结果、0.2.1 固定包摘要、新 staging、真实链证据；交回后总调度复审，用户再重装验收。
 2. A 再完成：`docs/research/P2-005-preview-spike.md`（结论先行、已验证/提案分开）、原型证据路径、推荐拆分。
@@ -72,4 +55,22 @@
 
 ## 开发记录（程序员 2）
 
-（待填写：起始 HEAD、B 提交与检查结果、0.2.1 包摘要、新 staging、真实链、A 结论与证据、未测项）
+- 起始：分支 `dsh/p0-mode-shell`，开工 HEAD `afd2a29`（工作树干净；无切换分支）。本指南从 `origin/codex/project-foundation` 存档到本分支。
+- **Phase 1 / B 提交**：`da8a22b feat(ui): add bounded frame-time preview`（根版本 `0.2.1`）。`client.js` 增加受控「画面时间」输入、`parseFrameTime` 拒绝越界/空值、`defaultFrameTime` 打开默认 2.5s 或上次选择、`requestFrame` 按所选 time、frame 结果/view memory 恢复时间与画面；无新 Host/worker 方法，无假播放/时间线/轮播。静态检查/README/`package.json` 同步。
+- B 检查：`npm run check` 全通过——静态 **34/34**、Client smoke **42/42**、Host 契约 **20/20**，合计 **96/96**。新增 smoke：默认 2.5s/请求带 time、越界/空值明确拒绝且不丢旧帧、所选 4.2s 真正进入 frame 请求、重挂载恢复 4.00s 与画面；静态断言有 frame-time 绑定、无播放/时间线/暂停/seek/自动轮播。
+- **B 固定包**：`/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/artifacts/p2-b/da8a22b/dsh-video-0.2.1.tgz`，39,678 B / 17 files，SHA-256 `bb8e56339d4a633a82605c7f2f665392042905e0a10d53e3f9cbf64feccf9f3a`；runtime 文件与 `da8a22b` 逐字节一致。
+- **B staging**：`/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/artifacts/p2-b/staging-54f4671-da8a22b`；root `da8a22b07fde0f20d3d3fcacad4992161e5a444f`，engine `54f467147ae2f61e118099c4947f55e8da877500`，bundle/client/worker `0.2.1/0.1.1/0.1.1`；INTEGRITY SHA-256 `8d6eea45b338bfc8852a47ee9994f77054447407f57cd45446e81075861e6d48`；staged bridge SHA `07442c86…`，config SHA `856ea63a…`，patch SHA `5754edd8…`；bundle 16/client 12/worker 15 源文件；`npm ci --ignore-scripts`、`esbuildAvailable:true`，无 pendingBuilds。真实链证据 `artifacts/p2-b/evidence/engine-run-2026-10-17T09-23-47-072Z.json`：staging 内 Host 执行，doctor Node v24.21.0/Chrome 155.0.8059.79/FFmpeg 8.0.1；edit hf-title revision `135a529…`→`f714e71…`；PNG 279,463 B/hash `875b48c6…`；成功 H.264 MP4 135,855 B/hash `fae2687e…`（1280×720、30/1、150 帧、5s，ffprobe 独立一致）；第二次 render cancel `cancelling`→`cancelled`；close/dispose 完成。跑完后恢复受控 demo，标题回到 `让创意成为影像`，无 `· Host`。
+- **Phase 2 / A**：`docs/research/P2-005-preview-spike.md` + `experiments/preview/**`（dev-only，固定 `@hyperframes/core` 0.8.167、puppeteer-core 25.14.0，锁入库、node_modules 忽略）。A1 sandbox iframe + 快照 + runtime 在真实 Chrome 离线证据通过：ready ~1.44s、seek 0.5/2.5/4.5s 约 406–440ms、state 时间一致、play 推进、pause 生效、external request 0、父页面无法读取 iframe、`navigator.onLine=false`；截图/JSON 在 `experiments/preview/evidence/`。A2 Studio/Player 源码核对认为需完整 Studio server/6.1MB UI，**不推荐作为第一版**；A3 每帧约 5.0–5.5s，不满足真播放。与 worker frame 对比 MAE≈0.78/255、95.5% 像素一致但非逐字节；推荐 engine snapshot/preview → Host 精确 snapshot route → Client iframe 的拆分，未改生产协议。
+- 未安装/未启停/未改 profile/未 merge；B/A 只交复审，用户授权后安装。0.2.0 已安装保持，0.1.3 回滚包仍在。未测：真实 DSH 内 A1 CSP/iframe/焦点/主题/卸载、A2 实际嵌入、不可信代码隔离、跨平台/用户素材/音轨。
+
+## 复审 R1 收尾：主按钮 token（提交 bdcfd72）
+
+- 用户/复审发现已安装 0.2.1 的 `.dv-button-primary` 仍使用不存在的 `--dsw-alias-label-on-brand`。按 app.asar 内置 `@deepseek-ai/dsh-client-ui-theme` 的实测 token 定义修复：`button-primary-fill`/`button-primary-hover`/`button-primary-dimmed` + `label-primary-foreground`。
+- 浅色：fill `#0f1115` + foreground `#fff`（≈18.9:1）、hover `#43454a` + `#fff`（≈9.59:1）、disabled `#ebeef2` + label-secondary `#61666b`（≈4.98:1）。
+- 深色：fill `#fafafa` + foreground `#0f1115`（≈18.1:1）、hover `#ebeef2` + `#0f1115`（≈16.24:1）、disabled `#43454a` + label-secondary `#cfd3d6`（≈6.37:1）；focus-visible 仍使用主题 `--dsw-focus-ring-width/color`。主按钮 disabled 覆盖为 opacity:1，保留可读的前景/背景配对。
+- 同类 token 审计：`client.js` 当前 13 个 `--dsw-alias-*` 引用均为内置 theme 实际存在的 token；不存在项仅已移除的 `label-on-brand`。`scripts/check.mjs` 新增静态断言禁止该 token，并要求主按钮使用上述配对 token。
+- 新检查：`npm run check` 全通过——静态 **35/35**、Client smoke **42/42**、Host 契约 **20/20**（共 **97/97**）。
+- 新固定包：`/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/artifacts/p2-b/bdcfd72/dsh-video-0.2.1.tgz`，39,702 B / 17 files，SHA-256 `83043479416b91973a45d1fbd058faec402e3cf4b32280da66643fb213ba3feb`（0.2.1 版本不变；旧 da8a22b 包保留）。
+- 新 staging：`/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/artifacts/p2-b/staging-54f4671-bdcfd72`；root `bdcfd72d8cca91a9ae0c90d3a1fc42c834107e39` / engine `54f467147ae2f61e118099c4947f55e8da877500`；INTEGRITY SHA `b410ec2f80f86d0d8d06950910a6e7dc213ec54adbc1961092b03d2102f6d2ec`；staged bridge `07442c86…`、config `9d623323…`、patch `94159539…`；`npm ci --ignore-scripts`、`esbuildAvailable:true`。
+- 新真实链证据：`artifacts/p2-b/evidence/engine-run-2026-10-17T09-32-38-272Z.json`。staging 内 Host 执行、INTEGRITY 校验通过；hf-title revision 变化、PNG 279,463 B/hash `875b48c6…`、成功 H.264 MP4 135,855 B/hash `fae2687e…`、二次 render cancel cancelled/cleaned、close/dispose 完成；跑完后恢复干净 demo 标题 `让创意成为影像`（无 `· Host`）。
+- 本轮仍未安装/未启停/重启、未改 profile/已安装 0.2.0 链接/已审 staging；commit + push 后交复审，用户再单独授权重装 0.2.1。

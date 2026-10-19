@@ -23,6 +23,37 @@ central sceneSummaries所影响的inspect/open、project.create、scene.*、proj
 
 不安装/启停/重启、不改profile、不发模型请求、不改当前用户工程、不merge、不联系或修改p0。p0按此冻结的template形状并行准备，新的具体提交需总调度复审后才能进入其最终staging，不依赖移动HEAD。
 
-## 总调度验收（2026-10-18）
+---
 
-功能d383e3d、交付c31fde5已通过[复审](../reviews/P3-009-review-01.md)。独立worker44/44、client20 pass+1 opt-in skip、额外公共JSONL探针4/4、两包逐文件摘要通过；冻结两包0.3.2供p0生成新staging。本任务收口，p0 R1–R5不因本任务通过而自动关闭。未安装/merge。
+## 开发记录（p1-engine）
+
+填写：2026-10-18。开工 `git fetch origin` 成功，协调记忆 `origin/codex/project-foundation` @ **`2400431`**；开工 HEAD **`9aebcbc`**，引擎基线 **`82f6219`** / 两包 0.3.1。实现提交 **`d383e3d`**（首版 `6861036` 自查长文本往返后修正）；本记录与研究记录另以 docs 提交。未改根插件/Host/client.js/p0 树/spike/全局文档，未安装/启停/重启、未调模型/改用户数据、未 merge、未新 tree/PR；HyperFrames 仍 0.8.167，无新依赖。
+
+### 实现
+
+- `sceneSummaries`/`sceneSummary` 追加只读 `template`（`scenes.js` 新 `sceneTemplate`），从权威 HTML 的 `parseDocument` 受控模型生成冻结形状 `{title,duration,subtitle?,badge?,color?,accent?,logo?,shot?}`；覆盖 inspect/open、project.create、scene.*、project.revise 成功结果的 `scenes[]`。
+- schema 的 `sceneSummary` 与 `inspectScene` 增加必填 `template: $ref sceneTemplate`（复用既有 scene.update 输入定义）；两包版本/lock 0.3.2，README 记录契约与样例；client 无生产方法变化。
+- 保持 `scene.update` 完整替换、无变化 `E_INTERNAL`、重生成/覆盖/合并/黑带语义；legacy P2 仍 `scenes:[]`。
+- 自查补充：text edit 上限 2048 与旧模板上限 200/300/48 不一致，长文案会使读出的 template 无法回写；已将 title/subtitle/badge 模板输入/投影上限对齐 2048（旧范围兼容），空/纯空白 title text edit 返回 `E_PARAMS`；其它 text/timing 不变。
+
+### 验证
+
+- worker 单元/契约 **44/44**（约 16.4s）；真实链 **12/12**；client **21 项：20 pass + 1 opt-in skip**。
+- 新增真实 JSONL 回归覆盖：长文本（300/600/60 字）投影可往返、空 title 拒绝；完整字段投影/validateSceneSpec 往返/旧字段保留/无泄漏字段；仅改 color 与仅改 shot 保留 subtitle/badge/accent/logo/shot、人工文本、人工 layout/style、其它 Scene；快照 HTML；project.create/scene.create/update/reorder/open 结果一致；close/reopen、worker 重启、undo/redo；可选字段缺失；legacy scenes:[]；schema 正负与 22 方法集；client 透传。
+- 方法结果样例与契约见 `docs/research/P3-009-scene-template-read-contract.md`。
+
+### 固定包（`artifacts/engine/d383e3d/`，ignored，保留旧包）
+
+| 包 | 文件数 | bytes | SHA-256 |
+|---|---|---|---|
+| dsh-video-engine-client-0.3.2.tgz | 3 | 7494 | `0830ab717ac2ef2572faf95aacace0778d5dc379cdfcc4546b48e6fa851311a5` |
+| dsh-video-engine-worker-0.3.2.tgz | 14 | 57022 | `e4e161418c252e6973760ca20d8aff890eabcf26a0bce5e93e0bfb6bef3716c3` |
+
+`package-verify.json`：逐文件与功能提交字节一致、重复 pack 一致、干净 `git archive` 检出重新 pack 一致；未安装、未发布；旧 `df4b74f/`、`4c087ef/`、`74294e6/`、`82f6219/` 包保留。
+
+### 未测项 / 风险
+
+- 仅受控 `product-launch-v1` 冻结字段；任意 HTML/额外字段/字体旋转仍不支持，不扩展写入。
+- 投影依赖受控解析模型；无法解析的手改工程仍 legacy `scenes:[]`（既有边界）。
+- 未做真实 UI 局部换色/换素材交互验收（属 p0）；未重做长渲染/性能，黑带修复行为保持。
+- `scene.update` 仍是完整替换，前端只传部分字段仍会丢数据；契约用于读取完整模板，不改变写入语义。

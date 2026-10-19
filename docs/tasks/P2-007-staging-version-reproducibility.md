@@ -1,5 +1,3 @@
-> 当前状态：2026-10-18 总调度独立复审通过，见 [评审](../reviews/P2-007-review-01.md)。下文固定交付记录保留；不重新执行此已完成任务，当前下一任务读工作区handoff。
-
 # P2-007：修复 staging 版本门禁与可复建交付
 
 日期：2026-10-17。执行工作区：**p0-mode-shell**；沿用 `dsh/p0-mode-shell` / PR #3，开工基线 `2c46daa`（功能交付 `97c0609` / `16d60aa`）。若 HEAD 或工作状态变化，先记录实际差异，不 reset。依据 [P2-006 复审](../reviews/P2-006-review-01.md) R1。
@@ -38,7 +36,3 @@
 - **新 staging**：`/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/artifacts/p2-b/staging-54f4671-8c6bf26`，用仓库原 `scripts/stage-dev.mjs` 直接从干净提交 `8c6bf26` 生成（无临时副本）。root `8c6bf26245e5a9a23c3b7657c83ba51ee2c3f593`、engine `54f467147ae2f61e118099c4947f55e8da877500`、bundle/client/worker `0.2.2/0.1.1/0.1.1`、`rootDirty:false`、`bundleVersionGate.expected=manifest=0.2.2`；INTEGRITY SHA-256 `2c615075e7c0b8bf6bb5828f621f95b541cff9d98ee91fc175bf6c54af19d76e`；config `ee2cb221…`、staged patch `5458a37b…`；bundle 16/client 12/worker 15 项源文件摘要、14 个 bundle 运行时源文件与 `8c6bf26` 逐字节一致、package.json 仅按预期加 `file:` 依赖、patch 注入 config 与 config.json 一致、engine 27 个源码文件与 `54f4671` 逐字节一致；`npm ci --ignore-scripts`、`esbuildAvailable:true`。已安装 0.2.1 的 `staging-54f4671-bdcfd72` 与现有 0.2.2 目录均未覆盖。
 - **真实链**：`node scripts/test-host-engine.mjs --staging <新 staging>` exit 0，证据 `artifacts/p2-b/evidence/engine-run-2026-10-17T15-52-09-613Z.json`（18,297 B / SHA-256 `a5bc5704…`）。staging 内 Host（`07442c86…`）执行、INTEGRITY 校验通过；doctor Node v24.21.0 / Chrome 155.0.8059.84 / FFmpeg 8.0.1；open→inspect→title/timing edit revision `135a529…`→`f714e71…`；frame succeeded PNG **279,463 B / `875b48c6…`**；render succeeded H.264 MP4 **135,855 B / `fae2687e…`**；第二次 render cancel `cancelled` + `cleaned:true`；close/dispose 完成，无 host 警告。跑完用 staging 内 `npm run prepare-fixture`（保留 `VIDEO_BROWSER_PATH`）恢复 demo：`projects/demo/index.html` 与 `fixtures/index.html` 字节一致（`8080d8b0…`）、标题 `让创意成为影像`、无 `· Host`，`INTEGRITY.json` 摘要未变。
 - **边界**：未安装/启停/重启、未改 profile、未 merge、未动已安装 0.2.1；该真实链不是 DSH 真机激活，也不是新画布/新 UI 验证。未测：0.2.2 安装后 R2/R3 交互、主题/窄窗/键盘、真实页面视觉、卸载回滚、Windows/Linux 与非受控素材。
-
-## 总调度验收
-
-2026-10-18 受控范围通过；开发者记录从 b204760 导入，独立命令/结果与限制以 P2-007-review-01.md 为准。未安装、未合并。

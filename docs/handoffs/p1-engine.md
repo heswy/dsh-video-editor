@@ -1,3 +1,5 @@
+> 历史交接：2026-10-19仓库已收口到main；不继续下述旧分支任务。当前操作以origin/main的STATUS、DEVELOPMENT、handoffs/README为准。
+
 > **历史交接，2026-10-18起停止执行。用户已统一到video-studio；当前任务读video-studio.md。旧树/分支保留，不继续写入。**
 
 # p1-engine：当前接手

@@ -54,14 +54,62 @@
 
 ## 开发记录（p1-engine）
 
-待填：实际HEAD/协调SHA、规范化与覆盖模型、协议/兼容变化、测试与真实证据、包摘要、提交、未测项。
+填写：2026-10-18。按本指南一次交付；开工 `git fetch origin` 成功，协调记忆使用 `origin/codex/project-foundation` @ **b69354e**；R1–R2 修复轮 fetch 协调提交 **12e3995**（P3-006B 复审与 BUG-001 登记）。未切分支、未改全局规则、未 merge。
 
+### 起点、范围与提交
 
-## 总调度复审（2026-10-18）
+- 工作树：`/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/p1-engine`，分支 `codex/p1-engine-spike-b4bf`（PR #2）。
+- 开工 HEAD **`ea2d1a4`**；引擎功能基线 **`df4b74f`** / 两包 0.2.1。第一版实现 **`0296781`**，独立复核后由 **`4c087ef`** 修正（显式覆盖标记、渲染证据披露、打包可复现性）；P3-006-B 复审 R1–R2 后由 **`74294e6`** 修复旧 base 覆盖意图与无标记差量并集，最终交付以 **`74294e6`** 为准；本记录与研究记录另以 docs 提交。
+- 范围：只改 `packages/video-engine-worker/**`、`packages/video-engine-client/**`、`spikes/editor-canvas/**` 的必要能力探针/新证据、本任务/研究记录；未改根插件/Host/其它 spike/全局规则/profile；未安装/启停/重启、未调模型、未 merge、未新 tree/PR；HyperFrames 固定 0.8.167，未加运行时依赖。
+- 两包版本 0.3.0；JSONL v1 与全部原有方法保持；旧无覆盖工程可打开。
 
-已收到4c087ef/fcb090f，两包0.3.0候选。独立worker38/38与固定包3/3、14/14一致；[复审R1–R2](../reviews/P3-006B-review-01.md)独立复现人工覆盖意图/marker迁移两项丢失，需按原范围一次修复交回，不冻结为正式画布接线基线。黑带登记[BUG-001](BUG-001-render-bottom-band.md)，保留真实导出限制。完整检查与真实链结果见复审报告，不用开发者自述替代验收。
+### 规范化与覆盖模型（选择与理由）
 
+- **inline style 是唯一工程真相 + 受控覆盖标记**：layout/style 写入受控模板叶子的行内样式，并在元素上写 `data-dv-managed="<props>"` 区分“人工显式选择”与“模板默认”（覆盖值等于默认、后续 accent 改色/删除保护场景）；revision=HTML 字节 hash，history 快照/preview snapshot/frame/render/close/reopen/worker 重启天然一致；不引入 Host 第二份工程状态或隐藏元数据。无标记的外部手改按“与当前模板默认值差异”回退识别。
+- 写入走统一 `edit.ops` 单写者路径：整批先做结构/能力/范围/精度/累计 box 边界校验，再一次 SDK 受控写入（layout/style 用 SDK `setStyle`，text/timing 原有路径），flush/readback 成功后记录 history；layout/style 不修改 GSAP timeline 字节，动画 transform 保持相对。
+- 重生成：用“当前 Scene 模型生成的默认文档”对比当前 HTML 得到人工差量，移植到新文档保留 stableId（scene.create/update/reorder、revise 的 AI 候选）；`scene.update` 删除带差量对象 → `E_OVERRIDE_CONFLICT`；`scene.remove` 显式执行并报告 `changeSummary.droppedOverrides`。
+- 合并：`merge.mjs` 改为逐字段三方（text、timing.start/duration、attributes、class、layout.*、style.*、其余 inline style）；人工 layout/style + AI 文案合并保留双方；同字段双改不同 → `written:false + conflicts[{field,humanValue,aiValue}]`（保留旧 human/ai 摘要字段）；AI 删除人工修改或 base 已有人工覆盖对象 → `AI_DELETE_HUMAN_MODIFY`；其它 Scene 逐字节不变。
+- inspect 增加规范化 `layout/style`（不支持/auto 为 null）与 `layout/style` capability；schema/x-methods/README 已同步。
 
-### 修复收口
+### 验证与真实证据（自述，待独立复审）
 
-2026-10-18：74294e6/d926d10的R1–R2通过[复审02](../reviews/P3-006B-review-02.md)，冻结engine0.3.0接口供P3-008接线。BUG-001另作p1下一实施任务，不把黑带当已解决。
+- worker 单元/协议 **40/40**（29.1s，含覆盖标记/回退 2 项 + R1/R2 回归 2 项）；真实链 **11/11**（132.3s，含新增布局/样式真实帧+MP4）；client **20 项：首跑 18 pass + 1 fail + 1 skip、复跑 19 pass + 1 opt-in skip**——失败为既有 200ms protocol fixture 在负载下的超时，不改源码复跑通过，与复审观察一致，非本轮生产差异。
+- 真实视觉（`spikes/editor-canvas/evidence/p3-006b/persistence-evidence.json`）：改 title left=400/width=700/color=#ff0000/fontSize=96、logo 240×240 后，0.5s/1.5s 帧变化 11.90%/11.91%；红色标题基座 x=403/403（稳定），入场 y 仍相对（minY 208/205）；渲染帧红字 bbox minX=404 与 worker 抽帧 403 一致；11s MP4 H.264 1280×720/30fps/330 帧/11.000s。**既有问题：** 管理模板 720p MP4 底部 86 行为黑（baseline 同样存在、worker 抽帧正常），与 layout/style 无关，证据已记录 `knownIssue`，需另立 ticket；不声称 MP4 整帧 parity。
+- `scene.update` 改名/改时长保留 title 位置/颜色/字号与 logo 尺寸；人工位置/字号 + AI 文案 revise 合并成功（文案 AI、布局/字号人工）；undo→中间 revision、redo→合并 revision；close/reopen 与 worker 重启后从 revision/HTML 恢复一致。
+- 能力探针（`evidence/p3-006b/capability-evidence.json`）：文字/timing/位置/尺寸/颜色字号字重对齐/人工+AI 合并持久；move/resize/color 形状、旋转/任意 CSS、字体族/多选/清除覆盖仍不支持（E_PARAMS/E_UNSUPPORTED_EDIT/README 限制）。
+
+### 复审 R1–R2 修复（第二轮，`74294e6`）
+
+- **R1**：merge 的字段分析携带每侧显式声明集合（marker→layout./style. 字段）。base 之后新增的显式覆盖即使值等于模板默认也按人工意图参与变更/删除保护：AI 仅改 Scene 默认值时保留人工字段、其它默认照常更新；AI 删除该元素 → `AI_DELETE_HUMAN_MODIFY`；同字段双改仍 `BOTH_MODIFIED`；AI 未变化不误冲突。普通人工布局+AI 文案合并、同字段文字冲突保持。
+- **R2**：`collectManualOverrides` 改为 marker ∪ 当前默认差量，首次 typed edit 建立 marker 不再丢弃其它已有无标记差量；覆盖“无标记布局→typed style→重生成”与反向“无标记样式→typed layout→重生成”，含重开、undo/redo。
+- 回归全部走公开 worker JSONL（project.create/edit/project.revise/scene.update/inspect），新增 2 个正式公共 API 回归测试；未改写复审探针，未改渲染器；黑带仍由 BUG-001 单独跟踪。
+- 验证：worker 单元 **40/40**、真实链 **11/11**（132.3s）、client 复跑 **19 pass + 1 skip**（首跑 18p+1f+1skip 为既有 200ms protocol fixture 超时，未改源码复跑通过）。
+- 固定包：`artifacts/engine/74294e6/`，worker 14 文件 / 54,582 B / `0aa1b820…525659`；client 3 / 7,408 B / `718de70f…b64d62`；逐文件与 `74294e6` 一致、重复 pack 与 `git archive 74294e6` 干净检出 pack 均字节一致。旧 `4c087ef/` 包保留。
+
+### 固定包（`artifacts/engine/74294e6/`，ignored）
+
+| 包 | 文件数 | bytes | SHA-256 |
+|---|---|---|---|
+| dsh-video-engine-client-0.3.0.tgz | 3 | 7408 | `718de70fadbdf1c725695606efa4f599cdbd072b802b6eb60dd8bedd49b64d62` |
+| dsh-video-engine-worker-0.3.0.tgz | 14 | 54582 | `0aa1b820d622dda59b8407f7d037ebc5ffd5827b70b7fcad1cb300f50b525659` |
+
+`package-verify.json`：逐文件与 `74294e6` 字节一致、重复 pack 一致，且 `git archive 74294e6` 干净检出后重新 pack 得到相同 SHA-256；未安装、未发布；旧 `artifacts/engine/df4b74f/`、`4c087ef/` 未覆盖。
+
+### 复跑
+
+```sh
+npm test --prefix packages/video-engine-worker
+npm run test:real --prefix packages/video-engine-worker
+npm test --prefix packages/video-engine-client
+node spikes/editor-canvas/scripts/capability-probe.mjs
+node spikes/editor-canvas/scripts/persistence-evidence.mjs
+```
+
+### 未测项与风险
+
+- 未接入真实 DSH/Host/插件；屏幕坐标→composition 静态基座的 Host 逆映射仍是 Host/UI 任务，不宣称最终拖动/缩放 UI 已接通。
+- 仅受控 `product-launch-v1` 模板；任意 HTML/JS、音视频、多用户、非 macOS 未测；不支持清除覆盖/删除单元素/字体族/旋转/层级/任意 CSS。
+- `scene.*` 重生成仍重置元素级 timing（既有行为）；带差量的重生成经 SDK 序列化，HTML 字节形态与 revision 会变化（内容 hash 语义正确）；未做性能与大工程压力验证。
+- 既有渲染底部黑带（管理模板 720p MP4 底部 86 行，worker 抽帧正常，baseline 可复现）与本任务无关，另立 ticket 前不把 MP4 整帧视觉作为验收证据。
+- 无标记的外部手改无法区分“值恰好等于默认”的覆盖；edit op 写入的覆盖有标记，不受影响。
+- client 协议 fixture 200ms 超时在负载下偶发（复审已记录）；本轮首跑复现、复跑通过，未改生产超时。

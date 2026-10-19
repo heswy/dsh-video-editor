@@ -1,0 +1,9 @@
+# dsh-video — bundle layer.
+#
+# One row activates the Host half and, through `dsh.client`, the browser half.
+# Row id, package name and Client module id are intentionally the same:
+# "dsh-video". The main-panel key is also "dsh-video".
+- insert:
+    - id: dsh-video
+      name: 'dsh-video'
+      config: {}

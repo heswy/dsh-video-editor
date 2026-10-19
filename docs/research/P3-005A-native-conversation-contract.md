@@ -1,5 +1,3 @@
-> 从p0-mode-shell固定提交7daa039同步的调查记录；其中live事实为开发者证据，总调度独立核对范围与澄清见 [P3-005A-review-01](../reviews/P3-005A-review-01.md)。
-
 # P3-005-A：原生 AI 对话、历史、模型与素材接入契约（只读调查）
 
 日期：2026-10-18（Asia/Shanghai）。执行：p0-mode-shell（`dsh/p0-mode-shell` / PR #3），开工 HEAD `b204760`。目标：为已确认的 v0.3 界面（左侧直接编辑、右侧常驻 AI、按工程的历史会话、DSH 模型选择、用户素材抽屉）核实**可实施路线与精确契约**；本文件是只读调查与提案，不改根插件/Host/engine，不安装，不创建或编辑会话，不发送消息，不调用模型。
@@ -8,7 +6,7 @@
 
 ## 0. 方法与证据边界
 
-- 只读对象：`/Applications/DeepSeek Harness.app/Contents/Resources/`（`Info.plist`、`app.asar`）。`app.asar` 内的包由本地只读脚本 [asar-read.mjs（开发分支源码）](https://github.com/heswy/dsh-video-editor/blob/7daa039/spikes/dsh-native-conversation/asar-read.mjs) 解析头部后按路径读取；不执行包内代码，不读 profile 会话正文/凭据/模型密钥。
+- 只读对象：`/Applications/DeepSeek Harness.app/Contents/Resources/`（`Info.plist`、`app.asar`）。`app.asar` 内的包由本地只读脚本 [spikes/dsh-native-conversation/asar-read.mjs](../../spikes/dsh-native-conversation/asar-read.mjs) 解析头部后按路径读取；不执行包内代码，不读 profile 会话正文/凭据/模型密钥。
 - live 事实：`cordis_inspect_query`（client/host 的 `Service`/`Slots`/`Builtin`）由**当前运行 Host** 回答；Slot 拓扑取自运行中的页面。
 - 协调记忆：本轮 `git fetch origin` 失败（网络错误），按 DEVELOPMENT 规则使用本地缓存的协调提交 `920957d6401b6aa1253b81af48eb91d4d8ec7e72`（2026-10-18 10:01:39 +0800，含 P3-005-A 指南与 p0 handoff）；开发 HEAD 为 `b204760`。
 - 调查由两条**只读**工作流组成：Lead 的 live Inspect + 随包源码核对，以及一个源码侧只读复核（该复核者的 client Inspect 本轮三次 10s 超时，见 §10）。live 超时项按源码标注“未验证”。

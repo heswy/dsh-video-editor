@@ -1,5 +1,3 @@
-> 当前状态：2026-10-18 调查验收通过，不再重复本任务。下一实现任务P3-006-A；独立澄清见 [评审](../reviews/P3-005A-review-01.md)。
-
 # P3-005-A：原生 AI 对话、历史、模型与素材接入契约
 
 日期：2026-10-18。执行：**p0-mode-shell**；分支 `dsh/p0-mode-shell` / PR #3；开工 head `b204760`。沿用现有树，先报告实际HEAD/工作状态。P2-007已通过，见 [复审](../reviews/P2-007-review-01.md)。
@@ -36,7 +34,7 @@
 
 - **开工**：2026-10-18 10:02（Asia/Shanghai）。`git fetch origin` 失败（LibreSSL SSL_ERROR_SYSCALL），按规则使用本地缓存的协调提交 `920957d6401b6aa1253b81af48eb91d4d8ec7e72`（2026-10-18 10:01:39 +0800，含本任务指南与 handoff）读取；未切换分支、未 reset。实际 HEAD `b204760`，工作树干净，与 `origin/dsh/p0-mode-shell` 一致。
 - **Host/应用包身份**：应用包 `0.2.1-rc.2`（`Info.plist` 与 `app.asar/dsh/package.json` 一致）；本会话由运行中的 Desktop Host 提供（主进程 9:55 启动、`DSH_PROFILE=desktop`、`DSH_WEB_URL=http://127.0.0.1:49700` 与当前 GUI URL 一致），live Inspect 查询均来自该运行 Host/Client。官方 skill `cordis-plugin-development`（随包同版本）已读，作为 UI/模块边界依据。
-- **交付**：只读调查记录 [P3-005A-native-conversation-contract](../research/P3-005A-native-conversation-contract.md)；只读 ASAR 解析/检索工具 [spikes/dsh-native-conversation/asar-read.mjs](https://github.com/heswy/dsh-video-editor/blob/7daa039/spikes/dsh-native-conversation/asar-read.mjs)（不执行包内代码、不写 app 包/profile）。**未改** `client.js`、`host/**`、引擎包、manifest/patch/profile、其它树；未安装/启停/重启、未 merge、未创建或编辑会话、未发消息、未调模型、未读密钥。
+- **交付**：只读调查记录 [P3-005A-native-conversation-contract](../research/P3-005A-native-conversation-contract.md)；只读 ASAR 解析/检索工具 [spikes/dsh-native-conversation/asar-read.mjs](../../spikes/dsh-native-conversation/asar-read.mjs)（不执行包内代码、不写 app 包/profile）。**未改** `client.js`、`host/**`、引擎包、manifest/patch/profile、其它树；未安装/启停/重启、未 merge、未创建或编辑会话、未发消息、未调模型、未读密钥。
 - **关键结论（详见研究记录）**：①`conversation.content` Factory 可被 `main` panel 的 slot kit（`renderFactorySlot` + 声明 session child 后获得的 `SessionProvider`/`renderSlot`）嵌入；`variant:"embedded"` 不渲染宿主主 Header/宽把手，Composer/模型 seat/审批 takeover/附件/Stop 由原生链保留。②显式绑定用 `ctx.sessions.retain(id,{source})` 的 `SessionReference` + `SessionProvider session={reference}`；source 用插件自有名，禁止冒用 `mainView`。③工程↔会话无宿主 metadata，映射必须由 Video Host 持久化；可用 `ctx.sessions.create()` 不导航地创建会话，标题用 projection `title`/rename。④模型选择原生复用、下一次请求生效，不需要插件接线。⑤Tool 可用 `exec.agent.id` + Host `sessionId→projectId` 校验工程范围；工程上下文适合 `agent.ctx.systemPrompt.context`。⑥素材：原生图片 PNG/JPEG/WebP/GIF，文件 verbatim；AI 附件→工程资产需插件 Host 受控导入（receipt/session 授权 → 工程副本）；SVG/视频/音频是明确缺口；无宿主原生文件选择器，插件需自建 input。
 - **补充复核**：并行的源码侧只读复核补强了若干边界并已并入研究记录——私有 child key 不能复用已声明槽（运行时 throw）；`SessionProvider` 的显式 `session={undefined}` 绑定 absent 且 absent 渲染 `empty` 分支；`hero:true` 会经 workspace chip 调 `openWorkspace` 导航宿主；`variant` 只改 CSS；同一 Session 双 occurrence 会通过 Lexical `setRootElement` 抢占编辑根且无守卫；`external` 只影响到达顺序、不参与 `require` 解析；`ctx.sessions.create`/`connectWorkspace` 不导航，`startSession`/`openWorkspace` 会导航。
 - **未决/未测**：`main` kit 在真实注册下的实际 props、create 后会话在宿主侧栏/搜索的可见性、receipt 生命周期、VideoBridge 审批接线、HMR/停用/重连与真机视觉均未验证（本轮禁止）；工程会话是否出现在宿主历史、是否建独立 Workspace、审批期间 Stop 被隐藏的产品决策待总调度。

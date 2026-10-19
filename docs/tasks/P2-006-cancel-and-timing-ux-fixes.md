@@ -1,5 +1,3 @@
-> 当前状态：p0-mode-shell 已交付 `97c0609` / `16d60aa`，客户端修复已独立复核通过，交付流程 R1 转 P2-007；下文原始指南与开发者记录保留，不重新开工。
-
 # P2-006：取消导出的错误提示 + 时序越界本地校验（客户端修复）
 
 > 2026-10-17 总调度下发，来自 0.2.1 真机验收（见 [P2-004 真机验收记录](../research/P2-004-live-acceptance.md) V2/V3）。小任务，客户端修复；用户已授权正常 feature push/草稿 PR（D016），安装/启停/重启/merge 不授权。
@@ -51,6 +49,10 @@
 
 ## 开发记录（程序员 2）
 
+（待填写：起始 HEAD、提交、检查结果、包摘要、staging、真实链、未测项）
+
+## 开发记录（程序员 2）
+
 - 起始：分支 `dsh/p0-mode-shell`，开工 HEAD `123353c`（工作树干净，未切换分支）。指南从 `origin/codex/project-foundation` 存档。
 - 修复提交：`97c0609 fix(ui): neutralize cancelled jobs and validate timing locally`；版本 `0.2.2`。仅改 `client.js`、`scripts/smoke-client.mjs`、`scripts/check.mjs`、`README.md`、本任务记录；未改 host/**、packages、spikes、profile。
 - R2：`waitForJob` 终止态区分 `cancelled`（`setError(null)`，保留“已取消”状态）/`succeeded`/`timed_out` 与 failed（后两者使用 zh/en 本地化错误，不再透出 worker 英文）。frame 取消为明确空画面；render 取消保留导出设置并可再次导出；取消请求本身失败仍报错。
@@ -61,13 +63,3 @@
 - 真实链证据：`artifacts/p2-b/evidence/engine-run-2026-10-17T13-15-34-546Z.json`；staging 内 Host 执行、INTEGRITY 校验通过；hf-title revision `135a529…`→`f714e71…`；PNG 279,463 B/hash `875b48c6…`；成功 H.264 MP4 135,855 B/hash `fae2687e…`（1280×720、30/1、150 帧、5s）；二次 render cancel `cancelling`→`cancelled`、cleaned；close/dispose 完成。跑完恢复干净 demo，标题 `让创意成为影像`。
 - staging 工具限制：`scripts/stage-dev.mjs`（不在本任务白名单）仍硬编码期望根版本 `0.2.1`，本次用其临时副本把期望版本改为 `0.2.2` 生成 staging；脚本本身未提交修改。后续应把版本门禁参数化（或发版任务同步），否则下个版本不能直接用仓库脚本重建。
 - 未安装/未启停/重启、未改 profile、未 merge；已安装 0.2.1 与 `staging-54f4671-bdcfd72` 未动；0.2.2 待复审后用户重装。未测：真实 DSH 中 R2/R3 重装后交互、浅色/深色视觉、其它错误消息本地化。
-
-## 总调度同步记录
-
-2026-10-17 从 `16d60aa` 只导入任务交付文档，未合并功能代码。103/103 与真实链是开发者报告，不升级为本轮独立验收；staging 版本门禁硬编码问题留待复审。
-
-## 独立评审结论（总调度）
-
-2026-10-17 独立复跑103/103、固定包17/17与提交字节一致，客户端修复通过；staging原脚本版本门禁在0.2.2失败，候选交付暂不通过。详见 [P2-006-review-01](../reviews/P2-006-review-01.md)，修复范围转 [P2-007](P2-007-staging-version-reproducibility.md)。未安装、未改实现，不把已有真实链产物核对当成本轮新渲染链通过。
-
-2026-10-18 后续：P2-007已通过独立复审，交付R1关闭，0.2.2可作受控候选，未安装。见 [P2-007-review-01](../reviews/P2-007-review-01.md)。

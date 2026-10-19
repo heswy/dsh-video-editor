@@ -1,3 +1,5 @@
+> 历史交接：2026-10-19仓库已收口到main；不继续下述旧分支任务。当前操作以origin/main的STATUS、DEVELOPMENT、handoffs/README为准。
+
 # ui-polish：用户直接指定的UI优化候选
 
 2026-10-19，当前Codex按用户明确授权完成P3-014。base19a7743；功能65dcac4、记录ace53de；PR#5目标codex/video-studio；该树保持干净、已普通push。

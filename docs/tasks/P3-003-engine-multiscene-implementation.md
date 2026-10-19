@@ -83,8 +83,15 @@
 
 - 独立复跑两包测试与真实链；核对包字节、版本、导出。
 - 重点验收：创建工程与 registry 持久；scene 结构操作原子性与校验拒绝；inspect scenes 派生；素材限额与路径拒绝；合并 S1/S2/S3/S4/S5/S7 分支与冲突结构；其它 Scene 不变；history 重启后 undo/redo；现有 P2 方法无回归。
-- 通过后再安排根插件接入（P3-005/P3-006）与端到端 AI 样例（P3-007）；本轮不安装、不 merge、不发布。
+- 通过后再安排根插件接入（P3-004）与端到端 AI 样例（P3-005）；本轮不安装、不 merge、不发布。
 
 ## 开发记录（程序员 1）
 
-（待填写：起始 HEAD、Phase A/B 提交、API 落地、测试数字、包摘要、真实链证据、未测项）
+- 开工/结果：开工 HEAD `cf24842`（工作树干净、与 origin 同步）；实现提交 **`9df968c`**（`feat(engine): implement P3 multi-scene projects, merge and history`），本文/研究记录另以 docs 提交跟上并 push 更新 PR #2（不新开 PR）。只改 `packages/video-engine-worker/**`、`packages/video-engine-client/**` 及两包测试/README、任务与研究记录；根 `spikes/**`、根插件、全局规则/STATUS/决策未动；未安装/启停/重启、未 merge、未发布。
+- 分期：Phase A（工程/Scene/inspect/素材/历史/render）与 Phase B（revise 合并）在同一实现提交交付——两者共用 Scene 模型、历史快照与写入/校验路径，拆提交会产生无法独立验证的中间态；两阶段各自测试均通过（见下）。允许分批的授权不要求强制拆分，报告按 Phase A/B 分别列出结果。
+- 契约落地：0.2.0 两包；`project.create`（managed `projectsRoot` + 原子 `registry.json` + realpath 包含 + 初始 1 个 5s Scene + inbox 素材导入）、`asset.import`（PNG/JPEG ≤8MiB、≤16 图片、≤64MiB，inbox 只读/签名/穿越校验）、`inspect.scenes[]`（旧字段不变、元素带 sceneId）、`scene.create/update/remove/reorder`（expectedRevision+operationId，Scene 模型→整文件+timeline 重生成→SDK 校验→原子写→revision 重算→history，失败不发布）、`project.revise`（base 快照三方合并、冲突码齐全、冲突不写盘、目标 Scene 外逐字节不变、`E_BASE_MISSING`）、`history/undo/redo`（`.dsh-video/history/`、单调 historyCursor、内容哈希 revision、重启持久、64 条/8MiB 上限）、真实 15s 渲染/取消。生成器消除 StaticGuard 初始 opacity 警告（CLI lint errorCount 0；仍有 4 条已知 nested_structure warning）。
+- 测试：worker 单元/协议 `npm test --prefix packages/video-engine-worker` **17/17**（7 原 P2 + 10 新生成器/合并）；worker 真实链 `npm run test:real` **9/9**（约 85.7s，含 5 项 p3.integration 与 15s render/cancel）；client `npm test --prefix packages/video-engine-client` **16 pass + 1 skip**（17 项，约 16.8s）；原 P2 无回归（P2 7 项协议、client 原真实/断管/打包测试均通过；packaging 测试版本已升 0.2.0 并包含新 worker src 文件）。
+- 固定包（`artifacts/engine/9df968c/`，ignored）：client 6,835 B SHA-256 `6b3d559c65f4a0dd2cb4fcfc48ff23c3ed67f7c990e8dda9ca7b15cc9f32614e`（3 文件）；worker 35,011 B SHA-256 `59e3ee6810ee22c7724f73602f0ce85a33a2819a68d0fc30c016dc95b695c3b7`（12 文件）。`package-verify.json` 用 `git show 9df968c:<path>` 逐文件核对，全部与提交字节一致。
+- 真实链证据：`artifacts/engine/9df968c/evidence/`——`p3-003-evidence.json`（项目/Scene/revision、revise/`BOTH_MODIFIED` 冲突、historyCursor 8/6 entries、undo/redo、frame 3995ms、render 18172ms、cancel `cancelling`→`cancelled` artifact null、包摘要）；`ai-project-15s.mp4`（264,650 B，SHA-256 `87a3d4184b09d6de891369906a21fdd57eb9fcaa209f5de19b34fb0574be10ef`，H.264 1280×720/30fps/450 帧/15.000s）；`ffprobe.json`；`frame-6s.png`（20,384 B，SHA-256 `4728e847…`）；生成工程快照。
+- 主要差异/限制：`project.create` 初始 1 个默认 5s Scene（指南未定初始数量）；fps 仅 30；`project.revise` 冲突以成功 result `{written:false,conflicts}` 返回（非错误），`E_BASE_MISSING` 为错误；Scene duration/order 变化走 `SCENE_META_CHANGED` 显式操作；`asset.import` 不进入 undo 内容链；历史/operationId 容量与单写者为当前边界；模板仅固定元素集合，任意 Agent HTML/JS 与通用 DOM 合并不在本轮。
+- 未测项/风险：未接入 DSH Host/未安装/未发布；无真实模型调用与 UI 端到端；未测跨进程多写者、崩溃恢复幂等、资产撤销、Windows/其它 Chrome/FFmpeg、连续 Studio 播放；15s/帧耗时为本机单次观测；根 `.gitignore` 增加 `artifacts/` 仅为承载本轮要求的固定包/渲染证据（ignored，不入库）。

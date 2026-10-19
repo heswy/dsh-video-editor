@@ -1,0 +1,193 @@
+{
+  "generatedAt": "2026-10-17T09:27:15.229Z",
+  "node": "v24.14.0",
+  "assets": {
+    "logo": "e6e04d26ab9f1b723a0ea59098968de4de45565a3c183d1080f6834a50888212",
+    "shot-1": "4066b3e787e030e017a321314d1f724a0ed2e4c7b882abf43af0f4677e33c5a6",
+    "shot-2": "b2f5eb58b5e38da024ae13fbefbf0d2e9cb5d4ad158d5f33a7e6027b2be026b0",
+    "shot-3": "c4e2514a910b39f1e950b43435506c5899d5f32f7eb5dc454093810b2bf4fce4",
+    "shot-4": "14bfb799895374b964eeb8ba0178db32f3a97f81f76562f9aa6fe13718701647"
+  },
+  "q2": {
+    "workerOpen": {
+      "revision": "bed025a758c732f79906b42df561fafd75fa9a0f9cb76ebaedbb669b57c73d00",
+      "duration": 15,
+      "width": 1280,
+      "height": 720,
+      "elementCount": 29,
+      "sceneSectionsVisible": 4,
+      "sample": [
+        {
+          "stableId": "scene-2-section",
+          "text": null,
+          "timing": {
+            "start": 4,
+            "duration": 4
+          },
+          "capabilities": [
+            "timing"
+          ]
+        },
+        {
+          "stableId": "scene-2-title",
+          "text": "截图进入画面",
+          "timing": {
+            "start": 4,
+            "duration": 4
+          },
+          "capabilities": [
+            "text",
+            "timing"
+          ]
+        }
+      ],
+      "hasSceneMetadata": false
+    },
+    "extendedInspect": {
+      "base": {
+        "revision": "bed025a758c732f79906b42df561fafd75fa9a0f9cb76ebaedbb669b57c73d00",
+        "duration": 15,
+        "width": 1280,
+        "height": 720,
+        "sceneCount": 4,
+        "scenes": [
+          {
+            "sceneId": "scene-1",
+            "order": 0,
+            "start": 0,
+            "duration": 4,
+            "elementCount": 6
+          },
+          {
+            "sceneId": "scene-2",
+            "order": 1,
+            "start": 4,
+            "duration": 4,
+            "elementCount": 6
+          },
+          {
+            "sceneId": "scene-3",
+            "order": 2,
+            "start": 8,
+            "duration": 4,
+            "elementCount": 6
+          },
+          {
+            "sceneId": "scene-4",
+            "order": 3,
+            "start": 12,
+            "duration": 3,
+            "elementCount": 6
+          }
+        ],
+        "scene2": {
+          "sceneId": "scene-2",
+          "order": 1,
+          "start": 4,
+          "duration": 4,
+          "elements": [
+            {
+              "stableId": "scene-2-badge",
+              "sceneId": "scene-2",
+              "tag": "div",
+              "text": "SCENE 02",
+              "timing": {
+                "start": null,
+                "duration": null
+              },
+              "capabilities": [
+                "text"
+              ]
+            },
+            {
+              "stableId": "scene-2-title",
+              "sceneId": "scene-2",
+              "tag": "h1",
+              "text": "截图进入画面",
+              "timing": {
+                "start": 4,
+                "duration": 4
+              },
+              "capabilities": [
+                "text",
+                "timing"
+              ]
+            },
+            {
+              "stableId": "scene-2-subtitle",
+              "sceneId": "scene-2",
+              "tag": "p",
+              "text": "受控素材与 revision 快照",
+              "timing": {
+                "start": 4.4,
+                "duration": 3.6
+              },
+              "capabilities": [
+                "text",
+                "timing"
+              ]
+            },
+            {
+              "stableId": "scene-2-rule",
+              "sceneId": "scene-2",
+              "tag": "div",
+              "text": null,
+              "timing": {
+                "start": 4.2,
+                "duration": 3.8
+              },
+              "capabilities": [
+                "text",
+                "timing"
+              ]
+            },
+            {
+              "stableId": "scene-2-logo",
+              "sceneId": "scene-2",
+              "tag": "img",
+              "text": null,
+              "timing": {
+                "start": null,
+                "duration": null
+              },
+              "capabilities": []
+            },
+            {
+              "stableId": "scene-2-shot",
+              "sceneId": "scene-2",
+              "tag": "img",
+              "text": null,
+              "timing": {
+                "start": null,
+                "duration": null
+              },
+              "capabilities": []
+            }
+          ]
+        }
+      },
+      "rederivedFromContent": {
+        "revision": "f9c127d50cb0679b861244f6eb2e0755908c93596fbcd2e539c53673f072da9e",
+        "revisionChanged": true,
+        "scene3Title": "内容文件才是唯一真相"
+      }
+    },
+    "nestedCurrentWorker": {
+      "revision": "381d31c0533e078c464a59243fc42494d011c2d1815e1e039fbc07575d8cc2f7",
+      "duration": 15,
+      "elementCount": 5,
+      "stableIds": [
+        "hf-main",
+        "hf-7jlb",
+        "hf-nwe7",
+        "hf-n87v",
+        "hf-wvk3"
+      ],
+      "editNestedElement": {
+        "ok": false,
+        "code": "E_UNSUPPORTED_EDIT",
+        "stage": "edit"
+      }
+    }
+  }
+}

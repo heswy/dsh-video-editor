@@ -1,5 +1,3 @@
-> 固定交付ea2d1a4的记录；2026-10-18总调度已独立复审通过，见 [P3-005B-review-01](../reviews/P3-005B-review-01.md)。这是受控独立浏览器spike，不是DSH生产界面；下一任务P3-006-B。
-
 # P3-005-B 受控画布播放、点选与直接编辑验证（spike）
 
 日期：2026-10-18。执行：p1-engine 工作区；分支 `codex/p1-engine-spike-b4bf` / PR #2；开工 HEAD **`e364017`**（已验 P3-004 交付 head，功能固定 **`df4b74f`** / 两包 0.2.1）；协调记忆读取自 `origin/codex/project-foundation` @ **`920957d`**（开工 `git fetch origin` 成功；此前一次 SSL 失败后重试通过）。实现提交 **`4ad7b2e`**（spike + 证据）；本记录另以 docs 提交。

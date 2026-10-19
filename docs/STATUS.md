@@ -1,37 +1,24 @@
 # 当前项目状态
 
-更新：2026-10-19（Asia/Shanghai）。用户已决定结束p0/p1分线开发，统一为 **video-studio** 一个DSH开发会话；当前Codex继续总调度/评审，交接由用户转发。历史验收数字和旧状态见STATUS-HISTORY与各review，不代表用户闭环通过。
+更新：2026-10-19。用户要求先完成仓库整合/分支PR清理，再自行实机测试；发现问题后单独建分支修复。
 
-## 当前事实
+## 当前基线
 
-- **最新产品范围：右侧对话→AI生成→左侧自动显示并可播放→继续对话修改→左侧自动更新同一作品。用户手动编辑全部延期。** 左预览、右原生AI/模型/历史；无底部Scene卡片。固定模板不是创意上限。
-- 用户实测 **FAIL**：生成“鹈鹕骑自行车”后右侧有MP4/海报，左侧仍“画面尚未生成”；demo球改黄两分钟仍在查仓库。P3-007整体验收不通过，停止照旧走受控模板成功样例收口。
-- 已只读核对实际profile依赖指向 **staging-d383e3d-7d60312/bundle，根alpha.3、引擎0.3.2**；安装目录client SHA与候选一致。未借此声称已直接核实浏览器内存中的模块版本，当前无运行时查询通道。
-- 鹈鹕工程HTML 23,292 B，包含SVG和GSAP timeline，但无data-scene-id；demo同样无Scene。前端以scenes.length>0决定新画布及revision轮询，因此两者退回旧PNG/表单且不会自动跟进。demo的hf-orb背景#b1ebcd，legacy能力不含style，不能借已有托管模板样式能力宣称可改球色。
-- 本轮只读诊断，未重置/改写作品，未安装/启停/重启、未发模型请求。证据在共享artifacts/reviews/2026-10-18/P3-011/incident-state.json。
+- **main是唯一长期主分支，代码与项目记忆均读origin/main。** 标准入口 `/Users/orange/Orange Field/Matterhorn/dsh-video-editor`；未来bugfix从最新main建立独立codex/<问题名>分支，PR回main。
+- PR#5前端优化已合入原统一开发线；PR#4已把整套Client/Host/engine与UI优化合入main（合并提交1edb6aa）。GitHub同时将旧PR#2/#3标记为间接已合并；没有遗漏旧引擎/插件提交。
+- 本文所在PR#1保留并整合项目规范、产品、任务、评审和研究记录；本轮授权包含该PR合并及已被main完整包含的冗余分支删除。原工作树及所有忽略产物保留，旧树为历史/测试检出，不再是长期开发线。
+- 当前bundle **0.3.0-alpha.5**；engine **0.4.0**，本轮未改变Host/engine。产品范围仍为右侧对话生成/续改、左侧自动只读预览/播放；手动编辑延期，无底部场景卡片。
 
-## 统一代码与工作区
+## 已验证与未验证
 
-唯一后续开发工作区 **video-studio**，分支 **codex/video-studio**。绝对路径和唯一通用规则在[DEVELOPMENT](DEVELOPMENT.md)。用户在DSH打开该目录并新建一个会话；旧p0-mode-shell/p1-engine会话停止写入，旧树/分支/PR/忽略产物都保留，不删除。
+- P3-012开发候选第三轮复审通过，发布结算、失败保留、不同尺寸/时长隔离问题关闭；P3-014 UI优化已整合。
+- 固定root **65dcac4** / engine **0deef8f**：基础 **184/184**、版本 **10/10**、组件布局/交互 **15/15**、真实Host/Tool/worker+Chrome生成续改链 **261/261**、预览压力 **159/159**，不可变源摘要审计通过。组件浏览器的原生对话为明确契约替身，不是真实DSH模型验收。
+- 新UI候选：同级 `artifacts/ui-polish/staging-alpha5/bundle`，INTEGRITY `f25707f03eaf0b1e2a3f71df36162f9caa10d81d30dbfdb353948de3e79d9a82`；固定tgz在同级artifacts/ui-polish/65dcac4/，完整摘要见P3-014。
+- **Git合并不等于插件已升级。** 本轮未安装、启停、重启、改profile/用户工程或发模型请求；当前实际安装版本本轮未重新查询。旧安装/候选/用户作品保持。
+- 用户真实生成→左侧自动显示可播放→同工程连续两轮对话修改→左侧自动更新→重开一致，仍需实机验证，不把main整合当作整个产品已验收或发布。
 
-整合来源：p0交付fdb6bc2（功能7d60312）；p1交付c31fde5（功能d383e3d、两包0.3.2）；协调记忆e01fb15。Git合并保留原历史；生产源码未经重写，文档冲突处理记录在统一树docs/research/2026-10-18-integration-conflicts.json。不是安装发布，不自动merge main。基线检查结果另见整合记录。
+## 下一步
 
-## 当前唯一任务
+用户开始实机测试。测试前先核对实际安装是否为目标候选；需要升级时按精确候选授权与Plugin Manager路径执行，不能拿旧安装表现评价新main。新问题记录现象、工程/revision及必要脱敏证据，从main单独拉分支，不继续旧p0/p1/video-studio/ui-polish/project-foundation分支。
 
-[P3-012 对话优先MVP](tasks/P3-012-conversation-first-mvp.md)开发候选已通过[第三轮复审](reviews/P3-012-review-03.md)。交付 **19a7743** / 固定 root **a59fb13** / engine **0deef8f**；根 alpha.4 / 两包 0.4.0，PR #4。R1/R2/R2-follow-up 均关闭，不继续扩展开发范围。
-
-总调度本轮实跑：基础 **181/181** + 版本 **10/10**、正常链 **261/261**、真实浏览器压力 **159/159**。失败/等待保留旧作品的宽高比、时长、播放状态；成功后统一换新元数据。staging 的 78 条文件记录字节/摘要一致。上述仍为开发链，非实际 DSH/模型验收。
-
-当前下一步：[P3-013 真机对话验收](tasks/P3-013-conversation-live-acceptance.md)，唯一交接 [video-studio](handoffs/video-studio.md)。具体 staging、INTEGRITY、安装/回滚及最多三次真实模型请求范围已准备；用户转发执行授权后由同一 DSH 会话操作。当前安装状态本轮未重新查询，不把新候选当作已安装。
-
-## 本轮 UI 优化（用户直接指定 Codex 实现）
-
-用户2026-10-19授权新分支并由当前Codex直接实现。独立工作区 **ui-polish** / **codex/ui-polish**，base19a7743，功能 **65dcac4**，记录 **ace53de**；[PR #5](https://github.com/heswy/dsh-video-editor/pull/5)目标video-studio。没有改写video-studio、engine/Host、用户profile/已安装候选，没有安装/重启/发模型请求/merge。
-
-已完成：紧凑顶栏与可读工程名、新建收进选择入口、统一预览舞台和底部图标播放条、原生对话高度边界/底部输入、精简标题/加载更新反馈、15秒预览等待超时可重试。保留对话优先与只读预览。
-
-本轮实跑：基础 **184/184**、版本 **10/10**；组件Chrome **15/15**；冻结root65dcac4/engine0deef8f staging正常链 **261/261**、预览压力 **159/159**、源文件只读审计通过。组件截图的原生对话是契约替身，不代表DSH安装验收。包与精确摘要见 [P3-014](tasks/P3-014-ui-polish.md)。下一步审查PR#5后再决定并入主开发线/安装；P3-013的alpha.4候选与授权指南没有被自动替换。
-
-## 当前验收口径
-
-真实右侧生成一次→左侧自动出现并可播放→同一工程连续两轮对话修改→左侧自动更新；再重开保持最后作品。用户手动编辑延期，题材不限，不做测例专用分支。无需新 session/tree，不 merge main；旧作品和旧候选保留。尚未通过真实模型闭环，不能宣称整个 MVP 已验收。
+规则：[DEVELOPMENT](DEVELOPMENT.md)；当前入口：[handoffs/README](handoffs/README.md)；产品：[PRODUCT](product/PRODUCT.md)；清理记录：[仓库收口](research/2026-10-19-repository-consolidation.md)。

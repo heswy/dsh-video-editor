@@ -1,5 +1,3 @@
-> 固定交付ea2d1a4的记录；2026-10-18总调度已独立复审通过，见 [P3-005B-review-01](../reviews/P3-005B-review-01.md)。这是受控独立浏览器spike，不是DSH生产界面；下一任务P3-006-B。
-
 # P3-005-B：受控画布播放、点选与直接编辑验证
 
 日期：2026-10-18。执行：**p1-engine**；分支 `codex/p1-engine-spike-b4bf` / PR#2；开工head `e364017`，已审功能固定 **df4b74f / 两包0.2.1**。沿用当前树；先记实际HEAD和协调SHA，不reset。依据 [P3-004复审](../reviews/P3-004-review-01.md)。

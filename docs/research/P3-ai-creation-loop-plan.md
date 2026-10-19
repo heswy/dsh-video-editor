@@ -29,13 +29,11 @@
 
 | 任务 | 内容 | 执行 | 依赖 | 当前状态 |
 |---|---|---|---|---|
-| P3-001 | 引擎可行性 spike：多 Scene 结构、场景操作、AI 重写+人工改动合并、撤销/重开、素材、项目创建/注册 | 程序员 1（现有 b4bf 树） | 无 | 已验收（D020–D022） |
-| P3-002 | Host 侧契约与 AI 编排设计：方法表、修订/合并语义、素材入口、Tool/UI 共用、上下文注入 | 总调度 | 与 P3-001 并行 | 已冻结（见 13 节） |
-| P3-003 | 引擎实现：scene create/update/remove/reorder、project.create、revise、history/undo/redo、资产写入 | 程序员 1 | P3-001 + P3-002 + P2 验收 | 已复审通过（附 R1） |
-| P3-004 | 引擎预览快照：协议 schema 补齐 + `preview.snapshot/release`（只读、TTL、不进 revision） | 程序员 1 | P3-003 | 进行中（D024） |
-| P3-005 | 编辑器画布 v1：Host 精确资产路由 + sandbox iframe + 播放/seek + 画布点选/选中描边/目标联动 | 程序员 2 | P3-004 + 0.2.2 重装 | 未开始 |
-| P3-006 | 插件创作流程：Brief/素材入口、Scene 列表/时间线、AI 上下文面板、冲突提示、撤销/重做、重开恢复 | 程序员 2 | P3-005 | 未开始 |
-| P3-007 | 端到端验收：真实安装内跑通 15 秒样例、人工+AI 混合编辑、重开、导出；记录未测项 | 总调度评审 | P3-003/004/005/006 | 未开始 |
+| P3-001 | 引擎可行性 spike：多 Scene 结构、场景操作、AI 重写+人工改动合并、撤销/重开、素材、项目创建/注册 | 程序员 1（现有 b4bf 树） | 无（不改已验收包，只出证据/提案） | 指南已下发 |
+| P3-002 | Host 侧契约与 AI 编排设计：方法表、修订/合并语义、素材入口、Tool/UI 共用、上下文注入 | 总调度 | 与 P3-001 并行 | 本文草案 |
+| P3-003 | 引擎实现：scene create/update/remove/reorder、project.create、revise、history/undo/redo、资产写入 | 程序员 1 | P3-001 + P3-002 + P2 验收 | 未开始 |
+| P3-004 | 插件实现：创建流程、Scene 列表/时间线、AI 上下文面板、冲突提示、撤销/重做、重开恢复 | 程序员 2 | P3-003 契约冻结 + P2 验收 | 未开始 |
+| P3-005 | 端到端验收：真实安装内跑通 15 秒样例、人工+AI 混合编辑、重开、导出；记录未测项 | 总调度评审 | P3-003/004 | 未开始 |
 
 树与并行：**暂不新开 worktree**。P3 横跨现有两个写入区域（引擎包 / 根插件），新树要么复制代码要么缺一半；等 P2 验收后如需要端到端负责人，先建整合分支 `codex/integration`（不动 main），再从它切 `p3-ai-loop`。P3-001 在现有 b4bf 树内新增 spike 目录，不碰已验收包。
 
@@ -120,21 +118,9 @@ Operation   { operationId, actor: 'human'|'ai', baseRevision, kind, targetScene?
 6. 渲染性能：15 秒成片预计明显长于 5 秒样例（P1 实测 5 秒约 16.5 秒），需真实测量与取消/进度体验。
 7. 是否将 `video_engine` 扩展为创作入口，还是拆 `video_director` 高层 Tool；以模型可理解性实测决定。
 
-## 12. 验收标准（P3-007）
+## 12. 验收标准（P3-005）
 
 - 真实安装的 DSH 内、用 P3 样例素材完成 15 秒 3–4 Scene 生成、预览、人工修改、AI 续改保留人工改动、重开、导出 MP4。
 - 冲突/失败/取消均有真实状态与恢复路径；无假按钮、假进度、假成功。
 - 记录 Host 版本、commit、包摘要、命令、截图/录屏（真实页面）、未测项与回滚步骤。
 - 未达成的部分明确标「未验证」，不得用设计稿或本地 mock 替代。
-
-## 13. P3-001 回填（2026-10-17 复审后冻结）
-
-P3-001 spike 已验证、复审通过，本节覆盖前文草案中的开放项；实现契约以 [P3-001 复审](../reviews/P3-001-review-01.md) 与 [P3-003 任务](../tasks/P3-003-engine-multiscene-implementation.md) 为准。
-
-- **多 Scene 结构已定**：B——单 HTML + Scene 区段 + 单一 master timeline；A（嵌套）渲染可用但现有 SDK 无法从根文档编辑子 Scene，C 被官方 CLI 拒绝。Scene 局部时间在生成时换算全局时间。
-- **Scene 结构操作已定**：不能依赖 SDK 结构 API；走"Scene 模型 → 整文件重写（HTML + timeline）→ SDK 校验 → 原子写 → revision 重算"，失败不发布。
-- **合并已定**：stableId 三方合并；冲突码与结构见复审；v1 只合并受控模板元素，目标 Scene 外禁止 AI 改动。
-- **工程创建已定**：worker 管理 `projectsRoot` + 持久 registry + `project.create`；Host 不直接写 worker 文件。
-- **历史/修订已定**：revision 保持内容哈希；`.dsh-video/history/`（entries/ops/snapshots）+ 单调 `historyCursor`，不进 revision；撤销可回到旧内容哈希。
-- **素材已定**：PNG/JPEG、单文件 ≤8 MiB、≤16 资产、≤64 MiB 工程；asset 从只读 inbox 导入，不接受任意路径。
-- **仍后置**：插件内真播放（A1 需 engine snapshot + Host 路由 + Client iframe，独立任务）；任意 Agent HTML/JS 的隔离与安全；真实 Studio UI 连续播放；跨平台。

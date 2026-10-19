@@ -26,8 +26,12 @@
 
 DSH 的 root Host 适配、connection.fetch/tools 与前端接入留后续任务；本轮不声称已经在 DSH 中运行。
 
-开发记录：待执行会话填写。
+## 开发记录
 
-## 主会话最终验收（2026-10-17）
-
-程序员 1 交付 `5b9032b`，R4-b 正式同步回归与 Node 22/24 独立完整包测试均 10/10。R1–R4-b 全部收口，受控本机范围验收通过；见 [最终评审](../reviews/P2-001-review-04.md)。实际 DSH Host 接入、分发与任意代码隔离仍未完成。
+- 基线：`3b5f6de`；协调来源 `codex/project-foundation@17cf95716975e1f2d4ab7fcc5f721303295db91f`，只导入本指南和 P1-002-review-02。
+- 实现：`packages/video-engine-client/**` 的纯 Node ESM `WorkerClient`/`WorkerClientError`，无 DSH 依赖或 import-time spawn。公共 API/最小 Host 示例见包 README。
+- 验证：真实 worker 流程和受控协议故障测试均在本包 `npm test` 执行；R1–R3 修复后最终为 9/9（7.83 秒），限制见研究记录及交接。
+- 限制：强制退出只针对本 client 的直接 worker，不能证明 detached Chrome/FFmpeg 已清理；DSH Host/UI/Tool 接线留后续任务。
+- R1–R3：按字节处理 UTF-8，未确认 edit 保留 `uncertain:true`、丢失 frame/render jobId 标记 `jobUnknown:true`，dispose 清理 exit wait timer；新增跨字节、写后退出/坏帧和独立父进程自然退出回归。
+- R4：为直属 worker 的 stdin/stdout/stderr 建立有生命周期的错误处理。断管以 `E_TRANSPORT` 只结算一次全部 pending，并对 edit 保留 `uncertain:true`、对 frame/render 保留 `jobUnknown:true`；随后以有界 dispose 仅清理直属 worker。新增纯 Node 隔离父进程回归：worker 在 doctor 后只关闭 stdin 但继续存活，并发 edit/frame/render 均可捕获传输错误、pending 清零、父进程正常退出且无关 sentinel 存活。最终 `npm test --prefix packages/video-engine-client` 为 10/10（本机约 6.8 秒）。
+- R4-b：按评审 `P2-001-review-03` 修正断管回归同步，生产代码未改。定位到旧 fixture 的版本差异根因：Node 22.15.0 在 stdin libuv handle 存活时 `closeSync(0)` 触发 `uv__close` 断言并以 SIGABRT 退出，父进程固定 sleep 100ms 后已观察到进程退出，三个请求在准入前被 `E_CLIENT_STATE` 拒绝；Node 24 不崩，随后写 stdin 才得到 EPIPE，因此旧测试只在故障晚于请求的时序下通过，也从未在 Node 22 上真正覆盖 EPIPE。新同步方式：fixture worker 对 edit/frame/render 只记录不应答，父进程随后发送 `sync`（管道有序，确认三者已收到且未响应），worker 先 `process.stdin.destroy()` + `closeSync(0)` 再以 stdout ack `{held:3}`；父进程收到 ack 后写 inspect 探测，确定得到 EPIPE。回归分两段断言：已发送的 edit/frame/render/inspect 全部为 `E_TRANSPORT`（edit `uncertain:true`、frame/render `jobUnknown:true`、探测 inspect 无写标记），pending 归零；故障观察后新发 4 个请求以 `E_CLIENT_STATE`（stage `client`）拒绝准入、无标记、不进入 pending、不重放；worker 交付日志证明只收到 doctor/edit/frame/render/sync 各一次；隔离父进程退出码 0、直属 worker 已退出、sentinel 存活、无未处理 error。显式 Node 22.15.0 与 24.14.0 完整包测试均 10/10（约 6.08s / 6.40s，含真实 worker PNG/MP4 链），默认 `npm test`（Node 24.14.0）10/10（约 6.54s）；隔离回归两版本各连跑 10 次全过；删除 stdin error 监听的反向变异使新回归在两版本均以 `Unhandled 'error' event` 失败，仍覆盖 R4 原缺陷。

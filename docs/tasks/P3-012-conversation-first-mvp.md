@@ -39,6 +39,204 @@ E. **实际UI证据**：真实组件浏览器证明自动首次预览、两轮�
 
 只授权功能开发与任务副本本地验证，不安装/启停/重启、不改profile/用户工程、不新增真实模型请求、不merge main、不自动派发其它Agent或跨会话联络。无安全定向输入通道时提供用户人工步骤，禁止全局坐标/键盘/个人剪贴板。
 
+---
+
+## 开发记录（video-studio 开发会话，2026-10-18）· 自述，待总调度复审
+
+执行范围：按本任务实现，未安装、未改 profile/用户工程、未发真实模型请求、未 merge main。
+详细契约、版本、验证分层与未测项见 [research/2026-10-18-conversation-first-mvp.md](../research/2026-10-18-conversation-first-mvp.md)。
+
+### 实现摘要
+
+- **同一提交路径**：Engine `project.compose`（完整 HTML composition 契约校验 → 原子写入口 →
+  字节回读 → 私有快照证明 → 历史记录；restore 失败才标 `uncertain`）+ `project.source`
+  （当前权威 HTML/revision，48 KiB 界）。worker/client 升 0.4.0，协议 JSONL v1 不变（24 方法）。
+- **Host/Tool**：`video_engine` 增加 `project.compose`/`project.source`；Host 预校验 html 预算与类型、
+  沿用 Agent Session→工程作用域；compose 成功后刷新 prompt facts；`project.list` 返回
+  `{projects:[{projectId,updatedAt}], defaultProjectId}` 供首开自动选择；绑定会话 prompt context
+  写入完整工作流、契约、skeleton 与冲突恢复，并明确禁止 shell 改工程文件。
+- **Client**：左侧统一为只读 `previewOnly` 画布（不再以 `scenes` 存在为判据），按 revision 自动
+  轮询并换快照；删除旧 PNG/表单编辑器渲染分支与 demo 入口；首开自动打开最近/记住工程并载入或
+  自动创建一次绑定会话，无工程时自动创建一次「空工程+会话」；右侧原生会话/历史/模型不变。
+- 手动画布实现与 typed edit/scene API 保留在默认 `previewOnly:false` 代码路径与引擎中，仅从产品
+  UI 移除入口（本轮不为其新增功能/测试）。
+
+### 固定提交（本地，待 push）
+
+| 内容 | commit |
+|---|---|
+| engine 0.4.0 compose/source + 测试 | `9efb172` |
+| Host bridge/tool/prompt + checks | `32f4f77` |
+| Client 只读自动预览/首开流程 + checks | `97a2ec0` |
+| P3-012 独立 harness + 交付门禁更新 | `8799260` |
+| alpha.4 staging gate（根版本 + 审核版本对） | `79c6e20` |
+| docs：契约/交付/证据记录 | `5f2a271` |
+| 复审缺陷修复（escaped 双上限 + timeline 校验加固） | `d84ec5d` |
+| engine-client spawn-context 测试去 flake（仅测试） | `5956a93` |
+
+### 检查结果（本轮实际输出）
+
+| 层 | 命令 | 结果 |
+|---|---|---|
+| Engine worker 契约 | `node --test --test-concurrency=1 test/*.test.mjs`（packages/video-engine-worker） | 44 pass / 0 fail |
+| Engine compose 集成 | 同上 `test/compose.integration.mjs` | 5 / 5（含复审缺陷回归） |
+| Engine client | 同上（packages/video-engine-client） | 22 pass / 0 fail / 1 opt-in skip |
+| Host 契约 | `node scripts/check-host.mjs` | 53 / 53（基线 46 + 6 P3-012 + 1 escaped 预算复审回归） |
+| Client 冒烟 | `node scripts/smoke-client.mjs` | 71 / 71（按新范围替换 16 个旧手动编辑器用例，清单见交付消息） |
+| 静态/打包 | `node scripts/check.mjs`、`node scripts/test-stage-version.mjs` | 50 / 50、10 / 10 |
+| 统一门禁 | `npm run check` | 全绿 |
+| 开发 staging 现有链回归 | `test-canvas-browser`、`test-canvas-chain`、`test-host-engine`（最终 fix staging） | 均 ok=true（证据在共享 artifacts/p2-b/evidence/） |
+| 开发 staging 手动画布套件 | `test-canvas-workspace` | 本轮按任务不要求重跑/扩展手动拖拽用例，未作为交付关口（默认 false 路径仍保留） |
+| P3-012 独立验证（chain） | `scripts/test-conversation-chain.mjs --staging <fix staging>` | ok=true，**230/230**：同工程 3 轮 compose（A/B/B-mod）、28/28 失败矩阵原子性、幂等/冲突/作用域、snapshot 字节、真 Chrome 双题材 ready/seek/play、prompt context、close/reopen |
+| P3-012 独立验证（preview） | `scripts/test-conversation-preview.mjs --staging <fix staging>` | ok=true，**41/41**，B1–B5：首开自动 ready 708ms、发布→左侧 ready 1518/1221ms、play/pause/seek、失败+恢复、产品面板 0 手动控件/0 写请求；8 张真实页面截图 |
+| 复审缺陷 post-fix probe | verifier 对抗性 probe（fix staging） | 7/7 期望结果：HIGH 引擎致死输入现被 typed 拒绝且 engine 存活；注释/null timeline 被拒；source escaped E_LIMIT |
+
+### 独立复审缺陷与修复（2026-10-18）
+
+独立 verifier 对冻结 staging 做对抗性边界 probe，报告 3 项；均已修复并经可执行证据闭环
+（详见 research 第 6 节，修复提交 `d84ec5d`）：
+
+1. **HIGH**：契约合法的 quote/backslash 密集 HTML 经 JSON 转义后超过 worker 64 KiB JSONL 行，
+   worker 返回不可关联 `E_LINE_LIMIT` 帧 → engine client 杀 worker → 之后所有视频请求
+   `E_WORKER_EXITED`。修复：Host validate 阶段 escaped ≤61440 预校验（`E_PARAMS`，不启动 worker）+
+   worker composition escaped 上限（`E_COMPOSE_INVALID`）+ source escaped `E_LIMIT`。修复后 probe：
+   typed 拒绝、无 fatal protocol、engine 后续 inspect/source/compose 正常；边界 escaped 60499 B
+   文档仍可发布（不过度收紧）。
+2. **MEDIUM**：timeline 暴露原来按原始 HTML 文本匹配，注释中的赋值/`main: null` 也能发布并拿到
+   `publishedRevision`。修复：只扫描 inline `<script>` 体，拒绝字面量 null/undefined；明确
+   “静态必要非充分”，播放证明仍由预览 runtime 承担。
+3. **LOW**：原文 “48 KiB 保证 source <64 KiB” 的声言在转义下不成立；escaped 上限加入后成立
+   （source escaped >61440 返回 `E_LIMIT`），注释与文档同步更正。
+
+残留限制：engine client 对不可关联协议帧仍按既有设计致命处理（Host 预校验使文档允许路径不再产生）；
+engine-client spawn-context 测试在高负载下的 200ms handshake 预算偶发超时（与运行时修复无关），
+已给该两类用例独立宽松预算（`5956a93`），负向超时用例保持 200ms。
+
+### 交付物
+
+- 新引擎包（固定提交 `d84ec5d` 重打）：`artifacts/p3-012/packages/`（client 8610 B
+  `14b85c39…ed513`，worker 66733 B `f86b8639…7863b`）。
+- 最终 clean staging：`artifacts/p2-b/staging-p3-012-d84ec5d-d84ec5d`（rootCommit=engineCommit
+  `d84ec5d`，rootDirty=false；INTEGRITY.json sha256
+  `9b8aff4ba3f9afaec75d603ed5dc6652aac9e987b9c8e43bf5e37de9c15ba199`）。
+- push `codex/video-studio` 并创建/更新草稿 PR（此前统一分支 PR 创建超时未确认，本轮按
+  head=codex/video-studio 查询为 0 后创建草稿 PR #4；原 #1/#2/#3 保留）。
+- 本轮只完成**单元/契约 + 开发 staging 真组件浏览器**两层；真实 DSH 安装、真实模型对话、真机
+  验收仍需总调度复审后按授权安排。安装/模型请求不在本任务授权内。
+
+### 复审关注点（已知边界，不谎报）
+
+1. 原始 48 KiB（且 JSON-escaped ≤60 KiB）是 AI 编辑路径的 MVP 上限；旧更大/quotes 密集工程可被
+   浏览器预览，但 `project.source` 会明确 `E_LIMIT`，不静默截断。
+2. `preview.status:"ready"` 只证明契约+SDK+快照管线可服务，不是浏览器播放证明；timeline 暴露是
+   静态必要非充分校验；播放由左侧 snapshot+runtime 证实，失败显示可恢复错误。
+3. compose 是全文档替换：prompt 已要求保留无关内容，但复杂回归仍取决于模型质量；真实模型闭环
+   未在本轮授权内验证。
+4. 旧手动画布路径仍保留代码与 P3-008 runtime 契约覆盖，产品 UI 不可达；本轮未重跑全部手动拖拽
+   浏览器用例。
+5. `test-canvas-workspace.mjs` 本轮未作为交付证据（任务明确不要求），默认 false 路径由
+   `test-canvas-browser`/`smoke-client` 的 runtime 契约与 wiring 用例覆盖。
+
+---
+
+## 复审 R1/R2 补修记录（2026-10-18 第二轮，review `12a7961`）· 自述，待复审
+
+协调复审 [docs/reviews/P3-012-review-01.md]：正常通用闭环通过（基础 174/174+版本 10/10、
+worker 44/compose 5、client 22+skip、真实链 230/230、原浏览器 41/41），要求补 **R1 发布失败结算**
+与 **R2 失败时保留最后有效预览**，候选暂不安装。本轮保持对话优先范围，不新增功能、不恢复手动
+编辑、未安装/未重启/未改 profile/未发模型请求/未 merge main；统一树/分支一次补修并交回 PR#4。
+
+### 实现与固定提交
+
+| 内容 | commit |
+|---|---|
+| R1 engine：compose 历史阶段降级结算（`history:{status:recorded\|degraded\|unchanged}`、真实 publishedRevision、同 operationId 缓存、`recordComposeHistory` seam、schema/README） | `0deef8f` |
+| R2 host：SnapshotRoutes 按工程有界保留（≤4）+ 显式释放/陈旧释放幂等 + prompt context 记录 degraded 语义 | `552b695` |
+| R2 client：双实例预览交接（隐藏 candidate 仅在 runtime ready 后提升、旧 iframe 保留且可播放、notice+retry、truthful revision/target markers、切换后释放旧快照、旧 ledger revoke） | `de7f3ba` |
+| R1/R2 独立 harness 回归（chain R1 结算、preview R2 保留） | `d49be12` |
+| verifier harness-only 释放观察竞态修复（断言未放宽，重冻 bytes） | `bb711d1` |
+
+### 检查结果（本轮实际输出）
+
+| 层 | 命令 | 结果 |
+|---|---|---|
+| Engine worker | `node --test --test-concurrency=1 test/*.test.mjs` | **46 / 46**（+2 R1 settlement 单测） |
+| Engine compose 集成 | `node --test --test-concurrency=1 test/compose.integration.mjs` | **6 / 6**（+1 历史故障/恢复回归） |
+| Engine client | 同命令 | 22 pass / 1 opt-in skip（未改） |
+| Host 契约 | `node scripts/check-host.mjs` | **54 / 54**（+R2 快照保留/上限/陈旧释放） |
+| Client 冒烟 | `node scripts/smoke-client.mjs` | **73 / 73**（2 个旧失败/切换断言按新契约替换 + 2 新用例） |
+| 静态/打包 | `node scripts/check.mjs`、`scripts/test-stage-version.mjs` | **51 / 51**、10 / 10 |
+| staging 现有链回归 | `test-canvas-browser`、`test-canvas-chain`、`test-host-engine`（R1/R2 staging） | 均 ok=true |
+| verifier chain（真 Chrome/真实 Tool） | `scripts/test-conversation-chain.mjs --staging <r1r2 staging>` | **ok=true，261/261**（原 230 全保留 + R1） |
+| verifier preview（真 Chrome/真实 client） | `scripts/test-conversation-preview.mjs --staging <r1r2 staging>` | **ok=true，60/60，B1–B5 全 true**；首预览 329ms、发布→ready 1538/1360ms |
+| verifier R2 压力 | `DSH_R2_STRESS=1 ...preview...` | **68/68**：保留/切换/释放/路由上限/双 retry/卸载无泄漏/旧消息隔离 |
+| verifier R1 对抗 probe | 公共 API 历史故障矩阵 | **32/32**：read/snapshot/entries/ops 故障→degraded+真实 revision+一致性+恢复 recorded；同 id 缓存；三态语义（unknown 臂由 worker 单测 seam 覆盖并如实标注） |
+
+证据：`artifacts/p3-012/evidence/{chain-2026-10-18T09-53-42-555Z, preview-2026-10-18T09-57-58-285Z,
+preview-2026-10-18T09-58-16-890Z, r1-adversarial-2026-10-18T09-56-53-537Z}/`。
+
+### 交付物与结论
+
+- 新固定 engine 提交 `0deef8f`，重打 tarball：client 8610 B `14b85c39…35ed513`（内容未变），
+  worker 68190 B `b56dba237e0612497caea40cc53e6b1ef22b7b18f7d36be96f8b94e5502e09f8`。
+- 新 clean staging：`artifacts/p2-b/staging-p3-012-r1r2-0deef8f-d49be12`（root `d49be12` /
+  engine `0deef8f`，rootDirty=false，INTEGRITY sha256
+  `a71f657878a470874112c1790a38828c13395dde6459f8f21846a31a9939896b`）。
+- **R1、R2 均 CLOSED**（独立 verifier 在 clean fix staging 上复核）：旧正常链 230/230 与浏览器
+  B1–B5 无回归，失败保护有可执行证据；未发现产品缺陷。verifier 仅修复自身 harness 的释放观察
+  竞态（`bb711d1`，断言未放宽）。
+- 仍未验证/未授权：真实 DSH 安装与激活、真实模型对话闭环、真机 UI/主题/窄窗/重启恢复、
+  Windows/Linux；真实模型质量与长对话效果待复审后授权验收。安装/重启/模型请求不在本任务授权内。
+
+---
+
+## 复审 R2-follow-up 补修记录（2026-10-18 第三轮，review `30568b1`）· 自述，待复审
+
+第二轮复审 [docs/reviews/P3-012-review-02.md]：**R1 关闭**；正常链 261/261、原 R2 压力 68/68、
+基础 178+版本 10、worker 46/compose 6/client 22+skip、包/staging 通过。唯一残留：保留的 active
+iframe 的 width/height/duration 仍来自最新 target props——旧 720×1280/5s 作品保留时，1280×720/6s
+候选快照失败会把旧 iframe 改成 1280×720、`seek.max` 改 6。本轮只补该项，不修 R1、不加功能、不恢复
+手动编辑；engine 继续固定 `0deef8f`，未重打无变化引擎、未重跑无关长渲染。
+
+### 实现与固定提交
+
+| 内容 | commit |
+|---|---|
+| Per-instance 预览元数据隔离：实例自带 `{width,height,duration}` + 按 revision 有界 metadata map；可见 stage/letterbox/iframe/hit-test/seek/时长全部用 active 元数据；candidate 用自身；runtime ready 后原子切换；失败/等待期间旧作品几何与时长冻结 | `7cab3b9` |
+| R2F 真浏览器回归（失败/runtime 失败/延迟等待保持旧几何、成功原子切换） | `a59fb13` |
+| Harness-only 修复：R2F baseline 在 stress 模式下确定性建立 genre-B baseline（未放宽断言） | `4fdad5b` |
+
+### 检查结果（本轮实际输出）
+
+| 层 | 命令 | 结果 |
+|---|---|---|
+| Client 静态/冒烟 | `node scripts/check.mjs`、`node scripts/smoke-client.mjs` | **52 / 52**、**75 / 75**（+1 check、+2 smoke；修复前用复审 repro 复现失败，修复后通过） |
+| Host 契约 | `node scripts/check-host.mjs` | 54 / 54（未改 host） |
+| Engine（未改） | worker `test/*.test.mjs`、`compose.integration.mjs`、engine client | 46/46、6/6、22 pass+1 skip |
+| 版本门禁 | `scripts/test-stage-version.mjs` | 10 / 10 |
+| verifier 正常 preview（真 Chrome） | `scripts/test-conversation-preview.mjs --staging <r2f staging>` | **ok=true，151/151，B1–B5 全 true**；17 张截图 |
+| verifier R2 压力 | `DSH_R2_STRESS=1 ...preview...` | **ok=true，159/159**（原 68 不加宽） |
+| verifier 正常 chain | `scripts/test-conversation-chain.mjs --staging <r2f staging>` | **ok=true，261/261**（engine/host 未变，无回归） |
+| 既有 staging 链 | 本轮 client-only 变更；engine/host 未变，按交接不重跑无关长渲染 | — |
+
+几何证据：Case A/B/C 失败或等待期间 active iframe 恒 **720×1280**、stage aspect **0.5625**、
+`seek.max=5`、`"/ 5.00"`、旧画面可播放、旧快照 0 释放；成功切换后原子变为 **1280×720**、aspect
+**1.7778**、`seek.max=6`、`"/ 6.00"`，旧快照切换后恰好释放 1 次，candidate 消失，旧消息无影响、
+Host records ≤4、teardown 无泄漏。Case C 注入 2600ms 延迟响应验证等待窗口，隐藏 candidate 自身按
+1280×720 挂载。
+
+### 交付物与结论
+
+- 新固定 root `a59fb13`（client 修复 `7cab3b9` + harness；harness-only `4fdad5b`）；engine 保持
+  `0deef8f`（包字节未变，无需重打）。
+- 新 clean staging：`artifacts/p2-b/staging-p3-012-r2f-0deef8f-a59fb13`（rootDirty=false，
+  INTEGRITY sha256 `c28b60adadd1fdb419651598220e0dddddb096663d0699f9112058c91bdfe46a`）。
+- **R2-follow-up CLOSED**：不同宽高比/时长的候选在请求失败、runtime 失败、延迟等待期间均保持旧作品
+  尺寸/时长/播放；成功 ready 后统一原子切换；原正常链/压力/零手动控件验收无回归；未发现产品缺陷。
+- 未授权/未验证：真实 DSH 安装与激活、真实模型闭环、真机 UI/主题/窄窗/重启恢复、Windows/Linux；
+  本轮未安装/未重启/未改 profile/用户工程/未发模型请求/未 merge main。
+
+
 ## 总调度复审（2026-10-18）
 
 交付e4b8a07、运行时d84ec5d/alpha.4+engine0.4.0。正常主流程独立链230、原浏览器41及基础检查通过，但[复审R1/R2](../reviews/P3-012-review-01.md)待修：历史写入失败与发布状态不一致；预览失败卸载最后有效iframe。当前不进入安装。保持对话优先范围，同一会话集中补修，不恢复手动编辑。
@@ -46,3 +244,8 @@ E. **实际UI证据**：真实组件浏览器证明自动首次预览、两轮�
 ## 第二轮复审（2026-10-18）
 
 交付1175596（root d49be12 / engine0deef8f）的R1已关闭，原R2 iframe保留/资源/消息回归通过；[第二轮复审](../reviews/P3-012-review-02.md)仍要求一项R2-follow-up：不同尺寸/时长失败候选不得修改旧active的viewport与播放条。独立原压力68通过，新增元数据断言失败。当前不安装，仅补该项，不扩展功能。
+
+
+## 最终收口（2026-10-19）
+
+第三轮复审已通过（见P3-012-review-03），R1/R2/R2-follow-up关闭。上述开发记录与前两轮待修结论为历史；实际DSH/模型闭环仍待用户测试。代码经PR#4/#5进入main，后续问题从main单独拉分支，不继续历史video-studio分支。

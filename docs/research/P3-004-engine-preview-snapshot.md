@@ -1,5 +1,3 @@
-> 开发交付研究记录：从固定提交 e364017 同步。总调度独立验收见对应 reviews 文件；自述与独立结果分开。
-
 # P3-004 协议 schema 补齐（R1）与引擎预览快照
 
 日期：2026-10-17。执行：p1-engine 工作区；工作树 `/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/p1-engine`，分支 `codex/p1-engine-spike-b4bf`；功能基线 `aae05e9`，开工 HEAD `929ff37`（仅 AGENTS 入口文档提交前移，未 reset）；协调记忆读取自 `origin/codex/project-foundation` @ **12f9952**（2026-10-17 fetch，未 merge、未切换分支）；实现提交 **`5cc3ad8`**（`feat(engine): complete protocol schema and add preview snapshots`），并按独立复核结论补强 **`df4b74f`**（`fix(engine): harden preview privacy and schema path rules`）；固定包与证据按 `df4b74f` 生成。本轮只改 `packages/video-engine-worker/**`、`packages/video-engine-client/**` 及其测试/README/schema 与本任务、研究记录；未改根插件、`spikes/**`、全局规则/STATUS/决策；未改 profile、未安装/启停/重启 DSH、未 merge、未调模型 API；HyperFrames 固定 0.8.167，依赖与锁文件未变。

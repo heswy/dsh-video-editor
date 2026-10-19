@@ -1,3 +1,5 @@
+> 历史交接：2026-10-19仓库已收口到main；不继续下述旧分支任务。当前操作以origin/main的STATUS、DEVELOPMENT、handoffs/README为准。
+
 # video-studio：唯一当前交接
 
 更新：2026-10-18。P3-012 开发候选通过[第三轮复审](../reviews/P3-012-review-03.md)：交付19a7743 / root a59fb13 / engine 0deef8f；R1/R2/R2-follow-up 关闭。总调度独立基础181、版本10、chain261、浏览器压力159全部通过；实际DSH/模型闭环仍待验收。

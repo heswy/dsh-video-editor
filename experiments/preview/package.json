@@ -1,0 +1,16 @@
+{
+  "name": "dsh-video-preview-spike",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Dev-only isolated preview/player feasibility prototype; not part of the plugin package.",
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@hyperframes/core": "0.8.167"
+  },
+  "devDependencies": {
+    "puppeteer-core": "25.14.0"
+  }
+}
