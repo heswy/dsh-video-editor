@@ -135,7 +135,7 @@ check('bundle manifest declares patch and client', () => {
 });
 
 check('package version advanced for the P3-014 interface candidate', () => {
-  assert(pkg.version === '0.3.0-alpha.5', `expected version 0.3.0-alpha.5, found "${pkg.version}"`);
+  assert(pkg.version === '0.3.0-alpha.6', `expected version 0.3.0-alpha.6, found "${pkg.version}"`);
   return pkg.version;
 });
 

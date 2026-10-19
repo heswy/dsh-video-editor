@@ -244,15 +244,23 @@ export class SnapshotRoutes {
     }
     const html = original.toString('utf8');
     const hashes = inlineScriptHashes(html);
-    const origin = url.origin;
+    // The browser resolves 'self' against the URL it actually loaded this entry
+    // document from (the DSH Web GUI origin), while `request.url` inside the
+    // plugin Fetch route carries the DSH bridge's internal sentinel origin
+    // (`http://dsh.internal`). Those differ in real DSH, so deriving an explicit
+    // script/style/img/font origin from request.url produced a CSP that blocked
+    // the declared same-origin assets (gsap.min.js) and the injected runtime.
+    // 'self' is evaluated by the browser against the document origin and keeps
+    // the same same-origin restriction for both development toy servers and the
+    // real DSH route bridge.
     const runtimeUrl = `${RUNTIME_PATH}?v=1&instance=${encodeURIComponent(instanceId)}&nonce=${nonce}`;
     const composed = injectRuntime(html, runtimeUrl);
     const csp = [
       "default-src 'none'",
-      `script-src ${origin} ${hashes.join(' ')}`.trim(),
-      `style-src ${origin} 'unsafe-inline'`,
-      `img-src ${origin} data:`,
-      `font-src ${origin}`,
+      `script-src 'self' ${hashes.join(' ')}`.trim(),
+      "style-src 'self' 'unsafe-inline'",
+      "img-src 'self' data:",
+      "font-src 'self'",
       "connect-src 'none'",
       "frame-src 'none'",
       "media-src 'none'",

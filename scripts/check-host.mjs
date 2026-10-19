@@ -1300,7 +1300,28 @@ async function main() {
     assert(response.status === 200, `snapshot entry status ${response.status}`);
     const html = await response.text();
     assert(html.includes('/api/dsh-video/canvas-runtime.js'), 'runtime was not injected into the entry');
-    assert((response.headers.get('content-security-policy') || '').includes("connect-src 'none'"), 'snapshot CSP is missing');
+    const csp = response.headers.get('content-security-policy') || '';
+    assert(csp.includes("connect-src 'none'"), 'snapshot CSP is missing');
+    // P3-015: the plugin Fetch route receives an internal bridge origin
+    // (http://dsh.internal in real DSH), not the browser document origin. The
+    // CSP must therefore use 'self' so the real browser keeps same-origin
+    // script/style/img/font enforcement without blocking the injected runtime
+    // and declared assets.
+    for (const directive of ["script-src 'self'", "style-src 'self'", "img-src 'self'", "font-src 'self'"]) {
+      assert(csp.includes(directive), `snapshot CSP directive missing: ${directive} (${csp})`);
+    }
+    assert(csp.includes('sha256-'), 'snapshot CSP does not allow the inline script hashes');
+    assert(csp.includes('dsh.internal') === false, `snapshot CSP leaked the internal bridge origin: ${csp}`);
+    // Feed the route a request whose URL carries the real DSH bridge sentinel
+    // origin: the served entry must still be acceptable to a browser document
+    // on the page origin (header must not depend on request.url origin).
+    const internalOriginResponse = await entryRoute.fetch(
+      new Request(`http://dsh.internal${result.entryUrl}?instance=browserinstance&nonce=${'b'.repeat(32)}`)
+    );
+    assert(internalOriginResponse.status === 200, `internal-origin snapshot entry status ${internalOriginResponse.status}`);
+    const internalCsp = internalOriginResponse.headers.get('content-security-policy') || '';
+    assert(internalCsp.includes("script-src 'self'") && internalCsp.includes('dsh.internal') === false,
+      `snapshot CSP depends on the bridge request origin: ${internalCsp}`);
     const assetRoute = bag.routes.find((route) => route.path.endsWith('/assets/gsap.min.js'));
     const assetResponse = await assetRoute.fetch(new Request(`http://127.0.0.1${assetRoute.path}`));
     assert(assetResponse.status === 200 && Buffer.compare(Buffer.from(await assetResponse.arrayBuffer()), asset) === 0, 'snapshot asset bytes do not match');
