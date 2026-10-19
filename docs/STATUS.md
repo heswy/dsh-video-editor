@@ -1,6 +1,6 @@
 # 当前项目状态
 
-更新：2026-10-18（Asia/Shanghai）。用户已决定结束p0/p1分线开发，统一为 **video-studio** 一个DSH开发会话；当前Codex继续总调度/评审，交接由用户转发。历史验收数字和旧状态见STATUS-HISTORY与各review，不代表用户闭环通过。
+更新：2026-10-19（Asia/Shanghai）。用户已决定结束p0/p1分线开发，统一为 **video-studio** 一个DSH开发会话；当前Codex继续总调度/评审，交接由用户转发。历史验收数字和旧状态见STATUS-HISTORY与各review，不代表用户闭环通过。
 
 ## 当前事实
 
@@ -23,6 +23,14 @@
 总调度本轮实跑：基础 **181/181** + 版本 **10/10**、正常链 **261/261**、真实浏览器压力 **159/159**。失败/等待保留旧作品的宽高比、时长、播放状态；成功后统一换新元数据。staging 的 78 条文件记录字节/摘要一致。上述仍为开发链，非实际 DSH/模型验收。
 
 当前下一步：[P3-013 真机对话验收](tasks/P3-013-conversation-live-acceptance.md)，唯一交接 [video-studio](handoffs/video-studio.md)。具体 staging、INTEGRITY、安装/回滚及最多三次真实模型请求范围已准备；用户转发执行授权后由同一 DSH 会话操作。当前安装状态本轮未重新查询，不把新候选当作已安装。
+
+## 本轮 UI 优化（用户直接指定 Codex 实现）
+
+用户2026-10-19授权新分支并由当前Codex直接实现。独立工作区 **ui-polish** / **codex/ui-polish**，base19a7743，功能 **65dcac4**，记录 **ace53de**；[PR #5](https://github.com/heswy/dsh-video-editor/pull/5)目标video-studio。没有改写video-studio、engine/Host、用户profile/已安装候选，没有安装/重启/发模型请求/merge。
+
+已完成：紧凑顶栏与可读工程名、新建收进选择入口、统一预览舞台和底部图标播放条、原生对话高度边界/底部输入、精简标题/加载更新反馈、15秒预览等待超时可重试。保留对话优先与只读预览。
+
+本轮实跑：基础 **184/184**、版本 **10/10**；组件Chrome **15/15**；冻结root65dcac4/engine0deef8f staging正常链 **261/261**、预览压力 **159/159**、源文件只读审计通过。组件截图的原生对话是契约替身，不代表DSH安装验收。包与精确摘要见 [P3-014](tasks/P3-014-ui-polish.md)。下一步审查PR#5后再决定并入主开发线/安装；P3-013的alpha.4候选与授权指南没有被自动替换。
 
 ## 当前验收口径
 

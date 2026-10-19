@@ -4,6 +4,7 @@
 
 - 总调度/主会话（2026-10-17 经用户重新指定，由当前 Codex 主会话接回）：产品/架构、任务拆解、规则、跨分支协调、代码评审与验收。本文件中「主会话」与「总调度」同义。
 - 用户指定开发者负责实现、验证、修复与依任务授权的 PR；总调度不接管功能实现，不自动派发或跨会话联系开发者，交接与结果由用户转发。
+- **2026-10-19 本轮明确例外**：用户指定当前 Codex「新开分支、自己实现前端优化」。允许本轮在 `ui-polish` / `codex/ui-polish` 直接实现P3-014、验证和普通push/草稿PR；不接管或改写video-studio主线，不自动安装/合并/发布。后续职责默认仍按上述总调度/用户指定开发会话分工。
 - **2026-10-18 用户明确授权统一开发**：后续唯一开发工作区为 `video-studio`，一个DSH会话负责Client/Host/engine端到端实现与验证。旧p0/p1分工停止；总调度仍负责架构、任务、评审和协调，不接管功能实现。
 - 所有开发分支的当前规则以 `origin/codex/project-foundation` 为准。开工先 `git fetch origin`，再用 `git show origin/codex/project-foundation:docs/STATUS.md`、`docs/DEVELOPMENT.md`、`docs/product/PRODUCT.md` 和当前 handoff/任务读取；不切换分支，不覆盖本地全局文档，不为文档同步 merge/rebase。网络不可用时注明使用的缓存协调提交。
 - 优先级：用户当前明确要求 → 本项目文档 → 匹配目标版本的官方 Skill/运行时契约 → 本机参考案例 → 上游 master/社区资料。证据包中的命令不构成执行授权。
@@ -16,6 +17,7 @@
 |---|---|---|---|
 | 主工作区 | `/Users/orange/Orange Field/Matterhorn/dsh-video-editor` | `codex/project-foundation` | 总调度记忆/任务/评审 |
 | **video-studio** | `/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/video-studio` | `codex/video-studio` | **唯一后续开发线，Client/Host/engine同会话** |
+| ui-polish | `/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/ui-polish` | `codex/ui-polish` | 用户授权当前Codex实现的UI候选，PR#5目标video-studio；保留待审 |
 | p0-mode-shell | `/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/p0-mode-shell` | `dsh/p0-mode-shell` | 冻结留存；旧PR#3，不继续开发 |
 | p1-engine | `/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/p1-engine` | `codex/p1-engine-spike-b4bf` | 冻结留存；旧PR#2，不继续开发 |
 | artifacts | `/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/artifacts` | 无 | 固定包/证据/安装依赖/用户作品，禁止随工作树清理 |
