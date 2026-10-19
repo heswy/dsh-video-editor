@@ -1,0 +1,61 @@
+{
+  "generatedAt": "2026-10-17T09:27:42.542Z",
+  "node": "v24.14.0",
+  "assets": {
+    "logoPath": "<work>/projects/demo/assets/logo.png",
+    "logoBytes": 430,
+    "logoSha256": "e6e04d26ab9f1b723a0ea59098968de4de45565a3c183d1080f6834a50888212",
+    "assetEntries": [
+      {
+        "path": "assets/Heiti.ttc",
+        "bytes": 55754164,
+        "sha256": "f8fa4a63e2cf500e98e64d4c73260daaba049306cf85dec9e3729bc285b7d645"
+      },
+      {
+        "path": "assets/gsap.min.js",
+        "bytes": 72927,
+        "sha256": "92bb9a96476f983d212a2bc4f54c889039c1696dd4461d40a736860938570fbb"
+      },
+      {
+        "path": "assets/logo.png",
+        "bytes": 428,
+        "sha256": "a7337ac5d70d45f88b48dba7984a80ea32d39e408a3f23bf9d8b5d761a6623bf"
+      },
+      {
+        "path": "assets/shot-1.png",
+        "bytes": 507,
+        "sha256": "4066b3e787e030e017a321314d1f724a0ed2e4c7b882abf43af0f4677e33c5a6"
+      },
+      {
+        "path": "assets/shot-2.png",
+        "bytes": 506,
+        "sha256": "b2f5eb58b5e38da024ae13fbefbf0d2e9cb5d4ad158d5f33a7e6027b2be026b0"
+      },
+      {
+        "path": "assets/shot-3.png",
+        "bytes": 506,
+        "sha256": "c4e2514a910b39f1e950b43435506c5899d5f32f7eb5dc454093810b2bf4fce4"
+      },
+      {
+        "path": "assets/shot-4.png",
+        "bytes": 505,
+        "sha256": "14bfb799895374b964eeb8ba0178db32f3a97f81f76562f9aa6fe13718701647"
+      },
+      {
+        "path": "index.html",
+        "bytes": 7119,
+        "sha256": "d3ffb076db43ef2dadfc819c1ee945ec49ea5a0c70f55a43eaa9a2e754e4139f"
+      }
+    ],
+    "revisionBefore": "bed025a758c732f79906b42df561fafd75fa9a0f9cb76ebaedbb669b57c73d00",
+    "revisionAfterLogoReplace": "babe18bd21c247d2d9d517691fecd7753f2c7a836013f1fd234f6ff0608a1d97",
+    "revisionRestored": "bed025a758c732f79906b42df561fafd75fa9a0f9cb76ebaedbb669b57c73d00",
+    "revisionChangedOnAssetBytes": true,
+    "revisionRestoredAfterRestore": true,
+    "limits": {
+      "observedMaxDeclaredAssets": 8,
+      "workerLimits": "manifest assets <=64, single file <=64MiB, project <=128MiB (accepted worker)",
+      "proposal": "PNG/JPEG only, logo <=8MiB, screenshots <=8MiB each, <=16 assets, total <=64MiB"
+    }
+  }
+}

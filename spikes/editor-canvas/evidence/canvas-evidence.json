@@ -1,0 +1,881 @@
+{
+  "kind": "p3-005b-editor-canvas-spike",
+  "startedAt": "2026-10-18T02:31:50.894Z",
+  "independence": "standalone test page driven by puppeteer-core; not the DSH plugin and not a real DSH page",
+  "versions": {
+    "node": "v24.14.0",
+    "platform": "darwin",
+    "puppeteer": "25.14.0",
+    "contract": 1,
+    "runtime": "p3-005b-runtime.1",
+    "chrome": "Chrome/155.0.8059.84",
+    "worker": {
+      "node": "v24.14.0",
+      "platform": "darwin",
+      "hyperframes": "0.8.167",
+      "sdk": "0.8.167",
+      "gsap": "3.15.0",
+      "fps": 30,
+      "browser": "Google Chrome 155.0.8059.84",
+      "ffmpeg": "ffmpeg version 8.0.1 Copyright (c) 2000-2025 the FFmpeg developers",
+      "ffprobe": "ffprobe version 8.0.1 Copyright (c) 2007-2025 the FFmpeg developers",
+      "templates": [
+        "product-launch-v1"
+      ]
+    },
+    "engine": {
+      "worker": "dsh-video-engine-worker@0.2.1",
+      "client": "dsh-video-engine-client@0.2.1",
+      "reviewedCommit": "df4b74f",
+      "headAtEvidenceCapture": "1925b822cf57ae8f9be919357466ee0f369f285b",
+      "packagesUnchangedSinceReviewedCommit": true
+    },
+    "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/155.0.0.0 Safari/537.36"
+  },
+  "project": {
+    "projectId": "proj-mvd7m3jd-627170fc",
+    "initialRevision": "449648a3af6b644615799c180fe71de7c1f1b097ac2be9971410e7cd20d848b2",
+    "duration": 11,
+    "width": 1280,
+    "height": 720,
+    "scenes": [
+      {
+        "sceneId": "scene-1",
+        "start": 0,
+        "duration": 5
+      },
+      {
+        "sceneId": "scene-2",
+        "start": 5,
+        "duration": 4
+      },
+      {
+        "sceneId": "scene-3",
+        "start": 9,
+        "duration": 2
+      }
+    ],
+    "catalogue": [
+      {
+        "stableId": "scene-1-badge",
+        "sceneId": "scene-1",
+        "capabilities": [
+          "text"
+        ],
+        "text": null,
+        "timing": {
+          "start": null,
+          "duration": null
+        }
+      },
+      {
+        "stableId": "scene-1-title",
+        "sceneId": "scene-1",
+        "capabilities": [
+          "text",
+          "timing"
+        ],
+        "text": "画布直接编辑验证",
+        "timing": {
+          "start": 0,
+          "duration": 5
+        }
+      },
+      {
+        "stableId": "scene-1-rule",
+        "sceneId": "scene-1",
+        "capabilities": [
+          "text",
+          "timing"
+        ],
+        "text": null,
+        "timing": {
+          "start": 0.2,
+          "duration": 4.8
+        }
+      },
+      {
+        "stableId": "scene-2-badge",
+        "sceneId": "scene-2",
+        "capabilities": [
+          "text"
+        ],
+        "text": "SCENE 2",
+        "timing": {
+          "start": null,
+          "duration": null
+        }
+      },
+      {
+        "stableId": "scene-2-title",
+        "sceneId": "scene-2",
+        "capabilities": [
+          "text",
+          "timing"
+        ],
+        "text": "第二幕：点选与位置",
+        "timing": {
+          "start": 5,
+          "duration": 4
+        }
+      },
+      {
+        "stableId": "scene-2-subtitle",
+        "sceneId": "scene-2",
+        "capabilities": [
+          "text",
+          "timing"
+        ],
+        "text": "人工修改后 AI 继续编辑",
+        "timing": {
+          "start": 5.4,
+          "duration": 3.6
+        }
+      },
+      {
+        "stableId": "scene-2-rule",
+        "sceneId": "scene-2",
+        "capabilities": [
+          "text",
+          "timing"
+        ],
+        "text": null,
+        "timing": {
+          "start": 5.2,
+          "duration": 3.8
+        }
+      },
+      {
+        "stableId": "scene-2-shot",
+        "sceneId": "scene-2",
+        "capabilities": [],
+        "text": null,
+        "timing": {
+          "start": null,
+          "duration": null
+        }
+      },
+      {
+        "stableId": "scene-3-badge",
+        "sceneId": "scene-3",
+        "capabilities": [
+          "text"
+        ],
+        "text": "SCENE 3",
+        "timing": {
+          "start": null,
+          "duration": null
+        }
+      },
+      {
+        "stableId": "scene-3-title",
+        "sceneId": "scene-3",
+        "capabilities": [
+          "text",
+          "timing"
+        ],
+        "text": "第三幕：结束",
+        "timing": {
+          "start": 9,
+          "duration": 2
+        }
+      },
+      {
+        "stableId": "scene-3-subtitle",
+        "sceneId": "scene-3",
+        "capabilities": [
+          "text",
+          "timing"
+        ],
+        "text": "无场景卡片，不打断画面",
+        "timing": {
+          "start": 9.4,
+          "duration": 1.6
+        }
+      },
+      {
+        "stableId": "scene-3-rule",
+        "sceneId": "scene-3",
+        "capabilities": [
+          "text",
+          "timing"
+        ],
+        "text": null,
+        "timing": {
+          "start": 9.2,
+          "duration": 1.8
+        }
+      }
+    ],
+    "assets": [
+      {
+        "path": "assets/gsap.min.js",
+        "bytes": 72927,
+        "sha256": "92bb9a96476f983d212a2bc4f54c889039c1696dd4461d40a736860938570fbb"
+      },
+      {
+        "path": "assets/logo.png",
+        "bytes": 294,
+        "sha256": "be847bc6564ec78adc1fa4d349dd24cf8dd588b49bba0819729b1d09d49220aa"
+      },
+      {
+        "path": "assets/shot.png",
+        "bytes": 458,
+        "sha256": "e0d85d933570816f8622eee267d4ec5d90a90994419c2d5ef1dd6f337c33582c"
+      },
+      {
+        "path": "index.html",
+        "bytes": 4752,
+        "sha256": "30f097d613343a89e862246684845e3aee0c415a378d3db578a31d1769d03830"
+      }
+    ]
+  },
+  "host": {
+    "url": "http://127.0.0.1:49812/",
+    "origin": "http://127.0.0.1:49812",
+    "entryCachedCsp": "default-src 'none'; script-src http://127.0.0.1:49812 'sha256-MWPMlt9GUx+xu4PPxr6KVDsUPeoLEUlTISvBXaiN44M='; style-src http://127.0.0.1:49812 'unsafe-inline'; img-src http://127.0.0.1:49812 data:; font-src 'none'; connect-src 'none'; frame-src 'none'; media-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'self'",
+    "inlineScriptHashes": 1,
+    "snapshotLifecycle": {
+      "staleRevision": {
+        "requested": "449648a3af6b644615799c180fe71de7c1f1b097ac2be9971410e7cd20d848b2",
+        "current": "876ae63b39680b39d16b0e2ba8a90ebfc3b655aed5ae2ea20a83dc1cd2f2de0f",
+        "code": "E_REVISION_CONFLICT"
+      },
+      "oldSnapshotAfterSwitch": {
+        "snapshotId": "e548e4754bad3801e5a37ae23415194b",
+        "hostRouteStatus": 404,
+        "releaseCode": "E_SNAPSHOT_NOT_FOUND"
+      }
+    }
+  },
+  "isolation": {
+    "sandbox": "allow-scripts",
+    "referrerPolicy": "no-referrer",
+    "contentDocument": "null",
+    "contentWindowDocument": "throws:SecurityError",
+    "originOfRuntimeMessages": "null",
+    "bridgeHealth": {
+      "hasBridge": true
+    }
+  },
+  "requests": {
+    "externalBlocked": [],
+    "hostCategories": {
+      "host-page": 1,
+      "host-asset": 3,
+      "favicon": 1,
+      "snapshot-entry": 2,
+      "snapshot-asset": 2,
+      "runtime": 1
+    },
+    "console": [],
+    "pageErrors": []
+  },
+  "playback": {
+    "seeks": [
+      {
+        "requested": 0,
+        "actual": 0
+      },
+      {
+        "requested": 0.5,
+        "actual": 0.5
+      },
+      {
+        "requested": 1.5,
+        "actual": 1.5
+      },
+      {
+        "requested": 2.75,
+        "actual": 2.75
+      },
+      {
+        "requested": 4.99,
+        "actual": 4.99
+      },
+      {
+        "requested": 5,
+        "actual": 5
+      },
+      {
+        "requested": 6.5,
+        "actual": 6.5
+      },
+      {
+        "requested": 9,
+        "actual": 9
+      },
+      {
+        "requested": 10.99,
+        "actual": 10.99
+      }
+    ],
+    "playPause": {
+      "startTime": 2,
+      "after800ms": 2.7000000000000015,
+      "playingFlag": true,
+      "pauseReturned": 2.7834000000000017,
+      "afterPause250ms": 2.7834000000000017
+    },
+    "hiddenObject": {
+      "subtitleRect": {
+        "x": 90,
+        "y": 330,
+        "width": 274.5625,
+        "height": 37
+      },
+      "at_5_1": "scene-2-section",
+      "at_5_6": "scene-2-subtitle"
+    },
+    "sceneBoundary": {
+      "at_4_99": "scene-1-title",
+      "just_after_5_0_during_intro": "scene-2-section",
+      "at_6_5": "scene-2-title"
+    },
+    "overlap": {
+      "at_900_561": "scene-2-shot",
+      "stack": [
+        "scene-2-shot",
+        "scene-2-rule",
+        "scene-2-section",
+        "hf-main"
+      ]
+    },
+    "offline": {
+      "onLine": false,
+      "restoredOnline": true
+    }
+  },
+  "comparisons": [
+    {
+      "time": 1.5,
+      "workerSha256": "3ed6a9b0a1a9a5831bb984f5f5c408ac063008acea1cc6aefb4d9df0f2f6ea6e",
+      "previewSha256": "4f1e4d177b4c73dea4be1cefba02f612b2906d1d4f95300e8c65b1a757305f70",
+      "width": 1280,
+      "height": 720,
+      "pixels": 921600,
+      "mae": 0.35814778645833334,
+      "maxDelta": 226,
+      "exactEqualPct": 0.9927625868055555,
+      "within2Pct": 0.993017578125,
+      "tolerance": 2
+    },
+    {
+      "time": 5.5,
+      "workerSha256": "dd3e45ee881b860386863322c48dc7b06f4d4fb5c0b6d50922ec2db35a519fd3",
+      "previewSha256": "f28b6032464e61c61d9fd78b910e0b2b0c268560d60adae5fb1a1ca9be9bf34a",
+      "width": 1280,
+      "height": 720,
+      "pixels": 921600,
+      "mae": 0.29682291666666666,
+      "maxDelta": 240,
+      "exactEqualPct": 0.9792914496527778,
+      "within2Pct": 0.9910470920138889,
+      "tolerance": 2
+    },
+    {
+      "time": 9,
+      "workerSha256": "a6332cf35d2473e04e5064d04ed20658ba884d668b1e4811847e30798fcdae11",
+      "previewSha256": "535251de140490aef2a246ab3667ff0413a93c77298e18458963197a64762405",
+      "width": 1280,
+      "height": 720,
+      "pixels": 921600,
+      "mae": 0.041533203125,
+      "maxDelta": 232,
+      "exactEqualPct": 0.9992371961805555,
+      "within2Pct": 0.9992621527777777,
+      "tolerance": 2
+    }
+  ],
+  "selection": {
+    "titleHit": {
+      "stableId": "scene-1-title",
+      "sceneId": "scene-1",
+      "tag": "h1",
+      "text": "画布直接编辑验证",
+      "rect": {
+        "x": 88,
+        "y": 196,
+        "width": 980,
+        "height": 71.671875
+      },
+      "style": {
+        "fontSize": "64px",
+        "fontFamily": "sans-serif",
+        "fontWeight": "600",
+        "lineHeight": "71.68px",
+        "color": "rgb(0, 0, 0)",
+        "textAlign": "start",
+        "letterSpacing": "normal",
+        "whiteSpace": "normal"
+      },
+      "stack": [
+        "scene-1-title",
+        "scene-1-section",
+        "hf-main"
+      ]
+    },
+    "selected": {
+      "stableId": "scene-1-title",
+      "sceneId": "scene-1",
+      "rect": {
+        "x": 88,
+        "y": 196,
+        "width": 980,
+        "height": 71.671875
+      },
+      "editableText": true
+    },
+    "elementsUnchanged": true,
+    "overlayOnlyInHost": {
+      "selectionVisible": true,
+      "frameCount": 1
+    },
+    "nonText": {
+      "selection": {
+        "stableId": "scene-2-shot",
+        "sceneId": "scene-2",
+        "rect": {
+          "x": 800,
+          "y": 430,
+          "width": 250,
+          "height": 150
+        },
+        "editableText": false
+      },
+      "editing": null
+    },
+    "structural": {
+      "hit": "scene-2-section",
+      "inCatalogue": false
+    }
+  },
+  "letterbox": [
+    {
+      "stageSize": [
+        1100,
+        700
+      ],
+      "scale": 0.859375,
+      "letterbox": {
+        "left": 0,
+        "top": 156.125
+      },
+      "clickPoint": {
+        "x": 519.71875,
+        "y": 475.3590087890625
+      },
+      "selectedStableId": "scene-1-title",
+      "marginPoint": {
+        "x": 573,
+        "y": 124
+      },
+      "selectionAfterMargin": null
+    },
+    {
+      "stageSize": [
+        760,
+        640
+      ],
+      "scale": 0.59375,
+      "letterbox": {
+        "left": 0,
+        "top": 251.75
+      },
+      "clickPoint": {
+        "x": 366.1875,
+        "y": 509.402587890625
+      },
+      "selectedStableId": "scene-1-title",
+      "marginPoint": {
+        "x": 403,
+        "y": 124
+      },
+      "selectionAfterMargin": null
+    }
+  ],
+  "textEdit": {
+    "cancel": {
+      "editorOriginal": "画布直接编辑验证",
+      "afterCancel": {
+        "editing": null,
+        "revision": "449648a3af6b644615799c180fe71de7c1f1b097ac2be9971410e7cd20d848b2",
+        "editorHidden": true
+      },
+      "workerRevision": "449648a3af6b644615799c180fe71de7c1f1b097ac2be9971410e7cd20d848b2",
+      "workerText": "画布直接编辑验证"
+    },
+    "commit": {
+      "beforeRevision": "449648a3af6b644615799c180fe71de7c1f1b097ac2be9971410e7cd20d848b2",
+      "afterRevision": "876ae63b39680b39d16b0e2ba8a90ebfc3b655aed5ae2ea20a83dc1cd2f2de0f",
+      "workerText": "画布原位修改",
+      "snapshotId": "af6db3ffc5e1963922f5fca987bcc277",
+      "historyCursor": null
+    },
+    "persistence": {
+      "reopenRevision": "876ae63b39680b39d16b0e2ba8a90ebfc3b655aed5ae2ea20a83dc1cd2f2de0f",
+      "reopenText": "画布原位修改",
+      "afterWorkerRestart": {
+        "revision": "876ae63b39680b39d16b0e2ba8a90ebfc3b655aed5ae2ea20a83dc1cd2f2de0f",
+        "text": "画布原位修改",
+        "previewsAfterWorkerExit": []
+      }
+    },
+    "conflict": {
+      "staleRevision": "876ae63b39680b39d16b0e2ba8a90ebfc3b655aed5ae2ea20a83dc1cd2f2de0f",
+      "externalRevision": "7f4a5e91aa0c2dcef194d01a5f3d79b98e22cfbf4d8d9af4e5ab2085264044da",
+      "externalText": "外部 AI 修改",
+      "ui": {
+        "pendingEdit": {
+          "stableId": "scene-1-title",
+          "text": "冲突提交不应覆盖",
+          "code": "E_REVISION_CONFLICT"
+        },
+        "revision": "876ae63b39680b39d16b0e2ba8a90ebfc3b655aed5ae2ea20a83dc1cd2f2de0f",
+        "workerRevision": "7f4a5e91aa0c2dcef194d01a5f3d79b98e22cfbf4d8d9af4e5ab2085264044da",
+        "workerText": "外部 AI 修改"
+      },
+      "retry": {
+        "revision": "072444337f96383949501a2722f4bfbd0733e4a6b3095d2579dd308ba09c62b4",
+        "text": "冲突后重试"
+      }
+    },
+    "failure": {
+      "pendingEdit": {
+        "stableId": "scene-1-title",
+        "text": "持久失败重试",
+        "code": "E_PERSIST"
+      },
+      "revision": "072444337f96383949501a2722f4bfbd0733e4a6b3095d2579dd308ba09c62b4",
+      "text": "冲突后重试",
+      "retry": {
+        "revision": "25397eb4aeb15f42e3118a234f3f40cb37762e624ead6a2f276ad2666bdb1a7a",
+        "text": "持久失败后重试"
+      }
+    }
+  },
+  "gap": {
+    "drag": {
+      "beforeRect": {
+        "x": 88,
+        "y": 196,
+        "width": 980,
+        "height": 71.671875
+      },
+      "proposal": {
+        "kind": "move",
+        "stableId": "scene-1-title",
+        "box": {
+          "left": 208,
+          "top": 236,
+          "width": 980,
+          "height": 71.671875
+        },
+        "overlayRect": {
+          "x": 208,
+          "y": 236,
+          "width": 980,
+          "height": 71.671875
+        },
+        "workerError": null
+      },
+      "documentRectAfterDrag": {
+        "x": 88,
+        "y": 196,
+        "width": 980,
+        "height": 71.671875
+      },
+      "overlayRect": {
+        "x": 208,
+        "y": 236,
+        "width": 980,
+        "height": 71.671875
+      },
+      "writeback": {
+        "kind": "move",
+        "op": {
+          "type": "layout",
+          "target": "scene-1-title",
+          "box": {
+            "left": 208,
+            "top": 236,
+            "width": 980,
+            "height": 71.671875
+          },
+          "unit": "composition-px"
+        },
+        "workerError": {
+          "code": "E_PARAMS",
+          "message": "Unsupported edit type"
+        }
+      },
+      "revisionAfterWriteback": "25397eb4aeb15f42e3118a234f3f40cb37762e624ead6a2f276ad2666bdb1a7a",
+      "revisionStable": true,
+      "afterReloadRect": {
+        "x": 88,
+        "y": 196,
+        "width": 980,
+        "height": 71.671875
+      }
+    },
+    "resize": {
+      "proposal": {
+        "kind": "resize",
+        "stableId": "scene-1-title",
+        "box": {
+          "left": 88,
+          "top": 196,
+          "width": 1060,
+          "height": 101.671875
+        },
+        "overlayRect": {
+          "x": 88,
+          "y": 196,
+          "width": 1060,
+          "height": 101.671875
+        },
+        "workerError": null
+      },
+      "writeback": {
+        "kind": "resize",
+        "op": {
+          "type": "layout",
+          "target": "scene-1-title",
+          "box": {
+            "left": 88,
+            "top": 196,
+            "width": 1060,
+            "height": 101.671875
+          },
+          "unit": "composition-px"
+        },
+        "workerError": {
+          "code": "E_PARAMS",
+          "message": "Unsupported edit type"
+        }
+      }
+    },
+    "playbackGuard": {
+      "gapProposalAfterDrag": null,
+      "blockedDiagnostics": [
+        {
+          "at": "2026-10-18T02:32:08.609Z",
+          "type": "drag-blocked-while-playing",
+          "detail": {
+            "stableId": "scene-1-title"
+          }
+        }
+      ]
+    }
+  },
+  "contractProbes": {
+    "runtimeMessageOrigin": "null",
+    "wrongNonce": {
+      "commandsSentDelta": 0,
+      "eventsAcceptedDelta": 0,
+      "droppedDelta": 0
+    },
+    "foreignSourceDelta": 1,
+    "revokedInstance": {
+      "oldInstanceId": "inst-53058f3ba35c",
+      "result": {
+        "ok": false,
+        "code": "E_INSTANCE_NOT_FOUND"
+      },
+      "revokedRejections": 1,
+      "liveInstanceCount": 1
+    }
+  },
+  "cleanup": {
+    "destroy": {
+      "results": [
+        {
+          "instanceId": "inst-ee9bf5bba09a",
+          "destroyed": true
+        }
+      ],
+      "remainingInstances": 0,
+      "frames": 0
+    },
+    "runtimeEventsAfterDestroy": {
+      "commandsDelta": 0,
+      "eventsDelta": 0
+    },
+    "hostRouteAfterCleanup": 404
+  },
+  "checks": [
+    {
+      "name": "preview runtime ready",
+      "ok": true
+    },
+    {
+      "name": "sandbox iframe is opaque and has no host access",
+      "ok": true
+    },
+    {
+      "name": "entry CSP blocks network and hashes inline scripts",
+      "ok": true
+    },
+    {
+      "name": "only Host routes are requested",
+      "ok": true
+    },
+    {
+      "name": "composition renders at 1:1 for pixel comparison",
+      "ok": true
+    },
+    {
+      "name": "seek 0s",
+      "ok": true
+    },
+    {
+      "name": "seek 0.5s",
+      "ok": true
+    },
+    {
+      "name": "seek 1.5s",
+      "ok": true
+    },
+    {
+      "name": "seek 2.75s",
+      "ok": true
+    },
+    {
+      "name": "seek 4.99s",
+      "ok": true
+    },
+    {
+      "name": "seek 5s",
+      "ok": true
+    },
+    {
+      "name": "seek 6.5s",
+      "ok": true
+    },
+    {
+      "name": "seek 9s",
+      "ok": true
+    },
+    {
+      "name": "seek 10.99s",
+      "ok": true
+    },
+    {
+      "name": "real play advances timeline and pause holds it",
+      "ok": true
+    },
+    {
+      "name": "time-window hidden objects are not selectable",
+      "ok": true
+    },
+    {
+      "name": "scene boundary switches the hit-tested object",
+      "ok": true
+    },
+    {
+      "name": "overlap returns topmost visible object with a stack",
+      "ok": true
+    },
+    {
+      "name": "preview matches worker frame at 1.5s",
+      "ok": true
+    },
+    {
+      "name": "preview matches worker frame at 5.5s",
+      "ok": true
+    },
+    {
+      "name": "preview matches worker frame at 9s",
+      "ok": true
+    },
+    {
+      "name": "real click selects the exact stableId; overlay is Host-only",
+      "ok": true
+    },
+    {
+      "name": "non-text object is selectable but has no in-place text editor",
+      "ok": true
+    },
+    {
+      "name": "structural containers are outside the selectable scope",
+      "ok": true
+    },
+    {
+      "name": "letterbox mapping at 1100×700",
+      "ok": true
+    },
+    {
+      "name": "letterbox mapping at 760×640",
+      "ok": true
+    },
+    {
+      "name": "playback/seek/selection ran with the browser offline",
+      "ok": true
+    },
+    {
+      "name": "Esc restores text without writing",
+      "ok": true
+    },
+    {
+      "name": "Enter commits through worker edit and reloads a new snapshot",
+      "ok": true
+    },
+    {
+      "name": "snapshot lifecycle rejects stale revisions and invalidated snapshots",
+      "ok": true
+    },
+    {
+      "name": "text edit persists across close/reopen and worker restart",
+      "ok": true
+    },
+    {
+      "name": "stale revision commit fails without overwriting the human/AI text",
+      "ok": true
+    },
+    {
+      "name": "refresh-then-retry commits the draft",
+      "ok": true
+    },
+    {
+      "name": "persistence failure keeps the draft and does not change the project",
+      "ok": true
+    },
+    {
+      "name": "retry after restoring permissions succeeds",
+      "ok": true
+    },
+    {
+      "name": "drag is transient only and the worker rejects the layout op",
+      "ok": true
+    },
+    {
+      "name": "resize is transient only and the worker rejects the layout op",
+      "ok": true
+    },
+    {
+      "name": "dragging during playback is blocked",
+      "ok": true
+    },
+    {
+      "name": "wrong nonce is ignored; foreign sources are counted; revoked instance rejects",
+      "ok": true
+    },
+    {
+      "name": "all preview instances destroyed and frames removed",
+      "ok": true
+    },
+    {
+      "name": "preview snapshot, worker run dir and browser are cleaned up",
+      "ok": true
+    }
+  ],
+  "failures": [],
+  "finishedAt": "2026-10-18T02:32:14.750Z",
+  "elapsedMs": 23855,
+  "summary": {
+    "total": 41,
+    "passed": 41,
+    "failed": 0,
+    "evidence": "evidence/canvas-evidence.json"
+  }
+}

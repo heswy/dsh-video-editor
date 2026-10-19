@@ -1,0 +1,9 @@
+{
+  "version": "0.8.167",
+  "dist.integrity": "sha512-+uVeZbYHB9Ch5dtZnAlLbALzh1h79Kc5S4l/qePOkvcYPap6jUD0MlKArso/4yNAD4c9/maBiRn7IEFhGy+Ihg==",
+  "repository": {
+    "url": "git+https://github.com/heygen-com/hyperframes.git",
+    "type": "git",
+    "directory": "packages/sdk"
+  }
+}

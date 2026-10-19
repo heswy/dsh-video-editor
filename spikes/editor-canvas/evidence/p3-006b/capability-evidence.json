@@ -1,0 +1,398 @@
+{
+  "kind": "p3-006b-capability-probe",
+  "startedAt": "2026-10-18T03:46:46.395Z",
+  "engine": {
+    "worker": "dsh-video-engine-worker@0.3.0",
+    "client": "dsh-video-engine-client@0.3.0",
+    "fixedEngineBase": "df4b74f (0.2.1)"
+  },
+  "versions": {
+    "node": "v24.14.0",
+    "worker": {
+      "node": "v24.14.0",
+      "platform": "darwin",
+      "hyperframes": "0.8.167",
+      "sdk": "0.8.167",
+      "gsap": "3.15.0",
+      "fps": 30,
+      "browser": "Google Chrome 155.0.8059.84",
+      "ffmpeg": "ffmpeg version 8.0.1 Copyright (c) 2000-2025 the FFmpeg developers",
+      "ffprobe": "ffprobe version 8.0.1 Copyright (c) 2007-2025 the FFmpeg developers",
+      "templates": [
+        "product-launch-v1"
+      ]
+    }
+  },
+  "worker": {
+    "initial": {
+      "revision": "31b1791ebb337a97627dc331aaea7f2d7df312d76afc437478d2046072f16bcf",
+      "title": {
+        "stableId": "scene-1-title",
+        "sceneId": "scene-1",
+        "text": "能力矩阵场景",
+        "timing": {
+          "start": 0,
+          "duration": 5
+        },
+        "layout": {
+          "left": 88,
+          "top": 196,
+          "width": 980,
+          "height": null
+        },
+        "style": {
+          "color": null,
+          "fontSize": 64,
+          "fontWeight": 600,
+          "textAlign": null
+        },
+        "capabilities": [
+          "text",
+          "timing",
+          "layout",
+          "style"
+        ]
+      },
+      "logo": {
+        "stableId": "scene-1-logo",
+        "sceneId": "scene-1",
+        "text": null,
+        "timing": {
+          "start": null,
+          "duration": null
+        },
+        "layout": {
+          "left": 1030,
+          "top": 88,
+          "width": 140,
+          "height": 140
+        },
+        "style": null,
+        "capabilities": [
+          "layout"
+        ]
+      }
+    },
+    "layoutStyle": {
+      "revision": "b1430404d960b38b03b9923e2530c66825e62a008dd76a8097daea601be75f8b",
+      "title": {
+        "text": "持久化标题",
+        "layout": {
+          "left": 200.123,
+          "top": 250,
+          "width": 980,
+          "height": null
+        },
+        "style": {
+          "color": "#00ff00",
+          "fontSize": 88,
+          "fontWeight": 700,
+          "textAlign": "center"
+        }
+      },
+      "logo": {
+        "layout": {
+          "left": 900,
+          "top": 300,
+          "width": 240,
+          "height": 240
+        }
+      },
+      "htmlHasManagedStyles": true,
+      "snapshotOmitsTransform": true,
+      "capabilities": [
+        "text",
+        "timing",
+        "layout",
+        "style"
+      ]
+    }
+  },
+  "unsupported": [
+    {
+      "op": "move",
+      "target": "scene-1-title",
+      "accepted": false,
+      "code": "E_PARAMS"
+    },
+    {
+      "op": "resize",
+      "target": "scene-1-title",
+      "accepted": false,
+      "code": "E_PARAMS"
+    },
+    {
+      "op": "color",
+      "target": "scene-1-title",
+      "accepted": false,
+      "code": "E_PARAMS"
+    },
+    {
+      "op": "style",
+      "target": "scene-1-title",
+      "accepted": false,
+      "code": "E_PARAMS"
+    },
+    {
+      "op": "style",
+      "target": "scene-1-rule",
+      "accepted": false,
+      "code": "E_UNSUPPORTED_EDIT"
+    },
+    {
+      "op": "layout",
+      "target": "scene-1-section",
+      "accepted": false,
+      "code": "E_UNSUPPORTED_EDIT"
+    }
+  ],
+  "sceneRegeneration": {
+    "revision": "c8c29d855a8ec86d0b8fe1fe9350fd706a1175257849837a75b20b743e25578a",
+    "title": {
+      "text": "改名后场景",
+      "layout": {
+        "left": 200.123,
+        "top": 250,
+        "width": 980,
+        "height": null
+      },
+      "style": {
+        "color": "#00ff00",
+        "fontSize": 88,
+        "fontWeight": 700,
+        "textAlign": "center"
+      }
+    },
+    "logo": {
+      "layout": {
+        "left": 900,
+        "top": 300,
+        "width": 240,
+        "height": 240
+      }
+    },
+    "preserved": true
+  },
+  "merge": {
+    "written": true,
+    "text": "AI 改写文案",
+    "layout": {
+      "left": 200.123,
+      "top": 260,
+      "width": 980,
+      "height": null
+    },
+    "style": {
+      "color": "#00ff00",
+      "fontSize": 88,
+      "fontWeight": 700,
+      "textAlign": "center"
+    },
+    "mergedHumanLayoutWithAiText": true,
+    "conflict": {
+      "written": false,
+      "conflicts": [
+        {
+          "stableId": "scene-1-title",
+          "reason": "BOTH_MODIFIED",
+          "field": "text",
+          "humanValue": "人工文案",
+          "aiValue": "AI 文案冲突"
+        }
+      ]
+    }
+  },
+  "sdk": {
+    "package": "@hyperframes/sdk",
+    "version": "0.8.167",
+    "methods": [
+      "constructor",
+      "attachHistory",
+      "attachPersistQueue",
+      "_fireError",
+      "setStyle",
+      "setText",
+      "setAttribute",
+      "setTiming",
+      "syncOffset",
+      "moveIntoSync",
+      "slipIntoSync",
+      "removeElement",
+      "addElement",
+      "setVariableValue",
+      "getVariableValue",
+      "listVariables",
+      "removeVariable",
+      "declareVariable",
+      "updateVariableDeclaration",
+      "removeVariableDeclaration",
+      "getVariableDeclarations",
+      "getVariableValues",
+      "validateVariableValues",
+      "getVariableUsage",
+      "_collectCssText",
+      "setPreviewVariables",
+      "getElementTimings",
+      "setElementTiming",
+      "setHold",
+      "addGsapTween",
+      "setGsapTween",
+      "removeGsapTween",
+      "addWithKeyframes",
+      "replaceWithKeyframes",
+      "undo",
+      "redo",
+      "canUndo",
+      "canRedo",
+      "getElements",
+      "getRootElements",
+      "getElement",
+      "find",
+      "getAllAnimationIds",
+      "selection",
+      "element",
+      "getSelection",
+      "setSelection",
+      "updateSelection",
+      "_dispatch",
+      "dispatch",
+      "batch",
+      "resetBatchState",
+      "can",
+      "on",
+      "serialize",
+      "getOverrides",
+      "applyPatches",
+      "flush",
+      "dispose"
+    ],
+    "styledHtmlHash": "5086cd91da75345157b3eaafefcce671ca8fecee0e710c8821f93c8b0a9a8a2c",
+    "regenerationRevision": "8a2db97f1030a446a6e2b57791fc49f4bf8edfb40fdeb4da9323ca990ea02b8f",
+    "titleStyleAfterRegeneration": "<h1 data-dv-managed=\"color fontSize fontWeight left textAlign top\" id=\"scene-1-title\" class=\"clip\" data-hf-id=\"scene-1-title\" data-start=\"0\" data-duration=\"5\" style=\"position: absolute; left: 320px; top: 240px; margin: 0; width: 980px; font-size: 88px; line-height: 1.12; font-weight: 700; color: #0000ff; text-align: center\">",
+    "supportedStylePreserved": true,
+    "unsupportedTransformDropped": true,
+    "note": "0.3.0 regenerates scenes but transplants supported manual layout/style deltas; arbitrary CSS outside the controlled model (e.g. rotate) is still dropped and must not be used for persistence."
+  },
+  "matrix": [
+    {
+      "capability": "文字内容",
+      "currentPath": "edit {type:'text'}",
+      "persisted": true,
+      "evidence": "worker.layoutStyle.title.text"
+    },
+    {
+      "capability": "元素显式时间",
+      "currentPath": "edit {type:'timing'}",
+      "persisted": true,
+      "evidence": "worker.layoutStyle (atomic batch)"
+    },
+    {
+      "capability": "元素位置 left/top（静态基座）",
+      "currentPath": "edit {type:'layout', unit:'composition-px', box:{left,top}}",
+      "persisted": true,
+      "evidence": "worker.layoutStyle + sceneRegeneration.preserved"
+    },
+    {
+      "capability": "元素尺寸 width/height",
+      "currentPath": "edit {type:'layout', box:{width,height}}",
+      "persisted": true,
+      "evidence": "worker.layoutStyle.logo.layout + sceneRegeneration.preserved"
+    },
+    {
+      "capability": "文字颜色/字号/字重/对齐",
+      "currentPath": "edit {type:'style', styles:{color,fontSize,fontWeight,textAlign}}",
+      "persisted": true,
+      "evidence": "worker.layoutStyle.title.style"
+    },
+    {
+      "capability": "人工 layout/style + AI 文案合并",
+      "currentPath": "project.revise 字段级三方合并",
+      "persisted": true,
+      "evidence": "merge.mergedHumanLayoutWithAiText"
+    },
+    {
+      "capability": "同字段双改 / AI 删除人工覆盖对象的显式冲突（不静默覆盖）",
+      "currentPath": "written:false conflicts[{field,humanValue,aiValue}] / AI_DELETE_HUMAN_MODIFY",
+      "persisted": true,
+      "evidence": "merge.conflict",
+      "note": "handled as explicit conflict; no silent overwrite"
+    },
+    {
+      "capability": "拖动/缩放的任意 CSS、旋转、层级",
+      "currentPath": "无受控模型；move/resize/color 形状仍 E_PARAMS",
+      "persisted": false,
+      "evidence": "unsupported"
+    },
+    {
+      "capability": "字体族/多选/清除覆盖",
+      "currentPath": "v1 不支持",
+      "persisted": false,
+      "evidence": "README limits"
+    }
+  ],
+  "proposals": {
+    "layoutOp": {
+      "shape": {
+        "type": "layout",
+        "target": "<stableId>",
+        "unit": "composition-px",
+        "box": {
+          "left": "number?",
+          "top": "number?",
+          "width": "number?",
+          "height": "number?"
+        }
+      },
+      "constraints": [
+        "non-empty patch; 1/1000 px normalization; canvas bounds when sizes are known",
+        "static composition base, never the animated rect or a transform",
+        "template leaf capability only (title/subtitle/badge/rule/logo/shot)"
+      ]
+    },
+    "styleOp": {
+      "shape": {
+        "type": "style",
+        "target": "<stableId>",
+        "styles": {
+          "color": "string?",
+          "fontSize": "number?",
+          "fontWeight": "number?",
+          "textAlign": "string?"
+        }
+      },
+      "constraints": [
+        "controlled allowlist only; arbitrary CSS/url/transform rejected",
+        "text-bearing template leaves only (title/subtitle/badge)"
+      ]
+    }
+  },
+  "failures": [],
+  "summary": {
+    "persistedCapabilities": [
+      "文字内容",
+      "元素显式时间",
+      "元素位置 left/top（静态基座）",
+      "元素尺寸 width/height",
+      "文字颜色/字号/字重/对齐",
+      "人工 layout/style + AI 文案合并",
+      "同字段双改 / AI 删除人工覆盖对象的显式冲突（不静默覆盖）"
+    ],
+    "gapCapabilities": [
+      "拖动/缩放的任意 CSS、旋转、层级",
+      "字体族/多选/清除覆盖"
+    ],
+    "sceneRegenerationPreserved": true,
+    "mergePreserved": true,
+    "fieldConflict": "text",
+    "unsupportedCodes": [
+      "move:E_PARAMS",
+      "resize:E_PARAMS",
+      "color:E_PARAMS",
+      "style:E_PARAMS",
+      "style:E_UNSUPPORTED_EDIT",
+      "layout:E_UNSUPPORTED_EDIT"
+    ]
+  },
+  "finishedAt": "2026-10-18T03:46:47.737Z",
+  "evidenceFile": "evidence/p3-006b/capability-evidence.json"
+}

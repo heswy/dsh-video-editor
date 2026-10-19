@@ -1,0 +1,32 @@
+{
+  "name": "dsh-video-engine-worker",
+  "version": "0.4.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "exports": {
+    "./worker": "./src/worker.mjs",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src/",
+    "protocol.schema.json",
+    "README.md"
+  ],
+  "scripts": {
+    "prepare-fixture": "node scripts/prepare-fixture.mjs",
+    "start": "node src/worker.mjs",
+    "test": "node --test --test-concurrency=1 test/*.test.mjs",
+    "test:real": "node --test --test-concurrency=1 test/*.integration.mjs"
+  },
+  "dependencies": {
+    "@hyperframes/sdk": "0.8.167",
+    "gsap": "3.15.0",
+    "hyperframes": "0.8.167"
+  },
+  "devDependencies": {
+    "puppeteer-core": "25.14.0"
+  }
+}

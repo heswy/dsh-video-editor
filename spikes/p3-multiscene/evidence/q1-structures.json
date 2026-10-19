@@ -1,0 +1,446 @@
+{
+  "generatedAt": "2026-10-17T09:25:45.184Z",
+  "node": "v24.14.0",
+  "totalDuration": 15,
+  "assets": {
+    "colors": {
+      "logo": "#facc15",
+      "shots": [
+        "#22d3ee",
+        "#a3e635",
+        "#f472b6",
+        "#c084fc"
+      ]
+    },
+    "hashes": {
+      "logo": "e6e04d26ab9f1b723a0ea59098968de4de45565a3c183d1080f6834a50888212",
+      "shot-1": "4066b3e787e030e017a321314d1f724a0ed2e4c7b882abf43af0f4677e33c5a6",
+      "shot-2": "b2f5eb58b5e38da024ae13fbefbf0d2e9cb5d4ad158d5f33a7e6027b2be026b0",
+      "shot-3": "c4e2514a910b39f1e950b43435506c5899d5f32f7eb5dc454093810b2bf4fce4",
+      "shot-4": "14bfb799895374b964eeb8ba0178db32f3a97f81f76562f9aa6fe13718701647"
+    }
+  },
+  "structures": {
+    "A": {
+      "projectDir": "/Users/orange/.codex/worktrees/b4bf/dsh-video-editor/spikes/p3-multiscene/artifacts/q1/A-nested",
+      "compositions": {
+        "ok": true,
+        "ms": 378,
+        "stdout": "{\n  \"compositions\": [\n    {\n      \"id\": \"main\",\n      \"duration\": 15,\n      \"width\": 1280,\n      \"height\": 720,\n      \"elementCount\": 4\n    },\n    {\n      \"id\": \"scene-1\",\n      \"duration\": 4,\n      \"width\": 1280,\n      \"height\": 720,\n      \"elementCount\": 3,\n      \"source\": \"compositions/scene-1.html\"\n    },\n    {\n      \"id\": \"scene-2\",\n      \"duration\": 4,\n      \"width\": 1280,\n      \"height\": 720,\n      \"elementCount\": 3,\n      \"source\": \"compositions/scene-2.html\"\n    },\n    {\n      \"id\": \"scene-3\",\n      \"duration\": 4,\n      \"width\": 1280,\n      \"height\": 720,\n      \"elementCount\": 3,\n      \"source\": \"compositions/scene-3.html\"\n    },\n    {\n      \"id\": \"scene-4\",\n      \"duration\": 3,\n      \"width\": 1280,\n      \"height\": 720,\n      \"elementCount\": 3,\n      \"source\": \"compositions/scene-4.html\"\n    }\n  ],\n  \"_meta\": {\n    \"version\": \"0.8.167\",\n    \"latestVersion\": \"0.8.167\",\n    \"updateAvailable\": false\n  }\n}\n"
+      },
+      "snapshots": {
+        "5": {
+          "file": "at-5s.png",
+          "sha256": "f6bdbb89254753e7b8634af1f51c949266c1bc4d37c467e827a842454d225e8b",
+          "bytes": 30644,
+          "sample": {
+            "rgb": [
+              15,
+              118,
+              110
+            ],
+            "hex": "#0f766e"
+          },
+          "ms": 3874
+        },
+        "1.5": {
+          "file": "at-1.5s.png",
+          "sha256": "11143b08eeda5cd5fce167f6b2da6135e54fa11863a6473bedce86ad49278133",
+          "bytes": 38127,
+          "sample": {
+            "rgb": [
+              29,
+              78,
+              216
+            ],
+            "hex": "#1d4ed8"
+          },
+          "ms": 4053
+        },
+        "9.5": {
+          "file": "at-9.5s.png",
+          "sha256": "d5f585c8ae6cd8f6ea5d3c5f44204261e7a1d203980f3e67ff7adaecfe7898a4",
+          "bytes": 33555,
+          "sample": {
+            "rgb": [
+              157,
+              23,
+              77
+            ],
+            "hex": "#9d174d"
+          },
+          "ms": 4662
+        },
+        "13.5": {
+          "file": "at-13.5s.png",
+          "sha256": "ac229b0138446448ee40b765e4c0a8ad6a3703d656d289fe599a1b7adaf429bf",
+          "bytes": 29136,
+          "sample": {
+            "rgb": [
+              124,
+              45,
+              18
+            ],
+            "hex": "#7c2d12"
+          },
+          "ms": 4329
+        }
+      },
+      "render": {
+        "output": "/artifacts/q1/A-nested.mp4",
+        "ms": 16927,
+        "bytes": 342384,
+        "sha256": "60c30599f04bfe9d4e71d724900a17e15f9a0766e2e3c821ca1b978cc6ab460e",
+        "first": {
+          "rgb": [
+            27,
+            76,
+            214
+          ],
+          "hex": "#1b4cd6"
+        },
+        "frames": {
+          "5": {
+            "rgb": [
+              12,
+              117,
+              108
+            ],
+            "hex": "#0c756c"
+          },
+          "1.5": {
+            "rgb": [
+              27,
+              76,
+              214
+            ],
+            "hex": "#1b4cd6"
+          },
+          "9.5": {
+            "rgb": [
+              155,
+              22,
+              75
+            ],
+            "hex": "#9b164b"
+          },
+          "13.5": {
+            "rgb": [
+              123,
+              44,
+              16
+            ],
+            "hex": "#7b2c10"
+          }
+        },
+        "probe": {
+          "programs": [],
+          "stream_groups": [],
+          "streams": [
+            {
+              "codec_name": "h264",
+              "width": 1280,
+              "height": 720,
+              "r_frame_rate": "30/1",
+              "avg_frame_rate": "30/1",
+              "nb_frames": "450",
+              "nb_read_frames": "450"
+            }
+          ],
+          "format": {
+            "duration": "15.000000",
+            "size": "342384"
+          }
+        },
+        "log": "/Users/orange/.codex/worktrees/b4bf/dsh-video-editor/spikes/p3-multiscene/artifacts/q1/render-A-nested.log"
+      }
+    },
+    "B": {
+      "projectDir": "/Users/orange/.codex/worktrees/b4bf/dsh-video-editor/spikes/p3-multiscene/artifacts/q1/B-single-doc",
+      "compositions": {
+        "ok": true,
+        "ms": 368,
+        "stdout": "{\n  \"compositions\": [\n    {\n      \"id\": \"main\",\n      \"duration\": 15,\n      \"width\": 1280,\n      \"height\": 720,\n      \"elementCount\": 16\n    }\n  ],\n  \"_meta\": {\n    \"version\": \"0.8.167\",\n    \"latestVersion\": \"0.8.167\",\n    \"updateAvailable\": false\n  }\n}\n"
+      },
+      "snapshots": {
+        "5": {
+          "file": "at-5s.png",
+          "sha256": "62581c963418bfd54b4108f9353051f12c29440417c14c15f7ae728c199f2a97",
+          "bytes": 29259,
+          "sample": {
+            "rgb": [
+              15,
+              118,
+              110
+            ],
+            "hex": "#0f766e"
+          },
+          "ms": 3623
+        },
+        "1.5": {
+          "file": "at-1.5s.png",
+          "sha256": "d47469e6143420ac9bc3f358fc44ac67dc1344e7846f30ee68436cf093d6f9ef",
+          "bytes": 37429,
+          "sample": {
+            "rgb": [
+              29,
+              78,
+              216
+            ],
+            "hex": "#1d4ed8"
+          },
+          "ms": 3829
+        },
+        "9.5": {
+          "file": "at-9.5s.png",
+          "sha256": "577e28f338abb89174f3f6759e74125e9a8a002994ca0e07fe3cd2776ab4ec51",
+          "bytes": 32621,
+          "sample": {
+            "rgb": [
+              157,
+              23,
+              77
+            ],
+            "hex": "#9d174d"
+          },
+          "ms": 4284
+        },
+        "13.5": {
+          "file": "at-13.5s.png",
+          "sha256": "0cec6d7ff08bf879fa4ab21e9a56472b64644ef5326b4b3470f1a03cfd19af13",
+          "bytes": 27189,
+          "sample": {
+            "rgb": [
+              124,
+              45,
+              18
+            ],
+            "hex": "#7c2d12"
+          },
+          "ms": 3699
+        }
+      },
+      "render": {
+        "output": "/artifacts/q1/B-single-doc.mp4",
+        "ms": 17667,
+        "bytes": 293697,
+        "sha256": "8f7046d85e8fad38559796e4caa6fdc18193f08f692f298f3719f31ae6a19af5",
+        "first": {
+          "rgb": [
+            27,
+            76,
+            214
+          ],
+          "hex": "#1b4cd6"
+        },
+        "frames": {
+          "5": {
+            "rgb": [
+              12,
+              117,
+              108
+            ],
+            "hex": "#0c756c"
+          },
+          "1.5": {
+            "rgb": [
+              27,
+              76,
+              214
+            ],
+            "hex": "#1b4cd6"
+          },
+          "9.5": {
+            "rgb": [
+              155,
+              22,
+              75
+            ],
+            "hex": "#9b164b"
+          },
+          "13.5": {
+            "rgb": [
+              123,
+              44,
+              16
+            ],
+            "hex": "#7b2c10"
+          }
+        },
+        "probe": {
+          "programs": [],
+          "stream_groups": [],
+          "streams": [
+            {
+              "codec_name": "h264",
+              "width": 1280,
+              "height": 720,
+              "r_frame_rate": "30/1",
+              "avg_frame_rate": "30/1",
+              "nb_frames": "450",
+              "nb_read_frames": "450"
+            }
+          ],
+          "format": {
+            "duration": "15.000000",
+            "size": "293697"
+          }
+        },
+        "log": "/Users/orange/.codex/worktrees/b4bf/dsh-video-editor/spikes/p3-multiscene/artifacts/q1/render-B-single-doc.log"
+      }
+    },
+    "C": {
+      "projectDir": "/Users/orange/.codex/worktrees/b4bf/dsh-video-editor/spikes/p3-multiscene/artifacts/q1/C-multi-entry",
+      "compositions": {
+        "ok": false,
+        "stderr": "\n✗  No composition found in /Users/orange/.codex/worktrees/b4bf/dsh-video-editor/spikes/p3-multiscene/artifacts/q1/C-multi-entry\n\n   No index.html file found.\n   Run npx hyperframes init to create a new composition.\n\n",
+        "firstLine": "✗  No composition found in /Users/orange/.codex/worktrees/b4bf/dsh-video-editor/spikes/p3-multiscene/artifacts/q1/C-multi-entry"
+      },
+      "renderWithoutRoot": {
+        "ok": false,
+        "stderr": "\n✗  No composition found in /Users/orange/.codex/worktrees/b4bf/dsh-video-editor/spikes/p3-multiscene/artifacts/q1/C-multi-entry\n\n   No index.html file found.\n   Run npx hyperframes init to create a new composition.\n\n",
+        "firstLine": "✗  No composition found in /Users/orange/.codex/worktrees/b4bf/dsh-video-editor/spikes/p3-multiscene/artifacts/q1/C-multi-entry"
+      },
+      "renderSpecificComposition": {
+        "ok": false,
+        "stderr": "\n✗  No composition found in /Users/orange/.codex/worktrees/b4bf/dsh-video-editor/spikes/p3-multiscene/artifacts/q1/C-multi-entry\n\n   No index.html file found.\n   Run npx hyperframes init to create a new composition.\n\n[INFO] [Render] Pipeline started {\"renderJobId\":\"aa453d0c-6468-4fc0-a7a2-3ba154f6a239\",\"platform\":\"darwin\",\"arch\":\"arm64\",\"nodeVersion\":\"v24.14.0\",\"fps\":{\"num\":30,\"den\":1},\"format\":\"mp4\",\"quality\":\"standard\",\"browserGpuMode\":\"software\",\"forceScreenshot\":true,\"protocolTimeout\":300000,\"browserTimeout\":120000,\"pageNavigationTimeout\":60000,\"playerReadyTimeout\":45000}\n[INFO] [Render:trace] {\"renderJobId\":\"aa453d0c-6468-4fc0-a7a2-3ba154f6a239\",\"phase\":\"pipeline\",\"status\":\"checkpoint\",\"elapsedMs\":3,\"message\":\"started\",\"format\":\"mp4\",\"quality\":\"standard\",\"browserGpuMode\":\"software\",\"forceScreenshot\":true,\"protocolTimeoutMs\":300000,\"pageNavigationTimeoutMs\":60000,\"playerReadyTimeoutMs\":45000,\"requestedWorkers\":\"auto\"}\n[INFO] [Render:trace] {\"renderJobId\":\"aa453d0c-6468-4fc0-a7a2-3ba154f6a239\",\"phase\":\"Queued\",\"status\":\"error\",\"elapsedMs\":5,\"durationMs\":0,\"message\":\"Template entry file \\\"[path]\\\" requires a project [file] to extract its render shell.\"}\n[INFO] [Render] Failure summary {\"renderJobId\":\"aa453d0c-6468-4fc0-a7a2-3ba154f6a239\",\"failedStage\":\"Queued\",\"error\":\"Template entry file \\\"compositions/scene-1.html\\\" requires a project index.html to extract its render shell.\",\"elapsedMs\":6,\"stageTimings\":{},\"isTimeout\":false,\"workers\":\"auto\",\"protocolTimeout\":300000,\"obser",
+        "firstLine": "✗  No composition found in /Users/orange/.codex/worktrees/b4bf/dsh-video-editor/spikes/p3-multiscene/artifacts/q1/C-multi-entry"
+      }
+    }
+  },
+  "singleSceneRewrite": {
+    "changedScene": "scene-2",
+    "otherSectionsUnchanged": [
+      {
+        "sceneId": "scene-1",
+        "unchanged": true
+      },
+      {
+        "sceneId": "scene-3",
+        "unchanged": true
+      },
+      {
+        "sceneId": "scene-4",
+        "unchanged": true
+      }
+    ],
+    "snapshotsBefore": {
+      "5": {
+        "file": "at-5s.png",
+        "sha256": "62581c963418bfd54b4108f9353051f12c29440417c14c15f7ae728c199f2a97",
+        "bytes": 29259,
+        "sample": {
+          "rgb": [
+            15,
+            118,
+            110
+          ],
+          "hex": "#0f766e"
+        },
+        "ms": 3623
+      },
+      "1.5": {
+        "file": "at-1.5s.png",
+        "sha256": "d47469e6143420ac9bc3f358fc44ac67dc1344e7846f30ee68436cf093d6f9ef",
+        "bytes": 37429,
+        "sample": {
+          "rgb": [
+            29,
+            78,
+            216
+          ],
+          "hex": "#1d4ed8"
+        },
+        "ms": 3829
+      },
+      "9.5": {
+        "file": "at-9.5s.png",
+        "sha256": "577e28f338abb89174f3f6759e74125e9a8a002994ca0e07fe3cd2776ab4ec51",
+        "bytes": 32621,
+        "sample": {
+          "rgb": [
+            157,
+            23,
+            77
+          ],
+          "hex": "#9d174d"
+        },
+        "ms": 4284
+      },
+      "13.5": {
+        "file": "at-13.5s.png",
+        "sha256": "0cec6d7ff08bf879fa4ab21e9a56472b64644ef5326b4b3470f1a03cfd19af13",
+        "bytes": 27189,
+        "sample": {
+          "rgb": [
+            124,
+            45,
+            18
+          ],
+          "hex": "#7c2d12"
+        },
+        "ms": 3699
+      }
+    },
+    "snapshotsAfter": {
+      "5": {
+        "file": "at-5s.png",
+        "sha256": "76c4c4716a42e0aadc41957c2b084e3f4b29f43133f630a78710330c4b5ff642",
+        "bytes": 31748,
+        "sample": {
+          "rgb": [
+            14,
+            165,
+            233
+          ],
+          "hex": "#0ea5e9"
+        },
+        "ms": 3826
+      },
+      "1.5": {
+        "file": "at-1.5s.png",
+        "sha256": "d47469e6143420ac9bc3f358fc44ac67dc1344e7846f30ee68436cf093d6f9ef",
+        "bytes": 37429,
+        "sample": {
+          "rgb": [
+            29,
+            78,
+            216
+          ],
+          "hex": "#1d4ed8"
+        },
+        "ms": 3983
+      },
+      "9.5": {
+        "file": "at-9.5s.png",
+        "sha256": "577e28f338abb89174f3f6759e74125e9a8a002994ca0e07fe3cd2776ab4ec51",
+        "bytes": 32621,
+        "sample": {
+          "rgb": [
+            157,
+            23,
+            77
+          ],
+          "hex": "#9d174d"
+        },
+        "ms": 3696
+      },
+      "13.5": {
+        "file": "at-13.5s.png",
+        "sha256": "0cec6d7ff08bf879fa4ab21e9a56472b64644ef5326b4b3470f1a03cfd19af13",
+        "bytes": 27189,
+        "sample": {
+          "rgb": [
+            124,
+            45,
+            18
+          ],
+          "hex": "#7c2d12"
+        },
+        "ms": 3486
+      }
+    },
+    "frameAtScene2Before": "62581c963418bfd54b4108f9353051f12c29440417c14c15f7ae728c199f2a97",
+    "frameAtScene2After": "76c4c4716a42e0aadc41957c2b084e3f4b29f43133f630a78710330c4b5ff642"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "revision": "dd1e57c98e128919d32a2348fe3a3acde32c38f42c763969432de7fae3c14580",
+  "ids": [
+    "hf-caption",
+    "hf-eyebrow",
+    "hf-orb",
+    "hf-rule",
+    "hf-scene",
+    "hf-subtitle",
+    "hf-title"
+  ],
+  "title": {
+    "id": "hf-title",
+    "text": "每一帧，都可编辑",
+    "start": 1,
+    "duration": 3,
+    "sdkSnapshotDuration": null
+  }
+}

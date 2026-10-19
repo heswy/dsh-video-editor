@@ -1,0 +1,40 @@
+{
+  "name": "dsh-video",
+  "version": "0.3.0-alpha.5",
+  "private": true,
+  "description": "Native sidebar entry, a controlled Host bridge, frame-time preview and a restrained video workspace for DeepSeek Harness.",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json"
+  },
+  "files": [
+    "index.js",
+    "host/*.js",
+    "client.js",
+    "cordis.patch.yml",
+    "icon.svg",
+    "locale/*.json",
+    "README.md"
+  ],
+  "icon": "./icon.svg",
+  "license": "MIT",
+  "scripts": {
+    "check": "node scripts/check.mjs && node scripts/smoke-client.mjs && node scripts/check-host.mjs",
+    "stage:dev": "node scripts/stage-dev.mjs"
+  },
+  "dsh": {
+    "manifestVersion": 1,
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": []
+    }
+  }
+}

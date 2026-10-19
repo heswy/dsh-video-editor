@@ -1,0 +1,19 @@
+dsh-plugin-dev-kit
+==================
+
+DSH version : 0.2.0-rc.2 (desktop 0.2.0-rc.2)
+Extracted   : 2026-10-17
+Source      : /Applications/DeepSeek Harness.app/Contents/Resources/app.asar
+              └─ dsh/node_modules/@deepseek-ai/dsh-agent-preset/skills/
+                 ├─ cordis-plugin-development/
+                 ├─ cordis-composition-reference/
+                 └─ editing-cordis-compositions/
+
+These files are shipped by DeepSeek Harness itself (creator-mode skill bundle).
+They are copied here verbatim so agents that cannot read app.asar can use them.
+Refresh this kit after a DSH upgrade: the plugin APIs are versioned and drift.
+
+Local reference implementations (same machine, verified working):
+  /Users/orange/Documents/deepseek-harness/dsh-git-graph/        (sidebar icon + full-page panel + host HTTP route)
+  /Users/orange/Documents/deepseek-harness/dsh-token-stats/      (sidebar icon + full-page dashboard + host HTTP route)
+  /Users/orange/Documents/deepseek-harness/dsh-plugin-codex-bridge/  (real bundle install, cross-process relay)
