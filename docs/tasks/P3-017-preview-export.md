@@ -1,6 +1,6 @@
 # P3-017 B：预览稳定性、文件/图片本地预览、产品态导出
 
-日期：2026-10-20（Asia/Shanghai）。状态：**代码/测试/真实 Host+worker 导出实测完成；已 commit 并 push 分支，未安装、未重启、未合并、未发真实模型请求。**
+日期：2026-10-20（Asia/Shanghai）。状态：**代码/测试/真实 Host+worker 导出实测、P3-012 真浏览器预览验收（按 B1 新契约更新脚本，real Chrome 161/161）完成；已 commit 并 push 分支，未安装、未重启、未合并、未发真实模型请求。**
 
 - 分支：`codex/p3-017-preview-export`（base `origin/main` `ec9ad47`），隔离 worktree `dsh-video-editor-worktrees/p3-017-preview-export`
 - 只实现本卡 B 部分（B1/B2/B3/B4）；A 的面板宽度、工程标题 rename、设置移除不在本分支，由 `codex/p3-016-panel-title` 另做；两分支在 `client.js` 顶栏/`docs`/`check.mjs` 有可预期合并冲突点
@@ -56,7 +56,8 @@
 | `node scripts/smoke-client.mjs` | 78/78 | **81/81**（新增 3 个 P3-017 场景 + 更新 preview/export 旧断言） |
 | `node scripts/check-host.mjs` | 65/65 | **67/67**（+2 P3-017 断言组） |
 | worker `node --test --test-concurrency=1 test/*.test.mjs` | — | **54/54**（/tmp 副本，复用 alpha.8 reviewed `node_modules`） |
-| `node scripts/test-stage-version.mjs` | 7/10（base 既有失败：脚本仍固定 alpha.7，root 已是 alpha.8） | 7/10（非本任务引入，未改动该脚本） |
+| `node scripts/test-conversation-preview.mjs --staging /tmp/p3-017-hybrid`（real Chrome） | 44/68（verifier：旧 B1 预期，24 失败） | **161/161**（B1–B5 acceptance 全 true，见下节） |
+| `node scripts/test-stage-version.mjs` | 7/10（base 既有失败：脚本仍固定 alpha.7，root 已是 alpha.8） | 7/10（失败集与基线一致；非本任务引入，未改动该脚本） |
 
 ### 真实 Host + worker 导出/取消/并发实测
 
@@ -72,9 +73,20 @@
 
 Host warnings：0。
 
+### P3-012 真浏览器预览验收脚本更新（task-16 finding → task-17 收口）
+
+verifier 的 B 验收发现旧 `scripts/test-conversation-preview.mjs` 仍按 P3-012 契约断言“单次注入 preview 失败就显示 retention notice”，与 B1“单次失败自动重试 1 次后恢复、仅连续失败才显示 notice”不一致（44/68，24 个旧预期失败；固定等待也未计入 1s revision 去抖与重试延迟）。本任务按新契约更新脚本/helper，未删弱任何原真实浏览器断言：
+
+- **新增 R2-0（单次失败自动恢复，事件驱动）**：注入 1 次 `preview.snapshot` 失败 → 观察 target 标记 pending 期间旧 active iframe 仍挂载/可播放 → 自动重试（第 2 次请求真实成功）→ 新 revision 切换完成，全程 `sawNotice === false`；用 `observeAutoRetryRecovery`（40ms 轮询、≤40s）与 `waitForRevisionSnapshots`（轮询页面请求日志）替代固定 sleep，去抖/重试延迟自然覆盖。
+- **retention notice 场景改为“连续两次失败”**：R2-1 next-revision snapshot、R2-3 candidate runtime error、R2-5 initial failure、R2F-A/B、R2 stress double-retry/unmount 的注入从 `times:1` 改为 `times:2`；notice/完整错误只在自动重试也失败后出现，并新增断言证明自动重试确实发生过（两次失败 attempt / injection hits===2）。
+- **保留覆盖**：B1 首次自动预览与 publish 跟随、B2 连续两轮同工程更新、B3 真实播放/暂停/seek、R2 旧画面保留/可播放/markers/快照 route 保活/显式 retry 切换/旧快照 release、R2F 每实例几何与 duration、B5 无手动控件/手势零写入、network/console/teardown/staging 只读审计全部保留。
+- **运行环境（/tmp hybrid staging，未安装/未改 staging）**：`/tmp/p3-017-hybrid` = reviewed alpha.8 staging（cf7e593）的只读 `node_modules`/config + 本分支 `b01b181` 的 bundle/client/host/worker 源码 overlay；仅对 /tmp 副本重新生成 INTEGRITY 供 `loadStagedHost` 校验（不是交付 staging，不动 `artifacts/`）。真实 Chrome 155 + 真实 Host/worker/fixed snapshot runtime；staging 只读审计 `same=true`（82 文件前后一致）；无外部网络请求、无生产写入、无用户工程。
+- **结果**：`ok=true`、**161/161 checks 全过**（B1/B2/B3/B4/B5 acceptance 全 true）；其中 R2F 细项 92/92、B5 零写入、`network.external=0`。关键证据：R2-0 自动重试 2 attempts / 1558ms / 无 notice / pending 期间旧帧保留；连续失败 retention → notice → 显式 retry 切换并 release 旧快照；initial failure 两次失败后才出现完整错误、retry 51ms 恢复；R2F 3 case 几何隔离全过。证据目录：`/tmp/p3-017-preview-evidence/preview-2026-10-20T11-54-36-096Z/`（JSON + 截图，未入仓）。
+- **旧失败 → 新断言映射**：旧脚本 24 个失败全部是“单次失败应出现 retention notice”（R2-1/R2-3/R2-5/R2F-A/B 及由其派生的 R2F 聚合、初始失败、截图/释放断言）。新脚本对应改为：单次失败 → 自动重试恢复（R2-0）；连续失败 → retention notice（上述场景 `times:2`）；固定等待 → 事件驱动等待。没有删除或放宽任何场景断言。
+
 ### 未验证 / 风险
 
-- **未做真实浏览器/DOM 点击验收**：按任务限制没有打开会抢用户前台窗口的 UI，也没有安装/重启 DSH。B2 图片点击、B1 ready 超时/自动重试、B3 顶栏进度外观只用 Node DOM shim（smoke-client）验证；真实浏览器外观/焦点/键盘仍需 Lead 合并后的真机冒烟。
+- **真实浏览器验收已补**：P3-012 预览脚本在 real Chrome（/tmp hybrid staging）161/161 通过，覆盖 B1 自动重试/旧画面保留/retention/initial failure、B2 渲染帧差异、B3 播放/seek、R2F 几何隔离等；但**仍未在已安装 DSH 内嵌真实对话中做图片点击/顶栏导出按钮外观与真机安装验收**（按限制未安装/重启/不抢前台 UI），合并后仍需真机冒烟。
 - B1 去抖的直接竞态用 fake Host 驱动 revision 轮询验证（旧快照晚到被 release、最新 revision 生效）；未在真实 DSH 里制造 3–4 连发 revision。
 - 真实 120s 工程导出耗时 160s 发生在 /tmp 环境（机器/负载与用户真机不同）；产品上 20s 工程的用户真机历史实测约 111.7s，新上限 900s 有充足余量，但仍需真机确认长片导出体验。
 - 真实 20s/120s 工程为 /tmp 内简单 composition；未复跑用户复杂作品（遵守不修改用户作品）。
