@@ -868,6 +868,74 @@ async function main() {
     assert(!/\/(?:Users|home|private|var)\//.test(serialized), 'a frame/render result contains an absolute filesystem path');
   });
 
+  await run('P3-017 B3: render accepts the 15 minute deadline while frame stays bounded at 120s', async () => {
+    const workspace = await makeWorkspace();
+    const { bridge, engine } = makeBridge(workspace, {
+      handler: (method, params) => (method === 'frame' || method === 'render' ? jobResponse(method, params) : {}),
+    });
+    // A render may legitimately take minutes: the 15 minute deadline is accepted
+    // and forwarded to the worker unchanged.
+    const render = await bridge.invoke('render', { projectId: PROJECT, revision: REVISION, timeoutMs: 900000 });
+    assert(render.kind === 'render' && render.state === 'queued', 'the bounded render view changed');
+    const client = engine.instances[0];
+    assert(
+      JSON.stringify(client.requests.find((entry) => entry.method === 'render').params) === JSON.stringify({ projectId: PROJECT, revision: REVISION, timeoutMs: 900000 }),
+      'the 15 minute render timeout was not forwarded unchanged'
+    );
+    // Omitting timeoutMs keeps the worker's own kind-aware default.
+    const defaultRender = await bridge.invoke('render', { projectId: PROJECT, revision: REVISION });
+    assert(defaultRender.kind === 'render', 'a render without timeoutMs stopped working');
+    assert(
+      JSON.stringify(client.requests.filter((entry) => entry.method === 'render').at(-1).params) === JSON.stringify({ projectId: PROJECT, revision: REVISION }),
+      'the default render request gained a timeout field'
+    );
+    // Everything outside the render bound is rejected before the worker is asked.
+    const requestsBefore = client.requests.length;
+    for (const invalid of [900001, 99, 0, -1, '100', null]) {
+      const error = await rejects(() => bridge.invoke('render', { projectId: PROJECT, revision: REVISION, timeoutMs: invalid }));
+      assert(error.code === 'E_PARAMS', `render accepted timeoutMs=${JSON.stringify(invalid)}: ${error.code}`);
+    }
+    // 120001 is still a valid RENDER deadline (it is only above the frame bound).
+    const longRender = await bridge.invoke('render', { projectId: PROJECT, revision: REVISION, timeoutMs: 120001 });
+    assert(longRender.kind === 'render', 'a >120s render deadline was rejected');
+    // 120s is still valid for both job kinds; frame rejects anything above it.
+    await bridge.invoke('render', { projectId: PROJECT, revision: REVISION, timeoutMs: 120000 });
+    const frame = await bridge.invoke('frame', { projectId: PROJECT, revision: REVISION, time: 1, timeoutMs: 120000 });
+    assert(frame.kind === 'frame', 'the frame job view changed');
+    const overFrame = await rejects(() => bridge.invoke('frame', { projectId: PROJECT, revision: REVISION, time: 1, timeoutMs: 120001 }));
+    assert(overFrame.code === 'E_PARAMS', `frame accepted timeoutMs=120001: ${overFrame.code}`);
+    // Only the three accepted requests above (120001/120000 render, 120000 frame)
+    // reached the worker; every rejected timeout stayed Host-side.
+    assert(
+      client.requests.length === requestsBefore + 3,
+      `an invalid frame/render request reached the worker: ${client.requests.length - requestsBefore} extra requests`
+    );
+  });
+
+  await run('P3-017 B3: running job stage/progress pass through to the UI status contract', async () => {
+    const workspace = await makeWorkspace();
+    const statusView = Object.assign(jobResponse('render', { projectId: PROJECT, revision: REVISION }), {
+      state: 'running',
+      stage: 'capture',
+      progress: 0.42,
+    });
+    const { bridge } = makeBridge(workspace, {
+      handler: (method, params) => {
+        if (method === 'render') return jobResponse(method, params);
+        if (method === 'status') return statusView;
+        return {};
+      },
+    });
+    const job = await bridge.invoke('render', { projectId: PROJECT, revision: REVISION });
+    assert(job.jobId === JOB_ID, 'the render job id is missing');
+    const status = await bridge.invoke('status', { jobId: job.jobId });
+    assert(status.state === 'running', `the status state changed: ${status.state}`);
+    assert(status.stage === 'capture', `the worker stage was lost: ${JSON.stringify(status.stage)}`);
+    assert(status.progress === 0.42, `the worker progress was lost: ${JSON.stringify(status.progress)}`);
+    assert(status.revision === REVISION && status.projectId === PROJECT, 'the status lost its job identity');
+    assert(!/\/(?:Users|home|private|var)\//.test(JSON.stringify(status)), 'the status view contains an absolute filesystem path');
+  });
+
   await run('P3-015: a settled frame wait publishes a bounded workspace-relative frameImage', async () => {
     const workspace = await makeWorkspace();
     // A second, distinct 1x1 PNG proves the fixed name is replaced, not appended.

@@ -10,6 +10,14 @@ const packageRoot = fileURLToPath(new URL("../", import.meta.url));
 const cli = resolve(packageRoot, "node_modules/hyperframes/dist/cli.js");
 const terminal = new Set(["succeeded", "failed", "cancelled", "timed_out"]);
 export const MAX_FRAME_TIMES = 4;
+/**
+ * Worker-enforced job deadlines. A frame captures one short snapshot (120s is
+ * generous); a full MP4 render scales with the composition and needs minutes
+ * (a 20s composition measures ~112s), so render gets a 15-minute ceiling and
+ * that is also its default. Both bounds are mirrored by the Host validator.
+ */
+export const FRAME_TIMEOUT_MS = 120000;
+export const MAX_RENDER_TIMEOUT_MS = 900000;
 const FRAME_TILE_MAX_WIDTH = 480;
 const CONTACT_SHEET_TIMEOUT_MS = 30000;
 
@@ -303,7 +311,9 @@ export class Jobs {
         cwd: packageRoot,
         env: this.env(job.temp, job.kind),
         signal: job.controller.signal,
-        timeoutMs: p.timeoutMs ?? 120000,
+        timeoutMs:
+          p.timeoutMs ??
+          (job.kind === "render" ? MAX_RENDER_TIMEOUT_MS : FRAME_TIMEOUT_MS),
         onOutput: (s) => {
           const m = s.match(/Streaming frame (\d+)\/(\d+)/);
           if (m) {

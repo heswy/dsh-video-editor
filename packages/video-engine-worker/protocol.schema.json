@@ -1257,7 +1257,7 @@
         "timeoutMs": {
           "type": "number",
           "minimum": 100,
-          "maximum": 120000
+          "maximum": 900000
         }
       },
       "required": [

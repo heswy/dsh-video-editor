@@ -134,8 +134,8 @@ check('bundle manifest declares patch and client', () => {
   return `platform=web, inject=[${pkg.dsh.client.inject.join(', ')}]`;
 });
 
-check('package version advanced for the P3-015 faster-turn candidate', () => {
-  assert(pkg.version === '0.3.0-alpha.8', `expected version 0.3.0-alpha.8, found "${pkg.version}"`);
+check('package version advanced for the P3-018 alpha.9 candidate (P3-016 + P3-017)', () => {
+  assert(pkg.version === '0.3.0-alpha.9', `expected version 0.3.0-alpha.9, found "${pkg.version}"`);
   return pkg.version;
 });
 

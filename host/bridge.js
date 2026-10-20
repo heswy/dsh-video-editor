@@ -109,6 +109,15 @@ const PROJECT_TITLE_MAX = 120;
 const PROJECT_MANIFEST_MAX_BYTES = 16384;
 /** Frame batch bounds shared with the worker contract. */
 const MAX_FRAME_TIMES = 4;
+/**
+ * Worker job deadlines. A frame is a short snapshot; a full MP4 render scales
+ * with composition duration and legitimately needs minutes (a 20s composition
+ * measures ~112s on the reviewed machine), so render accepts up to 15 minutes
+ * while frame keeps the 120s bound. Both limits are enforced again by the
+ * worker so a direct JSONL caller cannot widen them.
+ */
+const MAX_FRAME_TIMEOUT_MS = 120000;
+const MAX_RENDER_TIMEOUT_MS = 900000;
 const TERMINAL_JOB_STATES = Object.freeze(['succeeded', 'failed', 'cancelled', 'timed_out']);
 const FRAME_WAIT_MAX_MS = 30000;
 const FRAME_WAIT_INTERVAL_MS = 250;
@@ -247,9 +256,9 @@ function numberInRange(value, name, min, max) {
   return value;
 }
 
-function timeoutMs(value) {
+function timeoutMs(value, max) {
   if (value === undefined) return undefined;
-  return numberInRange(value, 'timeoutMs', 100, 120000);
+  return numberInRange(value, 'timeoutMs', 100, max);
 }
 
 /**
@@ -433,7 +442,7 @@ export function validateParams(config, method, params) {
     if (hasTime === hasTimes) fail('E_PARAMS', 'Provide exactly one of "time" or "times"', 'params');
     if (hasTime) next.time = numberInRange(params.time, 'time', 0, 3599.999);
     else next.times = frameTimes(params.times);
-    const limit = timeoutMs(params.timeoutMs);
+    const limit = timeoutMs(params.timeoutMs, MAX_FRAME_TIMEOUT_MS);
     if (limit !== undefined) next.timeoutMs = limit;
     if (params.wait !== undefined) {
       if (typeof params.wait !== 'boolean') fail('E_PARAMS', 'Invalid "wait"', 'params');
@@ -446,7 +455,7 @@ export function validateParams(config, method, params) {
       projectId: allowedProject(config, params.projectId),
       revision: revision(params.revision),
     };
-    const limit = timeoutMs(params.timeoutMs);
+    const limit = timeoutMs(params.timeoutMs, MAX_RENDER_TIMEOUT_MS);
     if (limit !== undefined) next.timeoutMs = limit;
     return next;
   }

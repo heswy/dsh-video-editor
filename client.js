@@ -132,6 +132,14 @@ window.__ModuleLoader__.load({
       'video.saving': '正在保存…',
       'video.export': '导出 MP4',
       'video.exporting': '正在导出…',
+      'video.export.stage.queued': '等待引擎',
+      'video.export.stage.snapshot': '准备快照',
+      'video.export.stage.engine': '渲染中',
+      'video.export.stage.capture': '捕获帧',
+      'video.export.stage.validate': '校验中',
+      'video.export.stage.finished': '收尾中',
+      'video.export.elapsed': '已用 {seconds}s',
+      'video.export.cancelled': '导出已取消。',
       'video.cancel': '取消',
       'video.cancelling': '正在取消…',
       'video.download': '下载 MP4',
@@ -258,6 +266,14 @@ window.__ModuleLoader__.load({
       'video.saving': 'Saving…',
       'video.export': 'Export MP4',
       'video.exporting': 'Exporting…',
+      'video.export.stage.queued': 'Waiting for the engine',
+      'video.export.stage.snapshot': 'Preparing snapshot',
+      'video.export.stage.engine': 'Rendering',
+      'video.export.stage.capture': 'Capturing frames',
+      'video.export.stage.validate': 'Validating',
+      'video.export.stage.finished': 'Finishing',
+      'video.export.elapsed': '{seconds}s elapsed',
+      'video.export.cancelled': 'The export was cancelled.',
       'video.cancel': 'Cancel',
       'video.cancelling': 'Cancelling…',
       'video.download': 'Download MP4',
@@ -441,6 +457,17 @@ window.__ModuleLoader__.load({
 .dv-back-label{white-space:nowrap;}
 .dv-sr-only{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0;}
 .dv-spacer{flex:1;min-width:0;}
+/* P3-017 B3: product export control in the topbar (right side). P3-016 keeps the
+   project name/arrow on the left and removed the display-settings menu. */
+.dv-export{display:inline-flex;align-items:center;gap:8px;flex:none;min-width:0;}
+.dv-export-status{display:inline-flex;align-items:center;gap:6px;min-width:0;max-width:220px;color:var(--dsw-alias-label-secondary,#a4a4ad);font-size:.78em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums;}
+.dv-export-note{color:var(--dsw-alias-label-secondary,#a4a4ad);font-size:.78em;white-space:nowrap;}
+.dv-export-error{color:var(--dsw-alias-label-secondary,#a4a4ad);font-size:.78em;max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.dv-export .dv-button{min-height:30px;padding:0 12px;}
+.dv-export .dv-loader{width:12px;height:12px;border-width:1.5px;flex:none;}
+.dv-export-spinner{flex:none;}
+.dv-export-cancel{min-height:30px;padding:0 8px;}
+.dv-export-link{text-decoration:none;}
 /* P3-016: draggable divider between the read-only stage and the AI pane. The
    hit area overhangs the 1px rule so it is easy to grab without a visible
    gutter; the pane width itself is driven by the --dv-ai-width variable. */
@@ -1573,6 +1600,26 @@ window.__ModuleLoader__.load({
     // publish (project.compose) bumps the worker revision, this panel observes it
     // through `inspect` and mounts the new snapshot without a user action.
     const REVISION_POLL_MS = 1500;
+    // P3-017 B1 preview state machine. A published revision is debounced so a
+    // burst of Agent publishes settles on the last one; the snapshot request and
+    // the mounted candidate's runtime handshake each get their own independent
+    // budget, because a cold worker start and a slow composition load are
+    // different failure modes. A failed attempt is retried once with a fresh
+    // snapshot before the honest error is shown, and the previously displayed
+    // composition stays visible/playable throughout.
+    const PREVIEW_DEBOUNCE_MS = 1000;
+    const PREVIEW_SNAPSHOT_TIMEOUT_MS = 30000;
+    const PREVIEW_READY_TIMEOUT_MS = 30000;
+    const PREVIEW_RETRY_LIMIT = 1;
+    const PREVIEW_RETRY_DELAY_MS = 400;
+    const PREVIEW_DIAGNOSTIC_LIMIT = 6;
+    // P3-017 B3 product export. The render deadline is measured by the worker
+    // (a real composition needs minutes); the UI poll simply follows the job
+    // until it settles. The client deadline is a safety net slightly above the
+    // Host maximum, never a substitute for the worker's own timeout.
+    const PRODUCT_RENDER_TIMEOUT_MS = 900000;
+    const PRODUCT_EXPORT_DEADLINE_MS = 16 * 60 * 1000;
+    const PRODUCT_EXPORT_POLL_MS = 500;
     // The plugin-private source key for its owned Session references. It must
     // never reuse "mainView": the host derives its current conversation from
     // that retention key (see P3-005-A investigation).
@@ -1816,6 +1863,34 @@ window.__ModuleLoader__.load({
       if (value.startsWith('/') && value.length > 1) return true;
       if (/^[A-Za-z]:[\\/]/.test(value) === true) return true;
       return PREVIEW_PATH_EXTENSION.test(value);
+    }
+
+    // P3-017 B2: an image click inside the embedded conversation must never fall
+    // back to the Host's global right sidebar (that surface is not mounted inside
+    // a global main panel). Browser-owned sources (data:/blob:/remote URLs already
+    // loaded by the chat, or a same-origin chat image route) render directly in
+    // the plugin overlay; path-like local sources (including the workspace-relative
+    // `.dsh-video-frames/latest.png`) go through the existing bounded Host preview
+    // route, which resolves Session/project roots server-side.
+    const PREVIEW_INLINE_IMAGE = /^(?:data:image\/|blob:)/i;
+    const PREVIEW_REMOTE_IMAGE = /^https?:\/\//i;
+
+    function imagePreviewTarget(target) {
+      if (target === null || typeof target !== 'object' || typeof target.closest !== 'function') return null;
+      try {
+        const image = target.closest('img[src]');
+        if (image === null || image === undefined || typeof image.getAttribute !== 'function') return null;
+        const src = image.getAttribute('src');
+        if (typeof src !== 'string' || src.length === 0 || src.length > 8192 || src.indexOf('\n') !== -1) return null;
+        if (PREVIEW_INLINE_IMAGE.test(src) === true) return { kind: 'inline', src: src };
+        if (localPathLike(src) === true) return { kind: 'host', path: src };
+        if (PREVIEW_REMOTE_IMAGE.test(src) === true || src.startsWith('api/') === true || src.startsWith('./') === true) {
+          return { kind: 'inline', src: src };
+        }
+      } catch (_error) {
+        return null;
+      }
+      return null;
     }
 
     function previewFileName(path) {
@@ -2610,6 +2685,9 @@ window.__ModuleLoader__.load({
       const [phase, setPhase] = React.useState('loading');
       const [frameError, setFrameError] = React.useState(null);
       const [previewNotice, setPreviewNotice] = React.useState(null);
+      const [previewAttempt, setPreviewAttempt] = React.useState({ revision: null, attempt: 0 });
+      const [previewRetrying, setPreviewRetrying] = React.useState(false);
+      const [previewDiagnostics, setPreviewDiagnostics] = React.useState([]);
       const pendingRequestRef = React.useRef(null);
       const [time, setTime] = React.useState(0);
       const [playing, setPlaying] = React.useState(false);
@@ -2651,6 +2729,20 @@ window.__ModuleLoader__.load({
       const suppressClickRef = React.useRef(false);
       const pollRef = React.useRef(null);
       const unmountEpochRef = React.useRef(0);
+      // P3-017 B1: bounded per-revision attempt bookkeeping, one pending auto
+      // retry timer, and the restore payload captured for that retry. The
+      // diagnostics ring is bounded; nothing here can grow with time.
+      const attemptRef = React.useRef({ revision: null, attempt: 0 });
+      const diagnosticsRef = React.useRef([]);
+      const retryTimerRef = React.useRef(null);
+      const retryRestoreRef = React.useRef(null);
+      // The pending revision debounce is owned by a ref (not by an effect
+      // cleanup), so a parent re-render can never silently re-arm it. It is
+      // cleared when a newer revision arrives, the target loads, or on unmount.
+      const debounceRef = React.useRef({ revision: null, timer: null });
+      const targetRevisionRef = React.useRef(targetRevision);
+      const firstLoadRef = React.useRef(true);
+      const lastProjectIdRef = React.useRef(projectId);
       const inspectedMetaRef = React.useRef(new Map());
       const revision = inspected.revision;
       // R2F: geometry/duration belong to each preview instance, never to the
@@ -2684,6 +2776,7 @@ window.__ModuleLoader__.load({
       activeRef.current = active;
       candidateRef.current = candidate;
       visibleSlotRef.current = visibleSlot;
+      targetRevisionRef.current = targetRevision;
       slotInstancesRef.current = [
         visibleSlot === 0 ? active : candidate,
         visibleSlot === 1 ? active : candidate,
@@ -2916,6 +3009,100 @@ window.__ModuleLoader__.load({
         }
       }
 
+      function clearRetryTimer() {
+        if (retryTimerRef.current !== null) {
+          clearTimeout(retryTimerRef.current);
+          retryTimerRef.current = null;
+        }
+      }
+
+      function clearDebounceTimer() {
+        if (debounceRef.current.timer !== null) clearTimeout(debounceRef.current.timer);
+        debounceRef.current = { revision: null, timer: null };
+      }
+
+      function releaseUnusedSnapshot(value) {
+        if (value !== null && typeof value === 'object' && typeof value.snapshotId === 'string') {
+          hostRequest('preview.release', { snapshotId: value.snapshotId }).catch(function ignoreRelease() {});
+        }
+      }
+
+      // P3-017 B1 bounded diagnostics: the newest PREVIEW_DIAGNOSTIC_LIMIT
+      // attempts, each with revision, attempt number, snapshot/ready durations and
+      // error code. Exposed as one data attribute (and one console line per failed
+      // attempt); the ring never grows with session length.
+      function recordPreviewDiagnostic(entry) {
+        const next = diagnosticsRef.current.concat([entry]).slice(-PREVIEW_DIAGNOSTIC_LIMIT);
+        diagnosticsRef.current = next;
+        setPreviewDiagnostics(next);
+      }
+
+      function previewDiagnosticsText() {
+        return diagnosticsRef.current.map(function diagnosticLine(entry) {
+          const revisionId = typeof entry.revision === 'string' ? entry.revision.slice(0, 8) : '';
+          const attempt = Number.isFinite(entry.attempt) ? String(entry.attempt) : '-';
+          const snapshotMs = Number.isFinite(entry.snapshotMs) ? String(Math.round(entry.snapshotMs)) : '-';
+          const readyMs = Number.isFinite(entry.readyMs) ? String(Math.round(entry.readyMs)) : '-';
+          return revisionId + ':' + attempt + ':' + snapshotMs + ':' + readyMs + ':' + (entry.errorCode || 'ok');
+        }).join('|');
+      }
+
+      function resetPreviewAttempt(revisionId) {
+        attemptRef.current = { revision: revisionId, attempt: 0 };
+        setPreviewAttempt({ revision: revisionId, attempt: 0 });
+      }
+
+      // P3-017 B1: one automatic retry with a fresh snapshot before the honest
+      // failure is shown. The active composition is never unmounted here; while
+      // the retry is pending it stays visible/playable and the non-blocking
+      // "updating preview" marker names the pending revision.
+      function handlePreviewAttemptFailure(error, detail) {
+        const meta = detail !== null && typeof detail === 'object' ? detail : {};
+        const failure = hostError(error);
+        const revisionId = typeof meta.revision === 'string' && meta.revision.length > 0 ? meta.revision : targetRevisionRef.current;
+        const attempt = attemptRef.current.revision === revisionId ? attemptRef.current.attempt : 0;
+        recordPreviewDiagnostic({
+          revision: revisionId,
+          attempt: attempt,
+          snapshotMs: Number.isFinite(meta.snapshotMs) ? meta.snapshotMs : null,
+          readyMs: Number.isFinite(meta.readyMs) ? meta.readyMs : null,
+          errorCode: failure.code,
+        });
+        if (attempt > 0 && attempt <= PREVIEW_RETRY_LIMIT) {
+          clearRetryTimer();
+          setPreviewRetrying(true);
+          setPreviewNotice(null);
+          if (activeRef.current !== null) {
+            setPhase('ready');
+          } else {
+            setPhase('loading');
+            setFrameError(null);
+          }
+          console.warn('[dsh-video] preview attempt failed; retrying once', {
+            revision: revisionId,
+            attempt: attempt,
+            snapshotMs: Number.isFinite(meta.snapshotMs) ? Math.round(meta.snapshotMs) : null,
+            readyMs: Number.isFinite(meta.readyMs) ? Math.round(meta.readyMs) : null,
+            code: failure.code,
+          });
+          retryTimerRef.current = setTimeout(function autoRetryPreview() {
+            retryTimerRef.current = null;
+            if (activeRef.current === null) setPhase('loading');
+            void loadTarget(revisionId, retryRestoreRef.current);
+          }, PREVIEW_RETRY_DELAY_MS);
+          return;
+        }
+        setPreviewRetrying(false);
+        console.warn('[dsh-video] preview failed', {
+          revision: revisionId,
+          attempt: attempt,
+          snapshotMs: Number.isFinite(meta.snapshotMs) ? Math.round(meta.snapshotMs) : null,
+          readyMs: Number.isFinite(meta.readyMs) ? Math.round(meta.readyMs) : null,
+          code: failure.code,
+        });
+        failCandidate(error);
+      }
+
       function promoteCandidate(instance) {
         if (candidateRef.current !== instance) return;
         const previous = activeRef.current;
@@ -2962,8 +3149,9 @@ window.__ModuleLoader__.load({
         }
       }
 
-      async function loadTarget(requested, restore) {
+      async function loadTarget(requested, restore, options) {
         const target = typeof requested === 'string' && requested.length > 0 ? requested : revision;
+        const settings = options !== null && typeof options === 'object' ? options : {};
         // Idempotent for the requested revision: an already in-flight request,
         // an already preloading candidate and the displayed composition are never
         // fetched a second time (a re-render or a poll cannot disturb them, and no
@@ -2977,9 +3165,19 @@ window.__ModuleLoader__.load({
         if (activeRef.current !== null && activeRef.current.revision === target) {
           setTargetRevision(target);
           setPreviewNotice(null);
+          setPreviewRetrying(false);
           setPhase('ready');
           return;
         }
+        // One attempt is one snapshot request. A fresh cycle (a new revision, a
+        // new project or an explicit user retry) restarts the retry allowance.
+        if (settings.fresh === true || attemptRef.current.revision !== target) resetPreviewAttempt(target);
+        const attempt = attemptRef.current.attempt + 1;
+        attemptRef.current = { revision: target, attempt: attempt };
+        setPreviewAttempt({ revision: target, attempt: attempt });
+        clearRetryTimer();
+        clearDebounceTimer();
+        if (restore !== null && restore !== undefined) retryRestoreRef.current = restore;
         const token = ++snapshotToken.current;
         // Capture the requested revision's metadata before any async work: later
         // props.inspected updates for a newer revision must not leak into this
@@ -2988,72 +3186,138 @@ window.__ModuleLoader__.load({
         pendingRequestRef.current = { revision: target, token: token };
         setTargetRevision(target);
         setPreviewNotice(null);
+        setPreviewRetrying(false);
         // A newer request supersedes a still-preloading candidate.
         discardCandidate();
         if (activeRef.current === null) {
           setPhase('loading');
           setFrameError(null);
         }
-        let next;
-        try {
-          next = await hostRequest('preview.snapshot', { projectId: projectId, revision: target, ttlMs: 300000 });
-        } catch (error) {
-          if (token !== snapshotToken.current) {
-            if (pendingRequestRef.current !== null && pendingRequestRef.current.token === token) pendingRequestRef.current = null;
-            return;
-          }
-          pendingRequestRef.current = null;
-          failCandidate(error);
-          return;
-        }
+        // The snapshot has its own independent budget, measured from the request
+        // itself. A timed-out request keeps running in the background; if it ever
+        // resolves afterwards the unused snapshot is released instead of leaking.
+        const startedAt = Date.now();
+        let next = null;
+        let failure = null;
+        const request = hostRequest('preview.snapshot', { projectId: projectId, revision: target, ttlMs: 300000 });
+        const timedOut = await new Promise(function snapshotBudget(resolve) {
+          let settled = false;
+          const timer = setTimeout(function snapshotTimedOut() {
+            if (settled === true) return;
+            settled = true;
+            resolve(true);
+          }, PREVIEW_SNAPSHOT_TIMEOUT_MS);
+          request.then(
+            function snapshotReady(value) {
+              clearTimeout(timer);
+              if (settled === true) {
+                releaseUnusedSnapshot(value);
+                return;
+              }
+              settled = true;
+              next = value;
+              resolve(false);
+            },
+            function snapshotFailed(error) {
+              clearTimeout(timer);
+              if (settled === true) return;
+              settled = true;
+              failure = error;
+              resolve(false);
+            }
+          );
+        });
+        const snapshotMs = Date.now() - startedAt;
         if (token !== snapshotToken.current) {
           // Superseded while in flight: the snapshot we just obtained is unused;
           // release it without touching the displayed composition.
           if (pendingRequestRef.current !== null && pendingRequestRef.current.token === token) pendingRequestRef.current = null;
-          if (next !== null && typeof next === 'object' && typeof next.snapshotId === 'string') {
-            hostRequest('preview.release', { snapshotId: next.snapshotId }).catch(function ignoreRelease() {});
-          }
+          releaseUnusedSnapshot(next);
           return;
         }
         pendingRequestRef.current = null;
-        if (next === null || typeof next !== 'object' || typeof next.snapshotId !== 'string' || typeof next.entryUrl !== 'string') {
-          failCandidate({ code: 'E_SNAPSHOT', message: 'The preview snapshot was invalid' });
+        if (timedOut === true) {
+          handlePreviewAttemptFailure(
+            { code: 'E_PREVIEW_TIMEOUT', message: t('video.canvas.loadTimeout') },
+            { revision: target, snapshotMs: snapshotMs, phase: 'snapshot' }
+          );
           return;
         }
-        const instance = snapshotInstance(next, restore || null, targetMeta);
+        if (failure !== null) {
+          handlePreviewAttemptFailure(failure, { revision: target, snapshotMs: snapshotMs, phase: 'snapshot' });
+          return;
+        }
+        if (next === null || typeof next !== 'object' || typeof next.snapshotId !== 'string' || typeof next.entryUrl !== 'string') {
+          handlePreviewAttemptFailure(
+            { code: 'E_SNAPSHOT', message: 'The preview snapshot was invalid' },
+            { revision: target, snapshotMs: snapshotMs, phase: 'snapshot' }
+          );
+          return;
+        }
+        const instance = snapshotInstance(next, restore || retryRestoreRef.current || null, targetMeta);
+        instance.snapshotMs = snapshotMs;
+        instance.mountedAt = Date.now();
         candidateRef.current = instance;
         setCandidate(instance);
       }
 
       React.useEffect(
         function reloadOnRevision() {
-          void loadTarget(revision, {
+          const projectChanged = lastProjectIdRef.current !== projectId;
+          lastProjectIdRef.current = projectId;
+          const restore = {
             time: timeRef.current,
             stableId: selectedRef.current ? selectedRef.current.stableId : null,
             playing: playingRef.current,
-          });
-          return function cancelSnapshot() {
-            snapshotToken.current += 1;
-            pendingRequestRef.current = null;
           };
+          retryRestoreRef.current = restore;
+          // The first load and a project switch are immediate. A later published
+          // revision is debounced (~1s of stability) so a burst of Agent publishes
+          // settles on the last revision instead of racing several snapshots; the
+          // target marker names the pending revision right away. The hidden manual
+          // path (previewOnly=false) keeps its reviewed immediate reload because its
+          // writes are user-initiated and never arrive in bursts.
+          if (firstLoadRef.current === true || projectChanged === true || previewOnly === false) {
+            firstLoadRef.current = false;
+            clearDebounceTimer();
+            void loadTarget(revision, restore);
+            return function stopImmediateLoad() {};
+          }
+          setTargetRevision(revision);
+          // The ref owns the timer exactly once per pending revision, so a parent
+          // re-render cannot push the debounce deadline back indefinitely.
+          if (debounceRef.current.revision === revision && debounceRef.current.timer !== null) {
+            return function keepDebouncedLoad() {};
+          }
+          clearDebounceTimer();
+          const timer = setTimeout(function debouncedPreviewLoad() {
+            debounceRef.current = { revision: null, timer: null };
+            void loadTarget(revision, restore);
+          }, PREVIEW_DEBOUNCE_MS);
+          debounceRef.current = { revision: revision, timer: timer };
+          return function keepDebouncedLoad() {};
         },
         [projectId, revision]
       );
 
-      // A missing runtime handshake must not leave the workspace loading forever.
-      // Expire this read attempt only: retain the active preview and invalidate
-      // late responses so a timed-out candidate can never promote afterwards.
-      React.useEffect(function boundPreviewWait() {
-        if (phase === 'error' || previewNotice !== null || (activeRef.current !== null && activeRef.current.revision === targetRevision)) return;
-        const token = snapshotToken.current;
-        const timer = setTimeout(function previewTimedOut() {
-          if (token !== snapshotToken.current) return;
-          snapshotToken.current += 1;
-          pendingRequestRef.current = null;
-          failCandidate({ code: 'E_PREVIEW_TIMEOUT', message: t('video.canvas.loadTimeout') });
-        }, 15000);
-        return function stopPreviewWait() { clearTimeout(timer); };
-      }, [targetRevision, phase, previewNotice]);
+      // P3-017 B1: the ready budget starts only after a snapshot resolved AND its
+      // candidate is actually mounted. A missing runtime handshake expires exactly
+      // this attempt: settle/release the candidate and let the normal one-retry
+      // path apply. A late ready from the discarded instance can never promote.
+      React.useEffect(function boundReadyWait() {
+        if (candidate === null) return function noReadyWait() {};
+        const instance = candidate;
+        const startedAt = Number.isFinite(instance.mountedAt) ? instance.mountedAt : Date.now();
+        const timer = setTimeout(function previewNotReady() {
+          if (candidateRef.current !== instance) return;
+          discardCandidate();
+          handlePreviewAttemptFailure(
+            { code: 'E_PREVIEW_TIMEOUT', message: t('video.canvas.loadTimeout') },
+            { revision: instance.revision, snapshotMs: instance.snapshotMs, readyMs: Date.now() - startedAt, phase: 'ready' }
+          );
+        }, PREVIEW_READY_TIMEOUT_MS);
+        return function stopReadyWait() { clearTimeout(timer); };
+      }, [candidate]);
 
       function handleActiveRuntimeEvent(instance, outcome) {
         if (activeRef.current !== instance) return;
@@ -3087,7 +3351,14 @@ window.__ModuleLoader__.load({
         if (outcome.type === 'ready' || outcome.type === 'state') {
           promoteCandidate(instance);
         } else if (outcome.type === 'error') {
-          failCandidate({ code: payload.code, message: payload.message });
+          // The mounted candidate failed before ready: release it, then apply the
+          // same one-retry policy as a snapshot failure.
+          const readyMs = Number.isFinite(instance.mountedAt) ? Date.now() - instance.mountedAt : null;
+          discardCandidate();
+          handlePreviewAttemptFailure(
+            { code: payload.code, message: payload.message },
+            { revision: instance.revision, snapshotMs: instance.snapshotMs, readyMs: readyMs, phase: 'runtime' }
+          );
         } else if (outcome.type === 'destroyed') {
           settleInstance(instance);
         }
@@ -3133,6 +3404,12 @@ window.__ModuleLoader__.load({
           return function scheduleRelease() {
             void Promise.resolve().then(function releaseIfStillUnmounted() {
               if (unmountEpochRef.current !== epoch) return;
+              // Stop any pending automatic retry/debounce and invalidate an
+              // in-flight snapshot so a late result is released instead of leaking.
+              clearRetryTimer();
+              clearDebounceTimer();
+              snapshotToken.current += 1;
+              pendingRequestRef.current = null;
               if (candidateRef.current !== null) {
                 const next = candidateRef.current;
                 candidateRef.current = null;
@@ -3793,11 +4070,16 @@ window.__ModuleLoader__.load({
       }
 
       function retryRequestedRevision() {
-        void loadTarget(targetRevision, {
+        // An explicit user retry restarts the automatic-retry allowance.
+        const restore = {
           time: timeRef.current,
           stableId: selectedRef.current ? selectedRef.current.stableId : null,
           playing: playingRef.current,
-        });
+        };
+        retryRestoreRef.current = restore;
+        attemptRef.current = { revision: targetRevision, attempt: 0 };
+        setPreviewAttempt({ revision: targetRevision, attempt: 0 });
+        void loadTarget(targetRevision, restore);
       }
 
       // Compact in-place feedback next to the stage when a candidate revision
@@ -3971,6 +4253,12 @@ window.__ModuleLoader__.load({
           'data-canvas-phase': phase,
           'data-preview-only': previewOnly ? 'true' : 'false',
           'data-preview-pending': active !== null && active.revision !== targetRevision && previewNotice === null ? 'true' : 'false',
+          // P3-017 B1 diagnostics: the current attempt for the target revision and
+          // a bounded ring of the most recent attempts (revision:attempt:
+          // snapshotMs:readyMs:errorCode separated by "|").
+          'data-preview-attempt': (previewAttempt.revision === null ? '' : String(previewAttempt.revision).slice(0, 8) + ':' + String(previewAttempt.attempt)),
+          'data-preview-retrying': previewRetrying ? 'true' : 'false',
+          'data-preview-diagnostics': previewDiagnosticsText(),
         },
         h('div', { className: 'dv-canvas-wrap', ref: wrapRef }, canvasBody()),
         previewNoticeNode(),
@@ -4144,6 +4432,19 @@ window.__ModuleLoader__.load({
       const sessionSwitchToken = React.useRef(0);
       const sessionCreatePending = React.useRef(false);
       const aliveRef = React.useRef(true);
+      // P3-017 B3 product export: one render bound to the revision inspected when
+      // the button was pressed. Later AI publishes never change what is exported;
+      // the worker's real stage/progress feed the visible progress text, and the
+      // elapsed time is derived from the real start timestamp.
+      const [exportState, setExportState] = React.useState(null);
+      const [exportElapsed, setExportElapsed] = React.useState(0);
+      const exportToken = React.useRef(0);
+      const exportStateRef = React.useRef(null);
+      exportStateRef.current = exportState;
+      // Synchronous in-flight gate: two clicks in the same tick cannot both pass
+      // the state check before the first render (state itself is async).
+      const exportInFlightRef = React.useRef(false);
+      const exportRunning = exportState !== null && exportState.phase === 'running';
       const bootToken = React.useRef(0);
       const bootStarted = React.useRef(false);
       const autoProvisionedRef = React.useRef(false);
@@ -4155,9 +4456,34 @@ window.__ModuleLoader__.load({
           aliveRef.current = true;
           return function cleanupWorkspace() {
             aliveRef.current = false;
+            // Never leave a render job running with no UI left to cancel it.
+            exportInFlightRef.current = false;
+            const current = exportStateRef.current;
+            if (current !== null && current.phase === 'running' && typeof current.jobId === 'string') {
+              hostRequest('cancel', { jobId: current.jobId }).catch(function ignoreExportCancel() {});
+            }
           };
         },
         []
+      );
+
+      // Advance the elapsed label while a render is running; the interval only
+      // re-renders the label and stops with the terminal state.
+      React.useEffect(
+        function tickExportElapsed() {
+          if (exportRunning === false) return function noExportTick() {};
+          const startedAt = exportState === null || !Number.isFinite(exportState.startedAt) ? Date.now() : exportState.startedAt;
+          setExportElapsed(Math.max(0, Math.floor((Date.now() - startedAt) / 1000)));
+          const timer = setInterval(function tickElapsed() {
+            const current = exportStateRef.current;
+            if (current === null || current.phase !== 'running') return;
+            setExportElapsed(Math.max(0, Math.floor((Date.now() - current.startedAt) / 1000)));
+          }, 1000);
+          return function stopExportTick() {
+            clearInterval(timer);
+          };
+        },
+        [exportRunning]
       );
 
       // The host main conversation is outside this panel; when it is the visible
@@ -4740,6 +5066,277 @@ window.__ModuleLoader__.load({
         return next;
       }
 
+      // ---- P3-017 B3 product export ------------------------------------------
+      function exportStageText(stage) {
+        if (stage === 'snapshot') return t('video.export.stage.snapshot');
+        if (stage === 'engine') return t('video.export.stage.engine');
+        if (stage === 'capture') return t('video.export.stage.capture');
+        if (stage === 'validate' || stage === 'sheet') return t('video.export.stage.validate');
+        if (stage === 'finished') return t('video.export.stage.finished');
+        return t('video.export.stage.queued');
+      }
+
+      // Presentation-only filename: the project title is already the honest name
+      // shown in the UI (there is no separate title API in this branch). Unsafe
+      // filesystem characters are stripped; a stable fallback is always used.
+      function exportProductFileName() {
+        const title = studioProjectTitle(project, t('video.project.untitled'));
+        const safe = String(title).replace(/[\\/:*?"<>|]/g, ' ').replace(/[\u0000-\u001f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80);
+        return (safe.length > 0 ? safe : 'dsh-video') + '.mp4';
+      }
+
+      function delayExportPoll(milliseconds) {
+        return new Promise(function wait(resolve) {
+          setTimeout(resolve, milliseconds);
+        });
+      }
+
+      async function exportProductVideo() {
+        if (project === null || projectIdRef.current === '') return;
+        const current = exportStateRef.current;
+        // One in-flight export only: a double click cannot start a second render.
+        if (exportInFlightRef.current === true) return;
+        if (current !== null && current.phase === 'running') return;
+        const revisionAtClick = typeof project.revision === 'string' ? project.revision : null;
+        if (revisionAtClick === null) return;
+        exportInFlightRef.current = true;
+        const token = ++exportToken.current;
+        const startedAt = Date.now();
+        setExportElapsed(0);
+        setExportState({
+          phase: 'running',
+          jobId: null,
+          revision: revisionAtClick,
+          stage: 'queued',
+          progress: 0,
+          startedAt: startedAt,
+          fileName: exportProductFileName(),
+          error: null,
+          cancelling: false,
+        });
+        function settleFailure(code) {
+          if (exportToken.current !== token || !aliveRef.current) return;
+          exportInFlightRef.current = false;
+          setExportState(function keepFailure(previous) {
+            if (previous === null) return previous;
+            if (code === 'E_CANCELLED') {
+              return Object.assign({}, previous, { phase: 'cancelled', error: null, cancelling: false });
+            }
+            return Object.assign({}, previous, { phase: 'error', error: code, cancelling: false });
+          });
+        }
+        let job;
+        try {
+          job = await hostRequest('render', {
+            projectId: projectIdRef.current,
+            revision: revisionAtClick,
+            timeoutMs: PRODUCT_RENDER_TIMEOUT_MS,
+          });
+        } catch (error) {
+          settleFailure(error !== null && typeof error === 'object' && typeof error.code === 'string' ? error.code : 'E_RENDER');
+          return;
+        }
+        if (exportToken.current !== token || !aliveRef.current) return;
+        if (job === null || typeof job !== 'object' || typeof job.jobId !== 'string') {
+          settleFailure('E_RENDER');
+          return;
+        }
+        const jobId = job.jobId;
+        setExportState(function attachJob(previous) {
+          if (previous === null) return previous;
+          return Object.assign({}, previous, {
+            jobId: jobId,
+            stage: typeof job.stage === 'string' ? job.stage : 'queued',
+            progress: Number.isFinite(job.progress) ? job.progress : 0,
+          });
+        });
+        const deadline = startedAt + PRODUCT_EXPORT_DEADLINE_MS;
+        let result = job;
+        let consecutiveStatusErrors = 0;
+        while (isTerminalJob(result) === false && Date.now() < deadline) {
+          await delayExportPoll(PRODUCT_EXPORT_POLL_MS);
+          if (exportToken.current !== token || !aliveRef.current) return;
+          try {
+            result = await hostRequest('status', { jobId: jobId });
+            consecutiveStatusErrors = 0;
+          } catch (_statusError) {
+            // A transient status failure must not kill a minutes-long render; a
+            // sustained failure does (the worker deadline still bounds the job).
+            consecutiveStatusErrors += 1;
+            if (consecutiveStatusErrors >= 5) {
+              settleFailure('E_RENDER');
+              return;
+            }
+            continue;
+          }
+          if (exportToken.current !== token || !aliveRef.current) return;
+          // Exact binding: the job must still describe the revision captured when
+          // the export started; anything else is treated as a failed export.
+          if (result === null || typeof result !== 'object' || result.jobId !== jobId || result.revision !== revisionAtClick) {
+            settleFailure('E_RENDER');
+            return;
+          }
+          setExportState(function updateExportProgress(previous) {
+            if (previous === null || previous.phase !== 'running') return previous;
+            return Object.assign({}, previous, {
+              stage: typeof result.stage === 'string' ? result.stage : previous.stage,
+              progress: Number.isFinite(result.progress) ? result.progress : previous.progress,
+            });
+          });
+        }
+        if (isTerminalJob(result) === false) {
+          // Client safety net above the Host limit: stop the job instead of
+          // leaving it running with no owner.
+          try {
+            await hostRequest('cancel', { jobId: jobId });
+          } catch (_cancelError) {
+            /* best effort; the worker/Host limits still bound the job */
+          }
+          settleFailure('E_TIMEOUT');
+          return;
+        }
+        if (result.state !== 'succeeded') {
+          settleFailure(result.state === 'cancelled' ? 'E_CANCELLED' : 'E_RENDER');
+          return;
+        }
+        exportInFlightRef.current = false;
+        setExportState(function finishExport(previous) {
+          if (previous === null) return previous;
+          return Object.assign({}, previous, {
+            phase: 'ready',
+            stage: 'finished',
+            progress: 1,
+            url: ARTIFACT_ROUTE + '?jobId=' + encodeURIComponent(jobId),
+            error: null,
+            cancelling: false,
+          });
+        });
+      }
+
+      async function cancelProductExport() {
+        const current = exportStateRef.current;
+        if (current === null || current.phase !== 'running' || typeof current.jobId !== 'string') return;
+        setExportState(function markCancelling(previous) {
+          if (previous === null) return previous;
+          return Object.assign({}, previous, { cancelling: true });
+        });
+        try {
+          await hostRequest('cancel', { jobId: current.jobId });
+        } catch (_cancelError) {
+          // The running status poll settles the terminal cancelled state.
+        }
+      }
+
+      // Topbar export control: button -> live stage/percent/elapsed + cancel ->
+      // download link, with a concise retry state on failure/cancel.
+      function exportControl() {
+        if (project === null) return null;
+        const state = exportState;
+        if (state === null) {
+          return h(
+            'div',
+            { className: 'dv-export', key: 'product-export' },
+            h(
+              'button',
+              {
+                type: 'button',
+                className: 'dv-button dv-button-primary',
+                onClick: function startProductExport() {
+                  void exportProductVideo();
+                },
+                disabled: projectBusy !== null,
+                title: t('video.canvas.export'),
+              },
+              t('video.canvas.export')
+            )
+          );
+        }
+        if (state.phase === 'running') {
+          const percent = state.stage === 'capture' && Number.isFinite(state.progress) ? Math.round(state.progress * 100) : null;
+          const elapsed = t('video.export.elapsed').replace('{seconds}', String(exportElapsed));
+          const label = exportStageText(state.stage) + (percent === null ? '' : ' ' + String(percent) + '%') + ' · ' + elapsed;
+          return h(
+            'div',
+            { className: 'dv-export', key: 'product-export' },
+            h(
+              'span',
+              {
+                className: 'dv-export-status',
+                role: 'status',
+                'aria-live': 'polite',
+                'data-export-stage': state.stage,
+                'data-export-progress': percent === null ? '' : String(percent),
+                'data-export-elapsed': String(exportElapsed),
+              },
+              h('span', { className: 'dv-loader dv-export-spinner', 'aria-hidden': 'true' }),
+              label
+            ),
+            h(
+              'button',
+              {
+                type: 'button',
+                className: 'dv-button dv-button-quiet dv-export-cancel',
+                onClick: function cancelExport() {
+                  void cancelProductExport();
+                },
+                disabled: state.cancelling === true,
+                title: state.cancelling === true ? t('video.cancelling') : t('video.cancel'),
+              },
+              state.cancelling === true ? t('video.cancelling') : t('video.cancel')
+            )
+          );
+        }
+        if (state.phase === 'ready') {
+          return h(
+            'div',
+            { className: 'dv-export', key: 'product-export' },
+            h(
+              'a',
+              {
+                className: 'dv-button dv-button-primary dv-export-link',
+                href: state.url,
+                download: state.fileName || 'dsh-video.mp4',
+                title: state.fileName || t('video.canvas.download'),
+                'data-export-ready': 'true',
+              },
+              t('video.canvas.download')
+            ),
+            // A finished export can be repeated for the same current revision.
+            h(
+              'button',
+              {
+                type: 'button',
+                className: 'dv-button dv-button-quiet',
+                onClick: function exportAgain() {
+                  void exportProductVideo();
+                },
+                disabled: projectBusy !== null,
+                title: t('video.canvas.export'),
+              },
+              t('video.canvas.export')
+            )
+          );
+        }
+        const note = state.phase === 'cancelled' ? t('video.export.cancelled') : t('video.canvas.exportFailed');
+        return h(
+          'div',
+          { className: 'dv-export', key: 'product-export' },
+          h('span', { className: 'dv-export-error', role: 'alert', 'data-export-error': state.error || '' }, note),
+          h(
+            'button',
+            {
+              type: 'button',
+              className: 'dv-button dv-button-primary',
+              onClick: function retryProductExport() {
+                void exportProductVideo();
+              },
+              disabled: projectBusy !== null,
+            },
+            t('video.canvas.export')
+          )
+        );
+      }
+
       async function loadSessionsFor(targetProjectId) {
         const token = ++sessionListToken.current;
         if (sessionKitAvailable === false) {
@@ -4849,13 +5446,41 @@ window.__ModuleLoader__.load({
         );
       }
 
+      // P3-017 B2: a chat image already rendered by the browser (data:/blob:/remote
+      // or same-origin chat route) is shown as-is in the same overlay. No Host read
+      // happens and the native right-sidebar file opener is never involved.
+      function openInlinePreview(src) {
+        previewToken.current += 1;
+        setPreview({
+          phase: 'ready',
+          local: true,
+          sessionId: activeSessionId,
+          fileName: '',
+          mediaType: '',
+          dataUrl: src,
+          size: 0,
+          sha256: '',
+        });
+      }
+
       function capturePreviewClick(event) {
         if (event === null || typeof event !== 'object') return;
         const path = localPathFromTarget(event.target);
-        if (path === null) return;
+        if (path !== null) {
+          if (typeof event.preventDefault === 'function') event.preventDefault();
+          if (typeof event.stopPropagation === 'function') event.stopPropagation();
+          openPreview(path);
+          return;
+        }
+        const image = imagePreviewTarget(event.target);
+        if (image === null) return;
         if (typeof event.preventDefault === 'function') event.preventDefault();
         if (typeof event.stopPropagation === 'function') event.stopPropagation();
-        openPreview(path);
+        if (image.kind === 'host') {
+          openPreview(image.path);
+        } else {
+          openInlinePreview(image.src);
+        }
       }
 
       function retrySession() {
@@ -4927,7 +5552,9 @@ window.__ModuleLoader__.load({
 
       function previewOverlay() {
         if (preview === null) return null;
-        if (preview.sessionId !== activeSessionId) return null;
+        // A browser-owned inline image belongs to this panel, not to a Session
+        // read token; only Host-backed previews are dropped on a Session switch.
+        if (preview.local !== true && preview.sessionId !== activeSessionId) return null;
         const title = typeof preview.fileName === 'string' && preview.fileName.length > 0 ? preview.fileName : t('video.preview.title');
         const head = h(
           'div',
@@ -5279,6 +5906,10 @@ window.__ModuleLoader__.load({
           'data-session-contract': sessionDiagnostic !== null && sessionDiagnostic.contract !== undefined ? String(sessionDiagnostic.contract) : '',
           'data-session-controller': sessionDiagnostic === null ? '' : sessionDiagnostic.controller === true ? 'available' : 'missing',
           'data-session-context': sessionDiagnostic === null ? '' : sessionDiagnostic.contextRegistered === true ? 'registered' : 'absent',
+          // P3-017 B3 export markers: the visible phase plus the exact revision the
+          // current/last export was bound to (never the latest published one).
+          'data-export': exportState === null ? 'idle' : exportState.phase,
+          'data-export-revision': exportState === null || exportState.revision === undefined ? '' : String(exportState.revision),
         },
         h(StyleTag, { key: 'style' }),
         h(
@@ -5298,10 +5929,13 @@ window.__ModuleLoader__.load({
             h('span', { className: 'dv-sr-only', key: 'label' }, t('video.back'))
           ),
           projectBar(),
+          // P3-016: inline rename feedback stays next to the left-aligned project
+          // name/arrow. P3-017: the product export control owns the right side.
           renameError !== null
             ? h('p', { className: 'dv-project-rename-error', role: 'alert', key: 'rename-error' }, renameError)
             : null,
-          h('span', { className: 'dv-spacer', key: 'spacer' })
+          h('span', { className: 'dv-spacer', key: 'spacer' }),
+          exportControl()
         ),
         h(
           'main',

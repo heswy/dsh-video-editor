@@ -572,7 +572,10 @@ function loadClient(options) {
     fetch: typeof config.fetch === 'function' ? config.fetch : undefined,
     console: { log() {}, warn() {}, error() {} },
     setTimeout(callback, delay, ...args) {
-      const handle = setTimeout(callback, config.previewTimeoutMs !== undefined && delay === 15000 ? config.previewTimeoutMs : delay, ...args);
+      // Contract budgets (snapshot and ready waits) are the only >=15s timers in
+      // the preview state machine; tests shrink them through one knob.
+      const budget = config.previewTimeoutMs !== undefined && delay >= 15000 ? config.previewTimeoutMs : delay;
+      const handle = setTimeout(callback, budget, ...args);
       runtime.timers.add(handle);
       return handle;
     },
@@ -1840,6 +1843,33 @@ function previewNoticeNode(tree) {
   return findNode(tree, (node) => node.props && node.props.className === 'dv-preview-notice');
 }
 
+// P3-017 B1 diagnostics: "revision:attempt:snapshotMs:readyMs:errorCode" ring.
+function previewDiagnosticEntries(editor) {
+  const shell = productCanvas(editor.tree());
+  if (shell === null) return [];
+  const text = shell.props['data-preview-diagnostics'];
+  if (typeof text !== 'string' || text.length === 0) return [];
+  return text.split('|').map((line) => line.split(':'));
+}
+
+function previewAttemptOf(editor) {
+  const shell = productCanvas(editor.tree());
+  return shell === null ? '' : shell.props['data-preview-attempt'];
+}
+
+async function waitForPreviewPhase(editor, phase, rounds) {
+  const total = rounds || 40;
+  for (let round = 0; round < total; round += 1) {
+    const shell = productCanvas(editor.tree());
+    if (shell !== null && shell.props['data-canvas-phase'] === phase) return true;
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    await settle();
+    editor.rerender();
+  }
+  const shell = productCanvas(editor.tree());
+  return shell !== null && shell.props['data-canvas-phase'] === phase;
+}
+
 function snapshotIdFor(config, revision) {
   const results = (config.snapshotResults || []).filter((entry) => entry.revision === revision);
   assert(results.length > 0, 'the fake host never produced a snapshot for revision ' + revision.slice(0, 4));
@@ -1983,17 +2013,18 @@ test('P3-012/R2: a candidate runtime error keeps the last valid composition play
   const candidateNode = candidateIframe(editor);
   assert(candidateNode !== null, 'the hidden candidate iframe is missing');
   const releasesBefore = (hostFetch.config.releaseCalls || []).length;
-  // The fixed runtime reports an error before ready: nothing may be promoted.
+  const snapshotsBefore = (hostFetch.config.snapshotRequests || []).filter((request) => request.revision === revisionB).length;
+  // The fixed runtime reports an error before ready: nothing may be promoted and
+  // the last valid composition stays visible/playable.
   dispatchFrameEvent(editor, {
     frame: runtimeFrameOf(editor, candidateNode),
     type: 'error',
     payload: { code: 'E_RUNTIME', message: 'runtime failed before ready' },
   });
   editor.rerender();
-  const tree = editor.tree();
-  const notice = previewNoticeNode(tree);
-  assert(notice !== null && notice.props.role === 'alert', 'the candidate runtime error did not show the compact notice');
-  const shell = productCanvas(tree);
+  let tree = editor.tree();
+  let shell = productCanvas(tree);
+  assert(previewNoticeNode(tree) === null, 'the first runtime failure must be retried automatically before a notice');
   assert(activeIframe(editor) !== null && activeIframe(editor).props.src === activeBefore.props.src, 'the last valid composition was unmounted by a candidate runtime error');
   assert(shell.props['data-canvas-revision'] === revisionA, 'the active revision marker changed on a candidate runtime error');
   assert(shell.props['data-canvas-target-revision'] === revisionB, 'the target revision marker is missing on a candidate runtime error');
@@ -2001,6 +2032,34 @@ test('P3-012/R2: a candidate runtime error keeps the last valid composition play
   assert(findNode(tree, (node) => node.props && node.props.className === 'dv-canvas-status' && node.props.role === 'alert') === null, 'a candidate runtime error replaced the stage with the full first-load error');
   await settle();
   assert((hostFetch.config.releaseCalls || []).length > releasesBefore, 'the failed candidate snapshot was not released');
+  const diagnostic = previewDiagnosticEntries(editor);
+  assert(diagnostic.length === 1 && diagnostic[0][4] === 'E_RUNTIME', `the runtime failure is not diagnosed: ${JSON.stringify(diagnostic)}`);
+  // The failed attempt is retried automatically with a fresh snapshot.
+  assert(await waitForCandidate(editor), 'the failed runtime was not retried with a new snapshot');
+  const retriedSnapshots = (hostFetch.config.snapshotRequests || []).filter((request) => request.revision === revisionB).length;
+  assert(retriedSnapshots > snapshotsBefore, 'the automatic retry did not request a new snapshot');
+  assert(shell.props['data-preview-retrying'] === 'true' || productCanvas(editor.tree()).props['data-preview-retrying'] === 'false', 'the retry marker is missing');
+  const secondCandidate = candidateIframe(editor);
+  assert(secondCandidate !== null, 'the retried candidate iframe is missing');
+  // A second failure consumes the single retry: the compact notice appears and
+  // the retained composition is still not replaced.
+  dispatchFrameEvent(editor, {
+    frame: runtimeFrameOf(editor, secondCandidate),
+    type: 'error',
+    payload: { code: 'E_RUNTIME', message: 'runtime failed again' },
+  });
+  editor.rerender();
+  tree = editor.tree();
+  shell = productCanvas(tree);
+  const notice = previewNoticeNode(tree);
+  assert(notice !== null && notice.props.role === 'alert', 'the candidate runtime error did not show the compact notice after the retry');
+  assert(activeIframe(editor) !== null && activeIframe(editor).props.src === activeBefore.props.src, 'the last valid composition was unmounted by a candidate runtime error');
+  assert(shell.props['data-canvas-revision'] === revisionA, 'the active revision marker changed on a candidate runtime error');
+  assert(shell.props['data-canvas-target-revision'] === revisionB, 'the target revision marker is missing on a candidate runtime error');
+  assert(shell.props['data-canvas-phase'] === 'ready', 'the phase left ready on a candidate runtime error');
+  const diagnosticAfter = previewDiagnosticEntries(editor);
+  assert(diagnosticAfter.length === 2, `the retry diagnostics ring is not bounded/complete: ${JSON.stringify(diagnosticAfter)}`);
+  assert(diagnosticAfter.every((entry) => entry[4] === 'E_RUNTIME'), 'a failed attempt is missing its error code');
   // The retained composition still receives the playback commands.
   const commandCountBefore = editor.loaded.runtime.commands.length;
   const play = findNode(tree, (node) => node.type === 'button' && textOf(node) === translateFor(editor.env)('video.canvas.play'));
@@ -2025,16 +2084,23 @@ test('P3-012/R2: an initial preview failure stays a full recoverable error', asy
   const kit = makeSessionKit();
   const editor = mountSessionEditor(hostFetch, { sessions: sessions, kit: kit });
   await settlePanel(editor);
-  let tree = editor.tree();
-  let shell = productCanvas(tree);
+  // P3-017 B1: the first snapshot failure is retried once automatically, so the
+  // honest first-load error only appears after the retry also fails.
+  let shell = productCanvas(editor.tree());
   assert(shell !== null, 'the preview shell is missing');
   assert(shell.props['data-canvas-revision'] === '', 'no active revision marker may exist before the first ready composition');
   assert(shell.props['data-canvas-target-revision'] === 'c'.repeat(64), 'the target revision marker is missing on the initial failure');
-  assert(shell.props['data-canvas-phase'] === 'error', `initial failure phase is ${shell.props['data-canvas-phase']}`);
+  assert(shell.props['data-canvas-phase'] === 'loading', `the first failure must stay loading during the automatic retry, got ${shell.props['data-canvas-phase']}`);
+  assert(await waitForPreviewPhase(editor, 'error'), 'the failed automatic retry did not surface the initial error');
+  let tree = editor.tree();
+  shell = productCanvas(tree);
   const status = findNode(tree, (node) => node.props && node.props.className === 'dv-canvas-status' && node.props.role === 'alert');
   assert(status !== null, 'the initial failure did not show the full recoverable status');
   assert(textOf(status).includes(translateFor(editor.env)('video.error.network')), `initial failure copy is not localized: ${textOf(status)}`);
   assert(previewNoticeNode(tree) === null, 'the first-load failure must not use the compact candidate notice');
+  const diagnostics = previewDiagnosticEntries(editor);
+  assert(diagnostics.length === 2, `the initial failure must record both attempts: ${JSON.stringify(diagnostics)}`);
+  assert(diagnostics[0][4] === 'E_NETWORK' && diagnostics[1][4] === 'E_NETWORK', 'the initial failure diagnostics lost the error code');
   const retry = findNode(status, (node) => node.type === 'button' && textOf(node) === translateFor(editor.env)('video.canvas.retry'));
   assert(retry !== null, 'the initial failure retry button is missing');
   failFirst = false;
@@ -2259,11 +2325,22 @@ test('P3-012: the rendered product workspace has no manual editing controls', as
     assert(ids.includes(removedId) === false, `removed manual control #${removedId} is still rendered`);
   }
   const renderedText = textOf(tree);
-  for (const key of ['video.canvas.undo', 'video.canvas.redo', 'video.canvas.materials', 'video.canvas.addScene', 'video.canvas.export', 'video.canvas.exporting', 'video.canvas.download', 'video.canvas.sceneColor', 'video.canvas.textStyle', 'video.open', 'video.update', 'video.save', 'video.export', 'video.frame.empty', 'video.frameTime', 'video.details', 'video.target']) {
+  for (const key of ['video.canvas.undo', 'video.canvas.redo', 'video.canvas.materials', 'video.canvas.addScene', 'video.canvas.sceneColor', 'video.canvas.textStyle', 'video.open', 'video.update', 'video.save', 'video.frame.empty', 'video.frameTime', 'video.details', 'video.target']) {
     const label = translateFor(editor.env)(key);
     assert(label !== key, `removed dictionary key ${key} was dropped (keep old keys for compatibility)`);
     assert(renderedText.includes(label) === false, `removed manual-editing copy "${label}" is still rendered`);
   }
+  // 'video.export' is the legacy manual label: its dictionary entry stays for
+  // compatibility but the product UI uses the canvas keys above.
+  assert(dictionaryOf(editor.env)['video.export'] === '导出 MP4', 'the legacy export copy key was dropped from the dictionary');
+  // P3-017 B3: the product topbar owns the export action (the old manual export
+  // button stays hidden behind previewOnly=false), bound to the inspected
+  // revision and observable for the export state machine.
+  assert(findNode(tree, (node) => node.props && node.props.className === 'dv-export') !== null, 'the product export control is missing');
+  assert(panelRoot(tree).props['data-export'] === 'idle', 'the product export state marker is missing');
+  assert(panelRoot(tree).props['data-export-revision'] === '', 'an idle export must not name a revision');
+  assert(buttonByText(tree, translateFor(editor.env)('video.canvas.export')) !== null, 'the product export button is missing');
+  assert(buttonByText(tree, translateFor(editor.env)('video.canvas.exporting')) === null, 'the product shows an exporting label before any export');
   // The native conversation panel and its history action stay.
   assert(findNode(tree, (node) => node.props && node.props.className === 'dv-ai') !== null, 'the native conversation panel is missing');
   assert(findNode(tree, (node) => node.props && node.props['data-factory'] === 'conversation.content') !== null, 'the native conversation Factory is missing');
@@ -2621,7 +2698,9 @@ test('P3-008 -> P3-012: the product mounts the snapshot canvas read-only; manual
   assert(buttonByText(after, translateFor(editor.env)('video.canvas.play')) !== null, 'playback control missing');
   assert(buttonByText(after, translateFor(editor.env)('video.canvas.materials')) === null, 'the manual materials drawer is still offered in the product UI');
   assert(buttonByText(after, translateFor(editor.env)('video.canvas.addScene')) === null, 'the manual add-Scene action is still offered');
-  assert(buttonByText(after, translateFor(editor.env)('video.canvas.export')) === null, 'the manual export action is still offered');
+  // P3-017 B3 intentionally surfaces a product export action; it is not the
+  // hidden manual render path (that one still lives behind previewOnly=false).
+  assert(buttonByText(after, translateFor(editor.env)('video.canvas.export')) !== null, 'the product export action is missing');
   assert(hostFetch.config.snapshotRequests && hostFetch.config.snapshotRequests.length >= 1, 'worker snapshot was not requested for the canvas');
   assert(hostFetch.config.createCalls === undefined || hostFetch.config.createCalls === 1, 'the auto-provisioned Session count is wrong');
   editor.interactive.unmount();
@@ -4279,11 +4358,21 @@ test('UI polish: a preview that never reports runtime ready becomes retryable an
   const frame = findNode(editor.tree(), (node) => node.type === 'iframe');
   assert(frame !== null, 'candidate did not begin loading');
   const expiredFrame = runtimeFrameOf(editor, frame);
-  await new Promise((resolve) => setTimeout(resolve, 100));
-  editor.rerender();
-  dispatchFrameEvent(editor, { frame: expiredFrame, type: 'ready', payload: { runtimeVersion: 'p3-012-runtime.1', width: 1280, height: 720, duration: 15 } });
-  assert(productCanvas(editor.tree()).props['data-canvas-phase'] === 'error', 'preview remains in infinite loading: ' + productCanvas(editor.tree()).props['data-canvas-phase']);
+  // P3-017 B1: the ready budget expires the attempt, the automatic retry gets a
+  // fresh snapshot, and only a second expiry surfaces the recoverable error.
+  assert(await waitForPreviewPhase(editor, 'error'), 'preview remains in infinite loading: ' + productCanvas(editor.tree()).props['data-canvas-phase']);
+  const diagnostics = previewDiagnosticEntries(editor);
+  assert(diagnostics.length === 2, `the ready timeouts are not diagnosed: ${JSON.stringify(diagnostics)}`);
+  assert(diagnostics.every((entry) => entry[4] === 'E_PREVIEW_TIMEOUT'), 'a ready timeout lost its error code');
+  assert(diagnostics.every((entry) => entry[2] !== '-' && entry[3] !== '-'), 'the ready timeout diagnostic lost its snapshotMs/readyMs durations');
+  const snapshotsForRevision = (hostFetch.config.snapshotRequests || []).filter((request) => request.revision === 'c'.repeat(64));
+  assert(snapshotsForRevision.length >= 2, 'the expired attempt was not retried with a fresh snapshot');
+  assert((hostFetch.config.releaseCalls || []).length >= 2, 'the expired candidate snapshots were not released');
   assert(findNode(editor.tree(), (node) => node.props && node.props.role === 'alert') !== null, 'timeout has no recoverable feedback');
+  // A ready event from the discarded instance may never promote after the error.
+  dispatchFrameEvent(editor, { frame: expiredFrame, type: 'ready', payload: { runtimeVersion: 'p3-012-runtime.1', width: 1280, height: 720, duration: 15 } });
+  editor.rerender();
+  assert(productCanvas(editor.tree()).props['data-canvas-phase'] === 'error', 'a late instance promoted after the timeout error');
   const retry = buttonByText(editor.tree(), translateFor(editor.env)('video.canvas.retry'));
   assert(retry !== null, 'timeout has no retry');
   retry.props.onClick();
@@ -4291,6 +4380,347 @@ test('UI polish: a preview that never reports runtime ready becomes retryable an
   await ensureCanvasActive(editor);
   assert(productCanvas(editor.tree()).props['data-canvas-phase'] === 'ready', 'retry did not recover');
 });
+
+//#region tests: P3-017 B1/B2/B3
+async function waitForValue(read, expected, timeoutMs, editor) {
+  const deadline = Date.now() + (timeoutMs || 3000);
+  while (Date.now() < deadline) {
+    if (read() === expected) return true;
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    await settle();
+    if (editor !== undefined && editor !== null) editor.rerender();
+  }
+  return read() === expected;
+}
+
+async function pumpPreview(editor, rounds, delayMs) {
+  for (let index = 0; index < (rounds || 1); index += 1) {
+    await settle();
+    editor.rerender();
+    await new Promise((resolve) => setTimeout(resolve, delayMs === undefined ? 80 : delayMs));
+  }
+}
+
+test('P3-017 B1: published revisions are debounced, superseded snapshots are released, diagnostics stay bounded', async () => {
+  const revisionA = 'c'.repeat(64);
+  const revisionB = 'e'.repeat(64);
+  const revisionC = 'f'.repeat(64);
+  let published = revisionA;
+  let snapshotSeq = 0;
+  const snapshotIds = new Map();
+  const snapshotRequests = [];
+  const hostFetch = sessionFetch({ activeSessionId: 'session-b1-race', sessions: ['session-b1-race'] });
+  hostFetch.config.handler = async (request) => {
+    const method = request.body.method;
+    if (method === 'inspect') return { ok: true, result: Object.assign(managedInspected(), { revision: published }) };
+    if (method === 'preview.snapshot') {
+      const revisionId = request.body.params.revision;
+      snapshotRequests.push(request.body.params);
+      snapshotSeq += 1;
+      const snapshotId = ('b'.repeat(16) + String(snapshotSeq).padStart(16, '0')).slice(0, 32);
+      snapshotIds.set(revisionId, snapshotId);
+      const result = {
+        snapshotId: snapshotId,
+        projectId: request.body.params.projectId,
+        revision: revisionId,
+        entry: 'index.html',
+        entryUrl: '/api/dsh-video/preview/' + 'b'.repeat(32) + '/index.html',
+        routeBase: '/api/dsh-video/preview',
+        files: [],
+        expiresAt: new Date(Date.now() + 60000).toISOString(),
+      };
+      if (revisionId === revisionB) {
+        // Keep the superseded revision's snapshot in flight long enough for a
+        // newer revision to arrive.
+        return new Promise((resolve) => setTimeout(() => resolve({ ok: true, result }), 2500));
+      }
+      return { ok: true, result };
+    }
+    return undefined;
+  };
+  const sessions = makeSessionsService({ list: ['session-b1-race'] });
+  const editor = await mountBootedPanel(hostFetch, { sessions: sessions, kit: makeSessionKit() });
+  assert(productCanvas(editor.tree()).props['data-canvas-revision'] === revisionA, 'the first revision is not active');
+  published = revisionB;
+  // The target marker is truthful immediately, but the snapshot waits for the
+  // debounce window instead of racing every intermediate revision.
+  assert(await waitForValue(() => productCanvas(editor.tree()).props['data-canvas-target-revision'], revisionB, 6000, editor), 'the poll did not name the published revision');
+  assert(snapshotRequests.some((request) => request.revision === revisionB) === false, 'the revision was snapshotted before the debounce window elapsed');
+  assert(await waitForValue(() => snapshotRequests.some((request) => request.revision === revisionB), true, 4000), 'the debounced snapshot was never requested');
+  // Publish the next revision while the previous snapshot is still in flight.
+  published = revisionC;
+  assert(await waitForValue(() => productCanvas(editor.tree()).props['data-canvas-target-revision'], revisionC, 6000, editor), 'the second published revision was not followed');
+  let candidate = null;
+  assert(
+    await (async function waitForLatestCandidate() {
+      const deadline = Date.now() + 5000;
+      while (Date.now() < deadline) {
+        candidate = candidateIframe(editor);
+        if (candidate !== null) return true;
+        await pumpPreview(editor, 1, 60);
+      }
+      candidate = candidateIframe(editor);
+      return candidate !== null;
+    })(),
+    'the latest revision was not preloaded as a candidate'
+  );
+  promoteCanvasCandidate(editor);
+  const shell = productCanvas(editor.tree());
+  assert(shell.props['data-canvas-revision'] === revisionC, 'the latest revision did not become active');
+  assert(shell.props['data-canvas-phase'] === 'ready', 'the switched preview is not ready');
+  assert(shell.props['data-preview-pending'] === 'false', 'the pending marker did not settle');
+  // The superseded snapshot resolves after the switch: it must be released, not
+  // left retained, and it must never replace the newer active composition.
+  const supersededId = snapshotIds.get(revisionB);
+  assert(typeof supersededId === 'string', 'the superseded snapshot was never requested');
+  assert(
+    await waitForValue(() => (hostFetch.config.releaseCalls || []).includes(supersededId), true, 8000),
+    'the superseded snapshot was never released'
+  );
+  assert(productCanvas(editor.tree()).props['data-canvas-revision'] === revisionC, 'a late snapshot replaced the newer composition');
+  assert(previewDiagnosticEntries(editor).length === 0, 'a successful revision race recorded failure diagnostics');
+});
+
+test('P3-017 B2: image and file clicks open the plugin overlay and never the native sidebar', async () => {
+  const sessions = makeSessionsService({ list: ['session-img'] });
+  const hostFetch = sessionFetch({ activeSessionId: 'session-img', sessions: ['session-img'] });
+  const editor = mountSessionEditor(hostFetch, { sessions: sessions, kit: makeSessionKit() });
+  await settle();
+  editor.rerender();
+  await settle();
+  const aside = clickCaptureNode(editor.tree());
+  function clickImage(src) {
+    let prevented = 0;
+    let stopped = 0;
+    aside.props.onClickCapture({
+      target: interactiveTarget({ selector: 'img[src]', attributes: { src: src } }),
+      preventDefault() { prevented += 1; },
+      stopPropagation() { stopped += 1; },
+    });
+    assert(prevented === 1 && stopped === 1, `image click was not intercepted: ${src.slice(0, 24)}`);
+  }
+  function previewImageNode(tree) {
+    return findNode(tree, (node) => node.props && node.props.className === 'dv-preview-image');
+  }
+  // 1. A browser-owned data: image renders directly, with no Host read.
+  clickImage('data:image/png;base64,AAAA');
+  await settle();
+  let tree = editor.rerender();
+  let image = previewImageNode(tree);
+  assert(findNode(tree, (node) => node.props && node.props.className === 'dv-preview') !== null, 'the data: image preview did not open');
+  assert(image !== null && image.props.src === 'data:image/png;base64,AAAA', 'the data: image did not render its own source');
+  assert((hostFetch.config.previewCalls || []).length === 0, 'a data: image was sent through the Host file reader');
+  closePreviewTree(tree);
+  tree = editor.rerender();
+  // 2. A blob: URL from the native chat (the file was already loaded) renders directly.
+  clickImage('blob:http://dsh.internal/2f0e4d3c');
+  await settle();
+  tree = editor.rerender();
+  image = previewImageNode(tree);
+  assert(image !== null && image.props.src === 'blob:http://dsh.internal/2f0e4d3c', 'the blob image did not render its own source');
+  assert((hostFetch.config.previewCalls || []).length === 0, 'a blob image was sent through the Host file reader');
+  closePreviewTree(tree);
+  tree = editor.rerender();
+  // 3. A remote image already loaded by the chat stays browser-owned.
+  clickImage('https://example.com/frame.png');
+  await settle();
+  tree = editor.rerender();
+  image = previewImageNode(tree);
+  assert(image !== null && image.props.src === 'https://example.com/frame.png', 'the remote image did not render its own source');
+  assert((hostFetch.config.previewCalls || []).length === 0, 'a remote image was sent through the Host file reader');
+  closePreviewTree(tree);
+  tree = editor.rerender();
+  // 4. A workspace-relative image path uses the existing bounded Host preview route.
+  clickImage('.dsh-video-frames/latest.png');
+  await settle();
+  tree = editor.rerender();
+  image = previewImageNode(tree);
+  assert(image !== null && image.props.src === 'data:image/png;base64,AAAA', 'the relative image path did not render the Host preview');
+  const calls = hostFetch.config.previewCalls || [];
+  assert(calls.length === 1, `expected one Host preview call, got ${calls.length}`);
+  assert(calls[0].projectId === 'proj-smoke' && calls[0].sessionId === 'session-img', 'the Host preview is not Session/project scoped');
+  assert(calls[0].path === '.dsh-video-frames/latest.png', `the relative frame path was not forwarded unchanged: ${calls[0].path}`);
+  closePreviewTree(tree);
+  tree = editor.rerender();
+  // 5. A normal chat click is still not intercepted.
+  let prevented = 0;
+  aside.props.onClickCapture({
+    target: interactiveTarget({ selector: null }),
+    preventDefault() { prevented += 1; },
+    stopPropagation() {},
+  });
+  await settle();
+  assert(prevented === 0 && (hostFetch.config.previewCalls || []).length === 1, 'a normal chat click was intercepted by the image path');
+});
+
+test('P3-017 B3: product export binds the clicked revision and reports stage/progress, cancel and download', async () => {
+  const revisionA = 'c'.repeat(64);
+  const revisionB = 'e'.repeat(64);
+  let published = revisionA;
+  const renderCalls = [];
+  const statusCalls = [];
+  const cancelCalls = [];
+  let slowCancelled = false;
+  const hostFetch = sessionFetch({ activeSessionId: 'session-export', sessions: ['session-export'] });
+  hostFetch.config.handler = async (request) => {
+    const method = request.body.method;
+    if (method === 'inspect') return { ok: true, result: Object.assign(managedInspected(), { revision: published }) };
+    if (method === 'render') {
+      const params = request.body.params;
+      renderCalls.push(params);
+      const index = renderCalls.length;
+      if (index === 3) return { ok: false, error: { code: 'E_RENDER', message: 'render start failed' } };
+      const jobId = index === 1 ? 'job-fast' : 'job-slow';
+      return { ok: true, result: { jobId: jobId, projectId: params.projectId, revision: params.revision, kind: 'render', state: 'queued', stage: 'snapshot', progress: 0 } };
+    }
+    if (method === 'status') {
+      const jobId = request.body.params.jobId;
+      statusCalls.push(jobId);
+      if (jobId === 'job-fast') {
+        const count = statusCalls.filter((id) => id === 'job-fast').length;
+        const result = {
+          jobId: jobId,
+          projectId: 'proj-smoke',
+          revision: revisionA,
+          kind: 'render',
+          state: 'running',
+          stage: count >= 2 ? 'capture' : 'snapshot',
+          progress: count >= 2 ? 0.5 : 0,
+        };
+        if (count >= 3) {
+          result.state = 'succeeded';
+          result.stage = 'finished';
+          result.progress = 1;
+          result.artifact = {
+            projectId: 'proj-smoke',
+            revision: revisionA,
+            jobId: jobId,
+            name: jobId + '.mp4',
+            hash: 'a'.repeat(64),
+            bytes: 2048,
+            metadata: { duration: 15, width: 1280, height: 720, fps: 30, codec_name: 'h264' },
+          };
+        }
+        return { ok: true, result: result };
+      }
+      return {
+        ok: true,
+        result: {
+          jobId: jobId,
+          projectId: 'proj-smoke',
+          revision: revisionB,
+          kind: 'render',
+          state: slowCancelled ? 'cancelled' : 'running',
+          stage: slowCancelled ? 'finished' : 'capture',
+          progress: slowCancelled ? 0 : 0.3,
+        },
+      };
+    }
+    if (method === 'cancel') {
+      cancelCalls.push(request.body.params.jobId);
+      if (request.body.params.jobId === 'job-slow') slowCancelled = true;
+      return {
+        ok: true,
+        result: { jobId: request.body.params.jobId, projectId: 'proj-smoke', revision: revisionB, kind: 'render', state: 'cancelling', stage: 'capture', progress: 0.3 },
+      };
+    }
+    return undefined;
+  };
+  const sessions = makeSessionsService({ list: ['session-export'] });
+  const editor = await mountBootedPanel(hostFetch, { sessions: sessions, kit: makeSessionKit() });
+  const t = translateFor(editor.env);
+  function exportButton(tree) {
+    return buttonByText(tree, t('video.canvas.export'));
+  }
+  assert(exportButton(editor.tree()) !== null, 'the topbar export button is missing');
+  // Two clicks in the same tick must start exactly one render.
+  exportButton(editor.tree()).props.onClick();
+  exportButton(editor.tree()).props.onClick();
+  await settle();
+  editor.rerender();
+  assert(renderCalls.length === 1, `a double click started ${renderCalls.length} renders`);
+  assert(renderCalls[0].revision === revisionA, 'the export is not bound to the inspected revision');
+  assert(renderCalls[0].timeoutMs === 900000, `the render timeout is not the 15 minute bound: ${renderCalls[0].timeoutMs}`);
+  // Drive the fake job while observing the real rendered stage/progress state.
+  const observedStages = new Set();
+  const observedProgress = new Set();
+  let sawElapsed = false;
+  const ready = await (async function pumpUntilReady() {
+    const deadline = Date.now() + 7000;
+    while (Date.now() < deadline) {
+      await settle();
+      const tree = editor.rerender();
+      const status = findNode(tree, (node) => node.props && typeof node.props.className === 'string' && node.props.className.includes('dv-export-status'));
+      if (status !== null) {
+        observedStages.add(status.props['data-export-stage']);
+        if (status.props['data-export-progress'] !== '') observedProgress.add(status.props['data-export-progress']);
+        if (textOf(status).includes('已用')) sawElapsed = true;
+      }
+      if (panelRoot(tree).props['data-export'] === 'ready') return true;
+      await new Promise((resolve) => setTimeout(resolve, 40));
+    }
+    return false;
+  })();
+  assert(ready, 'the export never reached the ready state');
+  assert(observedStages.has('capture'), `the capture stage was never rendered: ${JSON.stringify([...observedStages])}`);
+  assert(observedProgress.has('50'), `the worker progress was never rendered: ${JSON.stringify([...observedProgress])}`);
+  assert(sawElapsed, 'the elapsed time was never rendered');
+  let tree = editor.tree();
+  const link = findNode(tree, (node) => node.props && typeof node.props.className === 'string' && node.props.className.includes('dv-export-link'));
+  assert(link !== null, 'the download link is missing after a successful export');
+  assert(link.props.href === 'api/dsh-video/artifact?jobId=job-fast', `unexpected download href: ${link.props.href}`);
+  assert(link.props.download === 'Scene 1.mp4', `the download filename is not the project title: ${link.props.download}`);
+  assert(panelRoot(tree).props['data-export'] === 'ready', 'the ready export marker is missing');
+  assert(panelRoot(tree).props['data-export-revision'] === revisionA, 'the ready export lost its binding revision');
+  // A later published revision never rewrites the finished/running export binding.
+  published = revisionB;
+  assert(
+    await waitForValue(() => productCanvas(editor.tree()).props['data-canvas-target-revision'], revisionB, 6000, editor),
+    'the next published revision was not followed'
+  );
+  assert(panelRoot(editor.tree()).props['data-export-revision'] === revisionA, 'the finished export followed a later published revision');
+  assert(panelRoot(editor.tree()).props['data-export'] === 'ready', 'a later revision disturbed the finished export state');
+  // A repeat export binds the CURRENT revision (B was never exported yet).
+  exportButton(editor.tree()).props.onClick();
+  await settle();
+  tree = editor.rerender();
+  assert(renderCalls.length === 2, 'the repeat export did not start a second render');
+  assert(renderCalls[1].revision === revisionB, `the repeat export is not bound to the current revision: ${renderCalls[1].revision.slice(0, 4)}`);
+  // Cancel while running: the control is responsive and the terminal state is honest.
+  const cancelButton = findNode(tree, (node) => node.props && typeof node.props.className === 'string' && node.props.className.includes('dv-export-cancel'));
+  assert(cancelButton !== null, 'the running export has no cancel control');
+  cancelButton.props.onClick();
+  let cancelled = false;
+  for (let round = 0; round < 80; round += 1) {
+    await settle();
+    tree = editor.rerender();
+    if (panelRoot(tree).props['data-export'] === 'cancelled') {
+      cancelled = true;
+      break;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 40));
+  }
+  assert(cancelled, 'the cancelled export did not settle into the cancelled state');
+  assert(cancelCalls.includes('job-slow'), 'the running render job was not cancelled on the Host');
+  assert(textOf(tree).includes(t('video.export.cancelled')), 'the cancelled export has no honest copy');
+  // A rejected render start surfaces the explicit error plus a retry affordance.
+  assert(exportButton(editor.tree()) !== null, 'the export cannot be retried after a cancel');
+  exportButton(editor.tree()).props.onClick();
+  let failed = false;
+  for (let round = 0; round < 60; round += 1) {
+    await settle();
+    tree = editor.rerender();
+    if (panelRoot(tree).props['data-export'] === 'error') {
+      failed = true;
+      break;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 40));
+  }
+  assert(failed, 'a rejected render did not surface the error state');
+  assert(textOf(tree).includes(t('video.canvas.exportFailed')), 'the export error has no honest copy');
+  assert(exportButton(editor.tree()) !== null, 'the export error has no retry affordance');
+});
+//#endregion
 
 async function runTests() {
   for (const [name, fn] of tests) {

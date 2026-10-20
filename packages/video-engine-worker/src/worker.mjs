@@ -23,7 +23,7 @@ import {
   MAX_PREVIEW_TTL_MS,
   validSnapshotId,
 } from "./previews.mjs";
-import { Jobs, normalizeFrameTimes } from "./jobs.mjs";
+import { Jobs, normalizeFrameTimes, FRAME_TIMEOUT_MS, MAX_RENDER_TIMEOUT_MS } from "./jobs.mjs";
 import {
   fail,
   keys,
@@ -171,7 +171,12 @@ async function method(name, p) {
         else fail("E_PARAMS", "Provide exactly one of time or times");
       } else if (p.time !== undefined)
         fail("E_PARAMS", "Render has no time parameter");
-      if (p.timeoutMs !== undefined) number(p.timeoutMs, 100, 120000);
+      if (p.timeoutMs !== undefined)
+        number(
+          p.timeoutMs,
+          100,
+          name === "render" ? MAX_RENDER_TIMEOUT_MS : FRAME_TIMEOUT_MS,
+        );
       return jobs.start(name, p);
     case "status":
       keys(p, ["jobId"], ["jobId"]);

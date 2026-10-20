@@ -12,9 +12,12 @@
  *   B2. two consecutive project.compose rounds update the SAME project and the
  *       canvas revision marker + rendered frame automatically;
  *   B3. play/pause + seek are observed through the fixed runtime;
- *   B4. a revision whose snapshot cannot load shows the recoverable error with
- *       retry (never the legacy empty-frame copy), an explicit retry recovers,
- *       and a following good revision recovers automatically;
+ *   B4. P3-017-B1 retry contract: a SINGLE injected next-revision snapshot or
+ *       candidate-runtime failure is retried automatically once and recovers
+ *       (the old frame keeps playing, NO retention notice); only CONSECUTIVE
+ *       failures exhaust that retry and show the compact retention notice with
+ *       an explicit retry (never the legacy empty-frame copy); a following good
+ *       revision recovers automatically;
  *   B5. the rendered product panel contains NO deferred manual-edit controls and
  *       user gestures on the preview issue no write request.
  *
@@ -273,6 +276,49 @@ async function waitForPreviewRelease(page, mark, snapshotId, timeoutMs) {
   return { ok: false, requests };
 }
 
+/** Wait (event-driven, bounded) until one revision has at least `expected`
+ * preview.snapshot attempts in the page request log. Injected attempts carry
+ * `injected`, real responses carry `responseOk`/`responseRevision`. */
+async function waitForRevisionSnapshots(page, mark, revision, expected, timeoutMs) {
+  const deadline = Date.now() + (timeoutMs || 10000);
+  let entries = [];
+  while (Date.now() < deadline) {
+    const requests = await evaluate(page, (markIndex) => window.__CASE__.requestsSince(markIndex), mark);
+    entries = requests.filter((entry) => entry.method === 'preview.snapshot' && entry.params && entry.params.revision === revision);
+    if (entries.length >= expected) return { ok: true, entries };
+    await sleep(50);
+  }
+  return { ok: false, entries };
+}
+
+/**
+ * P3-017 B1 automatic-retry probe: observe the pending target revision while the
+ * OLD active frame stays mounted, confirm no retention notice ever appeared, and
+ * wait for the automatic recovery/switch. Event-driven: no fixed sleep gates the
+ * assertion, so the ~1s revision debounce and the retry delay are naturally
+ * covered.
+ */
+async function observeAutoRetryRecovery(page, expectedRevision, oldSnapshotId, timeoutMs) {
+  const started = Date.now();
+  let sawPending = false;
+  let sawOldFrameWhilePending = false;
+  let sawNotice = false;
+  let last = null;
+  while (Date.now() - started < (timeoutMs || 40000)) {
+    last = await evaluate(page, () => window.__CASE__.state());
+    if (last.noticeVisible === true) sawNotice = true;
+    if (last.targetRevision === expectedRevision && last.revision !== expectedRevision && last.noticeVisible === false) {
+      sawPending = true;
+      if (last.activeFrameCount >= 1 && last.activeFrames[0].snapshotId === oldSnapshotId) sawOldFrameWhilePending = true;
+    }
+    if (last.phase === 'ready' && last.revision === expectedRevision && last.noticeVisible === false && last.candidateFrameCount === 0) {
+      return { ok: true, elapsedMs: Date.now() - started, sawPending, sawOldFrameWhilePending, sawNotice, state: last };
+    }
+    await sleep(40);
+  }
+  return { ok: false, elapsedMs: Date.now() - started, sawPending, sawOldFrameWhilePending, sawNotice, state: last || await evaluate(page, () => window.__CASE__.state()) };
+}
+
 /** Release requests for one snapshot inside the page request-log window. */
 async function releaseHits(page, mark, snapshotId) {
   const requests = await evaluate(page, (markIndex) => window.__CASE__.requestsSince(markIndex), mark);
@@ -415,7 +461,7 @@ async function main() {
     note: 'Real staged client component in real Chrome against the real staged bridge. Simulated seams are documented in `simulated`: host-owned native conversation renderer faces and page-only one-shot failure injection. No DSH install, no real model call, no user profile/project writes.',
     simulated: {
       conversation: 'the host-owned native conversation renderer is replaced by inert harness faces: sessions client service (list/retain), SessionProvider and renderFactorySlot props. P3-012 does not change the conversation panel; the left preview/lifecycle is the real staged code.',
-      failureInjection: 'window.fetch is wrapped INSIDE the test page only to answer one matching request with a host-shaped {ok:false,error:{code,message}} body; the staged source is untouched.',
+      failureInjection: 'window.fetch is wrapped INSIDE the test page only to answer one or more matching requests with a host-shaped {ok:false,error:{code,message}} body (the P3-017 B1 consecutive-failure probes answer two so the automatic retry is exhausted); the staged source is untouched.',
       testPageOverrides: 'the harness page disables the panel entrance animation and hosts the real component under a full-viewport root; no product selector/geometry is modified.',
     },
     extraction: null,
@@ -827,9 +873,33 @@ async function main() {
     // candidate runtime is ready; on snapshot/runtime failure retain active and
     // show a compact dv-preview-notice[role=alert] with retry; promote only on
     // candidate ready, then release the old Host snapshot.
-    const r2Evidence = { retention: null, retrySwitch: null, candidateRuntimeError: null, autoSwitch: null, initialFailure: null };
+    const r2Evidence = { autoRetry: null, retention: null, retrySwitch: null, candidateRuntimeError: null, autoSwitch: null, initialFailure: null };
     evidence.r2 = r2Evidence;
     const legacyEmptyCopy = dictionary['video.frame.empty'];
+
+    // ── R2-0 (P3-017 B1): a SINGLE injected next-revision snapshot failure is
+    // retried automatically once with a fresh snapshot and recovers. The compact
+    // retention notice is reserved for CONSECUTIVE failures, so the old P3-012
+    // notice-on-first-failure expectation is now a recovery expectation.
+    const autoRetryActive = await evaluate(page, () => window.__CASE__.state());
+    const autoRetryInspect = await invokeHttp(bridge, 'inspect', { projectId });
+    const autoRetryMark = await evaluate(page, () => window.__CASE__.mark());
+    await evaluate(page, () => window.__CASE__.inject({ method: 'preview.snapshot', code: 'E_PREVIEW_NOT_FOUND', message: 'Injected single snapshot failure (auto-retry probe)', times: 1 }));
+    // Compose a genuinely different document (a byte-identical compose returns the
+    // same revision and would never request a snapshot, so it cannot probe a retry).
+    const autoRetryRevision = await composeThroughTool(tool, sessionId, projectId, autoRetryInspect.revision, modifyGenreB(genreB().html).html, 'r2-auto-retry');
+    checks.check('R2-0: the probe published a new revision on the same project', typeof autoRetryRevision.publishedRevision === 'string' && autoRetryRevision.publishedRevision !== autoRetryActive.revision, { previousRevision: autoRetryActive.revision, publishedRevision: autoRetryRevision.publishedRevision });
+    const autoRetry = await observeAutoRetryRecovery(page, autoRetryRevision.publishedRevision, autoRetryActive.snapshotId, 40000);
+    const autoRetryAttempts = await waitForRevisionSnapshots(page, autoRetryMark, autoRetryRevision.publishedRevision, 2, 10000);
+    const autoRetryShot = await screenshotPage(page, join(evidenceDirectory, '04a-r2-auto-retry-recovered.png'));
+    const autoRetryInjection = await evaluate(page, () => window.__CASE__.injectionState());
+    checks.check('R2-0: the single injected next-revision snapshot failure was consumed exactly once', autoRetryInjection.length === 1 && autoRetryInjection[0].hits === 1 && autoRetryInjection[0].remaining === 0, { injections: autoRetryInjection });
+    checks.check('R2-0: the failed attempt was retried automatically with a fresh snapshot (first attempt injected, second attempt real success)', autoRetryAttempts.ok === true && autoRetryAttempts.entries.length >= 2 && autoRetryAttempts.entries[0].injected === 'E_PREVIEW_NOT_FOUND' && autoRetryAttempts.entries[1].responseOk === true && autoRetryAttempts.entries[1].responseRevision === autoRetryRevision.publishedRevision, { attempts: autoRetryAttempts.entries.map((entry) => ({ injected: entry.injected, responseOk: entry.responseOk, responseErrorCode: entry.responseErrorCode, revision: entry.params && entry.params.revision })) });
+    checkAcceptance('B4', 'R2-0: a single failure auto-retries and switches without ever showing the retention notice', autoRetry.ok === true && autoRetry.sawNotice === false && autoRetry.state.revision === autoRetryRevision.publishedRevision && autoRetry.state.candidateFrameCount === 0, { ok: autoRetry.ok, elapsedMs: autoRetry.elapsedMs, sawNotice: autoRetry.sawNotice, revision: autoRetry.state.revision, expected: autoRetryRevision.publishedRevision, candidateFrames: autoRetry.state.candidateFrameCount });
+    checkAcceptance('B4', 'R2-0: the last valid frame stays mounted while the automatic retry is pending', autoRetry.sawPending === true && autoRetry.sawOldFrameWhilePending === true, { sawPending: autoRetry.sawPending, oldFrameWhilePending: autoRetry.sawOldFrameWhilePending });
+    r2Evidence.autoRetry = { requestedRevision: autoRetryRevision.publishedRevision, attempts: autoRetryAttempts.entries.length, sawNotice: autoRetry.sawNotice, sawPending: autoRetry.sawPending, sawOldFrameWhilePending: autoRetry.sawOldFrameWhilePending, recoveredRevision: autoRetry.state.revision, screenshot: autoRetryShot };
+    console.log('[phase] R2-0 single-failure auto-retry recovered in ' + autoRetry.elapsedMs + 'ms (noticeSeen=' + autoRetry.sawNotice + ')');
+
     const activeBeforeFailureState = await evaluate(page, () => window.__CASE__.state());
     const activeBeforeFailure = {
       revision: activeBeforeFailureState.revision,
@@ -840,15 +910,18 @@ async function main() {
     };
     checks.check('R2: a ready active preview exists before the failure-retention probes (baseline)', typeof activeBeforeFailure.snapshotId === 'string' && activeBeforeFailureState.activeFrameCount === 1 && activeBeforeFailureState.phase === 'ready', activeBeforeFailure);
 
-    // R2-1: next-revision SNAPSHOT failure -> old active iframe retained/playable.
+    // R2-1: CONSECUTIVE next-revision SNAPSHOT failures (the automatic B1 retry
+    // also fails) -> old active iframe retained/playable + compact retention notice.
     const preRetentionInspect = await invokeHttp(bridge, 'inspect', { projectId });
     const retentionMark = await evaluate(page, () => window.__CASE__.mark());
-    await evaluate(page, () => window.__CASE__.inject({ method: 'preview.snapshot', code: 'E_PREVIEW_NOT_FOUND', message: 'Injected snapshot failure (harness)', times: 1 }));
+    await evaluate(page, () => window.__CASE__.inject({ method: 'preview.snapshot', code: 'E_PREVIEW_NOT_FOUND', message: 'Injected snapshot failure (harness)', times: 2 }));
     const retentionRevision = await composeThroughTool(tool, sessionId, projectId, preRetentionInspect.revision, genreAModified().html, 'r2-retention');
     const retentionNotice = await evaluate(page, () => window.__CASE__.waitNotice(30000));
     const retentionState = retentionNotice.state;
     const retentionShot = await screenshotPage(page, join(evidenceDirectory, '04-r2-retention-notice.png'));
-    checks.check('R2: the injected next-revision snapshot failure was consumed exactly once', (await evaluate(page, () => window.__CASE__.injectionState())).some((entry) => entry.hits === 1), { injections: await evaluate(page, () => window.__CASE__.injectionState()) });
+    const retentionInjections = await evaluate(page, () => window.__CASE__.injectionState());
+    const retentionInjection = retentionInjections.find((entry) => entry.hits === 2) || null;
+    checks.check('R2: consecutive next-revision snapshot failures were consumed exactly twice (initial attempt + one automatic retry)', retentionInjection !== null && retentionInjection.remaining === 0 && retentionInjections.every((entry) => entry.remaining === 0), { injections: retentionInjections });
     checkAcceptance('B4', 'R2: a failed next-revision snapshot keeps the last ready iframe mounted', retentionNotice.ok === true && retentionState.activeFrameCount >= 1 && retentionState.activeFrames[0].snapshotId === activeBeforeFailure.snapshotId, { noticeOk: retentionNotice.ok, activeFrames: retentionState.activeFrames, expectedOldSnapshot: activeBeforeFailure.snapshotId });
     checkAcceptance('B4', 'R2: retention markers are truthful (data-canvas-revision stays the OLD published revision, data-canvas-target-revision names the requested one)', retentionState.revision === activeBeforeFailure.revision && retentionState.targetRevision === retentionRevision.publishedRevision, { phase: retentionState.phase, activeRevision: retentionState.revision, expectedActive: activeBeforeFailure.revision, targetRevision: retentionState.targetRevision, requestedRevision: retentionRevision.publishedRevision });
     checkAcceptance('B4', 'R2: retention failure shows the compact dv-preview-notice[role=alert] with retry, not an unmount/full-error replacement', retentionState.noticeVisible === true && retentionState.notices.length > 0 && retentionState.notices[0].role === 'alert' && retentionState.notices[0].retry !== null && retentionState.fullErrorVisible === false && retentionState.phase === 'ready', { notice: retentionState.notices[0] ?? null, phase: retentionState.phase, fullErrorVisible: retentionState.fullErrorVisible });
@@ -856,6 +929,8 @@ async function main() {
     const retainedPlayable = await assertRetainedPlayable(page, pauseText);
     checkAcceptance('B4', 'R2: the retained old preview stays playable during the failed next-revision load', retainedPlayable.ok === true && retainedPlayable.activeFrames >= 1, { retainedPlayable: { ok: retainedPlayable.ok, timeText: retainedPlayable.timeText, revision: retainedPlayable.revision } });
     const retentionRequests = await evaluate(page, (mark) => window.__CASE__.requestsSince(mark), retentionMark);
+    const retentionSnapshotAttempts = retentionRequests.filter((entry) => entry.method === 'preview.snapshot' && entry.params && entry.params.revision === retentionRevision.publishedRevision);
+    checks.check('R2: the automatic retry issued a second snapshot attempt before the retention notice (both injected attempts failed)', retentionSnapshotAttempts.length === 2 && retentionSnapshotAttempts.every((entry) => entry.injected === 'E_PREVIEW_NOT_FOUND' && entry.responseOk !== true), { attempts: retentionSnapshotAttempts.map((entry) => ({ injected: entry.injected, responseOk: entry.responseOk })) });
     checks.check('R2: during retention no preview.release was issued for the retained old snapshot', retentionRequests.every((entry) => entry.method !== 'preview.release' || (entry.params && entry.params.snapshotId !== activeBeforeFailure.snapshotId)), { retentionRequests: retentionRequests.map((entry) => ({ method: entry.method, snapshotId: entry.params && entry.params.snapshotId })) });
     const oldSnapshotEntryRoute = '/api/dsh-video/preview/' + activeBeforeFailure.snapshotId + '/index.html';
     const retentionRoute = host.routes.find((candidate) => candidate.path === oldSnapshotEntryRoute);
@@ -896,8 +971,9 @@ async function main() {
     }
     r2Evidence.retrySwitch = { revision: retrySwitchState.revision, oldSnapshotReleased, screenshot: retrySwitchShot };
 
-    // R2-3: candidate RUNTIME error (snapshot request succeeds with a document
-    // whose fixed runtime errors) -> old active stays mounted/playable.
+    // R2-3: CONSECUTIVE candidate RUNTIME errors (the snapshot request succeeds but
+    // the fixed runtime errors on BOTH the initial attempt and the automatic retry)
+    // -> old active stays mounted/playable + compact retention notice.
     const activeBeforeRuntimeState = await evaluate(page, () => window.__CASE__.state());
     const activeBeforeRuntime = {
       revision: activeBeforeRuntimeState.revision,
@@ -905,7 +981,7 @@ async function main() {
     };
     const preRuntimeInspect = await invokeHttp(bridge, 'inspect', { projectId });
     const runtimeMark = await evaluate(page, () => window.__CASE__.mark());
-    await evaluate(page, () => window.__CASE__.inject({ method: 'preview.snapshot', kind: 'fake-snapshot', entryUrl: '/harness/broken-candidate/index.html', times: 1 }));
+    await evaluate(page, () => window.__CASE__.inject({ method: 'preview.snapshot', kind: 'fake-snapshot', entryUrl: '/harness/broken-candidate/index.html', times: 2 }));
     const runtimeRevision = await composeThroughTool(tool, sessionId, projectId, preRuntimeInspect.revision, modifyGenreB(fixtureB.html).html, 'r2-runtime');
     const runtimeNotice = await evaluate(page, () => window.__CASE__.waitNotice(30000));
     const runtimeNoticeState = runtimeNotice.state;
@@ -918,6 +994,8 @@ async function main() {
     const runtimeRequests = candidateRelease.requests;
     const candidateDiscarded = candidateRelease.ok === true;
     checks.check('R2: the failed synthetic candidate snapshot is released (discard attempted)', candidateDiscarded === true || runtimeNoticeState.candidateFrameCount === 0, { candidateReleaseObserved: candidateDiscarded, requests: runtimeRequests.filter((entry) => entry.method === 'preview.release').map((entry) => entry.params && entry.params.snapshotId) });
+    const runtimeRetryAttempts = runtimeRequests.filter((entry) => entry.method === 'preview.snapshot' && entry.params && entry.params.revision === runtimeRevision.publishedRevision);
+    checks.check('R2: the candidate runtime error is retried automatically once before the retention notice (two synthetic candidates)', runtimeRetryAttempts.length === 2 && runtimeRetryAttempts.every((entry) => entry.kind === 'fake-snapshot'), { attempts: runtimeRetryAttempts.map((entry) => ({ kind: entry.kind, injected: entry.injected })) });
     r2Evidence.candidateRuntimeError = { requestedRevision: runtimeRevision.publishedRevision, activeRevision: runtimeNoticeState.revision, notice: runtimeNoticeState.notices[0] ?? null, retainedPlayable: runtimeRetainedPlayable.ok, screenshot: runtimeShot };
 
     // R2-4: a following GOOD revision auto-switches (no user action) and releases
@@ -992,10 +1070,11 @@ async function main() {
         stressPrevRevision = stressState.revision;
       }
       checks.check('R2 stress: Host snapshot records stay bounded (<=4 per project) across repeated switches', bridge.snapshots.records.size <= 4, { snapshotRecords: bridge.snapshots.records.size, previewRoutes: host.routes.filter((candidate) => typeof candidate.path === 'string' && candidate.path.indexOf('/api/dsh-video/preview/') === 0).length });
-      // Double retry click must not break the switch or leak releases.
+      // Double retry click (after the automatic B1 retry is exhausted and the
+      // notice is visible) must not break the switch or leak releases.
       const doubleInspect = await invokeHttp(bridge, 'inspect', { projectId });
       const doubleMark = await evaluate(page, () => window.__CASE__.mark());
-      await evaluate(page, () => window.__CASE__.inject({ method: 'preview.snapshot', code: 'E_PREVIEW_NOT_FOUND', message: 'Injected snapshot failure (stress)', times: 1 }));
+      await evaluate(page, () => window.__CASE__.inject({ method: 'preview.snapshot', code: 'E_PREVIEW_NOT_FOUND', message: 'Injected snapshot failure (stress)', times: 2 }));
       const doubleRevision = await composeThroughTool(tool, sessionId, projectId, doubleInspect.revision, genreB().html, 'r2-stress-double');
       const doubleNotice = await evaluate(page, () => window.__CASE__.waitNotice(30000));
       let doubleResult = { ok: false, state: doubleNotice.state };
@@ -1013,7 +1092,7 @@ async function main() {
       checkAcceptance('B4', 'R2 stress: a double retry click still switches once and leaves no candidate/unexpected release errors', doubleResult.ok === true && doubleResult.state.revision === doubleRevision.publishedRevision && doubleResult.state.candidateFrameCount === 0 && doubleErroredReleases.length === 0, stress.doubleRetry);
       // Unmount while the candidate failure notice is visible: no leaked routes/records.
       const unmountInspect = await invokeHttp(bridge, 'inspect', { projectId });
-      await evaluate(page, () => window.__CASE__.inject({ method: 'preview.snapshot', code: 'E_PREVIEW_NOT_FOUND', message: 'Injected snapshot failure (unmount stress)', times: 1 }));
+      await evaluate(page, () => window.__CASE__.inject({ method: 'preview.snapshot', code: 'E_PREVIEW_NOT_FOUND', message: 'Injected snapshot failure (unmount stress)', times: 2 }));
       await composeThroughTool(tool, sessionId, projectId, unmountInspect.revision, genreAModified().html, 'r2-stress-unmount');
       const unmountNotice = await evaluate(page, () => window.__CASE__.waitNotice(30000));
       await evaluate(page, () => window.__CASE__.unmount());
@@ -1030,11 +1109,12 @@ async function main() {
       console.log('[phase] R2 stress done: switches=' + stress.switches.length + ' doubleRetry=' + doubleResult.ok + ' unmountRoutes=' + unmountRoutes + ' records=' + unmountRecords);
     }
     evidence.stress = process.env.DSH_R2_STRESS === '1' && evidence.r2 !== null ? evidence.r2.stress : null;
-    // R2-5: with NO valid preview yet, an initial failure stays fully recoverable
-    // (existing full .dv-canvas-status error + retry; no stale iframe is claimed).
+    // R2-5: with NO valid preview yet, a SINGLE initial failure is retried
+    // automatically once; the full recoverable error appears only after that
+    // retry also fails (two injected attempts). No stale iframe is claimed.
     await evaluate(page, () => window.__CASE__.unmount());
     await evaluate(page, () => window.__CASE__.clearInjections());
-    await evaluate(page, () => window.__CASE__.inject({ method: 'preview.snapshot', code: 'E_PREVIEW_NOT_FOUND', message: 'Injected initial snapshot failure (harness)', times: 1 }));
+    await evaluate(page, () => window.__CASE__.inject({ method: 'preview.snapshot', code: 'E_PREVIEW_NOT_FOUND', message: 'Injected initial snapshot failure (harness)', times: 2 }));
     const remountStartedAt = Date.now();
     await evaluate(page, () => window.__CASE__.mount());
     const initialError = await evaluate(page, () => window.__CASE__.waitError(40000));
@@ -1042,6 +1122,12 @@ async function main() {
     const remountToErrorMs = Date.now() - remountStartedAt;
     const initialErrorShot = await screenshotPage(page, join(evidenceDirectory, '08-r2-initial-failure.png'));
     checkAcceptance('B4', 'R2: with no valid preview yet an initial failure shows the full recoverable error (phase=error, no stale iframe)', initialError.ok === true && initialErrorState.phase === 'error' && initialErrorState.fullErrorVisible === true && initialErrorState.activeFrameCount === 0 && initialErrorState.canvasStatusRetry !== null, { ok: initialError.ok, phase: initialErrorState.phase, fullErrorVisible: initialErrorState.fullErrorVisible, activeFrames: initialErrorState.activeFrameCount, hasRetry: initialErrorState.canvasStatusRetry !== null });
+    // The harness mount resets the page request log, so the retry evidence is the
+    // injected counter itself: two hits on one two-shot injection proves the
+    // initial attempt and the automatic retry both failed before the full error.
+    const remountInjections = await evaluate(page, () => window.__CASE__.injectionState());
+    const remountInjection = remountInjections.find((entry) => entry.hits === 2) || null;
+    checks.check('R2: the initial full error appears only after the automatic retry also failed (two snapshot attempts)', remountInjection !== null && remountInjection.remaining === 0 && remountInjection.kind === 'host-shaped-error', { injections: remountInjections });
     let initialRecovered = { ok: false, state: initialErrorState };
     if (initialErrorState.canvasStatusRetry !== null) {
       const initialRetryMark = await evaluate(page, () => window.__CASE__.mark());
@@ -1084,6 +1170,9 @@ async function main() {
       const notice = await evaluate(page, () => window.__CASE__.waitNotice(30000));
       const state = notice.state;
       checkAcceptance('B4', 'R2F ' + label + ': retention notice appears while the old preview stays mounted', notice.ok === true && state.noticeVisible === true, { noticeOk: notice.ok, notices: state.notices });
+      const injection = await evaluate(page, () => window.__CASE__.injectionState());
+      const currentInjection = injection.find((entry) => entry.hits === 2 && entry.remaining === 0) || null;
+      checks.check('R2F ' + label + ': the automatic retry was exhausted before the notice (two consecutive failed attempts)', currentInjection !== null && injection.every((entry) => entry.remaining === 0), { injection });
       checkR2fMarkers(checks, 'R2F ' + label, state, { phase: 'ready', revision: activeRevision, targetRevision });
       checkActiveGeometry(checks, 'R2F ' + label + ' (failed candidate retention)', state, activeGeometry);
       checks.check('R2F ' + label + ': notice is role=alert with retry and no full-error replacement', state.notices.length > 0 && state.notices[0].role === 'alert' && state.notices[0].retry !== null && state.fullErrorVisible === false, { notice: state.notices[0] || null, fullErrorVisible: state.fullErrorVisible });
@@ -1131,14 +1220,15 @@ async function main() {
       checks.check('R2F setup: the active composition is already the expected genre B 720x1280/5s baseline', true, { revision: r2fEntry.revision, elementWidth: r2fEntryFrame.elementWidth, elementHeight: r2fEntryFrame.elementHeight });
     }
 
-    // (a) Injected preview.snapshot failure for a 1280x720/6s candidate while a
-    // ready 720x1280/5s genre-B composition is displayed.
+    // (a) CONSECUTIVE injected preview.snapshot failures (initial attempt + the
+    // automatic B1 retry) for a 1280x720/6s candidate while a ready 720x1280/5s
+    // genre-B composition is displayed.
     const r2fBaseA = await r2fState();
     checkActiveGeometry(checks, 'R2F-A baseline (genre B active)', r2fBaseA, genreBGeometry);
     const r2fBaseAHandshake = handshakeOf(r2fBaseA);
     const r2fBaseASnapshot = activeFrameOf(r2fBaseA).snapshotId;
     const r2fMarkA = await evaluate(page, () => window.__CASE__.mark());
-    await evaluate(page, () => window.__CASE__.inject({ method: 'preview.snapshot', code: 'E_PREVIEW_NOT_FOUND', message: 'Injected snapshot failure (R2F-A)', times: 1 }));
+    await evaluate(page, () => window.__CASE__.inject({ method: 'preview.snapshot', code: 'E_PREVIEW_NOT_FOUND', message: 'Injected snapshot failure (R2F-A)', times: 2 }));
     const r2fCandidatesA = await composeThroughTool(tool, sessionId, projectId, r2fBaseA.revision, genreA().html, 'r2f-a-fail');
     const r2fRetentionA = await r2fObserveRetention('A(snapshot-failure)', r2fBaseA.revision, genreBGeometry, r2fCandidatesA.publishedRevision, r2fMarkA, r2fBaseASnapshot, r2fBaseAHandshake, '10-r2f-a-retention-genreB-720x1280.png');
     const r2fRetryMarkA = await evaluate(page, () => window.__CASE__.mark());
@@ -1158,9 +1248,10 @@ async function main() {
     const r2fBaseBHandshake = handshakeOf(r2fBaseB);
     const r2fBaseBSnapshot = activeFrameOf(r2fBaseB).snapshotId;
 
-    // (b) Synthetic candidate RUNTIME failure for a 1280x720/6s candidate.
+    // (b) CONSECUTIVE synthetic candidate RUNTIME failures (initial attempt + the
+    // automatic B1 retry) for a 1280x720/6s candidate.
     const r2fMarkB = await evaluate(page, () => window.__CASE__.mark());
-    await evaluate(page, () => window.__CASE__.inject({ method: 'preview.snapshot', kind: 'fake-snapshot', entryUrl: '/harness/broken-candidate/index.html', times: 1 }));
+    await evaluate(page, () => window.__CASE__.inject({ method: 'preview.snapshot', kind: 'fake-snapshot', entryUrl: '/harness/broken-candidate/index.html', times: 2 }));
     const r2fCandidatesB = await composeThroughTool(tool, sessionId, projectId, r2fBaseB.revision, genreA().html, 'r2f-b-runtime');
     const r2fRetentionB = await r2fObserveRetention('B(candidate-runtime-error)', r2fBaseB.revision, genreBGeometry, r2fCandidatesB.publishedRevision, r2fMarkB, r2fBaseBSnapshot, r2fBaseBHandshake, '12-r2f-b-retention-genreB-720x1280.png');
     const r2fRetryMarkB = await evaluate(page, () => window.__CASE__.mark());
@@ -1255,6 +1346,41 @@ async function main() {
     checkAcceptance('B5', 'B5: real user gestures on the preview issue no write request and open no editor/selection', gestureWrites.length === 0 && gestureAudit.present.length === 0 && gestureState.phase === 'ready', { gestureRequests: gestureRequests.map((entry) => entry.method), gestureWrites: gestureWrites.map((entry) => entry.method), openedSelectors: gestureAudit.present, phase: gestureState.phase });
     console.log('[phase] preview-only audit: present=' + JSON.stringify(audit.present) + ' copyHits=' + JSON.stringify(audit.copyHits) + ' gestureWrites=' + JSON.stringify(gestureWrites.map((entry) => entry.method)));
     evidence.gestures = { gestureRequests: gestureRequests.map((entry) => entry.method), gestureWrites: gestureWrites.map((entry) => entry.method), openedSelectors: gestureAudit.present, audit, forbiddenSelectors, forbiddenTexts };
+
+    // ─── P3-018 integration: P3-016 topbar/split view + P3-017 export coexist ──
+    // The merge kept P3-016's left-aligned project name/arrow (inline rename) and
+    // P3-017's right-side export control, and removed the display-settings menu.
+    const topbarAudit = await evaluate(page, () => {
+      const topbar = document.querySelector('.dv-topbar');
+      const projectbar = document.querySelector('.dv-projectbar');
+      const aiPane = document.querySelector('.dv-ai');
+      const splitter = document.querySelector('.dv-splitter');
+      const exportControl = topbar === null ? null : topbar.querySelector('.dv-export');
+      const projectName = projectbar === null ? null : projectbar.querySelector('.dv-project-name');
+      const projectToggle = projectbar === null ? null : projectbar.querySelector('.dv-project-toggle');
+      const nameRect = projectName === null ? null : projectName.getBoundingClientRect();
+      const exportRect = exportControl === null ? null : exportControl.getBoundingClientRect();
+      const topbarRect = topbar === null ? null : topbar.getBoundingClientRect();
+      return {
+        hasTopbar: topbar !== null,
+        hasProjectName: projectName !== null,
+        projectNameText: projectName === null ? null : (projectName.textContent || '').trim().slice(0, 80),
+        hasProjectToggle: projectToggle !== null,
+        hasExportControl: exportControl !== null,
+        exportText: exportControl === null ? null : (exportControl.textContent || '').trim().slice(0, 40),
+        hasDisplayMenu: document.querySelector('.dv-display') !== null,
+        hasSplitter: splitter !== null,
+        splitterRole: splitter === null ? null : splitter.getAttribute('role'),
+        aiPaneWidth: aiPane === null ? null : aiPane.getBoundingClientRect().width,
+        nameLeft: nameRect === null ? null : nameRect.left,
+        exportRight: exportRect === null ? null : exportRect.right,
+        topbarRight: topbarRect === null ? null : topbarRect.right,
+      };
+    });
+    checks.check('P3-018 integration: merged topbar keeps P3-016 left project name/arrow and P3-017 right export control (no display-settings menu)', topbarAudit.hasTopbar === true && topbarAudit.hasProjectName === true && topbarAudit.hasProjectToggle === true && topbarAudit.hasExportControl === true && topbarAudit.hasDisplayMenu === false, topbarAudit);
+    checks.check('P3-016: the product splitter is rendered and the AI pane width stays inside the 320-720px clamp', topbarAudit.hasSplitter === true && topbarAudit.splitterRole === 'separator' && Number.isFinite(topbarAudit.aiPaneWidth) && topbarAudit.aiPaneWidth >= 319 && topbarAudit.aiPaneWidth <= 721, topbarAudit);
+    checks.check('P3-018 integration: the export control sits to the right of the project name on the same topbar row', topbarAudit.nameLeft !== null && topbarAudit.exportRight !== null && topbarAudit.topbarRight !== null && topbarAudit.exportRight > topbarAudit.nameLeft + 200 && topbarAudit.exportRight <= topbarAudit.topbarRight + 1, topbarAudit);
+    evidence.integration = { topbar: topbarAudit };
 
     // ─── global network / console / final revision evidence ────────────────
     const onlineRevision = (await invokeHttp(bridge, 'inspect', { projectId })).revision;
@@ -1376,6 +1502,8 @@ async function main() {
         retentionKeptOld: evidence.r2.retention !== null,
         retainedPlayable: evidence.r2.retention !== null && evidence.r2.retention.retainedPlayable === true,
         oldSnapshotReleased: evidence.r2.retrySwitch !== null && evidence.r2.retrySwitch.oldSnapshotReleased === true,
+        autoRetryRecovered: evidence.r2.autoRetry !== null && evidence.r2.autoRetry.recoveredRevision === evidence.r2.autoRetry.requestedRevision && evidence.r2.autoRetry.sawNotice === false,
+        autoRetryAttempts: evidence.r2.autoRetry === null ? null : evidence.r2.autoRetry.attempts,
         candidateRuntimeRetained: evidence.r2.candidateRuntimeError !== null && evidence.r2.candidateRuntimeError.retainedPlayable === true,
         autoReleasedOld: evidence.r2.autoSwitch !== null && evidence.r2.autoSwitch.autoReleasedOld === true,
         initialFailureRecovered: evidence.r2.initialFailure !== null && evidence.r2.initialFailure.recoverOk === true,
