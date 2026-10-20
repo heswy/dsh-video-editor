@@ -669,6 +669,16 @@
           "minimum": 0,
           "maximum": 107999.97
         },
+        "times": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 4,
+          "items": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 3599.999
+          }
+        },
         "artifact": {
           "$ref": "#/$defs/artifact"
         },
@@ -1184,6 +1194,17 @@
           "minimum": 0,
           "maximum": 3599.999
         },
+        "times": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 4,
+          "uniqueItems": true,
+          "items": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 3599.999
+          }
+        },
         "timeoutMs": {
           "type": "number",
           "minimum": 100,
@@ -1192,8 +1213,19 @@
       },
       "required": [
         "projectId",
-        "revision",
-        "time"
+        "revision"
+      ],
+      "oneOf": [
+        {
+          "required": [
+            "time"
+          ]
+        },
+        {
+          "required": [
+            "times"
+          ]
+        }
       ]
     },
     "params_render": {

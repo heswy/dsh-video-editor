@@ -101,7 +101,20 @@ const TOOL_PARAMETERS = Object.freeze({
         additionalProperties: false,
       },
     },
-    time: { type: 'number', description: 'Frame time in seconds.' },
+    time: { type: 'number', description: 'Frame time in seconds (legacy single-frame form).' },
+    times: {
+      type: 'array',
+      description:
+        'One to four distinct frame times in seconds; together they render once and return a single horizontally tiled contact sheet. Provide exactly one of time or times.',
+      items: { type: 'number' },
+      minItems: 1,
+      maxItems: 4,
+    },
+    wait: {
+      type: 'boolean',
+      description:
+        'Host-side: wait for the frame job to reach a terminal state (succeeded/failed/cancelled/timed_out) before returning that status view. Capped at 30 seconds or timeoutMs, whichever is smaller; the job stays queryable with status if the wait expires.',
+    },
     timeoutMs: { type: 'integer', description: 'Worker job deadline in milliseconds.' },
     sceneId: { type: 'string', description: 'Stable Scene id for scene operations.' },
     afterSceneId: { type: 'string', description: 'Insert a new Scene after this Scene id.' },
@@ -139,7 +152,7 @@ const ACTION_FIELDS = Object.freeze({
   open: ['projectId'],
   inspect: ['projectId'],
   edit: ['projectId', 'expectedRevision', 'operationId', 'ops'],
-  frame: ['projectId', 'revision', 'time', 'timeoutMs'],
+  frame: ['projectId', 'revision', 'time', 'times', 'timeoutMs', 'wait'],
   render: ['projectId', 'revision', 'timeoutMs'],
   status: ['jobId'],
   cancel: ['jobId'],
@@ -202,7 +215,7 @@ export function createVideoTool(bridge) {
   return {
     name: TOOL_NAME,
     description:
-      'Open, inspect, edit, publish a complete HTML composition, frame, render, observe, cancel, close, and operate on Scenes/history of a controlled video project configured by the Host. To create or change the video, read the current revision with inspect (and project.source for the current full HTML), then submit the complete document once with project.compose and the current expectedRevision; the left preview follows the published revision automatically. Accepts only configured project ids; never accepts paths or URLs. Never write project files with shell or file tools; report typed errors honestly instead of claiming success.',
+      'Open, inspect, edit, publish a complete HTML composition, frame, render, observe, cancel, close, and operate on Scenes/history of a controlled video project configured by the Host. To create or change the video, read the current revision with inspect (and project.source for the current full HTML), then submit the complete document once with project.compose and the current expectedRevision; the left preview follows the published revision automatically. When a visual self-check is genuinely needed, call frame once with wait:true and up to 3 times (one call returns a single contact-sheet image), then read that image at most once; do not render locally or use shell/file probing tools to find frames. A succeeded wait:true frame result also carries frameImage, a workspace-relative PNG path you can pass directly to read_image (read it once). Accepts only configured project ids; never accepts paths or URLs. Never write project files with shell or file tools; report typed errors honestly instead of claiming success.',
     parameters: TOOL_PARAMETERS,
     output: {
       schema: { type: 'object', additionalProperties: true },

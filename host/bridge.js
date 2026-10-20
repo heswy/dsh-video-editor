@@ -9,8 +9,8 @@
  * re-verifying the worker's succeeded artifact record.
  */
 
-import { createHash } from 'node:crypto';
-import { realpath, readFile, stat } from 'node:fs/promises';
+import { createHash, randomBytes } from 'node:crypto';
+import { mkdir, realpath, readFile, rename, stat, unlink, writeFile } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { BridgeError, configurationError, logSummary, toPublicError } from './errors.js';
@@ -61,7 +61,7 @@ const METHOD_PARAMS = Object.freeze({
   open: ['projectId'],
   inspect: ['projectId'],
   edit: ['projectId', 'expectedRevision', 'operationId', 'ops'],
-  frame: ['projectId', 'revision', 'time', 'timeoutMs'],
+  frame: ['projectId', 'revision', 'time', 'times', 'timeoutMs', 'wait'],
   render: ['projectId', 'revision', 'timeoutMs'],
   status: ['jobId'],
   cancel: ['jobId'],
@@ -101,6 +101,20 @@ const MAX_REGISTRY_BYTES = 1024 * 1024;
 const SNAPSHOT_ID = /^[a-f0-9]{32}$/;
 const TEMPLATE_ID = 'product-launch-v1';
 const SCENE_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
+/** Frame batch bounds shared with the worker contract. */
+const MAX_FRAME_TIMES = 4;
+const TERMINAL_JOB_STATES = Object.freeze(['succeeded', 'failed', 'cancelled', 'timed_out']);
+const FRAME_WAIT_MAX_MS = 30000;
+const FRAME_WAIT_INTERVAL_MS = 250;
+/**
+ * Host-only hand-off for a settled `frame` wait result: the re-verified PNG is
+ * copied under the project Session workspace so the model can hand this fixed
+ * workspace-relative path straight to `read_image`. The latest frame replaces
+ * the previous one (nothing accumulates) and no Host path is ever returned.
+ */
+const FRAME_IMAGE_DIR = '.dsh-video-frames';
+const FRAME_IMAGE_FILE = 'latest.png';
+const FRAME_IMAGE_PATH = `${FRAME_IMAGE_DIR}/${FRAME_IMAGE_FILE}`;
 /**
  * Frozen engine 0.3.2 scene.template text limits: title 1..2048, subtitle/badge
  * 0..2048 when present (the same contract as typed text edits). The Host keeps
@@ -215,6 +229,29 @@ function numberInRange(value, name, min, max) {
 function timeoutMs(value) {
   if (value === undefined) return undefined;
   return numberInRange(value, 'timeoutMs', 100, 120000);
+}
+
+/**
+ * Batch frame times: 1..MAX_FRAME_TIMES distinct seconds, canonical to the
+ * worker's millisecond still-name granularity and sorted ascending before they
+ * ever reach the worker. Two inputs that would name the same still are
+ * duplicates.
+ */
+function frameTimes(value) {
+  if (Array.isArray(value) === false || value.length < 1 || value.length > MAX_FRAME_TIMES) {
+    fail('E_PARAMS', `"times" must list 1-${MAX_FRAME_TIMES} frame times`, 'params');
+  }
+  const seen = new Set();
+  const times = [];
+  for (const entry of value) {
+    const time = numberInRange(entry, 'times[]', 0, 3599.999);
+    const canonical = Number(time.toFixed(3));
+    if (seen.has(canonical)) fail('E_PARAMS', '"times" must be distinct at millisecond precision', 'params');
+    seen.add(canonical);
+    times.push(canonical);
+  }
+  times.sort((left, right) => left - right);
+  return times;
 }
 
 const COLOR = /^#[0-9a-fA-F]{6}$/;
@@ -369,10 +406,18 @@ export function validateParams(config, method, params) {
     const next = {
       projectId: allowedProject(config, params.projectId),
       revision: revision(params.revision),
-      time: numberInRange(params.time, 'time', 0, 3599.999),
     };
+    const hasTime = params.time !== undefined;
+    const hasTimes = params.times !== undefined;
+    if (hasTime === hasTimes) fail('E_PARAMS', 'Provide exactly one of "time" or "times"', 'params');
+    if (hasTime) next.time = numberInRange(params.time, 'time', 0, 3599.999);
+    else next.times = frameTimes(params.times);
     const limit = timeoutMs(params.timeoutMs);
     if (limit !== undefined) next.timeoutMs = limit;
+    if (params.wait !== undefined) {
+      if (typeof params.wait !== 'boolean') fail('E_PARAMS', 'Invalid "wait"', 'params');
+      next.wait = params.wait;
+    }
     return next;
   }
   if (method === 'render') {
@@ -1340,9 +1385,17 @@ export class VideoBridge {
     if (settings.source === 'tool' && method !== 'doctor') {
       await this.assertToolScope(method, normalized, settings.agentSessionId);
     }
-    const result = await this.callClient(method, normalized);
+    // `wait` is Host-only semantics: the worker contract never receives it.
+    let workerParams = normalized;
+    let wait = false;
+    if (method === 'frame' && normalized.wait !== undefined) {
+      const { wait: requestedWait, ...request } = normalized;
+      workerParams = request;
+      wait = requestedWait === true;
+    }
+    const result = await this.callClient(method, workerParams);
     if (method === 'frame' || method === 'render') {
-      this.rememberJob(method, normalized, result);
+      this.rememberJob(method, workerParams, result);
     } else if (method === 'inspect' || method === 'open' || method === 'project.compose') {
       // inspect/open and project.compose results both carry the authoritative
       // revision for the next prompt assembly; a free-form composition project
@@ -1358,7 +1411,98 @@ export class VideoBridge {
     if (method === 'close' && result !== null && typeof result === 'object' && result.closed === true) {
       this.snapshots.revokeProject(normalized.projectId);
     }
+    if (wait) {
+      const settled = await this.waitForFrameJob(result, normalized);
+      const published = await this.publishFrameImage(settled, normalized);
+      return publicResult(this.requireConfig().maxResultBytes, published, settings.source);
+    }
     return publicResult(this.requireConfig().maxResultBytes, result, settings.source);
+  }
+
+  /**
+   * Host-level `wait` for one frame job: rememberJob already fenced ownership,
+   * so this polls the worker's own status view at a fixed interval until a
+   * terminal state, the wait deadline (30s or the request timeoutMs, whichever
+   * is smaller) or plugin shutdown. On deadline the current queued/running
+   * view is returned and the job stays queryable through `status`/`cancel`.
+   */
+  async waitForFrameJob(started, params) {
+    const budget = Math.min(FRAME_WAIT_MAX_MS, params.timeoutMs !== undefined ? params.timeoutMs : FRAME_WAIT_MAX_MS);
+    const deadline = Date.now() + budget;
+    let view = started;
+    while (TERMINAL_JOB_STATES.includes(view.state) === false) {
+      // Never hold dispose/closing open for the poll interval or the deadline.
+      if (this.closing || this.disposed) {
+        throw new BridgeError('E_WORKER_DISPOSED', 'The video service is stopping', { stage: 'lifecycle' });
+      }
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) break;
+      await new Promise((resolve) => setTimeout(resolve, Math.min(FRAME_WAIT_INTERVAL_MS, remaining)));
+      view = await this.callClient('status', { jobId: started.jobId });
+      if (
+        view === null ||
+        typeof view !== 'object' ||
+        view.jobId !== started.jobId ||
+        view.projectId !== params.projectId ||
+        view.revision !== params.revision
+      ) {
+        throw new BridgeError('E_WORKER_RESPONSE', 'The worker returned an invalid job status', { stage: 'response' });
+      }
+    }
+    return view;
+  }
+
+  /**
+   * Hand a settled successful frame to the Agent workspace: re-read the
+   * artifact through readArtifact (so name/hash/bytes/realpath are verified
+   * again), then replace the fixed workspace-relative PNG used by read_image.
+   * Only `wait:true` succeeded views with an artifact are eligible.
+   *
+   * The replacement goes through a same-directory exclusive temporary file and
+   * `rename`, so a pre-existing `latest.png` symlink is replaced as a directory
+   * entry instead of being followed, and the published file always has the
+   * 0600 mode regardless of the previous file's mode. A disabled Session, an
+   * unavailable root or any copy failure is logged and leaves the successful
+   * job view untouched, so the Tool contract never turns a good render into an
+   * error just because the convenience copy failed.
+   */
+  async publishFrameImage(view, params) {
+    if (view === null || typeof view !== 'object' || view.state !== 'succeeded') return view;
+    const artifact = view.artifact;
+    if (artifact === null || typeof artifact !== 'object' || typeof artifact.jobId !== 'string') return view;
+    if (artifact.jobId !== view.jobId) return view;
+    // Never touch the worker or the workspace while the plugin is stopping.
+    if (this.closing || this.disposed) return view;
+    let temporary = null;
+    try {
+      const published = await this.readArtifact(artifact.jobId);
+      const sessionRoot = await this.sessions.projectSessionRoot(params.projectId);
+      const directory = join(sessionRoot, FRAME_IMAGE_DIR);
+      await mkdir(directory, { recursive: true, mode: 0o700 });
+      // The Session workspace is agent-writable: refuse a symlinked directory
+      // that resolves outside the trusted per-project root.
+      const realDirectory = await realpath(directory);
+      if (inside(sessionRoot, realDirectory) === false) throw new Error('frame image directory escaped the Session root');
+      // Never publish a convenience copy while the plugin is stopping.
+      if (this.closing || this.disposed) return view;
+      temporary = join(realDirectory, `.latest-${randomBytes(8).toString('hex')}.tmp`);
+      await writeFile(temporary, published.bytes, { mode: 0o600, flag: 'wx' });
+      // rename(2) replaces the directory entry itself: it never follows a
+      // symlink planted at latest.png, and the new inode keeps mode 0600.
+      await rename(temporary, join(realDirectory, FRAME_IMAGE_FILE));
+      temporary = null;
+      return { ...view, frameImage: FRAME_IMAGE_PATH };
+    } catch (error) {
+      if (temporary !== null) {
+        try {
+          await unlink(temporary);
+        } catch (_ignored) {
+          /* best-effort private temp cleanup */
+        }
+      }
+      this.log(error, 'frame image publish');
+      return view;
+    }
   }
 
   /**
