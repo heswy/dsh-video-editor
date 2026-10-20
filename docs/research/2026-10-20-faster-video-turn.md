@@ -56,19 +56,26 @@
   - 证据 JSON：`artifacts/p3-015/evidence/staging-frame-batch-*.json`；contact sheet：`artifacts/p3-015/evidence/contact-sheet-times-0.5-2.5-4.5.png`。
 - `scripts/test-conversation-chain.mjs --staging <alpha.8>`：**261/261**（修复了 test 的 `videoEngineLine` 精确片段回归；证据在 `artifacts/p3-015/evidence/conversation-chain-final/`）。
 
-## 4. 预期收益
+## 4. 真实 DSH 真机验收（2 次真实模型请求，已执行）
 
-| 指标 | 修复前 | 目标 |
-|---|---|---|
-| 简单修改的模型步数 | 14 步 | 3–5 步，整轮 ≤6 步 |
-| 一轮墙钟 | 约 536s | 约 2–3 分钟（取决于模型单步延迟） |
-| 需自检时的工具往返 | 多轮 frame+status+多张 read_image+bash 找图 | 1 次 frame（times+wait）+ 1 次 read_image（frameImage） |
+安装：真实 Plugins 页从 alpha.7 卸载 → 添加固定 staging bundle → 启用，详情 **v0.3.0-alpha.8 / 1 of 1 运行中**（来源 `artifacts/p2-b/staging-alpha8-faster-turn-cf7e593/bundle`，INTEGRITY `988302e9…`；client.js 与 alpha.7 同字节 `5ae8c69d…`）。用户原工程/旧 staging 未改写；测试用球工程字节副本（`proj-mveprihs-86ab8473`，index.html sha256 与原件一致 `e5691b24…`）。
 
-以上是设计目标与组件/真引擎证据；真实模型是否按快路径执行、真实耗时下降幅度必须在 DSH 真机验收中测量，不能由本文件替代。
+模型：`deepseek-account / deepseek-flash / reasoningEffort=max`，与 536s 基线同一模型/推理等级；测试后已恢复用户默认 `opencode-go / deepseek-v4.1-flash / low`。
 
-## 5. 未验证、风险与下一步
+| 请求 | 内容 | 步数 | 墙钟（请求→完成） | tool 调用 | revision / duration |
+|---|---|---|---|---|---|
+| 1 | 把球换成足球 | **3** | **44.2s**（turn 42.5s；llm 42.2s / tool 0.09s） | 2：project.source → project.compose | `f60fa6c…` → `66e401f…` / 5s |
+| 2 | 把时长改成 8 秒，并让球落地更有弹性 | **2** | **39.3s**（turn 37.4s；llm 37.1s / tool 0.16s） | 1：project.compose | `66e401f…` → `d73089e…` / 8s |
 
-- 未安装 alpha.8、未发真实模型请求、未合并 main；用户当前 alpha.7 安装与作品未改动。
-- 未验证：真实 DSH `read_image` 相对路径闭环、真实模型快路径遵循度与耗时 A/B、安装后的 client/Host 热切换表现。
-- 风险：模型可能仍选择额外验证步骤；prompt 收益依赖模型行为；`frameImage` 目录若被 Agent 预置为宽权限不会主动收紧（文件 0600、符号链接已防）；wait 超时后 status 可查与“不要轮询”提示有轻微张力；强杀可能残留 `.latest-*.tmp`。
-- 建议真机验收（需用户当次授权）：Plugin Manager 替换安装 alpha.8 → 专用工程 ≤2 次真实模型请求（同类修改）→ 记录步数/耗时与左侧自动更新 → 对比 536s/14 步基线；回滚 alpha.7 staging 路径已记录在任务文件。
+对比基线（同模型/同工程题材）：**536s / 14 步 / 40 次工具调用**（video_engine 23、bash 6、read_image 10、glob 1）→ **44.2s/39.3s、3/2 步、合计 3 次 video_engine、0 次 bash/read_image/glob/frame/status**。两轮均为 `completed`；第一轮 source→compose 的 2 次调用即完成发布，第二轮直接 compose（复用上下文中已有 HTML 与 revision）即完成 8s 改造。
+
+左侧自动更新（真实 DSH Web GUI）：request 1 后 preview `data-canvas-phase=ready`、revision=`66e401f…`，播放到 `2.50 / 5.00` 显示足球；request 2 后 revision=`d73089e…`、seek 变为 `0.00 / 8.00`，播放到 `3.98 / 8.00` 显示 8 秒弹性动画。截图：`artifacts/p3-015/evidence/live1-soccer-ball-preview.png`、`live2-8s-preview.png`、`final-installed-state-preview.png`；汇总：`live-acceptance-2026-10-20.json`。
+
+投递口径：请求通过 Host 原生 `sessionController.prompt`（`/api/session/prompt` RPC，与原生 Composer/codex-bridge 同一 Host 方法）发到已绑定视频 Session；外部 Web GUI 页面没有插件内嵌 native-conversation kit（`data-session=unavailable`），因此没有在右栏 Composer 自动键入。模型、prompt context、`video_engine` tool scope、worker 与左侧预览均为真实 DSH 路径。测试后插件已重新加载为干净状态（只保留 demo + 球工程副本），未使用的临时唯一工程已移除。
+
+## 5. 剩余未验证、风险与下一步
+
+- 未在插件右栏内嵌 Composer 自动输入（上述外部页面限制）；用户桌面窗口右栏走同一原生 Session 控制器，但本轮未由自动化实际键入。
+- 两轮请求均为简单修改、未触发视觉自检，因此 `frame→frameImage→read_image` 未在真机模型轮次出现；该路径由固定 staging 真引擎/工具级测试覆盖，复杂修改时的模型行为需后续真实使用观察。
+- 残余风险：模型仍可能选择额外验证步骤；`frameImage` 目录若被 Agent 预置为宽权限不会主动收紧（文件 0600、符号链接已防）；wait 超时后 status 可查与“不要轮询”提示有轻微张力；强杀可能残留 `.latest-*.tmp`。
+- 下一步：按用户授权合并 PR #9；保持 alpha.8 安装启用供正常使用；回滚 alpha.7 staging `artifacts/p2-b/staging-alpha7-preview-public-0deef8f-bf38fd6/bundle`。
