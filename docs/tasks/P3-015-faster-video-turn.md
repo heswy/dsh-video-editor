@@ -1,6 +1,6 @@
 # P3-015 视频创作 turn 提速（快路径提示 + frame 批量自检）
 
-日期：2026-10-20（Asia/Shanghai）。状态：**代码/测试/固定 staging 完成，PR 待复审与合并；未安装、未发真实模型请求、未合并 main。**
+日期：2026-10-20（Asia/Shanghai）。状态：**代码/测试/固定 staging 完成，draft PR #9 待复审与合并；未安装、未发真实模型请求、未合并 main。**
 
 - 分支：`codex/faster-video-turn`（base `origin/main` `1672a42`），隔离 worktree `dsh-video-editor-worktrees/faster-video-turn`
 - 代码提交：`191274e`（实现+测试+alpha.8 bump）、`cf7e593`（恢复 conversation-chain 所需提示片段）；本文件所在 docs 提交为证据记录，不改变运行时文件

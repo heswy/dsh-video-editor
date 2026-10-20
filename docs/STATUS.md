@@ -19,6 +19,6 @@
 
 ## 下一步
 
-用户以已安装 alpha.7 继续实机测试；P3-015 提速分支/PR 待复审。若用户授权安装 alpha.8：用受支持 Plugin Manager 替换当前插件（回滚路径 alpha.7 staging 已记录；client.js 未变，通常无需重启），随后在任务专用工程中用 **≤2 次真实模型请求**做“同类修改前后”步数与耗时对比，通过后再决定合并 main。安装/重启/发布/合并按当次授权；保留旧 staging、用户工程与作品，不 reset/clean/强推。
+用户以已安装 alpha.7 继续实机测试；P3-015 提速分支/PR #9（draft）待复审。若用户授权安装 alpha.8：用受支持 Plugin Manager 替换当前插件（回滚路径 alpha.7 staging 已记录；client.js 未变，通常无需重启），随后在任务专用工程中用 **≤2 次真实模型请求**做“同类修改前后”步数与耗时对比，通过后再决定合并 main。安装/重启/发布/合并按当次授权；保留旧 staging、用户工程与作品，不 reset/clean/强推。
 
 规则：[DEVELOPMENT](DEVELOPMENT.md)；当前入口：[handoffs/README](handoffs/README.md)；产品：[PRODUCT](product/PRODUCT.md)；预览修复：[预览管线修复](research/2026-10-19-preview-pipeline-fixes.md)；提速记录：[P3-015](research/2026-10-20-faster-video-turn.md)。
