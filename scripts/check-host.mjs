@@ -20,8 +20,8 @@
  */
 
 import { createHash } from 'node:crypto';
-import { access, mkdtemp, mkdir, readFile, readdir, realpath, rm, symlink, utimes, writeFile } from 'node:fs/promises';
-import { basename, join } from 'node:path';
+import { access, chmod, lstat, mkdtemp, mkdir, readFile, readdir, realpath, rm, stat, symlink, utimes, writeFile } from 'node:fs/promises';
+import { basename, isAbsolute, join } from 'node:path';
 import { homedir, tmpdir } from 'node:os';
 import { pathToFileURL } from 'node:url';
 import { VideoBridge } from '../host/bridge.js';
@@ -143,6 +143,11 @@ async function rejects(fn) {
     return error;
   }
   throw new Error('expected rejection');
+}
+
+/** One fixed short pause for Host polling/lifecycle timing assertions. */
+function sleep(ms) {
+  return new Promise((resolveSleep) => setTimeout(resolveSleep, ms));
 }
 
 async function makeWorkspace(overrides) {
@@ -655,6 +660,481 @@ async function main() {
     await limited.bridge.invoke('frame', { projectId: PROJECT, revision: REVISION, time: 1 });
     const limitError = await rejects(() => limited.bridge.readArtifact(JOB_ID));
     assert(limitError.code === 'E_ARTIFACT_LIMIT', `oversize artifact: ${limitError.code}`);
+  });
+
+  await run('P3-015: Host validates frame times and the time/times split before the worker starts', async () => {
+    const workspace = await makeWorkspace();
+    const { bridge, engine } = makeBridge(workspace, {
+      handler: (method, params) => (method === 'frame' ? jobResponse(method, params) : {}),
+    });
+    const frame = (extra) => Object.assign({ projectId: PROJECT, revision: REVISION }, extra || {});
+    const invalid = [
+      ['both time and times', frame({ time: 1, times: [1] })],
+      ['neither time nor times', frame()],
+      ['times not an array', frame({ times: '1,2' })],
+      ['empty times', frame({ times: [] })],
+      ['more than four times', frame({ times: [0, 1, 2, 3, 4] })],
+      ['duplicate times', frame({ times: [1, 1] })],
+      ['duplicate at millisecond precision', frame({ times: [2.5, 2.5004] })],
+      ['negative time', frame({ times: [-0.001] })],
+      ['out-of-range time', frame({ times: [3600] })],
+      ['non-numeric time', frame({ times: ['1'] })],
+      ['NaN time', frame({ times: [Number.NaN] })],
+      ['infinite time', frame({ times: [Number.POSITIVE_INFINITY] })],
+      ['non-boolean wait', frame({ time: 1, wait: 'true' })],
+      ['unknown frame parameter', frame({ time: 1, paths: ['/tmp/x.png'] })],
+    ];
+    for (const [label, params] of invalid) {
+      const error = await rejects(() => bridge.invoke('frame', params));
+      assert(error instanceof BridgeError && error.code === 'E_PARAMS', `${label}: unexpected ${error && error.code}`);
+    }
+    // render keeps its own field set: time, times and wait are frame-only.
+    for (const extra of [{ time: 1 }, { times: [1] }, { wait: true }]) {
+      const error = await rejects(() => bridge.invoke('render', Object.assign({ projectId: PROJECT, revision: REVISION }, extra)));
+      assert(error.code === 'E_PARAMS', `render accepted ${Object.keys(extra)[0]}: ${error.code}`);
+    }
+    assert(engine.instances.length === 0, 'a rejected frame/render request started the worker');
+  });
+
+  await run('P3-015: frame times canonicalize ascending and wait stays Host-only', async () => {
+    const workspace = await makeWorkspace();
+    const statusView = Object.assign(jobResponse('frame', { projectId: PROJECT, revision: REVISION }), {
+      state: 'succeeded',
+      times: [0.25, 1, 2.5],
+      artifact: artifactFor(`${JOB_ID}.png`, PNG, PNG_HASH),
+    });
+    const { bridge, engine } = makeBridge(workspace, {
+      handler: (method, params) => {
+        if (method === 'frame') return jobResponse(method, params);
+        if (method === 'status') return statusView;
+        return {};
+      },
+    });
+    const waited = await bridge.invoke('frame', { projectId: PROJECT, revision: REVISION, times: [2.5, 0.25, 1], wait: true, timeoutMs: 5000 });
+    assert(waited.state === 'succeeded', `wait did not return the terminal view: ${waited.state}`);
+    assert(JSON.stringify(waited.times) === JSON.stringify([0.25, 1, 2.5]), `wait lost the canonical times: ${JSON.stringify(waited.times)}`);
+    const client = engine.instances[0];
+    const frameRequest = client.requests.find((entry) => entry.method === 'frame');
+    assert(frameRequest !== undefined, 'wait:true never reached the worker');
+    assert(
+      JSON.stringify(frameRequest.params) === JSON.stringify({ projectId: PROJECT, revision: REVISION, times: [0.25, 1, 2.5], timeoutMs: 5000 }),
+      `the worker frame request changed: ${JSON.stringify(frameRequest.params)}`
+    );
+    assert(Object.prototype.hasOwnProperty.call(frameRequest.params, 'wait') === false, 'the Host-only wait reached the worker');
+    assert(client.requests.some((entry) => entry.method === 'status'), 'wait did not poll the worker status');
+    // The settled view carries names only, never a Host path.
+    const serialized = JSON.stringify(waited);
+    for (const leaked of [workspace.root, workspace.projectDir, tmpdir(), homedir()]) {
+      assert(!serialized.includes(leaked), `the wait result leaked ${leaked}`);
+    }
+    assert(!/\/(?:Users|home|private|var)\//.test(serialized), `the wait result contains an absolute filesystem path: ${serialized}`);
+
+    // wait:false and a plain legacy frame must not poll at all.
+    const pollsBefore = client.requests.filter((entry) => entry.method === 'status').length;
+    const started = await bridge.invoke('frame', { projectId: PROJECT, revision: REVISION, times: [1, 2], wait: false });
+    assert(started.state === 'queued', `wait:false returned a settled view: ${started.state}`);
+    const pollsAfterFalse = client.requests.filter((entry) => entry.method === 'status').length;
+    assert(pollsAfterFalse === pollsBefore, 'wait:false polled the worker status');
+    const last = client.requests.filter((entry) => entry.method === 'frame').at(-1);
+    assert(JSON.stringify(last.params) === JSON.stringify({ projectId: PROJECT, revision: REVISION, times: [1, 2] }), `wait:false request changed: ${JSON.stringify(last.params)}`);
+    // Boundary + millisecond canonicalization: four accepted entries are
+    // rounded and sorted by the Host before the worker sees them.
+    await bridge.invoke('frame', { projectId: PROJECT, revision: REVISION, times: [3, 1.23456, 0, 2] });
+    const canonical = client.requests.filter((entry) => entry.method === 'frame').at(-1);
+    assert(
+      JSON.stringify(canonical.params.times) === JSON.stringify([0, 1.235, 2, 3]),
+      `the Host times canonicalization changed: ${JSON.stringify(canonical.params.times)}`
+    );
+    await bridge.invoke('frame', { projectId: PROJECT, revision: REVISION, time: 2.5 });
+    assert(client.requests.filter((entry) => entry.method === 'status').length === pollsAfterFalse, 'a frame without wait polled the worker status');
+  });
+
+  await run('P3-015: frame wait expires into the current view and the job stays queryable', async () => {
+    const workspace = await makeWorkspace();
+    let state = 'running';
+    const { bridge, engine } = makeBridge(workspace, {
+      handler: (method, params) => {
+        if (method === 'frame') return jobResponse(method, params);
+        if (method === 'status') {
+          return Object.assign(jobResponse('frame', { projectId: PROJECT, revision: REVISION }), { state, stage: 'snapshot', progress: 0.5 });
+        }
+        return {};
+      },
+    });
+    const startedAt = Date.now();
+    const view = await bridge.invoke('frame', { projectId: PROJECT, revision: REVISION, time: 1, wait: true, timeoutMs: 100 });
+    const elapsed = Date.now() - startedAt;
+    assert(view.state === 'running', `wait returned ${view.state} instead of the current view`);
+    assert(elapsed >= 90, `wait returned before its budget: ${elapsed}ms`);
+    assert(elapsed < 5000, `wait ignored its budget: ${elapsed}ms`);
+    const client = engine.instances[0];
+    const polls = client.requests.filter((entry) => entry.method === 'status').length;
+    assert(polls >= 1 && polls <= 2, `unexpected poll count for a short budget: ${polls}`);
+    // The job stayed registered: a later status reports the terminal result.
+    state = 'succeeded';
+    const status = await bridge.invoke('status', { jobId: view.jobId });
+    assert(status.state === 'succeeded', 'the job was not queryable after the wait expired');
+    // Any terminal state ends the wait immediately (here: failed).
+    state = 'failed';
+    const failed = await bridge.invoke('frame', { projectId: PROJECT, revision: REVISION, time: 1, wait: true, timeoutMs: 2000 });
+    assert(failed.state === 'failed', `wait did not return the failed terminal view: ${failed.state}`);
+  });
+
+  await run('P3-015: frame wait rejects disagreeing status views, preserves the Tool bound and drains on dispose', async () => {
+    const workspace = await makeWorkspace();
+    let statusMode = 'project';
+    const { bridge } = makeBridge(workspace, {
+      handler: (method, params) => {
+        if (method === 'frame') return jobResponse(method, params);
+        if (method === 'status') {
+          const view = Object.assign(jobResponse('frame', { projectId: PROJECT, revision: REVISION }), { state: 'running' });
+          if (statusMode === 'project') view.projectId = 'other';
+          if (statusMode === 'revision') view.revision = 'f'.repeat(64);
+          if (statusMode === 'job') view.jobId = '22222222-2222-4333-8444-555555555555';
+          return view;
+        }
+        return {};
+      },
+    });
+    for (const mode of ['project', 'revision', 'job']) {
+      statusMode = mode;
+      const error = await rejects(() => bridge.invoke('frame', { projectId: PROJECT, revision: REVISION, time: 1, wait: true, timeoutMs: 1000 }));
+      assert(error instanceof BridgeError && error.code === 'E_WORKER_RESPONSE', `${mode} mismatch: unexpected ${error && error.code}`);
+    }
+
+    // A settled wait result passes the same 64 KiB Tool budget as any Tool result.
+    const budgetWorkspace = await makeWorkspace();
+    const budgetBag = makeCtx(budgetWorkspace);
+    const oversizedView = Object.assign(jobResponse('frame', { projectId: PROJECT, revision: REVISION }), {
+      state: 'succeeded',
+      blob: 'x'.repeat(TOOL_RESULT_BYTES + 512),
+    });
+    const budget = makeBridge(budgetWorkspace, {
+      handler: (method) => (method === 'frame' ? jobResponse('frame', { projectId: PROJECT, revision: REVISION }) : method === 'status' ? oversizedView : {}),
+    }, budgetBag.ctx);
+    const sessionId = await createBoundSession(budget.bridge);
+    const limitError = await rejects(() => budget.bridge.invoke('frame', { projectId: PROJECT, revision: REVISION, time: 1, wait: true, timeoutMs: 1000 }, { source: 'tool', agentSessionId: sessionId }));
+    assert(limitError.code === 'E_RESULT_LIMIT', `the wait result bypassed TOOL_RESULT_BYTES: ${limitError.code}`);
+
+    // dispose during a wait must not hang: the wait rejects and dispose resolves.
+    const stopWorkspace = await makeWorkspace();
+    const stop = makeBridge(stopWorkspace, {
+      handler: (method, params) => {
+        if (method === 'frame') return jobResponse(method, params);
+        if (method === 'status') return Object.assign(jobResponse('frame', { projectId: PROJECT, revision: REVISION }), { state: 'running' });
+        return {};
+      },
+    });
+    const pending = stop.bridge.invoke('frame', { projectId: PROJECT, revision: REVISION, time: 1, wait: true, timeoutMs: 30000 });
+    const settled = pending.then(() => 'resolved', () => 'rejected');
+    await sleep(50);
+    const disposeStarted = Date.now();
+    const disposing = stop.bridge.dispose();
+    const stopError = await rejects(() => pending);
+    assert(stopError.code === 'E_WORKER_DISPOSED', `wait during dispose: unexpected ${stopError.code}`);
+    assert((await settled) === 'rejected', 'the wait unexpectedly resolved during dispose');
+    await disposing;
+    assert(Date.now() - disposeStarted < 5000, 'dispose hung on the frame wait');
+    assert(stop.engine.instances[0].disposeCount === 1, 'the worker was not disposed exactly once');
+  });
+
+  await run('P3-015: legacy frame time and render stay compatible and bounded', async () => {
+    const workspace = await makeWorkspace();
+    const { bridge, engine } = makeBridge(workspace, {
+      handler: (method, params) => (method === 'frame' || method === 'render' ? jobResponse(method, params) : {}),
+    });
+    const frame = await bridge.invoke('frame', { projectId: PROJECT, revision: REVISION, time: 2.5 });
+    assert(frame.state === 'queued' && frame.jobId === JOB_ID, 'the legacy frame view changed');
+    assert(Object.prototype.hasOwnProperty.call(frame, 'times') === false, 'the legacy frame view gained a batch field');
+    const render = await bridge.invoke('render', { projectId: PROJECT, revision: REVISION, timeoutMs: 2000 });
+    assert(render.kind === 'render' && render.state === 'queued', 'the render job view changed');
+    const client = engine.instances[0];
+    assert(
+      JSON.stringify(client.requests.find((entry) => entry.method === 'frame').params) === JSON.stringify({ projectId: PROJECT, revision: REVISION, time: 2.5 }),
+      'the legacy frame request changed'
+    );
+    assert(
+      JSON.stringify(client.requests.find((entry) => entry.method === 'render').params) === JSON.stringify({ projectId: PROJECT, revision: REVISION, timeoutMs: 2000 }),
+      'the render request changed'
+    );
+    assert(client.requests.every((entry) => entry.method !== 'status'), 'a normal frame/render polled status');
+    // A single entry in `times` still reaches the worker as a batch; the worker
+    // keeps the legacy single-frame result for it.
+    await bridge.invoke('frame', { projectId: PROJECT, revision: REVISION, times: [1.5] });
+    const batched = client.requests.filter((entry) => entry.method === 'frame').at(-1);
+    assert(JSON.stringify(batched.params) === JSON.stringify({ projectId: PROJECT, revision: REVISION, times: [1.5] }), 'single-entry times was not forwarded as a batch');
+    const serialized = JSON.stringify([frame, render]);
+    assert(Buffer.byteLength(serialized, 'utf8') <= TOOL_RESULT_BYTES, 'a frame/render result exceeds the Tool byte budget');
+    assert(!/\/(?:Users|home|private|var)\//.test(serialized), 'a frame/render result contains an absolute filesystem path');
+  });
+
+  await run('P3-015: a settled frame wait publishes a bounded workspace-relative frameImage', async () => {
+    const workspace = await makeWorkspace();
+    // A second, distinct 1x1 PNG proves the fixed name is replaced, not appended.
+    const SECOND_PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+    await writeFile(join(workspace.outputRoot, `${JOB_ID}.png`), PNG);
+    let artifact = artifactFor(`${JOB_ID}.png`, PNG, PNG_HASH);
+    const { bridge, engine } = makeBridge(workspace, {
+      handler: (method, params) => {
+        if (method === 'frame') return jobResponse(method, params);
+        if (method === 'status') {
+          return Object.assign(jobResponse('frame', { projectId: PROJECT, revision: REVISION }), {
+            state: 'succeeded',
+            stage: 'finished',
+            times: [0.5, 2.5],
+            artifact,
+          });
+        }
+        return {};
+      },
+    });
+    const waited = await bridge.invoke('frame', { projectId: PROJECT, revision: REVISION, times: [2.5, 0.5], wait: true, timeoutMs: 5000 });
+    assert(waited.state === 'succeeded', `wait did not settle: ${waited.state}`);
+    assert(waited.frameImage === '.dsh-video-frames/latest.png', `unexpected frameImage: ${JSON.stringify(waited.frameImage)}`);
+    assert(isAbsolute(waited.frameImage) === false, 'frameImage is not a workspace-relative path');
+    assert(JSON.stringify(waited.times) === JSON.stringify([0.5, 2.5]), 'the settled view lost its batch times');
+    // The Host re-verifies the artifact through readArtifact before publishing,
+    // which costs one extra worker status call on top of the wait poll.
+    const statusCalls = engine.instances[0].requests.filter((entry) => entry.method === 'status').length;
+    assert(statusCalls >= 2, `the published frameImage was not re-verified through readArtifact (${statusCalls} status calls)`);
+    const frameRoot = join(workspace.sessionCwd, PROJECT, '.dsh-video-frames');
+    const frameFile = join(frameRoot, 'latest.png');
+    assert(await exists(frameFile), 'the frameImage file was not written under the project Session workspace');
+    assert(Buffer.compare(await readFile(frameFile), PNG) === 0, 'the frameImage bytes differ from the verified artifact');
+    assert(((await stat(frameFile)).mode & 0o077) === 0, 'the frameImage file is not owner-only');
+    assert(((await stat(frameRoot)).mode & 0o077) === 0, 'the frameImage directory is not owner-only');
+    const serialized = JSON.stringify(waited);
+    for (const leaked of [workspace.root, workspace.sessionCwd, tmpdir(), homedir()]) {
+      assert(!serialized.includes(leaked), `the frameImage result leaked ${leaked}`);
+    }
+    assert(!/\/(?:Users|home|private|var|tmp)\//.test(serialized), `the frameImage result contains an absolute filesystem path: ${serialized}`);
+    assert(Buffer.byteLength(serialized, 'utf8') <= TOOL_RESULT_BYTES, 'the frameImage result exceeds the Tool byte budget');
+    assert(
+      engine.instances[0].requests.every((entry) => entry.method !== 'frame' || Object.prototype.hasOwnProperty.call(entry.params, 'frameImage') === false),
+      'the Host-only frameImage reached the worker'
+    );
+
+    // The fixed name replaces the previous image instead of accumulating files.
+    artifact = artifactFor(`${JOB_ID}.png`, SECOND_PNG, createHash('sha256').update(SECOND_PNG).digest('hex'));
+    await writeFile(join(workspace.outputRoot, `${JOB_ID}.png`), SECOND_PNG);
+    const again = await bridge.invoke('frame', { projectId: PROJECT, revision: REVISION, time: 1, wait: true, timeoutMs: 5000 });
+    assert(again.frameImage === '.dsh-video-frames/latest.png', 'the second settled wait lost its frameImage');
+    assert(Buffer.compare(await readFile(frameFile), SECOND_PNG) === 0, 'the fixed frameImage name was not overwritten');
+    assert(JSON.stringify((await readdir(frameRoot)).sort()) === JSON.stringify(['latest.png']), 'the frameImage directory accumulated files');
+  });
+
+  await run('P3-015: a settled frameImage replaces a planted symlink atomically and resets permissions', async () => {
+    const workspace = await makeWorkspace();
+    const SECOND_PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+    // A sentinel outside the project Session workspace: a following write would
+    // overwrite it, an atomic directory-entry replace leaves it untouched.
+    const outsideTarget = join(workspace.root, 'outside-sentinel.bin');
+    const sentinel = Buffer.from('sentinel-outside-the-session-workspace');
+    await writeFile(outsideTarget, sentinel);
+    const frameRoot = join(workspace.sessionCwd, PROJECT, '.dsh-video-frames');
+    const frameFile = join(frameRoot, 'latest.png');
+    // The Host normally creates this directory itself with mode 0700; the
+    // symlink is the only agent-planted part of the fixture.
+    await mkdir(frameRoot, { recursive: true, mode: 0o700 });
+    await symlink(outsideTarget, frameFile);
+    assert((await lstat(frameFile)).isSymbolicLink() === true, 'the regression fixture did not plant a symlink');
+    await writeFile(join(workspace.outputRoot, `${JOB_ID}.png`), PNG);
+    let artifact = artifactFor(`${JOB_ID}.png`, PNG, PNG_HASH);
+    const { bridge } = makeBridge(workspace, {
+      handler: (method, params) => {
+        if (method === 'frame') return jobResponse(method, params);
+        if (method === 'status') {
+          return Object.assign(jobResponse('frame', { projectId: PROJECT, revision: REVISION }), { state: 'succeeded', stage: 'finished', artifact });
+        }
+        return {};
+      },
+    });
+    const waited = await bridge.invoke('frame', { projectId: PROJECT, revision: REVISION, times: [0.5, 2.5], wait: true, timeoutMs: 5000 });
+    assert(waited.frameImage === '.dsh-video-frames/latest.png', `unexpected frameImage: ${JSON.stringify(waited.frameImage)}`);
+    // The planted symlink target outside the workspace was never followed...
+    assert(Buffer.compare(await readFile(outsideTarget), sentinel) === 0, 'the planted symlink target was overwritten');
+    // ...and the fixed name is now a regular file holding the verified bytes.
+    const published = await lstat(frameFile);
+    assert(published.isSymbolicLink() === false, 'latest.png is still a symlink');
+    assert(published.isFile() === true, 'latest.png is not a regular file');
+    assert(Buffer.compare(await readFile(frameFile), PNG) === 0, 'the published frameImage bytes differ from the artifact');
+    assert((published.mode & 0o077) === 0, 'the published frameImage is not owner-only');
+    assert(((await stat(frameRoot)).mode & 0o077) === 0, 'the frameImage directory is not owner-only');
+    assert(JSON.stringify((await readdir(frameRoot)).sort()) === JSON.stringify(['latest.png']), 'the atomic replace left a temporary file behind');
+    const serialized = JSON.stringify(waited);
+    for (const leaked of [workspace.root, workspace.sessionCwd, tmpdir(), homedir(), outsideTarget]) {
+      assert(!serialized.includes(leaked), `the frameImage result leaked ${leaked}`);
+    }
+    assert(!/\/(?:Users|home|private|var|tmp)\//.test(serialized), `the frameImage result contains an absolute filesystem path: ${serialized}`);
+    assert(Buffer.byteLength(serialized, 'utf8') <= TOOL_RESULT_BYTES, 'the frameImage result exceeds the Tool byte budget');
+
+    // A previously widened mode is replaced by the new 0600 inode.
+    await chmod(frameFile, 0o666);
+    artifact = artifactFor(`${JOB_ID}.png`, SECOND_PNG, createHash('sha256').update(SECOND_PNG).digest('hex'));
+    await writeFile(join(workspace.outputRoot, `${JOB_ID}.png`), SECOND_PNG);
+    const again = await bridge.invoke('frame', { projectId: PROJECT, revision: REVISION, time: 1, wait: true, timeoutMs: 5000 });
+    assert(again.frameImage === '.dsh-video-frames/latest.png', 'the second settled wait lost its frameImage');
+    const replaced = await lstat(frameFile);
+    assert(replaced.isFile() === true && replaced.isSymbolicLink() === false, 'the replaced frameImage is not a regular file');
+    assert((replaced.mode & 0o077) === 0, `the widened frameImage permission survived the replace: ${(replaced.mode & 0o777).toString(8)}`);
+    assert(Buffer.compare(await readFile(frameFile), SECOND_PNG) === 0, 'the replaced frameImage bytes differ from the second artifact');
+    assert(Buffer.compare(await readFile(outsideTarget), sentinel) === 0, 'the second replace touched the outside target');
+    assert(JSON.stringify((await readdir(frameRoot)).sort()) === JSON.stringify(['latest.png']), 'temporary files accumulated across replaces');
+  });
+
+  await run('P3-015: frameImage publish degrades on a bad directory and ignores a mismatched job id', async () => {
+    const workspace = await makeWorkspace();
+    await writeFile(join(workspace.outputRoot, `${JOB_ID}.png`), PNG);
+    const artifact = artifactFor(`${JOB_ID}.png`, PNG, PNG_HASH);
+    const projectRoot = join(workspace.sessionCwd, PROJECT);
+    const frameRoot = join(projectRoot, '.dsh-video-frames');
+    await mkdir(projectRoot, { recursive: true });
+    // A plain file where the directory belongs makes mkdir/write fail; the
+    // successful job view must survive without the convenience field.
+    await writeFile(frameRoot, 'not-a-directory');
+    const { bridge } = makeBridge(workspace, {
+      handler: (method, params) => {
+        if (method === 'frame') return jobResponse(method, params);
+        if (method === 'status') {
+          return Object.assign(jobResponse('frame', { projectId: PROJECT, revision: REVISION }), { state: 'succeeded', stage: 'finished', artifact });
+        }
+        return {};
+      },
+    });
+    const degraded = await bridge.invoke('frame', { projectId: PROJECT, revision: REVISION, time: 1, wait: true, timeoutMs: 5000 });
+    assert(degraded.state === 'succeeded', `a publish failure changed the job view: ${degraded.state}`);
+    assert(Object.prototype.hasOwnProperty.call(degraded, 'frameImage') === false, 'frameImage was published through a failed directory');
+    assert((await lstat(frameRoot)).isFile() === true, 'the failed publish replaced the blocking file');
+    assert((await readFile(frameRoot, 'utf8')) === 'not-a-directory', 'the failed publish changed the blocking file');
+    const degradedJson = JSON.stringify(degraded);
+    assert(!degradedJson.includes(workspace.root) && !/\/(?:Users|home|private|var|tmp)\//.test(degradedJson), 'the degraded result leaked an absolute path');
+
+    // A rename that cannot replace the fixed name must clean its private temp
+    // file and leave the blocking directory untouched.
+    await rm(frameRoot);
+    await mkdir(frameRoot);
+    const blocking = join(frameRoot, 'latest.png');
+    await mkdir(blocking);
+    await writeFile(join(blocking, 'keep.txt'), 'keep');
+    const blocked = await bridge.invoke('frame', { projectId: PROJECT, revision: REVISION, time: 1, wait: true, timeoutMs: 5000 });
+    assert(blocked.state === 'succeeded' && Object.prototype.hasOwnProperty.call(blocked, 'frameImage') === false, 'a failed rename published frameImage');
+    assert((await lstat(blocking)).isDirectory() === true, 'the failed rename replaced the blocking directory');
+    assert((await readFile(join(blocking, 'keep.txt'), 'utf8')) === 'keep', 'the failed rename touched the blocking directory content');
+    const leftovers = (await readdir(frameRoot)).filter((name) => name.endsWith('.tmp'));
+    assert(leftovers.length === 0, `a failed rename left temporary files: ${leftovers.join(', ')}`);
+
+    // A worker view whose artifact belongs to another job is not published, and
+    // an existing file at the fixed name is left untouched.
+    await rm(blocking, { recursive: true, force: true });
+    const keep = Buffer.from('keep-existing-frame');
+    await writeFile(blocking, keep);
+    const mismatched = makeBridge(workspace, {
+      handler: (method, params) => {
+        if (method === 'frame') return jobResponse(method, params);
+        if (method === 'status') {
+          return Object.assign(jobResponse('frame', { projectId: PROJECT, revision: REVISION }), {
+            state: 'succeeded',
+            stage: 'finished',
+            artifact: Object.assign(artifactFor(`${JOB_ID}.png`, PNG, PNG_HASH), { jobId: '22222222-2222-4333-8444-555555555555' }),
+          });
+        }
+        return {};
+      },
+    });
+    const ignored = await mismatched.bridge.invoke('frame', { projectId: PROJECT, revision: REVISION, time: 1, wait: true, timeoutMs: 5000 });
+    assert(ignored.state === 'succeeded', 'the mismatched-job view was not returned as-is');
+    assert(Object.prototype.hasOwnProperty.call(ignored, 'frameImage') === false, 'frameImage was published for a mismatched job id');
+    assert(Buffer.compare(await readFile(join(frameRoot, 'latest.png')), keep) === 0, 'the mismatched job touched the existing frame image');
+    assert(JSON.stringify((await readdir(frameRoot)).sort()) === JSON.stringify(['latest.png']), 'the mismatched job left temporary files');
+    // The mismatch is rejected before any artifact re-verification status call.
+    const statusCalls = mismatched.engine.instances[0].requests.filter((entry) => entry.method === 'status').length;
+    assert(statusCalls === 1, `the mismatched job still re-read the artifact (${statusCalls} status calls)`);
+  });
+
+  await run('P3-015: frameImage is omitted for non-wait, non-succeeded and unverifiable artifacts', async () => {
+    const workspace = await makeWorkspace();
+    let state = 'succeeded';
+    const { bridge, engine } = makeBridge(workspace, {
+      handler: (method, params) => {
+        if (method === 'frame' || method === 'render') return jobResponse(method, params);
+        if (method === 'status') {
+          const view = Object.assign(jobResponse('frame', { projectId: PROJECT, revision: REVISION }), { state, stage: 'finished' });
+          if (state === 'succeeded') view.artifact = artifactFor(`${JOB_ID}.png`, PNG, PNG_HASH);
+          return view;
+        }
+        return {};
+      },
+    });
+    const hasFrameImage = (value) => Object.prototype.hasOwnProperty.call(value, 'frameImage') === true;
+    const degradedFile = join(workspace.sessionCwd, PROJECT, '.dsh-video-frames', 'latest.png');
+    // The legacy non-wait path and render never gain the Host-only field, and
+    // their worker requests stay exactly as before.
+    const plain = await bridge.invoke('frame', { projectId: PROJECT, revision: REVISION, time: 1 });
+    assert(plain.state === 'queued' && !hasFrameImage(plain), 'a non-wait frame result gained frameImage');
+    const lastFrame = engine.instances[0].requests.filter((entry) => entry.method === 'frame').at(-1);
+    assert(JSON.stringify(lastFrame.params) === JSON.stringify({ projectId: PROJECT, revision: REVISION, time: 1 }), 'a non-wait frame request changed');
+    const render = await bridge.invoke('render', { projectId: PROJECT, revision: REVISION, timeoutMs: 1000 });
+    assert(render.state === 'queued' && !hasFrameImage(render), 'a render result gained frameImage');
+    // A wait that expires into the current running view has no final artifact.
+    state = 'running';
+    const running = await bridge.invoke('frame', { projectId: PROJECT, revision: REVISION, time: 1, wait: true, timeoutMs: 100 });
+    assert(running.state === 'running' && !hasFrameImage(running), 'a timed-out frame wait gained frameImage');
+    // A terminal failure is returned as-is.
+    state = 'failed';
+    const failed = await bridge.invoke('frame', { projectId: PROJECT, revision: REVISION, time: 1, wait: true, timeoutMs: 1000 });
+    assert(failed.state === 'failed' && !hasFrameImage(failed), 'a failed frame wait gained frameImage');
+    // A succeeded job whose artifact cannot be re-verified degrades silently:
+    // the successful view is preserved and only the convenience field is omitted.
+    state = 'succeeded';
+    const degraded = await bridge.invoke('frame', { projectId: PROJECT, revision: REVISION, time: 1, wait: true, timeoutMs: 1000 });
+    assert(degraded.state === 'succeeded', `degradation changed the job view: ${degraded.state}`);
+    assert(!hasFrameImage(degraded), 'frameImage was published without a verifiable artifact');
+    const degradedJson = JSON.stringify(degraded);
+    assert(!degradedJson.includes(workspace.root) && !/\/(?:Users|home|private|var|tmp)\//.test(degradedJson), 'the degraded result leaked an absolute path');
+    assert(!(await exists(degradedFile)), 'a degraded copy still wrote the frame image');
+    // The job stays queryable and the worker never received the Host-only semantics.
+    const status = await bridge.invoke('status', { jobId: JOB_ID });
+    assert(status.state === 'succeeded', 'the degraded job is not status-queryable');
+    assert(
+      engine.instances[0].requests.every((entry) => entry.method !== 'frame' || Object.prototype.hasOwnProperty.call(entry.params, 'wait') === false),
+      'the Host-only wait reached the worker'
+    );
+  });
+
+  await run('P3-015: Tool schema and description expose the one-call frame self-check', async () => {
+    const calls = [];
+    const tool = createVideoTool({
+      async invoke(method, params) {
+        calls.push({ method, params });
+        return { jobId: JOB_ID, projectId: params.projectId, revision: params.revision, kind: 'frame', state: 'queued' };
+      },
+    });
+    const properties = tool.parameters.properties;
+    assert(properties.times !== undefined && properties.times.type === 'array', 'the Tool has no times parameter');
+    assert(properties.times.minItems === 1 && properties.times.maxItems === 4, 'the Tool times bounds are wrong');
+    assert(properties.times.items.type === 'number', 'the Tool times items are not numbers');
+    assert(String(properties.times.description).includes('contact sheet'), 'the times description lost the contact sheet');
+    assert(String(properties.times.description).includes('exactly one of time or times'), 'the times description lost the time/times split');
+    assert(properties.wait !== undefined && properties.wait.type === 'boolean', 'the Tool has no wait parameter');
+    for (const fragment of ['terminal', '30 seconds', 'status']) {
+      assert(String(properties.wait.description).includes(fragment), `the wait description is missing "${fragment}"`);
+    }
+    assert(String(properties.time.description).includes('legacy'), 'the legacy time description changed');
+
+    await tool.execute({ action: 'frame', projectId: PROJECT, revision: REVISION, times: [0.5, 2.5], wait: true }, {});
+    assert(calls.length === 1 && calls[0].method === 'frame', 'the Tool did not dispatch frame');
+    assert(
+      JSON.stringify(calls[0].params) === JSON.stringify({ projectId: PROJECT, revision: REVISION, times: [0.5, 2.5], wait: true }),
+      `Tool frame params were altered: ${JSON.stringify(calls[0].params)}`
+    );
+    const renderError = await rejects(() => tool.execute({ action: 'render', projectId: PROJECT, revision: REVISION, wait: true }, {}));
+    assert(renderError.message.includes('E_PARAMS'), 'the Tool forwarded wait to render');
+
+    const description = String(tool.description);
+    for (const fragment of ['wait:true', 'up to 3 times', 'contact-sheet', 'read that image at most once', 'do not render locally', 'shell/file probing', 'frameImage', 'workspace-relative PNG path', 'pass directly to read_image']) {
+      assert(description.includes(fragment), `the Tool description is missing "${fragment}"`);
+    }
+    assert(!/\/(?:Users|home|private|var|tmp)\//.test(description), 'the Tool description leaked an absolute path');
   });
 
   await run('request route enforces JSON/body/typed dispatch and maps errors', async () => {
@@ -1826,6 +2306,10 @@ async function main() {
     let text = contextTextFor(bag, sessionId);
     assert(typeof text === 'string' && text.includes(NEXT_REVISION), 'the next prompt context does not carry the published revision');
     assert(text.includes('free-form composition'), 'the next prompt context lost the free-form composition edit path');
+    // The facts-augmented (near worst-case) context still fits the budget and
+    // keeps the frameImage hand-off, not only the facts-free fallback.
+    assert(text.length <= 4000, `the composition prompt context exceeds its budget: ${text.length}`);
+    assert(text.includes('A succeeded frame wait result includes frameImage'), 'the composition prompt context lost the frameImage hand-off');
 
     // A later inspect of the same free-form project refreshes revision + mode.
     await bridge.invoke('inspect', { projectId: PROJECT }, { source: 'http' });
@@ -1865,12 +2349,45 @@ async function main() {
       'never retry with the stale revision',
       'Never write project files',
       'never search the plugin source repository',
+      // P3-015: fast edit path, no local render/debug loop, bounded visual
+      // verification and a hard step budget all have to survive the 4000-char
+      // line budget; each fragment names one regression-prone instruction.
+      'Fast path: when the project facts include a Last known project revision, skip inspect',
+      'once for the full HTML (the reliable base), then compose',
+      'only without a revision or when you need scene/element facts',
+      'Never poll status/close/history/undo/redo',
+      'Visual verification budget: simple changes (color, material, text, layout, size, duration) need none',
+      'ONE video_engine frame call (wait:true, up to 3 times inside it)',
+      'then at most ONE correction',
+      'never re-compose for marginal polish',
+      'A succeeded frame wait result includes frameImage',
+      'the workspace-relative path of the contact sheet',
+      'pass that path to ONE read_image',
+      'Never render, crop, sample colors, probe Chrome/ffmpeg/PIL',
+      'write scratch HTML',
+      'browse the plugin source or read a second image',
+      'never use glob, ls or bash to find it',
+      'Step budget: aim for 3-5 Tool calls per change and at most 6 per turn',
+      'publish, report publishedRevision, explain briefly',
+      'add nothing unrequested',
+      'Skeleton (keep these markers exact):',
+      'Inspect the project before editing so the revision and target ids are current',
     ];
     for (const fragment of required) {
       assert(text.includes(fragment), `the prompt context is missing "${fragment}"`);
     }
     assert(text.includes('reliable base'), 'the prompt context does not describe project.source as the reliable base');
     assert(text.includes('data-fps="30"') && text.includes('tl.seek(0)'), 'the prompt context lost the composition skeleton markers');
+    // The settled wait result's frameImage is the only allowed way to locate
+    // the sheet: the same sentence hands off that workspace-relative path to a
+    // single read_image and bans glob/ls/bash discovery.
+    const frameImageLine = text.split('\n').find((line) => line.includes('A succeeded frame wait result includes frameImage'));
+    assert(typeof frameImageLine === 'string', 'the prompt context lost the frameImage hand-off line');
+    assert(frameImageLine.includes('the workspace-relative path of the contact sheet'), 'the frameImage line lost its workspace-relative contract');
+    assert(frameImageLine.includes('pass that path to ONE read_image'), 'the frameImage line lost the single read_image step');
+    assert(frameImageLine.includes('never use glob, ls or bash to find it'), 'the frameImage line no longer bans glob/ls/bash discovery');
+    assert(frameImageLine.indexOf('frameImage') < frameImageLine.indexOf('read_image'), 'the frameImage line reads before it hands off the path');
+    assert(!frameImageLine.includes('.dsh-video-frames'), 'the frameImage prompt line hard-codes the Host-created directory');
     assert(text.length <= 4000, `the prompt context exceeds its bounded budget: ${text.length}`);
     assert(!text.includes(workspace.root) && !text.includes(workspace.projectDir), 'the prompt context leaked an absolute Host path');
     assert(!text.includes(tmpdir()), 'the prompt context leaked an OS temp path');

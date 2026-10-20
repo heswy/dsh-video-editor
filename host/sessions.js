@@ -405,9 +405,14 @@ export class SessionService {
    * The workflow + composition-contract block is the model-facing product
    * contract: it is required for the Agent to know how to create/change a video
    * without a manual editor, how the whole document is replaced atomically, and
-   * that it must never write project files through shell/file tools. Facts lines
-   * stay exactly as before; free-form composition projects also get the
-   * project.source + project.compose edit path line.
+   * that it must never write project files through shell/file tools. It also
+   * states the fast edit path (revision is already known -> source then compose),
+   * a hard visual-verification budget (one frameImage-guided read_image at most),
+   * the ban on local render/debug loops and the step budget, because each extra
+   * serial Agent step costs a model turn.
+   * Facts lines stay as before; free-form composition projects also get the
+   * project.source + project.compose edit path line, ordered before the heavy
+   * optional scene/image/target facts so it survives the bounded line budget.
    */
   contextText(assembly) {
     try {
@@ -425,28 +430,35 @@ export class SessionService {
       const facts = this.bridge && typeof this.bridge.projectFacts === 'function' ? this.bridge.projectFacts(projectId) : null;
       const lines = [
         `This conversation is bound to the video project "${projectId}".`,
-        'Use the video_engine Tool for every project read or write; the Host checks this Session against the project mapping on every call.',
+        'Use the video_engine Tool for every project read or write; the Host checks the Session/project mapping on each call.',
         'To create or change the video:',
-        `1. Call video_engine {"action":"inspect","projectId":"${projectId}"} to read the current revision. Call {"action":"project.source","projectId":"${projectId}"} when you need the current full HTML; it returns that revision, so it is the reliable base for a modification.`,
-        `2. Produce the COMPLETE HTML document for the new version, then submit it once with {"action":"project.compose","projectId":"${projectId}","expectedRevision":"<current revision>","operationId":"<unique id>","html":"<!doctype html>..."}.`,
-        '3. The left preview follows the published revision automatically. Only tell the user the video is updated after project.compose returns publishedRevision; if it returns an error, fix the document and retry. Never claim success from intent alone.',
-        '3b. project.compose may return history: {status:"degraded"} when only the auxiliary edit history could not be recorded. The publishedRevision is still authoritative: report the video as updated and say history is temporarily unavailable; do not claim the publish failed and do not try to rewrite the document to fix history.',
-        '4. If project.compose returns E_REVISION_CONFLICT, call project.source again, apply your change to that newer HTML, and resubmit with its revision; never retry with the stale revision or overwrite blindly.',
-        'Composition contract (the Host validates before publishing; invalid input is rejected atomically):',
+        `1. Fast path: when the project facts include a Last known project revision, skip inspect and call video_engine {"action":"project.source","projectId":"${projectId}"} once for the full HTML (the reliable base), then compose. Use {"action":"inspect","projectId":"${projectId}"} only without a revision or when you need scene/element facts.`,
+        `2. Produce the COMPLETE HTML document and submit it once with {"action":"project.compose","projectId":"${projectId}","expectedRevision":"<current revision>","operationId":"<unique id>","html":"<!doctype html>..."}. Never poll status/close/history/undo/redo; publishedRevision is authoritative and the preview follows automatically.`,
+        '3. Report the video updated only after project.compose returns publishedRevision; on error fix and retry. Never claim success from intent.',
+        '3b. history: {status:"degraded"} means only edit history failed; publishedRevision is still authoritative: report the video as updated and history temporarily unavailable; do not rewrite the document.',
+        '4. On E_REVISION_CONFLICT, call project.source again, apply your change to that newer HTML and resubmit with its revision; never retry with the stale revision or overwrite blindly.',
+        'Visual verification budget: simple changes (color, material, text, layout, size, duration) need none. If needed, after compose make ONE video_engine frame call (wait:true, up to 3 times inside it), then at most ONE correction; never re-compose for marginal polish.',
+        'A succeeded frame wait result includes frameImage, the workspace-relative path of the contact sheet: pass that path to ONE read_image. Never render, crop, sample colors, probe Chrome/ffmpeg/PIL, write scratch HTML, browse the plugin source or read a second image, and never use glob, ls or bash to find it.',
+        'Step budget: aim for 3-5 Tool calls per change and at most 6 per turn; publish, report publishedRevision, explain briefly; add nothing unrequested.',
+        'Duration: when the user gives a length, data-duration and the timeline total must equal it; the 5 in the skeleton is a placeholder, not a default.',
+        'Composition contract (Host-validated before publishing; invalid input rejected atomically):',
         '- one complete HTML document of 1..49152 UTF-8 bytes;',
         '- exactly one #main element carrying data-composition-id plus numeric data-width (320..3840), data-height (180..2160), data-duration (0.1..3600);',
-        '- expose the timeline as window.__timelines = { main: <gsap timeline> }; GSAP is already available at ./assets/gsap.min.js;',
-        '- no <iframe>/<object>/<embed>/<base>/<link>/<video>/<audio>/<source>/<track>, no external http(s)/file/blob/javascript URLs; only relative assets already declared in the project (normally ./assets/gsap.min.js); draw artwork with inline SVG/HTML/CSS;',
-        '- modifications must keep everything the user did not ask to change; the whole document is replaced atomically.',
-        'Minimal skeleton to adapt (keep these markers exact):',
+        '- expose the timeline as window.__timelines = { main: <gsap timeline> }; GSAP is available at ./assets/gsap.min.js;',
+        '- no <iframe>/<object>/<embed>/<base>/<link>/<video>/<audio>/<source>/<track>, no external http(s)/file/blob/javascript URLs; only relative assets declared in the project; draw artwork with inline SVG/HTML/CSS;',
+        '- modifications must keep what the user did not ask to change; the document is replaced atomically.',
+        'Skeleton (keep these markers exact):',
         '<!doctype html><html><head><script src="./assets/gsap.min.js"></script></head><body><div id="main" data-composition-id="main" data-width="1280" data-height="720" data-fps="30" data-start="0" data-duration="5">...inline SVG/HTML artwork...<script>const tl = gsap.timeline(); /* tweens */ window.__timelines = { main: tl }; tl.seek(0);</script></div></body></html>',
-        'Never write project files (index.html, project.json, assets) with shell or file tools, and never search the plugin source repository to satisfy a normal creative request. If a request cannot be expressed under this contract, say so briefly instead of faking completion.',
+        'Never write project files (index.html, project.json, assets) with shell or file tools, and never search the plugin source repository to satisfy a normal creative request. If a request cannot be expressed, say so briefly instead of faking completion.',
       ];
       const factsLines = [];
       if (facts !== null) {
         factsLines.push(`Last known project revision: ${facts.revision}.`);
         if (Number.isFinite(facts.duration)) factsLines.push(`Project duration: ${facts.duration}s.`);
         if (Number.isFinite(facts.width) && Number.isFinite(facts.height)) factsLines.push(`Frame: ${facts.width}x${facts.height}.`);
+        if (facts.mode === 'composition') {
+          factsLines.push('This project is a free-form composition: use project.source to read the document and project.compose to replace it.');
+        }
         if (Array.isArray(facts.scenes) && facts.scenes.length > 0) {
           const scenes = facts.scenes.slice(0, 12).map((scene) => `${scene.sceneId} \"${scene.title}\" ${scene.start ?? '?'}-${scene.start !== null && scene.duration !== null ? Math.round((scene.start + scene.duration) * 1000) / 1000 : '?'}s`);
           factsLines.push(`Scenes: ${scenes.join('; ')}.`);
@@ -458,9 +470,6 @@ export class SessionService {
           const targets = facts.targets.slice(0, 12).map((target) => `${target.stableId} [${target.capabilities.join(',')}]`);
           factsLines.push(`Known editable targets: ${targets.join('; ')}.`);
           factsLines.push('Prefer typed edit ops on a stableId for text/layout/style so human layout and colors are preserved; use scene.update only for scene-level defaults.');
-        }
-        if (facts.mode === 'composition') {
-          factsLines.push('This project is a free-form composition: use project.source to read the current full document and project.compose to replace it when the user asks for a change.');
         }
       } else {
         factsLines.push('Inspect the project before editing so the revision and target ids are current.');

@@ -22,7 +22,7 @@ import {
   MAX_PREVIEW_TTL_MS,
   validSnapshotId,
 } from "./previews.mjs";
-import { Jobs } from "./jobs.mjs";
+import { Jobs, normalizeFrameTimes } from "./jobs.mjs";
 import {
   fail,
   keys,
@@ -150,13 +150,22 @@ async function method(name, p) {
     case "render":
       keys(
         p,
-        ["projectId", "revision", "time", "timeoutMs"],
-        ["projectId", "revision", ...(name === "frame" ? ["time"] : [])],
+        name === "frame"
+          ? ["projectId", "revision", "time", "times", "timeoutMs"]
+          : ["projectId", "revision", "time", "timeoutMs"],
+        ["projectId", "revision"],
       );
       string(p.projectId);
       revision(p.revision);
-      if (name === "frame") number(p.time, 0, 3599.999);
-      else if (p.time !== undefined)
+      if (name === "frame") {
+        // Exactly one of the legacy single `time` or the batch `times` list.
+        if (p.time !== undefined && p.times !== undefined)
+          fail("E_PARAMS", "Provide exactly one of time or times");
+        if (p.time !== undefined) number(p.time, 0, 3599.999);
+        else if (p.times !== undefined)
+          p.times = normalizeFrameTimes(p.times);
+        else fail("E_PARAMS", "Provide exactly one of time or times");
+      } else if (p.time !== undefined)
         fail("E_PARAMS", "Render has no time parameter");
       if (p.timeoutMs !== undefined) number(p.timeoutMs, 100, 120000);
       return jobs.start(name, p);
