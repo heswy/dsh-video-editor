@@ -19,20 +19,20 @@
 - [P2-002 Host 契约调查](docs/research/P2-002-host-bridge-contract.md)
 - [P3-005-A 原生会话契约调查](docs/research/P3-005A-native-conversation-contract.md)
 
-## 本版交付（0.3.0-alpha.4，本地开发候选）
+## 本版交付（0.3.0-alpha.8，本地开发候选）
 
 | 项 | 值 |
 |---|---|
 | 包名 / Loader 行 id / Client 模块 id | `dsh-video` |
-| Bundle 版本 | `0.3.0-alpha.4` |
+| Bundle 版本 | `0.3.0-alpha.8` |
 | Host 路由 | `POST /api/dsh-video/request`、`GET/HEAD /api/dsh-video/artifact?jobId=…`、`POST /api/dsh-video/asset-upload`、`GET/HEAD /api/dsh-video/preview/<snapshotId>/<manifest path>`、`GET/HEAD /api/dsh-video/canvas-runtime.js` |
 | Host 请求方法 | doctor/open/inspect/edit/frame/render/status/cancel/close、session.*、preview（文件预览），P3-008 的 project.create/project.list/asset.import/scene.create/scene.update/scene.remove/scene.reorder/project.revise/history/undo/redo/preview.snapshot/preview.release，以及 P3-012 的 project.compose/project.source；asset 上传与 preview.snapshot 为 UI-only，Tool 不能调用 |
 | Tool | `video_engine`（同一 dispatcher；非 doctor action 必须来自绑定工程的受信 Agent Session）；P3-012 增加 conversation-first 创作/修改入口 `project.compose`、`project.source` |
 | 侧栏入口 | `sidebar.panellist`，`id: dsh-video`、`order: 30`、label `Vedio Editor` |
 | 面板 key | `main` keyed slot 的 `dsh-video`；另声明私有 session child，仅用于取得原生 `SessionProvider` kit |
-| 引擎依赖 | 独立 `dsh-video-engine-client` / `dsh-video-engine-worker`，仅开发 staging 快照内解析；R2-follow-up 后固定 root `a59fb13` / engine 保持 `0deef8f` / 两包 `0.4.0`（重打 tarball：client 8610 B `14b85c39e89e912d6ab0924c88967c85c83c43921420a8b44334f4a5f35ed513` 内容未变，worker 68190 B `b56dba237e0612497caea40cc53e6b1ef22b7b18f7d36be96f8b94e5502e09f8`） |
+| 引擎依赖 | 独立 `dsh-video-engine-client` / `dsh-video-engine-worker`，仅开发 staging 快照内解析；P3-015 后固定 root=`engine`=`cf7e593`、两包 `0.4.0`；P3-015 的 `client.js` 与 alpha.7 字节相同（`5ae8c69d…`），Host/worker 为增量提速行为 |
 
-| 开发 staging | `artifacts/p2-b/staging-p3-012-r2f-0deef8f-a59fb13`（rootCommit=`a59fb13` / engineCommit=`0deef8f`，clean；`INTEGRITY.json` sha256 `c28b60adadd1fdb419651598220e0dddddb096663d0699f9112058c91bdfe46a`）；仅开发快照，不随包分发 |
+| 开发 staging | `artifacts/p2-b/staging-alpha8-faster-turn-cf7e593`（rootCommit=`engineCommit`=`cf7e593`，clean；`INTEGRITY.json` sha256 `988302e9ad4173ab15919dd1e7db90123acb7f8f2b067acb27c1db6a4c716857`）；仅开发快照，不随包分发 |
 
 `index.js` 是 Host half：一个 plugin-local `VideoBridge` 同时服务精确 Fetch 路由和 Tool；`host/` 保存校验、错误映射、环境清理、worker 适配、产物发布、会话映射、局部图片预览、受控项目/素材收件箱与预览快照路由。`client.js` 是手写浏览器半（`window.__ModuleLoader__.load` 格式），只 `require('react')`，通过文档相对 `fetch('api/dsh-video/request')` 调用 Host；右侧 AI 直接渲染宿主原生 `conversation.content` Factory，不自建聊天。
 
@@ -108,6 +108,7 @@
 - 请求体为 JSON `{ "method": "...", "params": { ... } }`，正文默认上限 64 KiB；拒绝额外字段、未知方法、任意 path/URL。项目参数只能是配置 allowlist 的 id；`status`/`cancel`/`artifact` 还必须对应该 Host 实例已登记、由本实例启动的 job。
 - Tool 与路由调用同一个 dispatcher；错误统一为 `{ code, message, stage, uncertain?, jobUnknown? }`，保留 edit 的结果不确定性、frame/render 丢失 jobId 的不确定性；Host 不自动重试写/渲染，也不保存第二份 revision 或 operationId 结果。Tool execute 与渲染共用 64 KiB 原始 UTF-8 字节预算；超限返回 `E_RESULT_LIMIT`，不截断后伪装成功。
 - 成功 frame/render 登记 `jobId → projectId/revision`；`GET/HEAD artifact` 会重新向 worker 取 succeeded 记录，再校验 UUID 文件名、realpath 在输出根、普通文件、大小上限与 SHA-256，才发布 PNG/MP4。只支持完整 GET/HEAD，不做 Range、目录列表或任意 URL 代理；不返回绝对路径、源码、stderr。
+- P3-015 提速：事实已有 revision 时走 `project.source`→`project.compose` 快路径并跳过 inspect；prompt 明确禁止本地渲染/调试回路与无预算视觉自检。`frame` 支持 `times`（1–4 个时间点一次渲染）与 Host 层 `wait:true`（250ms 轮询、≤30s/timeoutMs），worker 用一次 HyperFrames `snapshot` + ffmpeg 拼成单张 contact sheet；`wait` 成功结果带 workspace 相对 `frameImage`（`.dsh-video-frames/latest.png`，经复核后原子写入，0600），模型可直接 `read_image` 一次。旧 `time`、`render` 行为不变。
 - 无 per-session ACL、无多用户工程隔离；当前只允许受控 fixture。worker 路径校验不是安全沙箱。
 
 ### 界面
