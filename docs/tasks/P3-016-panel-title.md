@@ -94,3 +94,15 @@
 - **候选版本**：`795acaa` 统一 bump **0.3.0-alpha.9**（package.json、check.mjs 断言、test-stage-version pin、README），并更新 STATUS/handoffs/设计文档。
 - **合并后门禁**：check **54/54**、smoke-client **80/80**、check-host **68/68**（连续 3 次稳定）、worker 单测 **56/56**（cf7e593 reviewed `node_modules` 只读载体 / /tmp 副本）、test-stage-version **10/10**（转绿）；真实 Chrome `test-conversation-preview` **164/164**（含 3 个 A+B 顶栏/分隔条集成断言）。
 - **未做**：未构建 alpha.9 staging、未安装/重启、未合并 PR #11、未跑真实 DSH/模型；真机（拖拽手感、模型名完整、改名持久、AI 发布不覆盖标题）仍待 Lead 按授权执行。
+
+## 合并 / 安装 / 真机验收（2026-10-20）
+
+- **合并**：PR #10 → main `61c566e`；A 与 B 集成 alpha.9 候选后经 PR #11 合并 main（`573352e`）。
+- **安装**：alpha.9 固定 staging `artifacts/p2-b/staging-alpha9-573352e`（INTEGRITY.json sha256 `28f319b91583ae008c577f1caef9f6d89c2a7679bd710aca0a958141cfe53b9e`，root=`engine`=`573352e`，client/worker `0.4.0`）通过真实 DSH Web GUI **Plugins → Add plugin（link staging bundle）→ Install → Enable now** 安装并启用；插件页显示 **v0.3.0-alpha.9 / 1 of 1 运行中**，重启 DSH 后 client bundle 已加载新 UI。回滚保留 alpha.8 staging `artifacts/p2-b/staging-alpha8-faster-turn-cf7e593` 与用户原作品。
+- **真机 UI 验收（Lead）**：
+  - A1：AI 栏分隔条拖动 42%→50% 生效，reload 后比例持久。
+  - A2：顶栏左侧作品名内联重命名生效，工程 revision 不变。
+  - A3：确认无显示设置/简化界面效果入口。
+- **剩余未验证**：rename 与 AI 发布交错的真实并发压力与失败提示（未制造失败场景）；极窄窗口/宿主字体缩放下 320–720px 手感与模型名完整显示；真机拖拽手感仅在默认窗口验证。
+- **历史风险收口**：风险 1（版本/pin）由 alpha.9 bump 与 `test-stage-version` 10/10 收口；风险 2（设计文档宽度漂移）已在 P3-018 更新 `FRONTEND-DESIGN`；风险 3 的 `check.mjs`/harness 改动随合并复验（check 54/54、real Chrome 164/164）；风险 4 的 worktree 依赖仅存在于开发 worktree 忽略目录，未影响仓库与安装包。
+
