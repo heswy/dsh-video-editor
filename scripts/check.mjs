@@ -312,13 +312,12 @@ check('P0-005: the old top capsule and its presentation machinery are gone', () 
   return 'no mode capsule / thumb origin / leading seat / stage framing code';
 });
 
-check('P0-005: panel transition is short and honours both reductions', () => {
+check('P0-005: panel transition is short and honours the system reductions', () => {
   assert(clientSource.includes('animation:dv-panel-in var(--dv-dur-med)'), 'panel entry must use the short motion token');
   assert(clientSource.includes('--dv-dur-med:160ms'), 'panel transition should stay within the 120-180ms range');
   assert(clientSource.includes('@media (prefers-reduced-motion: reduce)'), 'reduced-motion media query missing');
-  assert(clientSource.includes('.dv-root[data-simplified="true"]'), 'simplified-effects gate missing');
-  assert(clientSource.includes("'data-simplified': ui.simplifiedEffects ? 'true' : 'false'"), 'root must expose the simplified-effects state');
-  return '160ms panel fade; simplified / reduced-motion disable it';
+  assert(clientSource.includes('@media (prefers-reduced-transparency: reduce)'), 'reduced-transparency media query missing');
+  return '160ms panel fade; system reduced-motion/reduced-transparency honoured';
 });
 
 check('P0-005: empty state is one exact sentence with no future-feature copy', () => {
@@ -329,31 +328,106 @@ check('P0-005: empty state is one exact sentence with no future-feature copy', (
   return 'one empty-state sentence; old explanatory copy removed';
 });
 
-check('P0-005: the display preference lives in one accessible menu', () => {
-  assert(clientSource.includes('aria-haspopup'), 'display menu trigger must expose aria-haspopup');
-  assert(clientSource.includes('aria-expanded'), 'display menu trigger must expose aria-expanded');
-  assert(clientSource.includes("role: 'menuitemcheckbox'"), 'display option must expose checkbox menu semantics');
-  assert(clientSource.includes("'aria-checked': ui.simplifiedEffects ? 'true' : 'false'"), 'display option must expose its checked state');
-  assert(clientSource.includes("t('video.display.label')"), 'display menu needs an accessible name from locale');
-  return 'single labelled display-options menu with checkbox semantics';
+check('P3-016: the plugin display settings and their preference storage are gone', () => {
+  for (const needle of [
+    'simplifiedEffects',
+    'data-simplified',
+    'video.display.label',
+    'video.display.simplified',
+    'dsh-video.ui.v1',
+    'DisplayOptionsIcon',
+    'dv-menu-item',
+    'menuitemcheckbox',
+  ]) {
+    assert(clientSource.includes(needle) === false, `removed display-setting code is still present: ${needle}`);
+  }
+  // The system preferences remain the only reduction source.
+  assert(clientSource.includes('@media (prefers-reduced-motion: reduce)') && clientSource.includes('@media (prefers-reduced-transparency: reduce)'), 'system reduction adapters were removed with the plugin setting');
+  return 'gear menu / simplified effects / UI preference storage removed; system reductions kept';
 });
 
-check('R1: the display menu moves focus in and returns it on close', () => {
-  assert(clientSource.includes('React.useRef('), 'menu needs trigger/item refs for focus management');
-  assert(clientSource.includes('triggerRef') && clientSource.includes('itemRef'), 'menu refs missing');
-  assert(clientSource.includes('focusOpenItem'), 'opening the menu must move focus onto the item');
-  assert(clientSource.includes("event.key === 'ArrowDown'"), 'ArrowDown opening is not handled');
-  assert(clientSource.includes("event.key === 'Escape'"), 'Escape close is not handled in the menu');
-  assert(clientSource.includes("event.key === 'Tab'"), 'Tab close must be handled so focus cannot stay on the removed item');
-  assert(clientSource.includes('focusTrigger'), 'closing must restore focus to the trigger');
-  assert(clientSource.includes('tabIndex: -1'), 'menu items should be programmatically focused, not tab stops');
+check('P3-016: the AI pane is draggable, keyboard-adjustable, resettable and persisted', () => {
+  for (const marker of [
+    'function normalizeAiPaneRatio(',
+    'function aiPaneWidthCss(',
+    'function stepAiPaneRatio(',
+    'function clampAiPaneWidth(',
+    'AI_PANE_DEFAULT_RATIO = 0.42',
+    'AI_PANE_MIN_WIDTH = 320',
+    'AI_PANE_MAX_WIDTH = 720',
+    'LEFT_PANE_MIN_WIDTH = 360',
+    "LAYOUT_PREFS_KEY = 'dsh-video.layout.v1'",
+    "role: 'separator'",
+    "'aria-orientation': 'vertical'",
+    'onSplitterPointerDown',
+    'onSplitterPointerMove',
+    'onSplitterPointerUp',
+    'onDoubleClick: resetAiPaneRatio',
+    'onKeyDown: onSplitterKeyDown',
+    "event.key === 'ArrowLeft'",
+    "event.key === 'ArrowRight'",
+    'writeLayoutPrefs(aiPaneRatioRef.current)',
+    "style: { '--dv-ai-width': aiPaneWidthCss(aiPaneRatio) }",
+    'width:var(--dv-ai-width, clamp(320px, 42%, min(720px, calc(100% - 360px))))',
+  ]) {
+    assert(clientSource.includes(marker), `resizable AI pane marker missing: ${marker}`);
+  }
+  assert(clientSource.includes('width:clamp(340px, 34%, 440px)') === false, 'the old fixed AI width is still present');
+  // The narrow container keeps the stacked layout and hides the horizontal hand.
+  assert(clientSource.includes('.dv-splitter{display:none;}'), 'the splitter must disappear when the panes stack');
   assert(clientSource.includes('document.addEventListener') === false, 'no document listener is allowed');
   const canvasStart = clientSource.indexOf('function CanvasWorkspace');
   const canvasEnd = clientSource.indexOf('function VideoWorkspace');
   assert(canvasStart >= 0 && canvasEnd > canvasStart, 'canvas component boundary not found for listener audit');
   const outsideCanvas = clientSource.slice(0, canvasStart) + clientSource.slice(canvasEnd);
   assert(outsideCanvas.includes('window.addEventListener') === false, 'global listeners outside the scoped canvas runtime channel are forbidden');
-  return 'open focuses item; Escape/Tab close and refocus trigger; no unscoped global listeners';
+  return '42% default / 720px cap / left floor / double-click reset / arrow keys / versioned ratio; no global listeners';
+});
+
+check('P3-016: the topbar renames the project inline and keeps the picker separate', () => {
+  for (const marker of [
+    "hostRequest('project.rename'",
+    "className: 'dv-project-name'",
+    "className: 'dv-project-name-input'",
+    'dv-project-toggle',
+    'function projectMenu()',
+    'function projectChoiceTitle(',
+    'function startRename()',
+    'function cancelRename()',
+    'async function submitRename()',
+    'onKeyDown: onRenameKeyDown',
+    "event.key === 'Enter'",
+    "event.key === 'Escape'",
+    "t('video.project.renameHint')",
+    "t('video.project.renameEmpty')",
+    "'data-project-id': projectId",
+    'const title = typeof entry.title ===',
+    'if (typeof project.title ===',
+  ]) {
+    assert(clientSource.includes(marker), `project title/rename marker missing: ${marker}`);
+  }
+  assert(clientSource.includes("'video.project.rename':"), 'rename action copy is missing from the dictionaries');
+  // Rename must never be wired to a project/revision write path.
+  const renameStart = clientSource.indexOf('async function submitRename()');
+  const renameEnd = clientSource.indexOf('// ── P3-016 draggable split', renameStart);
+  assert(renameStart >= 0 && renameEnd > renameStart, 'rename implementation boundary missing');
+  const renameBody = clientSource.slice(renameStart, renameEnd);
+  for (const forbidden of ['project.compose', 'edit', 'expectedRevision', 'operationId', 'preview.snapshot']) {
+    assert(renameBody.includes(forbidden) === false, `rename must stay metadata-only; found "${forbidden}"`);
+  }
+  return 'left-aligned name -> inline rename (Enter/Esc) + separate picker; metadata-only request';
+});
+
+check('P3-016: Host rename is UI-only and project.list reports the optional title', () => {
+  const bridge = read('host/bridge.js');
+  assert(bridge.includes("'project.rename'"), 'Host request allowlist is missing project.rename');
+  assert(bridge.includes("'project.rename': ['projectId', 'title']"), 'Host params allowlist is missing project.rename');
+  assert(bridge.includes('if (method === \'project.rename\')') && bridge.includes('is a UI-only action'), 'rename is not gated as a UI-only action');
+  assert(bridge.includes('Project renaming is a UI-only action'), 'rename Tool-source rejection copy missing');
+  assert(bridge.includes('async function readManifestTitle('), 'project.list title reader missing');
+  assert(bridge.includes('projects.push({ projectId, updatedAt, title })'), 'project.list does not expose the optional title');
+  assert(bridge.includes('title: projectTitle(params.title)'), 'rename params are not normalized to the trimmed title');
+  return 'UI-only project.rename with trimmed title; project.list title is advisory';
 });
 
 check('P0-005: sidebar icon follows the host owner props and native stroke', () => {

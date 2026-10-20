@@ -235,6 +235,9 @@ export async function importAsset({
     await writeManifest(projectDir, {
       entry: manifest.entry,
       assets: [...manifest.assets, relativePath].sort(),
+      // P3-016: an asset import rewrites the manifest; keep the optional
+      // project title so a rename is not undone by a later upload.
+      ...(Object.hasOwn(manifest, "title") ? { title: manifest.title } : {}),
     });
   } catch (error) {
     await rm(target, { force: true });

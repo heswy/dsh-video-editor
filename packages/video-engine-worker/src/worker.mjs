@@ -8,6 +8,7 @@ import {
   validateHistory,
   validateHistoryStep,
   validateImportAsset,
+  validateProjectRename,
   validateRevise,
   validateSceneCreate,
   validateSceneRemove,
@@ -119,6 +120,9 @@ async function method(name, p) {
     case "project.create":
       validateCreateProject(p);
       return store.createProject(p);
+    case "project.rename":
+      validateProjectRename(p);
+      return store.rename(p);
     case "asset.import":
       validateImportAsset(p);
       return store.importAsset(p);

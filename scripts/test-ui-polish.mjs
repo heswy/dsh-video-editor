@@ -84,6 +84,7 @@ const server = createServer(async (req,res)=>{
       else if(method==='session.diagnose')result={enabled:true,contract:1};
       else if(method==='preview.snapshot')result={snapshotId:(portrait?'2':'1').repeat(32),revision,entryUrl:'/preview/index.html'};
       else if(method==='preview.release')result={released:true};
+      else if(method==='project.rename')result={projectId:params.projectId,revision,title:params.title,changed:true};
       else throw new Error('Unexpected method '+method);
       res.setHeader('content-type','application/json');res.end(JSON.stringify({ok:true,result}));
     } else {res.statusCode=404;res.end('not found');}
@@ -111,7 +112,52 @@ try {
   check('transport sits below the full frame',g.controls.y>=g.stage.bottom,g);
   check('composition is centered inside its stage area',Math.abs((g.wrap.x+g.wrap.width/2)-(g.stage.x+g.stage.width/2))<2 && Math.abs((g.wrap.y+g.wrap.height/2)-(g.stage.y+g.stage.height/2))<2,g);
   check('native composer reaches the bottom with an empty transcript',Math.abs(g.ai.bottom-g.composer.bottom)<3,g);
-  check('no technical ID in visible navigation',await page.$eval('.dv-project-picker select',e=>!e.selectedOptions[0].textContent.includes('proj-')),null);
+  // P3-016 topbar: back -> clickable work name -> project arrow, all left-aligned.
+  const nav=await page.evaluate(()=>{
+    const rect=s=>{const r=document.querySelector(s).getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,width:r.width};};
+    return {back:rect('.dv-back'),name:rect('.dv-project-name'),toggle:rect('.dv-project-toggle'),nameText:document.querySelector('.dv-project-name').textContent,toggleLabel:document.querySelector('.dv-project-toggle').getAttribute('aria-label'),display:document.querySelector('.dv-display')};
+  });
+  check('topbar orders return -> work name -> project arrow on the left',nav.name.left>=nav.back.right-1 && nav.name.left<nav.back.right+40 && nav.toggle.left>=nav.name.right-1 && nav.toggle.left<nav.name.right+16,nav);
+  check('work name is readable and the removed display trigger is gone',!nav.nameText.includes('proj-') && nav.nameText.length>0 && nav.display===null,nav);
+  // P3-016 resizable AI pane: drag, persistence, double-click reset, keyboard step.
+  const aiBefore=await page.$eval('.dv-ai',e=>e.getBoundingClientRect().width);
+  async function dragSplitter(deltaX){
+    const splitter=await page.$('.dv-splitter');
+    const box=await splitter.boundingBox();
+    await page.mouse.move(box.x+box.width/2,box.y+120);
+    await page.mouse.down();
+    await page.mouse.move(box.x+box.width/2+deltaX,box.y+140,{steps:6});
+    await page.mouse.up();
+    await new Promise(r=>setTimeout(r,120));
+    return page.$eval('.dv-ai',e=>e.getBoundingClientRect().width);
+  }
+  const aiDragged=await dragSplitter(-100);
+  check('dragging the divider widens the AI pane',aiDragged>aiBefore+80 && aiDragged<720,{aiBefore,aiDragged});
+  const storedLayout=await page.evaluate(()=>JSON.parse(localStorage.getItem('dsh-video.layout.v1')));
+  check('the dragged pane ratio is persisted',!!storedLayout && storedLayout.version===1 && storedLayout.aiPaneRatio>0.42,storedLayout);
+  check('the splitter exposes its value to assistive tech',await page.$eval('.dv-splitter',e=>e.getAttribute('aria-valuenow')==='49' || e.getAttribute('aria-valuenow')==='48'),null);
+  const aiCapped=await dragSplitter(-400);
+  check('the 720px maximum is enforced',Math.abs(aiCapped-720)<1,{aiCapped});
+  await page.$eval('.dv-splitter',e=>e.dispatchEvent(new MouseEvent('dblclick',{bubbles:true})));
+  await new Promise(r=>setTimeout(r,120));
+  const aiReset=await page.$eval('.dv-ai',e=>e.getBoundingClientRect().width);
+  check('double-click restores the default pane ratio',Math.abs(aiReset-aiBefore)<3,{aiBefore,aiReset});
+  await page.$eval('.dv-splitter',e=>e.focus());
+  await page.keyboard.press('ArrowLeft');
+  await new Promise(r=>setTimeout(r,120));
+  const aiKeyed=await page.$eval('.dv-ai',e=>e.getBoundingClientRect().width);
+  check('ArrowLeft widens the focused pane',aiKeyed>aiReset+10,{aiReset,aiKeyed});
+  await page.keyboard.press('Home');
+  await new Promise(r=>setTimeout(r,120));
+  check('Home restores the default pane ratio',Math.abs((await page.$eval('.dv-ai',e=>e.getBoundingClientRect().width))-aiBefore)<3,null);
+  // P3-016 inline rename: the name is the trigger; Enter saves without publishing.
+  await page.click('.dv-project-name');
+  await page.waitForSelector('.dv-project-name-input',{timeout:3000});
+  await page.$eval('.dv-project-name-input',e=>{e.value='夜行重命名';e.dispatchEvent(new Event('input',{bubbles:true}));});
+  await page.keyboard.press('Enter');
+  await new Promise(r=>setTimeout(r,150));
+  const renamed=await page.evaluate(()=>({text:document.querySelector('.dv-project-name')?.textContent,input:!!document.querySelector('.dv-project-name-input')}));
+  check('Enter saves the inline project name',renamed.text==='夜行重命名' && renamed.input===false,renamed);
   await page.$eval('.dv-seek',e=>{e.value='2.5';e.dispatchEvent(new Event('input',{bubbles:true}));});
   await new Promise(r=>setTimeout(r,100));
   await shot('01-light-landscape');
@@ -132,8 +178,6 @@ try {
   await page.keyboard.press('Tab');check('keyboard can reach the seek control',await page.evaluate(()=>document.activeElement.classList.contains('dv-seek')),null);
   await page.emulateMediaFeatures([{name:'prefers-reduced-motion',value:'reduce'}]);
   check('reduced motion removes the loading animation',await page.evaluate(()=>{const e=document.createElement('span');e.className='dv-loader';document.querySelector('.dv-root').append(e);const a=getComputedStyle(e).animationName;e.remove();return a==='none';}),null);
-  await page.click('.dv-display > button');await page.click('.dv-menu-item');
-  check('simplified effects disable glass',await page.$eval('.dv-canvas-bar',e=>getComputedStyle(e).backdropFilter==='none'),null);
   check('no browser exceptions',errors.length===0,errors);
 } finally {
   if(browser)await browser.close();await new Promise(r=>server.close(r));
