@@ -430,7 +430,7 @@ export class SessionService {
       const facts = this.bridge && typeof this.bridge.projectFacts === 'function' ? this.bridge.projectFacts(projectId) : null;
       const lines = [
         `This conversation is bound to the video project "${projectId}".`,
-        'Use video_engine for every project read/write; the Host checks the Session/project mapping on each call.',
+        'Use the video_engine Tool for every project read or write; the Host checks the Session/project mapping on each call.',
         'To create or change the video:',
         `1. Fast path: when the project facts include a Last known project revision, skip inspect and call video_engine {"action":"project.source","projectId":"${projectId}"} once for the full HTML (the reliable base), then compose. Use {"action":"inspect","projectId":"${projectId}"} only without a revision or when you need scene/element facts.`,
         `2. Produce the COMPLETE HTML document and submit it once with {"action":"project.compose","projectId":"${projectId}","expectedRevision":"<current revision>","operationId":"<unique id>","html":"<!doctype html>..."}. Never poll status/close/history/undo/redo; publishedRevision is authoritative and the preview follows automatically.`,
