@@ -113,3 +113,17 @@ verifier 的 B 验收发现旧 `scripts/test-conversation-preview.mjs` 仍按 P3
 1. verifier 对合并后的 B 分支（PR #11）做整体复验：diff/边界、门禁复跑、real Chrome 预览、A+B UI 共存。
 2. Lead 合并 PR #11 → 从合并提交构建 alpha.9 固定 staging（root/engine 摘要记录）→ 按授权安装并做真机验收（导出按钮/进度/取消/下载、图片点击、连续 revision 预览、A 的 rename/拖拽手感）。
 3. 保留 alpha.8 staging 与用户工程作为回滚入口；不 reset/clean/强推。
+
+## 合并 / 安装 / 真机验收（2026-10-20）
+
+- **合并**：PR #11 → main `573352e`（候选 merge `55fbed7`、bump `795acaa`）；顶栏冲突按“A 左侧作品名/箭头/内联 rename + B 右侧导出；显示设置保持删除”解决。
+- **固定 staging（task-21）**：`artifacts/p2-b/staging-alpha9-573352e`（新建，约 204 MB；root=`engine`=`573352e`，rootDirty=false；bundle `0.3.0-alpha.9`、client/worker `0.4.0`；INTEGRITY.json sha256 `28f319b91583ae008c577f1caef9f6d89c2a7679bd710aca0a958141cfe53b9e`）。绝对路径仅出现在 staging 内 config/managed/patch/INTEGRITY（预期），bundle 运行时代码无泄漏；全部回归后 INTEGRITY sha 未变；alpha.8 旧 staging INTEGRITY `988302e9…6857` 未动。
+- **staging 回归（真实环境，未安装/未发模型阶段）**：`test-stage-version` **10/10**；`test-host-engine` **ok=true**（frame PNG 273,055 B / hash `38fdf0f5…`；demo 5s render MP4 137,707 B / 150 帧 / 5.00s / 30fps / hash `c00c2fff…`；第二次 render 取消→`cancelled`；integrityVerified）；`test-conversation-chain` **261/261 ok=true**；`test-conversation-preview`（real Chrome，fixed staging）**164/164 ok=true**（B1–B5 全 true、staging 只读审计 same=true）。证据：`artifacts/p2-b/evidence/engine-run-2026-10-20T14-35-53-694Z.json`；chain/preview 运行产物在 `/tmp/p3-021-alpha9/`（未入仓）。
+- **安装**：真实 Plugins 页安装/启用 alpha.9，插件页 **v0.3.0-alpha.9 / 1 of 1 运行中**；重启 DSH 后加载新 client bundle；回滚保留 alpha.8 staging。
+- **真机 UI 验收（Lead）**：顶栏右侧导出按钮对 5s 工程真实导出约 **10s** 并出现下载链接；顶栏同时保留 A 左侧作品名/箭头/rename，无显示设置/简化效果。
+- **剩余未验证（需用户实际操作确认）**：
+  - **已安装 DSH 内嵌原生对话中的图片/文件点击**：外部 Web 页没有 native conversation kit，P3-012 real Chrome 脚本使用 inert harness faces；需在已安装 DSH 的内嵌会话中实际点击图片/文件卡，确认打开插件 overlay 且不再出现 `sidebarRight` 报错。
+  - **真实模型连续修改**：alpha.9 未发真实模型请求；多轮对话修改→左侧自动更新/retention 行为待真实模型操作确认（alpha.8 已验 2 轮简单修改）。
+  - **长片导出**：真机仅验 5s 工程（约 10s）；20s/120s 长片（合并前 /tmp 同源代码实测约 28s/160s）、取消/失败路径与下载耗时需用户实际作品确认；`frame` 120s / `render` 900s 拆分的长片路径真机未验。
+  - 真实 DSH 中 3–4 连发 revision 的预览去抖/自动重试未制造；导出期间继续编辑的 revision 绑定只在自动化中覆盖。
+
