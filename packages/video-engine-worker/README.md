@@ -117,13 +117,14 @@ worker 新配置模式（管理工程，Host 不直接改这些文件）：
 
 | 方法 | 说明 |
 |---|---|
-| `project.create` | `{templateId,title?,width?,height?,fps?,assets?:[{inboxName,name?,mediaType?}]}`；worker 生成 projectId、复制模板与素材、原子更新 registry，返回 revision/scenes |
+| `project.create` | `{templateId,title?,width?,height?,fps?,assets?:[{inboxName,name?,mediaType?}]}`；worker 生成 projectId、复制模板与素材、原子更新 registry，返回 revision/scenes；`title` 同时作为 `project.json` 的可选显示标题 |
+| `project.rename` | `{projectId,title}`；P3-016 UI-only 显示标题更新（trim 后 1..120 字符），原子写 `project.json` 并保留 entry/assets；不改 composition/revision/历史 |
 | `asset.import` | `{projectId,expectedRevision,operationId,sourceName,name?,mediaType?}`；只读 inbox 导入 PNG/JPEG，校验路径/签名/限额后原子复制并更新 manifest |
 | `scene.create` / `scene.update` / `scene.remove` / `scene.reorder` | 以 expectedRevision + operationId 做单写者、幂等操作；Scene 模型 → 重新生成整份 HTML + timeline → SDK 校验 → 原子写 → revision 重算；校验失败不发布 |
 | `project.revise` | `{projectId,baseRevision,expectedRevision,operationId,sceneId,template}`；base 无人工改动时直接写入；否则从历史快照取 base 做 stableId 三方合并，冲突返回 `{written:false, conflicts:[{sceneId,stableId,reason,human,ai}]}` 且不写盘 |
 | `history` / `undo` / `redo` | `.dsh-video/history/` 保存 entries/ops/snapshots/state；单调 historyCursor，revision 仍是内容哈希；重启后可继续 undo/redo |
 
-`inspect` 只新增字段：`scenes:[{sceneId,order,start,duration,elements:[{stableId,sceneId,text,timing,capabilities}]}]`，原有字段不变。
+`inspect` / `open` 只新增字段：`scenes:[{sceneId,order,start,duration,elements:[{stableId,sceneId,text,timing,capabilities}]}]`，原有字段不变；P3-016 起再新增可空 `title`（`project.json` 显示标题，旧工程为 `null`）。
 
 素材限额：仅 PNG/JPEG，单文件 ≤8 MiB，每工程 ≤16 张图片资产、声明资产总量 ≤64 MiB。历史保留最近 64 条/快照 ≤8 MiB。v1 仍只支持受控模板生成，不接受任意 Agent HTML/JS。
 
@@ -290,7 +291,17 @@ worker 新配置模式（管理工程，Host 不直接改这些文件）：
 
 ### 测试
 
-- `test/schema.test.mjs`：schema 方法集 == worker switch 方法集（24）、新方法 params/result 双向校验。
+- `test/schema.test.mjs`：schema 方法集 == worker switch 方法集（25）、新方法 params/result 双向校验。
 - `test/compose.integration.mjs`（真实 worker 进程）：创建工程 → `project.source` 读回 → `project.compose` 发布（新 revision/`history.status="recorded"`/close 重开/重启持久化）→ 相同内容 `unchanged` + `history.status="unchanged"` → 幂等与 `E_OPERATION_REUSED` → `E_REVISION_CONFLICT` 不改文件 → 各契约失败场景均为 `E_COMPOSE_INVALID` 且 revision/内容不变（含引号密集文档的 JSON 转义上限、HTML 注释里的 `__timelines`、`main: null`）→ 参数错误 `E_PARAMS` → 工程目录只读注入恢复旧内容（`uncertain: true`）→ 预览快照目录只读注入恢复旧版本 → 直接植入引号密集入口后 `project.source` 的转义上限 `E_LIMIT` → 历史读/snapshots/entries/ops 四种故障下发布返回成功且 `history.status="degraded"`，source/inspect/后续 compose 一致，恢复后下一次 compose 记录历史，同 operationId 重试返回缓存结果。
 - `test/compose-settlement.test.mjs`（直接 `Projects` 单元测试）：覆写 `recordComposeHistory` 抛错 → 降级成功结果；覆写 `previews.create` 抛错 + `restoreEntry` 返回 false → `E_PERSIST` stage `persist` 且 `uncertain:true`。
 - 运行：`node --test --test-concurrency=1 test/*.test.mjs`（既有 44 项 + 新结算单元测试）与 `node --test --test-concurrency=1 test/compose.integration.mjs`。
+
+## P3-016：工程显示标题与 UI-only 重命名（0.4.0 方法集）
+
+JSONL v1 方法集新增 1 个 UI-only 方法（共 25 个）；既有方法的结果语义不变。
+
+- `project.json` 新增**可选** `title`：trim 后 1..120 字符，仅作显示标题。revision 仍是 entry + 声明资产的内容哈希，标题不进 revision/history；rename 只原子重写 `project.json`（保留 entry/assets 与顺序），不触碰 `index.html`、快照或历史。
+- `project.rename`：`{projectId,"title":"..."}`，仅对已 open 的工程可用（未 open → `E_PROJECT_NOT_OPEN`，closing → `E_PROJECT_CLOSING`）；参数非法 → `E_PARAMS`；标题相同返回 `changed:false` 且不写盘。结果为 `{projectId,revision,title,changed}`，revision 与重命名前相同。它和 `inspect`/`edit` 共用单工程写队列，不会与 manifest 重写交错。
+- `inspect` / `open` 新增可空 `title`；`project.create.title`（若提供）同时作为初始显示标题写入 manifest。`asset.import` 重写 manifest 时保留已有 `title`。
+- Host 侧：`project.rename` 是 UI-only 方法（Tool source 返回 `E_METHOD`）；Host `project.list` 每项新增可空 `title` 供选择器显示。
+- `test/project-rename.test.mjs`（真实 worker 进程）：创建 → inspect title → rename（trim/原子写/保留 entry+assets/无 revision 变化）→ 重开与重启后标题持久 → 相同标题幂等 → 非法标题/未 open 的错误码 → Tool/Host 契约见 Host `scripts/check-host.mjs`。

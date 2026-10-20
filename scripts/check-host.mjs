@@ -1775,6 +1775,7 @@ async function main() {
     const { bridge } = makeBridge(workspace, { handler: () => ({}) }, bag.ctx);
     for (const [method, params] of [
       ['project.create', { templateId: 'product-launch-v1' }],
+      ['project.rename', { projectId: PROJECT, title: 'renamed' }],
       ['project.list', {}],
       ['preview.snapshot', { projectId: PROJECT, revision: REVISION }],
       ['asset.import', { projectId: PROJECT, expectedRevision: REVISION, operationId: 'asset-x', receiptId: '00000000-0000-4000-8000-000000000000' }],
@@ -1782,6 +1783,80 @@ async function main() {
       const error = await rejects(() => bridge.invoke(method, params, { source: 'tool', agentSessionId: 'session-unbound' }));
       assert(error.code === 'E_METHOD', `${method} was not refused from Tool source: ${error.code}`);
     }
+  });
+
+  await run('P3-016: project.rename is a UI-only, metadata-only normalized request', async () => {
+    const workspace = await makeWorkspace();
+    const bag = makeCtx(workspace);
+    const calls = [];
+    const { bridge, engine } = makeBridge(workspace, {
+      handler: (method, params) => {
+        calls.push({ method, params });
+        if (method === 'project.rename') {
+          return { projectId: params.projectId, revision: REVISION, title: params.title, changed: true };
+        }
+        return {};
+      },
+    }, bag.ctx);
+    const renamed = await bridge.invoke('project.rename', { projectId: PROJECT, title: '  新标题  ' }, { source: 'http' });
+    assert(renamed.projectId === PROJECT && renamed.title === '新标题' && renamed.revision === REVISION, `rename result is ${JSON.stringify(renamed)}`);
+    assert(engine.instances.length === 1, 'the rename did not use the single worker lifecycle');
+    assert(calls.length === 1 && calls[0].method === 'project.rename', `rename issued unexpected worker calls: ${calls.map((call) => call.method).join(',')}`);
+    assert(calls[0].params.projectId === PROJECT && calls[0].params.title === '新标题', `rename params were not normalized: ${JSON.stringify(calls[0].params)}`);
+    assert(calls[0].params.revision === undefined && calls[0].params.expectedRevision === undefined, 'the metadata-only rename must not carry a revision precondition');
+
+    // Parameter validation happens before any worker start.
+    const noWorker = await makeWorkspace();
+    const noWorkerBag = makeCtx(noWorker);
+    const startCalls = [];
+    const noWorkerBridge = new VideoBridge({
+      ctx: noWorkerBag.ctx,
+      rawConfig: noWorker.config,
+      engineLoader: async () => {
+        startCalls.push(1);
+        return { WorkerClient: class extends FakeClient { constructor(options) { super(options, {}); } }, workerEntry: noWorker.workerEntry, workerVersion: '0.1.1', clientVersion: '0.1.1' };
+      },
+    });
+    for (const title of ['', '   ', 'x'.repeat(121), 7, null, 'a\0b']) {
+      const error = await rejects(() => noWorkerBridge.invoke('project.rename', { projectId: PROJECT, title }, { source: 'http' }));
+      assert(error.code === 'E_PARAMS', `title ${JSON.stringify(title)} was not rejected with E_PARAMS: ${error.code}`);
+    }
+    const missing = await rejects(() => noWorkerBridge.invoke('project.rename', { projectId: PROJECT }, { source: 'http' }));
+    assert(missing.code === 'E_PARAMS', `a missing title was not rejected: ${missing.code}`);
+    const extra = await rejects(() => noWorkerBridge.invoke('project.rename', { projectId: PROJECT, title: 'x', extra: true }, { source: 'http' }));
+    assert(extra.code === 'E_PARAMS', `an extra parameter was not rejected: ${extra.code}`);
+    const unknown = await rejects(() => noWorkerBridge.invoke('project.rename', { projectId: 'outside-allowlist', title: 'x' }, { source: 'http' }));
+    assert(unknown.code === 'E_PROJECT_NOT_FOUND', `an untrusted project was not rejected: ${unknown.code}`);
+    assert(startCalls.length === 0, 'invalid rename params started the worker');
+
+    // Tool source is refused before the worker too.
+    const toolCalls = [];
+    const toolBridge = new VideoBridge({
+      ctx: noWorkerBag.ctx,
+      rawConfig: noWorker.config,
+      engineLoader: async () => {
+        toolCalls.push(1);
+        return { WorkerClient: class extends FakeClient { constructor(options) { super(options, {}); } }, workerEntry: noWorker.workerEntry, workerVersion: '0.1.1', clientVersion: '0.1.1' };
+      },
+    });
+    const toolError = await rejects(() => toolBridge.invoke('project.rename', { projectId: PROJECT, title: 'x' }, { source: 'tool', agentSessionId: 'session-unbound' }));
+    assert(toolError.code === 'E_METHOD', `rename was exposed to the Tool source: ${toolError.code}`);
+    assert(toolCalls.length === 0, 'a Tool-source rename started the worker');
+
+    // An invalid worker response is reported as a typed response error.
+    const badBridge = makeBridge(workspace, {
+      handler: (method, params) => {
+        if (method === 'project.rename') return { projectId: 'other', revision: REVISION, title: params.title, changed: true };
+        return {};
+      },
+    }, bag.ctx);
+    const badResponse = await rejects(() => badBridge.bridge.invoke('project.rename', { projectId: PROJECT, title: 'x' }, { source: 'http' }));
+    assert(badResponse.code === 'E_WORKER_RESPONSE', `a mismatched rename result was not rejected: ${badResponse.code}`);
+
+    await bridge.dispose();
+    await noWorkerBridge.dispose();
+    await toolBridge.dispose();
+    await badBridge.bridge.dispose();
   });
 
   await run('P3-008: preview snapshots are verified, routed with CSP/runtime and released', async () => {
@@ -2443,16 +2518,22 @@ async function main() {
     const otherEntry = join(workspace.registry.projects[OTHER], 'index.html');
     await writeFile(demoEntry, '<!doctype html>');
     await writeFile(otherEntry, '<!doctype html>');
+    // P3-016: the optional manifest title is reported; a legacy project (no
+    // title) reports null and the client keeps its content-derived fallback.
+    await writeFile(join(workspace.projectDir, 'project.json'), JSON.stringify({ entry: 'index.html', assets: [], title: '演示工程' }));
+    await writeFile(join(workspace.registry.projects[OTHER], 'project.json'), JSON.stringify({ entry: 'index.html', assets: [] }));
     await utimes(demoEntry, new Date(1000), new Date(1000));
     await utimes(otherEntry, new Date(2000), new Date(2000));
     const bag = makeCtx(workspace);
     const { bridge } = makeBridge(workspace, { handler: () => ({}) }, bag.ctx);
     let list = await bridge.invoke('project.list', {});
     assert(Array.isArray(list.projects), 'project.list projects is not an array');
-    assert(list.projects.every((item) => typeof item.projectId === 'string' && typeof item.updatedAt === 'number' && Object.keys(item).length === 2), 'project.list item shape changed');
+    assert(list.projects.every((item) => typeof item.projectId === 'string' && typeof item.updatedAt === 'number' && Object.keys(item).sort().join(',') === 'projectId,title,updatedAt'), 'project.list item shape changed');
     assert(list.projects.map((item) => item.projectId).join(',') === `${OTHER},${PROJECT}`, `project.list recency order is wrong: ${list.projects.map((item) => item.projectId).join(',')}`);
     assert(list.defaultProjectId === OTHER, `defaultProjectId is wrong: ${list.defaultProjectId}`);
     assert(list.projects.every((item) => item.projectId !== 'hidden'), 'an untrusted registry project was listed');
+    assert(list.projects.find((item) => item.projectId === PROJECT).title === '演示工程', 'the stored project title was not reported');
+    assert(list.projects.find((item) => item.projectId === OTHER).title === null, 'a legacy project without a title must report null');
 
     // A newer demo entry becomes the default and the sort follows it.
     await utimes(demoEntry, new Date(3000), new Date(3000));
@@ -2465,7 +2546,11 @@ async function main() {
     await symlink(join(workspace.root, 'missing-entry.html'), otherEntry);
     list = await bridge.invoke('project.list', {});
     const broken = list.projects.find((item) => item.projectId === OTHER);
-    assert(broken !== undefined && broken.updatedAt === 0, `a stat failure was not reported as updatedAt 0: ${JSON.stringify(broken)}`);
+    assert(broken !== undefined && broken.updatedAt === 0 && broken.title === null, `a stat failure was not reported as updatedAt 0 / title null: ${JSON.stringify(broken)}`);
+    // A malformed (untrimmed) title is never surfaced.
+    await writeFile(join(workspace.registry.projects[OTHER], 'project.json'), JSON.stringify({ entry: 'index.html', assets: [], title: '  spaced  ' }));
+    list = await bridge.invoke('project.list', {});
+    assert(list.projects.find((item) => item.projectId === OTHER).title === null, 'a non-canonical title was surfaced');
     assert(list.defaultProjectId === PROJECT, 'defaultProjectId changed after a tolerated stat failure');
 
     // Project listing stays UI-only.

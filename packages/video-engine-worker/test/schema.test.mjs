@@ -184,6 +184,23 @@ test("schema params and worker validation agree for every method; results valida
     await sendValid("open", { projectId: state.projectId });
     await sendValid("inspect", { projectId: state.projectId });
 
+    // P3-016 UI-only rename: trimmed title, same content revision, idempotent.
+    const renamed = await sendValid("project.rename", {
+      projectId: state.projectId,
+      title: "  schema rename  ",
+    });
+    assert.equal(renamed.result.title, "schema rename");
+    assert.equal(renamed.result.changed, true);
+    assert.equal(renamed.result.revision, state.revision);
+    const renamedAgain = await sendValid("project.rename", {
+      projectId: state.projectId,
+      title: "schema rename",
+    });
+    assert.equal(renamedAgain.result.changed, false);
+    assert.equal(renamedAgain.result.revision, state.revision);
+    const titledInspect = await sendValid("inspect", { projectId: state.projectId });
+    assert.equal(titledInspect.result.title, "schema rename");
+
     const imported = await sendValid("asset.import", {
       projectId: state.projectId,
       expectedRevision: state.revision,
@@ -484,6 +501,8 @@ function buildSample(method, state) {
       return { projectId };
     case "project.create":
       return { templateId: TEMPLATE, title: "probe", assets: [{ inboxName: "logo.png" }] };
+    case "project.rename":
+      return { projectId, title: "probe title" };
     case "project.compose":
       return {
         projectId,

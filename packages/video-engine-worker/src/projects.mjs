@@ -78,7 +78,23 @@ const COMPOSE_PREVIEW_TTL_MS = 60 * 1000;
 // Stable bounded code for a degraded (post-commit) history write. The concrete
 // failure detail stays in the bounded worker diagnostic, never in the result.
 const HISTORY_DEGRADED_CODE = "E_HISTORY";
+/**
+ * P3-016: the optional human-readable project title stored in `project.json`.
+ * It is UI metadata only: revision stays the content hash of the declared
+ * entry/assets, and renaming never touches the composition or history.
+ */
+const PROJECT_TITLE_MAX = 120;
+export const PROJECT_TITLE_LENGTH = PROJECT_TITLE_MAX;
 export const sha = (value) => createHash("sha256").update(value).digest("hex");
+/** Trimmed 1..120 title, or E_PARAMS; shared by create and rename. */
+export function normalizeProjectTitle(value) {
+  if (typeof value !== "string")
+    fail("E_PARAMS", "Invalid project title");
+  const title = value.trim();
+  if (title.length < 1 || title.length > PROJECT_TITLE_MAX)
+    fail("E_PARAMS", "Invalid project title");
+  return title;
+}
 const formatSeconds = (value) => String(Number(Number(value).toFixed(3)));
 export function inside(root, path) {
   const r = relative(root, path);
@@ -265,6 +281,37 @@ export class Projects {
     this.assertActive(id);
     return this.queue(id, () => this.inspect(id));
   }
+  /**
+   * P3-016 UI-only rename: atomically update the optional `project.json` title.
+   * The declared entry/assets are preserved, so the content revision and the
+   * composition history do not change. queued like inspect/edit so a rename can
+   * never interleave with a manifest rewrite.
+   */
+  async rename(p) {
+    this.assertActive(p.projectId);
+    return this.queue(p.projectId, async () => {
+      const current = await this.read(p.projectId);
+      const title = normalizeProjectTitle(p.title);
+      if (current.title === title)
+        return {
+          projectId: p.projectId,
+          revision: current.revision,
+          title,
+          changed: false,
+        };
+      const next = { ...current.manifest, title };
+      await atomicWrite(
+        resolve(current.dir, "project.json"),
+        JSON.stringify(next, null, 2) + "\n",
+      );
+      return {
+        projectId: p.projectId,
+        revision: current.revision,
+        title,
+        changed: true,
+      };
+    });
+  }
   beginClose(id) {
     this.lifecycle.set(id, "closing");
   }
@@ -322,9 +369,23 @@ export class Projects {
       if (e.code === "E_PATH") throw e;
       fail("E_PROJECT", "Invalid project manifest", "project");
     }
-    keys(manifest, ["entry", "assets"], ["entry", "assets"]);
+    keys(manifest, ["entry", "assets", "title"], ["entry", "assets"]);
     if (manifest.entry !== "index.html")
       fail("E_PROJECT", "v1 requires index.html entry", "project");
+    // The title is optional (legacy projects) but must be a usable 1..120
+    // string when present; a malformed one is a manifest error, not a reason
+    // to guess at a display name.
+    let title = null;
+    if (Object.hasOwn(manifest, "title")) {
+      if (
+        typeof manifest.title !== "string" ||
+        manifest.title !== manifest.title.trim() ||
+        manifest.title.length < 1 ||
+        manifest.title.length > PROJECT_TITLE_MAX
+      )
+        fail("E_PROJECT", "Invalid project title", "project");
+      title = manifest.title;
+    }
     if (!Array.isArray(manifest.assets) || manifest.assets.length > 64)
       fail("E_PROJECT", "Invalid declared asset list", "project");
     const names = [
@@ -363,6 +424,7 @@ export class Projects {
       dir,
       manifest,
       files,
+      title,
       revision: sha(JSON.stringify({ entry: manifest.entry, files: entries })),
       entries,
     };
@@ -430,6 +492,7 @@ export class Projects {
       return {
         projectId: id,
         revision: p.revision,
+        title: p.title,
         width: doc.width,
         height: doc.height,
         duration: doc.compositionDuration,
@@ -1040,9 +1103,13 @@ export class Projects {
         fail("E_PATH", "Project id escapes projectsRoot", "create");
       const width = p.width ?? DEFAULT_WIDTH;
       const height = p.height ?? DEFAULT_HEIGHT;
+      // P3-016: the create `title` doubles as the stored project title and the
+      // first Scene title. It is trimmed once here; the manifest keeps the
+      // project title separately so a later rename never rewrites content.
+      const projectTitle = p.title === undefined ? null : normalizeProjectTitle(p.title);
       const scenes = [
         defaultScene(0, {
-          title: typeof p.title === "string" && p.title.length ? p.title : "开场",
+          title: projectTitle ?? "开场",
         }),
       ];
       const html = buildDocumentHtml({ width, height, scenes });
@@ -1059,6 +1126,7 @@ export class Projects {
         let manifest = {
           entry: "index.html",
           assets: ["assets/gsap.min.js"],
+          ...(projectTitle === null ? {} : { title: projectTitle }),
         };
         await writeFile(
           resolve(dir, "project.json"),
@@ -1813,4 +1881,11 @@ export function validateHistoryStep(p) {
   string(p.projectId);
   revision(p.expectedRevision);
   string(p.operationId);
+}
+/** P3-016 UI-only rename params: projectId + a trimmed 1..120 title. */
+export function validateProjectRename(p) {
+  keys(p, ["projectId", "title"], ["projectId", "title"]);
+  string(p.projectId);
+  string(p.title, PROJECT_TITLE_MAX);
+  normalizeProjectTitle(p.title);
 }
