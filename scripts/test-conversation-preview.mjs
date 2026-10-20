@@ -1347,6 +1347,41 @@ async function main() {
     console.log('[phase] preview-only audit: present=' + JSON.stringify(audit.present) + ' copyHits=' + JSON.stringify(audit.copyHits) + ' gestureWrites=' + JSON.stringify(gestureWrites.map((entry) => entry.method)));
     evidence.gestures = { gestureRequests: gestureRequests.map((entry) => entry.method), gestureWrites: gestureWrites.map((entry) => entry.method), openedSelectors: gestureAudit.present, audit, forbiddenSelectors, forbiddenTexts };
 
+    // ─── P3-018 integration: P3-016 topbar/split view + P3-017 export coexist ──
+    // The merge kept P3-016's left-aligned project name/arrow (inline rename) and
+    // P3-017's right-side export control, and removed the display-settings menu.
+    const topbarAudit = await evaluate(page, () => {
+      const topbar = document.querySelector('.dv-topbar');
+      const projectbar = document.querySelector('.dv-projectbar');
+      const aiPane = document.querySelector('.dv-ai');
+      const splitter = document.querySelector('.dv-splitter');
+      const exportControl = topbar === null ? null : topbar.querySelector('.dv-export');
+      const projectName = projectbar === null ? null : projectbar.querySelector('.dv-project-name');
+      const projectToggle = projectbar === null ? null : projectbar.querySelector('.dv-project-toggle');
+      const nameRect = projectName === null ? null : projectName.getBoundingClientRect();
+      const exportRect = exportControl === null ? null : exportControl.getBoundingClientRect();
+      const topbarRect = topbar === null ? null : topbar.getBoundingClientRect();
+      return {
+        hasTopbar: topbar !== null,
+        hasProjectName: projectName !== null,
+        projectNameText: projectName === null ? null : (projectName.textContent || '').trim().slice(0, 80),
+        hasProjectToggle: projectToggle !== null,
+        hasExportControl: exportControl !== null,
+        exportText: exportControl === null ? null : (exportControl.textContent || '').trim().slice(0, 40),
+        hasDisplayMenu: document.querySelector('.dv-display') !== null,
+        hasSplitter: splitter !== null,
+        splitterRole: splitter === null ? null : splitter.getAttribute('role'),
+        aiPaneWidth: aiPane === null ? null : aiPane.getBoundingClientRect().width,
+        nameLeft: nameRect === null ? null : nameRect.left,
+        exportRight: exportRect === null ? null : exportRect.right,
+        topbarRight: topbarRect === null ? null : topbarRect.right,
+      };
+    });
+    checks.check('P3-018 integration: merged topbar keeps P3-016 left project name/arrow and P3-017 right export control (no display-settings menu)', topbarAudit.hasTopbar === true && topbarAudit.hasProjectName === true && topbarAudit.hasProjectToggle === true && topbarAudit.hasExportControl === true && topbarAudit.hasDisplayMenu === false, topbarAudit);
+    checks.check('P3-016: the product splitter is rendered and the AI pane width stays inside the 320-720px clamp', topbarAudit.hasSplitter === true && topbarAudit.splitterRole === 'separator' && Number.isFinite(topbarAudit.aiPaneWidth) && topbarAudit.aiPaneWidth >= 319 && topbarAudit.aiPaneWidth <= 721, topbarAudit);
+    checks.check('P3-018 integration: the export control sits to the right of the project name on the same topbar row', topbarAudit.nameLeft !== null && topbarAudit.exportRight !== null && topbarAudit.topbarRight !== null && topbarAudit.exportRight > topbarAudit.nameLeft + 200 && topbarAudit.exportRight <= topbarAudit.topbarRight + 1, topbarAudit);
+    evidence.integration = { topbar: topbarAudit };
+
     // ─── global network / console / final revision evidence ────────────────
     const onlineRevision = (await invokeHttp(bridge, 'inspect', { projectId })).revision;
     checks.check('final canvas revision equals the Host project revision (no stale preview)', gestureState.revision === onlineRevision, { canvasRevision: gestureState.revision, hostRevision: onlineRevision });

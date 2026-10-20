@@ -1,10 +1,10 @@
 # P3-017 B：预览稳定性、文件/图片本地预览、产品态导出
 
-日期：2026-10-20（Asia/Shanghai）。状态：**代码/测试/真实 Host+worker 导出实测、P3-012 真浏览器预览验收（按 B1 新契约更新脚本，real Chrome 161/161）完成；已 commit 并 push 分支，未安装、未重启、未合并、未发真实模型请求。**
+日期：2026-10-20（Asia/Shanghai）。状态：**代码/测试/真实 Host+worker 导出实测、P3-012 真浏览器预览验收完成；已合并新 main（含 P3-016 A）并统一 bump 到 alpha.9 候选（merge `55fbed7`、bump `795acaa`）；合并后全量门禁与 real Chrome 验收（164/164）全过；未构建 staging、未安装、未重启、未合并 PR #11、未发真实模型请求。**
 
 - 分支：`codex/p3-017-preview-export`（base `origin/main` `ec9ad47`），隔离 worktree `dsh-video-editor-worktrees/p3-017-preview-export`
-- 只实现本卡 B 部分（B1/B2/B3/B4）；A 的面板宽度、工程标题 rename、设置移除不在本分支，由 `codex/p3-016-panel-title` 另做；两分支在 `client.js` 顶栏/`docs`/`check.mjs` 有可预期合并冲突点
-- 不改 `package.json` 版本（候选版本由 Lead 合并后统一处理）；不安装/重启/合并/发真实模型请求
+- 只实现本卡 B 部分（B1/B2/B3/B4）；A 的面板宽度、工程标题 rename、设置移除由 `codex/p3-016-panel-title` 完成并已合并 main（PR #10，`61c566e`）；本分支已合并新 main 并解决顶栏/样式/docs 冲突（见“P3-018 集成”节）
+- 候选版本已由 P3-018 统一 bump 到 `0.3.0-alpha.9`（`package.json`/`check.mjs`/`test-stage-version`/README）；不安装/重启/合并/发真实模型请求
 - 真实导出用 /tmp 自建 Host+worker 快照（alpha.8 staging 的 reviewed `node_modules` 只读复用 + 本分支 worker/Host 源码），工程创建在 /tmp，未触碰任何用户作品
 
 ## 背景与根因（图 3 / 图 4 / 图 6）
@@ -44,20 +44,22 @@
 - `scripts/smoke-client.mjs`：新增 B1 去抖+旧快照 release+诊断、B2 data/blob/remote/相对路径图片点击、B3 导出状态机（双点击、阶段/百分比/已用时间、下载文件名、revision 绑定、取消、失败重试）测试；按新语义更新 preview 失败/超时/产品态导出相关旧断言。
 - `scripts/check-host.mjs`：新增 render 900000 接受/900001 拒绝、frame 120001 拒绝、合法范围、status stage/progress 透传、无绝对路径断言。
 - worker：`node --test --test-concurrency=1 test/*.test.mjs`（不含 `.integration.mjs`）在复用 reviewed `node_modules` 的 /tmp 副本运行。
-- `scripts/check.mjs` 未改：出口键沿用 `video.canvas.export*`，旧手动隐藏断言仍成立（52/52）。
+- `scripts/check.mjs`：本卡未改其断言（出口键沿用 `video.canvas.export*`，旧手动隐藏断言仍成立）；合并 A 后由 A 扩展为 **54/54**，版本断言在 alpha.9 bump 时同步。
 
 ## 验证
 
 ### 仓库门禁（本 worktree）
 
-| 门禁 | 基线 `ec9ad47` | 当前 |
-|---|---|---|
-| `node scripts/check.mjs` | 52/52 | **52/52** |
-| `node scripts/smoke-client.mjs` | 78/78 | **81/81**（新增 3 个 P3-017 场景 + 更新 preview/export 旧断言） |
-| `node scripts/check-host.mjs` | 65/65 | **67/67**（+2 P3-017 断言组） |
-| worker `node --test --test-concurrency=1 test/*.test.mjs` | — | **54/54**（/tmp 副本，复用 alpha.8 reviewed `node_modules`） |
-| `node scripts/test-conversation-preview.mjs --staging /tmp/p3-017-hybrid`（real Chrome） | 44/68（verifier：旧 B1 预期，24 失败） | **161/161**（B1–B5 acceptance 全 true，见下节） |
-| `node scripts/test-stage-version.mjs` | 7/10（base 既有失败：脚本仍固定 alpha.7，root 已是 alpha.8） | 7/10（失败集与基线一致；非本任务引入，未改动该脚本） |
+合并 main（含 A）并 bump alpha.9 后的最终门禁：
+
+| 门禁 | 基线 `ec9ad47` | B 合并前 | **alpha.9 候选（合并 main 后）** |
+|---|---|---|---|
+| `node scripts/check.mjs` | 52/52 | 52/52 | **54/54**（含 A 的 rename/布局断言） |
+| `node scripts/smoke-client.mjs` | 78/78 | 81/81 | **80/80**（A 基线 77 + B 的 3 个 P3-017 场景） |
+| `node scripts/check-host.mjs` | 65/65 | 67/67 | **68/68**（+A 1 组 + B 2 组；连续 3 次稳定） |
+| worker `node --test --test-concurrency=1 test/*.test.mjs` | — | 54/54 | **56/56**（A+B 合并后全量；`cf7e593` reviewed `node_modules` 只读载体 / /tmp 副本） |
+| `node scripts/test-conversation-preview.mjs --staging /tmp/p3-017-hybrid`（real Chrome） | 44/68（verifier 旧预期） | 161/161 | **164/164**（B1–B5 全 true；含 3 个 A+B 顶栏/分隔条集成断言） |
+| `node scripts/test-stage-version.mjs` | 7/10（base 继承失败） | 7/10 | **10/10（转绿；REVIEWED_BUNDLE_VERSION=alpha.9）** |
 
 ### 真实 Host + worker 导出/取消/并发实测
 
@@ -81,20 +83,33 @@ verifier 的 B 验收发现旧 `scripts/test-conversation-preview.mjs` 仍按 P3
 - **retention notice 场景改为“连续两次失败”**：R2-1 next-revision snapshot、R2-3 candidate runtime error、R2-5 initial failure、R2F-A/B、R2 stress double-retry/unmount 的注入从 `times:1` 改为 `times:2`；notice/完整错误只在自动重试也失败后出现，并新增断言证明自动重试确实发生过（两次失败 attempt / injection hits===2）。
 - **保留覆盖**：B1 首次自动预览与 publish 跟随、B2 连续两轮同工程更新、B3 真实播放/暂停/seek、R2 旧画面保留/可播放/markers/快照 route 保活/显式 retry 切换/旧快照 release、R2F 每实例几何与 duration、B5 无手动控件/手势零写入、network/console/teardown/staging 只读审计全部保留。
 - **运行环境（/tmp hybrid staging，未安装/未改 staging）**：`/tmp/p3-017-hybrid` = reviewed alpha.8 staging（cf7e593）的只读 `node_modules`/config + 本分支 `b01b181` 的 bundle/client/host/worker 源码 overlay；仅对 /tmp 副本重新生成 INTEGRITY 供 `loadStagedHost` 校验（不是交付 staging，不动 `artifacts/`）。真实 Chrome 155 + 真实 Host/worker/fixed snapshot runtime；staging 只读审计 `same=true`（82 文件前后一致）；无外部网络请求、无生产写入、无用户工程。
-- **结果**：`ok=true`、**161/161 checks 全过**（B1/B2/B3/B4/B5 acceptance 全 true）；其中 R2F 细项 92/92、B5 零写入、`network.external=0`。关键证据：R2-0 自动重试 2 attempts / 1558ms / 无 notice / pending 期间旧帧保留；连续失败 retention → notice → 显式 retry 切换并 release 旧快照；initial failure 两次失败后才出现完整错误、retry 51ms 恢复；R2F 3 case 几何隔离全过。证据目录：`/tmp/p3-017-preview-evidence/preview-2026-10-20T11-54-36-096Z/`（JSON + 截图，未入仓）。
+- **结果**：`ok=true`、**161/161 checks 全过**（B1/B2/B3/B4/B5 acceptance 全 true）；其中 R2F 细项 92/92、B5 零写入、`network.external=0`。关键证据：R2-0 自动重试 2 attempts / 1558ms / 无 notice / pending 期间旧帧保留；连续失败 retention → notice → 显式 retry 切换并 release 旧快照；initial failure 两次失败后才出现完整错误、retry 51ms 恢复；R2F 3 case 几何隔离全过。证据目录：`/tmp/p3-017-preview-evidence/preview-2026-10-20T11-54-36-096Z/`（JSON + 截图，未入仓）。合并 A 后同一脚本重跑为 **164/164**（新增 3 个 A+B 顶栏/分隔条集成断言），见“P3-018 集成”节。
 - **旧失败 → 新断言映射**：旧脚本 24 个失败全部是“单次失败应出现 retention notice”（R2-1/R2-3/R2-5/R2F-A/B 及由其派生的 R2F 聚合、初始失败、截图/释放断言）。新脚本对应改为：单次失败 → 自动重试恢复（R2-0）；连续失败 → retention notice（上述场景 `times:2`）；固定等待 → 事件驱动等待。没有删除或放宽任何场景断言。
+
+### P3-018 集成：合并新 main + alpha.9 候选
+
+- **合并**：`git merge origin/main`（main HEAD `61c566e`，含 P3-016 A）→ merge commit `55fbed7`；未 rebase、未强推、未删测试/放宽断言。
+- **冲突解决**：
+  - `client.js` 顶栏 JSX：保留 A 的“返回 → 左对齐作品名（内联 rename）→ 工程箭头/工程菜单”，在右侧保留 B 的 `exportControl()`；A 已删除的显示设置菜单（`menuOpen`/`onToggleSimplified`/`DisplayOptionsIcon`/`.dv-display`）保持删除。
+  - `client.js` 样式：同时保留 A 的 `.dv-splitter`/`data-resizing` 样式与 B 的 `.dv-export*` 样式。
+  - `docs/handoffs/README.md`：合并为“P3-016 已合并 main / P3-017 alpha.9 候选（未安装未合并 PR）”两条记录。
+  - 其余文件（worker.mjs/jobs.mjs/protocol.schema.json、host/bridge.js、check-host.mjs、smoke-client.mjs、check.mjs、worker projects/registry、react-dom-lite、test-ui-polish）由 git 自动合并；合并后未发现语义回归。
+- **版本/文档**：`795acaa` 统一 **0.3.0-alpha.9**（package.json、check.mjs 断言、test-stage-version pin、README），并更新 `docs/design/FRONTEND-DESIGN.md`（AI 栏 42%/320–720px/左保底 360px、窄屏堆叠；顶栏左侧作品名/箭头 + 右侧导出、无显示设置）、`docs/STATUS.md`、`docs/tasks/P3-016/P3-017`、`docs/handoffs/README.md`；不虚报安装（当前安装仍 alpha.8）。
+- **合并后复验**：门禁见上表；`test-conversation-preview` 重跑 **164/164**（`ok=true`、B1–B5 acceptance 全 true、staging 只读审计 same=true、external=0、writeRequests=0）；新增 3 个集成断言证明 real Chrome 中 A 左侧作品名/箭头/分隔条与 B 右侧导出控件共存、无显示设置菜单、AI 栏宽度在 320–720px clamp 内（实测 588px）。
+- **证据**：`/tmp/p3-019-preview-evidence/preview-2026-10-20T12-30-33-409Z/`（hybrid staging `/tmp/p3-017-hybrid` = reviewed alpha.8 只读 deps + 本候选源码；仅 /tmp 重建 INTEGRITY，未改 `artifacts/`）。
+- **未做**：未构建 alpha.9 staging、未安装/重启、未合并 PR #11、未跑真实 DSH/模型；等 verifier 合并后整体复验 + Lead 构建/安装 alpha.9 后的真机验收。
 
 ### 未验证 / 风险
 
-- **真实浏览器验收已补**：P3-012 预览脚本在 real Chrome（/tmp hybrid staging）161/161 通过，覆盖 B1 自动重试/旧画面保留/retention/initial failure、B2 渲染帧差异、B3 播放/seek、R2F 几何隔离等；但**仍未在已安装 DSH 内嵌真实对话中做图片点击/顶栏导出按钮外观与真机安装验收**（按限制未安装/重启/不抢前台 UI），合并后仍需真机冒烟。
+- **真实浏览器验收已补**：P3-012 预览脚本在 real Chrome（/tmp hybrid staging）合并 A 后 **164/164** 通过，覆盖 B1 自动重试/旧画面保留/retention/initial failure、B2 渲染帧差异、B3 播放/seek、R2F 几何隔离，以及 A+B 顶栏/分隔条共存；但**仍未在已安装 DSH 内嵌真实对话中做图片点击/顶栏导出按钮/rename 拖拽外观与真机安装验收**（按限制未安装/重启/不抢前台 UI），待 Lead 安装 alpha.9 后真机冒烟。
 - B1 去抖的直接竞态用 fake Host 驱动 revision 轮询验证（旧快照晚到被 release、最新 revision 生效）；未在真实 DSH 里制造 3–4 连发 revision。
 - 真实 120s 工程导出耗时 160s 发生在 /tmp 环境（机器/负载与用户真机不同）；产品上 20s 工程的用户真机历史实测约 111.7s，新上限 900s 有充足余量，但仍需真机确认长片导出体验。
 - 真实 20s/120s 工程为 /tmp 内简单 composition；未复跑用户复杂作品（遵守不修改用户作品）。
 - `test-stage-version.mjs` 在 base 上已失败（脚本固定 alpha.7 与 root alpha.8 不一致），本任务未修；需要 Lead 决定是否单独修正或由版本 bump 分支处理。
-- 与 A 分支（P3-016）在 `client.js` 顶栏区域、`docs/check` 记录存在合并冲突风险；Lead 合并时需保留 A 的标题/面板改动与本卡导出控件。
+- A/B 合并冲突已在 `55fbed7` 解决（A 左侧作品名/箭头/rename + B 右侧导出；显示设置保持删除），real Chrome 164/164 覆盖共存；若 Lead 重新 rebase/改 main 仍需保留该组合。
 
 ## 下一步建议
 
-1. Lead 审阅分支 diff 与测试计数，按需做独立验收（真实浏览器/竞态）。
-2. 合并 A/B 两条分支时解决 `client.js` 顶栏冲突：A 的“返回→作品名→工程下拉”在左、B 的导出控件在右；`video.canvas.export*` 文案键沿用。
-3. 合并后统一 bump 候选版本、重新跑门禁与真机安装冒烟（导出按钮、图片点击、连续 revision 预览）。
+1. verifier 对合并后的 B 分支（PR #11）做整体复验：diff/边界、门禁复跑、real Chrome 预览、A+B UI 共存。
+2. Lead 合并 PR #11 → 从合并提交构建 alpha.9 固定 staging（root/engine 摘要记录）→ 按授权安装并做真机验收（导出按钮/进度/取消/下载、图片点击、连续 revision 预览、A 的 rename/拖拽手感）。
+3. 保留 alpha.8 staging 与用户工程作为回滚入口；不 reset/clean/强推。

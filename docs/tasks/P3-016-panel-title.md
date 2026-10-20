@@ -1,10 +1,10 @@
 # P3-016（A）面板布局、工程标题重命名、移除简化界面效果
 
-日期：2026-10-20（Asia/Shanghai）。状态：**A1–A4 实现、自测、仓库门禁与真 Chrome 组件验证完成；已提交并 push 到分支，未开 PR / 未合并 / 未安装候选；真实 DSH 真机与本任务 B（预览、图片点击、导出）不在本记录范围。**
+日期：2026-10-20（Asia/Shanghai）。状态：**A1–A4 实现、自测、仓库门禁与真 Chrome 组件验证完成；PR #10 已合并 main（merge commit `61c566e`），并已由 P3-018 集成进 alpha.9 候选（B 分支合并新 main）；候选未安装，真实 DSH 真机验收待 Lead 构建/安装 alpha.9 后进行。**
 
 - 分支：`codex/p3-016-panel-title`（base `origin/main` `ec9ad47`），隔离 worktree `dsh-video-editor-worktrees/p3-016-panel-title`
 - 实现提交：`7a739f6`（A1–A4 代码/测试/README；本文件为随后的 docs 提交）
-- 未 bump `package.json`：候选版本与安装由 Lead 合并后统一处理；因此本分支上 `scripts/test-stage-version.mjs` 的 alpha.7 版本断言与 base 一样是**继承失败**（见“验证”）
+- 候选版本由 P3-018 统一 bump 到 **0.3.0-alpha.9**（`package.json`/`check.mjs`/`test-stage-version` 同步），因此本记录“验证”表中 7/10 的继承失败在合并后的 alpha.9 候选上已变为 10/10
 - 未派生其它 Agent、未改其它 worktree / 主工作树 / 已安装插件 / 用户作品 / `~/.dsh`；临时文件与测试 fixture 均在 worktree 的忽略目录或 `/tmp`
 
 ## 范围与实现
@@ -86,3 +86,11 @@
 1. Lead 评审 A1–A4 实现与测试证据，决定候选版本与是否需要构建 staging；
 2. 与本任务 B（左侧预览/图片点击/导出按钮）合并时检查顶栏右侧留位、右栏宽度与新 rename 不冲突；
 3. 合并后按授权做真实 DSH 真机验收（拖拽手感、模型名完整显示、改名持久/失败提示、AI 发布不覆盖标题），再统一 bump 版本与更新 `STATUS.md`。
+
+## 集成记录（2026-10-20，P3-018）
+
+- **PR #10 已合并 main**：merge commit `61c566e`（实现 `7a739f6`，docs `e006986`）。main 现在包含 A1–A4。
+- **A+B 集成**：`codex/p3-017-preview-export` 合并 `origin/main` 得到 merge commit `55fbed7`；冲突仅在 `client.js`（顶栏 JSX、分隔条/导出控件 CSS）与 `docs/handoffs/README.md`，按“A 左侧作品名/内联重命名/工程箭头 + B 右侧导出控件；保留 A 的分隔条样式；显示设置菜单保持删除”解决。`docs/design/FRONTEND-DESIGN.md` 已同步到当前实现（AI 栏默认 42%、320–720px、左侧保底约 360px、窄屏堆叠；顶栏含右删导出、无显示设置）。
+- **候选版本**：`795acaa` 统一 bump **0.3.0-alpha.9**（package.json、check.mjs 断言、test-stage-version pin、README），并更新 STATUS/handoffs/设计文档。
+- **合并后门禁**：check **54/54**、smoke-client **80/80**、check-host **68/68**（连续 3 次稳定）、worker 单测 **56/56**（cf7e593 reviewed `node_modules` 只读载体 / /tmp 副本）、test-stage-version **10/10**（转绿）；真实 Chrome `test-conversation-preview` **164/164**（含 3 个 A+B 顶栏/分隔条集成断言）。
+- **未做**：未构建 alpha.9 staging、未安装/重启、未合并 PR #11、未跑真实 DSH/模型；真机（拖拽手感、模型名完整、改名持久、AI 发布不覆盖标题）仍待 Lead 按授权执行。
