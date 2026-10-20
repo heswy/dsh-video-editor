@@ -48,6 +48,10 @@
       "request": "#/$defs/request_project_create",
       "result": "#/$defs/result_project_create"
     },
+    "project.rename": {
+      "request": "#/$defs/request_project_rename",
+      "result": "#/$defs/result_project_rename"
+    },
     "project.compose": {
       "request": "#/$defs/request_project_compose",
       "result": "#/$defs/result_project_compose"
@@ -723,6 +727,14 @@
           "type": "string",
           "pattern": "^[a-f0-9]{64}$"
         },
+        "title": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1,
+          "maxLength": 120
+        },
         "width": {
           "type": "number",
           "minimum": 1,
@@ -760,6 +772,7 @@
       "required": [
         "projectId",
         "revision",
+        "title",
         "width",
         "height",
         "duration",
@@ -1369,6 +1382,26 @@
       },
       "required": [
         "projectId"
+      ]
+    },
+    "params_project_rename": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        }
+      },
+      "required": [
+        "projectId",
+        "title"
       ]
     },
     "params_asset_import": {
@@ -2094,6 +2127,35 @@
         "html"
       ]
     },
+    "result_project_rename": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "revision": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "changed": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "projectId",
+        "revision",
+        "title",
+        "changed"
+      ]
+    },
     "result_asset_import": {
       "type": "object",
       "additionalProperties": false,
@@ -2812,6 +2874,30 @@
         "params"
       ]
     },
+    "request_project_rename": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "id": {
+          "$ref": "#/$defs/requestId"
+        },
+        "method": {
+          "const": "project.rename"
+        },
+        "params": {
+          "$ref": "#/$defs/params_project_rename"
+        }
+      },
+      "required": [
+        "v",
+        "id",
+        "method",
+        "params"
+      ]
+    },
     "request_asset_import": {
       "type": "object",
       "additionalProperties": false,
@@ -3121,6 +3207,9 @@
         },
         {
           "$ref": "#/$defs/request_project_source"
+        },
+        {
+          "$ref": "#/$defs/request_project_rename"
         },
         {
           "$ref": "#/$defs/request_asset_import"

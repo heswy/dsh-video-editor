@@ -47,7 +47,7 @@ import vm from 'node:vm';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const CLIENT_SOURCE = readFileSync(join(ROOT, 'client.js'), 'utf8');
-const PREFS_KEY = 'dsh-video.ui.v1';
+const LAYOUT_PREFS_KEY = 'dsh-video.layout.v1';
 const PANEL_ID = 'dsh-video';
 const SIDEBAR_SLOT = 'sidebar.panellist';
 
@@ -727,6 +727,39 @@ function panelMenuItem(tree) {
   return findNode(tree, (node) => node.type === 'button' && node.props && node.props.role === 'menuitemcheckbox');
 }
 
+function projectMenu(tree) {
+  return findNode(tree, (node) => node.props && node.props.className === 'dv-project-menu');
+}
+
+function projectMenuItems(tree) {
+  return findNodes(tree, (node) => node.type === 'button' && node.props && (node.props.role === 'menuitemradio' || node.props.role === 'menuitem'));
+}
+
+function projectToggle(tree) {
+  return findNode(tree, (node) => node.type === 'button' && typeof node.props.className === 'string' && node.props.className.split(/\s+/).includes('dv-project-toggle'));
+}
+
+function projectNameButton(tree) {
+  return findNode(tree, (node) => node.type === 'button' && node.props && node.props.className === 'dv-project-name');
+}
+
+function projectNameInput(tree) {
+  return findNode(tree, (node) => node.type === 'input' && node.props && node.props.className === 'dv-project-name-input');
+}
+
+function splitterOf(tree) {
+  return findNode(tree, (node) => node.props && node.props.className === 'dv-splitter');
+}
+
+function mainSplit(tree) {
+  return findNode(tree, (node) => node.props && node.props.className === 'dv-main');
+}
+
+function aiWidthCss(tree) {
+  const main = mainSplit(tree);
+  return main !== null && main.props.style ? main.props.style['--dv-ai-width'] : undefined;
+}
+
 function panelButtonByText(tree, label) {
   return findNode(tree, (node) => node.type === 'button' && textOf(node) === label);
 }
@@ -1144,14 +1177,14 @@ test('sidebar icon honours the host owner props and native line style', () => {
 //#endregion
 
 //#region tests: panel content + display options
-test('panel renders the preparing status, one return action and one display menu before boot', () => {
+test('panel renders the preparing status, one return action and one resizable AI pane before boot', () => {
   const loaded = loadClient();
   const env = createFakeEnvironment();
   loaded.exports.apply(env.ctx);
   const tree = mountPanel(loaded, env);
   const root = findNode(tree, (node) => node.props && node.props.className === 'dv-root');
   assert(root !== null, 'video panel root missing');
-  assert(root.props['data-simplified'] === 'false', 'simplified effects should default to off');
+  assert(root.props['data-simplified'] === undefined, 'the removed simplified-effects marker is still on the root');
   const empty = findNode(tree, (node) => node.props && node.props.className === 'dv-empty');
   assert(empty !== null, 'empty state missing');
   assert(textOf(empty) === '正在准备工程…', `boot status is "${textOf(empty)}"`);
@@ -1159,12 +1192,16 @@ test('panel renders the preparing status, one return action and one display menu
   assert(back !== null, 'return action missing');
   assert(back.props['aria-label'] === '返回对话', 'return action needs an accessible name');
   assert(textOf(back) === '返回对话', 'return action label missing');
-  const display = findNode(tree, (node) => node.type === 'button' && node.props && node.props.className === 'dv-icon-button');
-  assert(display !== null, 'display options trigger missing');
-  assert(display.props['aria-label'] === '显示选项', 'display options trigger needs an accessible name');
-  assert(panelMenuItem(tree) === null, 'display menu must start closed');
+  // The plugin display-settings trigger is gone; the pane width lives on the
+  // splitter (the project picker only exists once a project is available).
+  assert(findNode(tree, (node) => node.props && node.props['aria-label'] === '显示选项') === null, 'the removed display-settings trigger is still rendered');
+  assert(aiWidthCss(tree) !== undefined, 'the resizable AI pane width variable is missing');
+  assert(projectMenu(tree) === null, 'project menu must start closed');
+  assert(projectToggle(tree) === null, 'the project picker must not appear before a project exists');
+  const separator = splitterOf(tree);
+  assert(separator !== null && separator.props.role === 'separator', 'resize separator missing');
   const text = textOf(tree);
-  for (const forbidden of ['空工作区', '从一个想法', '创建工程', '导出', '时间线', 'Vedio Editor']) {
+  for (const forbidden of ['空工作区', '从一个想法', '创建工程', '导出', '时间线', 'Vedio Editor', '简化界面效果']) {
     assert(text.includes(forbidden) === false, `panel still renders removed content "${forbidden}"`);
   }
 });
@@ -1199,161 +1236,147 @@ test('failed return is surfaced in place and reported once', () => {
   );
 });
 
-test('display options menu toggles and persists the reduced-effects preference', () => {
+test('P3-016: the AI pane splitter resizes, persists, resets and steps from the keyboard', () => {
   const storage = createMemoryStorage();
   const loaded = loadClientWithStorage(storage);
   const env = createFakeEnvironment();
   loaded.exports.apply(env.ctx);
   const interactive = mountInteractivePanel(loaded, env);
   let tree = interactive.render();
-  const display = findNode(tree, (node) => node.type === 'button' && node.props.className === 'dv-icon-button');
-  assert(display.props['aria-expanded'] === 'false', 'menu must start collapsed');
-  display.props.onClick();
-  tree = interactive.rerender();
-  const item = panelMenuItem(tree);
-  assert(item !== null, 'display menu did not open');
-  assert(item.props['aria-checked'] === 'false', 'simplified effects should default to off');
-  const expanded = findNode(tree, (node) => node.type === 'button' && node.props.className === 'dv-icon-button');
-  assert(expanded.props['aria-expanded'] === 'true', 'menu trigger did not expose the open state');
-  item.props.onClick();
-  tree = interactive.rerender();
-  const root = findNode(tree, (node) => node.props && node.props.className === 'dv-root');
-  assert(root.props['data-simplified'] === 'true', 'root did not apply the simplified state');
-  const checked = panelMenuItem(tree);
-  assert(checked.props['aria-checked'] === 'true', 'display option did not expose its checked state');
-  const stored = storage.map.get(PREFS_KEY);
-  assert(typeof stored === 'string', 'preference was not persisted');
-  const parsed = JSON.parse(stored);
-  assert(parsed.version === 1 && parsed.simplifiedEffects === true, 'stored preference payload is wrong');
-  // Escape closes the menu again without leaving the panel.
-  const menu = findNode(tree, (node) => node.props && node.props.className === 'dv-menu');
-  menu.props.onKeyDown({ key: 'Escape', preventDefault() {} });
-  tree = interactive.rerender();
-  assert(panelMenuItem(tree) === null, 'Escape did not close the display menu');
-});
+  assert(String(aiWidthCss(tree)).includes('42%'), `default AI pane ratio is not 42%: ${aiWidthCss(tree)}`);
+  let separator = splitterOf(tree);
+  assert(separator !== null, 'splitter separator missing');
+  assert(separator.props.tabIndex === 0, 'splitter must be keyboard focusable');
+  assert(separator.props['aria-orientation'] === 'vertical', 'splitter orientation missing');
+  assert(separator.props['aria-valuenow'] === '42', `splitter value is ${separator.props['aria-valuenow']}`);
+  assert(String(separator.props['aria-label']).length > 0, 'splitter needs an accessible name');
 
-test('R1: opening the display menu moves focus onto its item', () => {
-  const loaded = loadClient();
-  const env = createFakeEnvironment();
-  loaded.exports.apply(env.ctx);
-  const interactive = mountInteractivePanel(loaded, env);
-  let tree = interactive.render();
-  const trigger = findNode(tree, (node) => node.type === 'button' && node.props.className === 'dv-icon-button');
-  trigger.props.onClick();
-  tree = interactive.rerender();
-  const item = panelMenuItem(tree);
-  assert(item !== null, 'display menu did not open');
-  const active = interactive.activeElement();
-  assert(active !== null, 'opening the menu did not move focus');
-  assert(active.props && active.props.role === 'menuitemcheckbox', 'focus did not move onto the menu item');
-});
-
-test('R1: ArrowDown on the trigger opens and focuses the menu item', () => {
-  const loaded = loadClient();
-  const env = createFakeEnvironment();
-  loaded.exports.apply(env.ctx);
-  const interactive = mountInteractivePanel(loaded, env);
-  let tree = interactive.render();
-  const trigger = findNode(tree, (node) => node.type === 'button' && node.props.className === 'dv-icon-button');
+  // Simulate a 1000px workspace: leaving the divider at x=500 is a 50% pane.
+  mainSplit(tree).getBoundingClientRect = () => ({ left: 0, top: 0, width: 1000, height: 700 });
   let prevented = false;
-  trigger.props.onKeyDown({ key: 'ArrowDown', preventDefault() { prevented = true; } });
-  assert(prevented === true, 'ArrowDown must be handled');
+  separator.props.onPointerDown({ preventDefault() { prevented = true; }, currentTarget: {}, pointerId: 1 });
+  assert(prevented === true, 'pointer down must be handled');
+  separator.props.onPointerMove({ clientX: 500 });
   tree = interactive.rerender();
-  const item = panelMenuItem(tree);
-  assert(item !== null, 'ArrowDown did not open the menu');
-  const active = interactive.activeElement();
-  assert(active !== null && active.props && active.props.role === 'menuitemcheckbox', 'ArrowDown did not focus the item');
+  assert(String(aiWidthCss(tree)).includes('50%'), `dragged ratio is ${aiWidthCss(tree)}`);
+  separator = splitterOf(tree);
+  separator.props.onPointerUp({ currentTarget: {}, pointerId: 1 });
+  const stored = JSON.parse(storage.map.get(LAYOUT_PREFS_KEY));
+  assert(stored.version === 1 && stored.aiPaneRatio === 0.5, `stored layout preference is wrong: ${storage.map.get(LAYOUT_PREFS_KEY)}`);
+
+  // Double-click restores the default ratio and persists it.
+  separator.props.onDoubleClick();
+  tree = interactive.rerender();
+  assert(String(aiWidthCss(tree)).includes('42%'), 'double-click did not restore the default ratio');
+  assert(JSON.parse(storage.map.get(LAYOUT_PREFS_KEY)).aiPaneRatio === 0.42, 'double-click did not persist the default');
+
+  // Keyboard: ArrowLeft widens the AI pane, ArrowRight narrows it, Home resets.
+  separator = splitterOf(tree);
+  let keyPrevented = false;
+  separator.props.onKeyDown({ key: 'ArrowLeft', preventDefault() { keyPrevented = true; } });
+  assert(keyPrevented === true, 'ArrowLeft must be handled');
+  tree = interactive.rerender();
+  assert(String(aiWidthCss(tree)).includes('44%'), `ArrowLeft ratio is ${aiWidthCss(tree)}`);
+  separator = splitterOf(tree);
+  separator.props.onKeyDown({ key: 'ArrowRight', preventDefault() {} });
+  tree = interactive.rerender();
+  assert(String(aiWidthCss(tree)).includes('42%'), `ArrowRight ratio is ${aiWidthCss(tree)}`);
+  separator = splitterOf(tree);
+  separator.props.onKeyDown({ key: 'ArrowLeft', preventDefault() {} });
+  tree = interactive.rerender();
+  separator = splitterOf(tree);
+  separator.props.onKeyDown({ key: 'Home', preventDefault() {} });
+  tree = interactive.rerender();
+  assert(String(aiWidthCss(tree)).includes('42%'), 'Home did not restore the default ratio');
+  assert(splitterOf(tree).props['aria-valuenow'] === '42', 'splitter value did not follow the ratio');
 });
 
-test('R1: Escape closes the menu and returns focus to the trigger', () => {
-  const loaded = loadClient();
-  const env = createFakeEnvironment();
-  loaded.exports.apply(env.ctx);
-  const interactive = mountInteractivePanel(loaded, env);
-  let tree = interactive.render();
-  findNode(tree, (node) => node.type === 'button' && node.props.className === 'dv-icon-button').props.onClick();
-  tree = interactive.rerender();
-  const menu = findNode(tree, (node) => node.props && node.props.className === 'dv-menu');
-  let prevented = false;
-  menu.props.onKeyDown({ key: 'Escape', preventDefault() { prevented = true; } });
-  tree = interactive.rerender();
-  assert(prevented === true, 'Escape must be handled');
-  assert(panelMenuItem(tree) === null, 'Escape did not close the menu');
-  const active = interactive.activeElement();
-  assert(active !== null && active.props && active.props.className === 'dv-icon-button', 'Escape did not return focus to the trigger');
+const LAYOUT = (function loadLayoutHelpers() {
+  const source = extractClientRegion('layout splitter helpers');
+  assert(source.includes('function aiPaneWidthCss('), 'shipped splitter width helper is missing');
+  assert(source.includes('function clampAiPaneWidth('), 'shipped splitter pixel clamp is missing');
+  const names = [
+    'AI_PANE_DEFAULT_RATIO',
+    'AI_PANE_MIN_WIDTH',
+    'AI_PANE_MAX_WIDTH',
+    'LEFT_PANE_MIN_WIDTH',
+    'normalizeAiPaneRatio',
+    'aiPaneWidthCss',
+    'stepAiPaneRatio',
+    'clampAiPaneWidth',
+  ];
+  const exportExpression = ';({' + names.map((name) => name + ': ' + name).join(', ') + '})';
+  return vm.runInContext(source + exportExpression, vm.createContext({}), { filename: 'client.js#layout-splitter-helpers' });
+})();
+
+function assertEqual(actual, expected, message) {
+  assert(Object.is(actual, expected), `${message || 'values differ'}: ${JSON.stringify(actual)} !== ${JSON.stringify(expected)}`);
+}
+
+test('P3-016 pure: splitter ratio bounds, CSS width, keyboard steps and pixel clamps', () => {
+  assertEqual(LAYOUT.AI_PANE_DEFAULT_RATIO, 0.42);
+  assertEqual(LAYOUT.AI_PANE_MIN_WIDTH, 320);
+  assertEqual(LAYOUT.AI_PANE_MAX_WIDTH, 720);
+  assertEqual(LAYOUT.LEFT_PANE_MIN_WIDTH, 360);
+  assertEqual(LAYOUT.normalizeAiPaneRatio(0.5), 0.5);
+  assertEqual(LAYOUT.normalizeAiPaneRatio('0.6'), 0.6);
+  assertEqual(LAYOUT.normalizeAiPaneRatio(9), 0.7, 'ratio above the maximum was not clamped');
+  assertEqual(LAYOUT.normalizeAiPaneRatio(-1), 0.2, 'ratio below the minimum was not clamped');
+  assertEqual(LAYOUT.normalizeAiPaneRatio('nope'), 0.42);
+  assertEqual(LAYOUT.normalizeAiPaneRatio(Number.NaN), 0.42);
+  assertEqual(LAYOUT.normalizeAiPaneRatio(undefined), 0.42);
+  assertEqual(LAYOUT.aiPaneWidthCss(0.5), 'clamp(320px, 50%, min(720px, calc(100% - 360px)))');
+  assertEqual(LAYOUT.aiPaneWidthCss(0.425), 'clamp(320px, 42.5%, min(720px, calc(100% - 360px)))');
+  assertEqual(LAYOUT.stepAiPaneRatio(0.42, 0.02), 0.44);
+  assertEqual(LAYOUT.stepAiPaneRatio(0.42, -0.02), 0.4);
+  assertEqual(LAYOUT.stepAiPaneRatio(0.69, 0.02), 0.7);
+  assertEqual(LAYOUT.stepAiPaneRatio(0.21, -0.02), 0.2);
+  assertEqual(LAYOUT.clampAiPaneWidth(500, 1000), 500);
+  assertEqual(LAYOUT.clampAiPaneWidth(900, 1000), 640, 'the left stage floor was not protected');
+  assertEqual(LAYOUT.clampAiPaneWidth(100, 1000), 320, 'the readable AI minimum was not enforced');
+  assertEqual(LAYOUT.clampAiPaneWidth(500, 800), 440, 'a narrow container did not protect the left stage');
+  assertEqual(LAYOUT.clampAiPaneWidth(500, 1500), 500);
+  assertEqual(LAYOUT.clampAiPaneWidth(Number.NaN, 1000), 320);
 });
 
-test('R1: Tab closes the menu and returns focus without keeping it inside the removed menu', () => {
-  const loaded = loadClient();
-  const env = createFakeEnvironment();
-  loaded.exports.apply(env.ctx);
-  const interactive = mountInteractivePanel(loaded, env);
-  let tree = interactive.render();
-  const trigger = findNode(tree, (node) => node.type === 'button' && node.props.className === 'dv-icon-button');
-  trigger.props.onKeyDown({ key: 'ArrowDown', preventDefault() {} });
-  tree = interactive.rerender();
-  assert(panelMenuItem(tree) !== null, 'menu did not open for the Tab check');
-  const activeBefore = interactive.activeElement();
-  assert(activeBefore !== null && activeBefore.props.role === 'menuitemcheckbox', 'focus was not inside the menu before Tab');
-  const menu = findNode(tree, (node) => node.props && node.props.className === 'dv-menu');
-  let prevented = false;
-  menu.props.onKeyDown({ key: 'Tab', preventDefault() { prevented = true; } });
-  tree = interactive.rerender();
-  assert(prevented === true, 'Tab must be handled so focus cannot stay on the removed node');
-  assert(panelMenuItem(tree) === null, 'Tab did not close the menu');
-  const activeAfter = interactive.activeElement();
-  assert(activeAfter !== null && activeAfter.props && activeAfter.props.className === 'dv-icon-button', 'Tab did not return focus to the trigger');
-});
-
-test('R1: pressing the trigger again closes the menu and keeps focus on the trigger', () => {
-  const loaded = loadClient();
-  const env = createFakeEnvironment();
-  loaded.exports.apply(env.ctx);
-  const interactive = mountInteractivePanel(loaded, env);
-  let tree = interactive.render();
-  let trigger = findNode(tree, (node) => node.type === 'button' && node.props.className === 'dv-icon-button');
-  trigger.props.onClick();
-  tree = interactive.rerender();
-  assert(panelMenuItem(tree) !== null, 'menu did not open');
-  trigger = findNode(tree, (node) => node.type === 'button' && node.props.className === 'dv-icon-button');
-  trigger.props.onClick();
-  tree = interactive.rerender();
-  assert(panelMenuItem(tree) === null, 'second trigger press did not close the menu');
-  const active = interactive.activeElement();
-  assert(active !== null && active.props && active.props.className === 'dv-icon-button', 'closing did not keep focus on the trigger');
-});
-
-test('preferences are restored on a fresh module load', () => {
-  const storage = createMemoryStorage({ [PREFS_KEY]: JSON.stringify({ version: 1, simplifiedEffects: true }) });
+test('P3-016: the pane-width preference is restored on a fresh module load', () => {
+  const storage = createMemoryStorage({ [LAYOUT_PREFS_KEY]: JSON.stringify({ version: 1, aiPaneRatio: 0.5 }) });
   const loaded = loadClientWithStorage(storage);
   const env = createFakeEnvironment();
   loaded.exports.apply(env.ctx);
   const tree = mountPanel(loaded, env);
-  const root = findNode(tree, (node) => node.props && node.props.className === 'dv-root');
-  assert(root.props['data-simplified'] === 'true', 'stored preference was not restored');
+  assert(String(aiWidthCss(tree)).includes('50%'), 'stored pane ratio was not restored');
+  assert(splitterOf(tree).props['aria-valuenow'] === '50', 'splitter value did not reflect the stored ratio');
 });
 
-test('corrupt, unknown-version and wrong-shape preferences fall back safely', () => {
+test('P3-016: corrupt, unknown-version and wrong-shape layout preferences fall back safely', () => {
   const cases = [
     ['invalid JSON', '{"version":1,'],
-    ['old version', JSON.stringify({ version: 0, simplifiedEffects: true })],
-    ['unknown version', JSON.stringify({ version: 99, simplifiedEffects: true })],
+    ['old version', JSON.stringify({ version: 0, aiPaneRatio: 0.5 })],
+    ['unknown version', JSON.stringify({ version: 99, aiPaneRatio: 0.5 })],
     ['null payload', 'null'],
     ['array payload', '[]'],
     ['missing field', JSON.stringify({ version: 1 })],
+    ['legacy simplified payload', JSON.stringify({ version: 1, simplifiedEffects: true })],
+    ['non-numeric ratio', JSON.stringify({ version: 1, aiPaneRatio: 'wide' })],
   ];
   for (const [label, raw] of cases) {
-    const storage = createMemoryStorage({ [PREFS_KEY]: raw });
+    const storage = createMemoryStorage({ [LAYOUT_PREFS_KEY]: raw });
     const loaded = loadClientWithStorage(storage);
     const env = createFakeEnvironment();
     loaded.exports.apply(env.ctx);
     const tree = mountPanel(loaded, env);
-    const root = findNode(tree, (node) => node.props && node.props.className === 'dv-root');
-    assert(root.props['data-simplified'] === 'false', `${label}: corrupt preference was not rejected`);
+    assert(String(aiWidthCss(tree)).includes('42%'), `${label}: corrupt preference was not rejected`);
   }
+  // A valid but out-of-range ratio is accepted and clamped, not dropped.
+  const storage = createMemoryStorage({ [LAYOUT_PREFS_KEY]: JSON.stringify({ version: 1, aiPaneRatio: 9 }) });
+  const loaded = loadClientWithStorage(storage);
+  const env = createFakeEnvironment();
+  loaded.exports.apply(env.ctx);
+  assert(String(aiWidthCss(mountPanel(loaded, env))).includes('70%'), 'an out-of-range ratio was not clamped');
 });
 
-test('storage read/write exceptions do not break activation or the menu', () => {
+test('P3-016: storage read/write exceptions keep the pane usable and are reported', () => {
   const storage = createMemoryStorage({}, { getThrows: true, setThrows: true });
   const loaded = loadClientWithStorage(storage);
   const env = createFakeEnvironment();
@@ -1366,25 +1389,179 @@ test('storage read/write exceptions do not break activation or the menu', () => 
   assert(threw === false, 'apply threw when storage was unavailable');
   const interactive = mountInteractivePanel(loaded, env);
   let tree = interactive.render();
-  findNode(tree, (node) => node.type === 'button' && node.props.className === 'dv-icon-button').props.onClick();
-  tree = interactive.rerender();
+  assert(String(aiWidthCss(tree)).includes('42%'), 'an unreadable preference changed the default ratio');
+  mainSplit(tree).getBoundingClientRect = () => ({ left: 0, top: 0, width: 1000, height: 700 });
+  let separator = splitterOf(tree);
   try {
-    panelMenuItem(tree).props.onClick();
+    separator.props.onPointerDown({ preventDefault() {}, currentTarget: {}, pointerId: 1 });
+    separator.props.onPointerMove({ clientX: 480 });
+    tree = interactive.rerender();
+    separator = splitterOf(tree);
+    separator.props.onPointerUp({ currentTarget: {}, pointerId: 1 });
+    tree = interactive.rerender();
+    separator = splitterOf(tree);
+    separator.props.onKeyDown({ key: 'ArrowLeft', preventDefault() {} });
     tree = interactive.rerender();
   } catch (_error) {
     threw = true;
   }
-  assert(threw === false, 'display option threw when the storage write failed');
-  const root = findNode(tree, (node) => node.props && node.props.className === 'dv-root');
-  assert(root.props['data-simplified'] === 'true', 'in-memory value was lost after a failed write');
+  assert(threw === false, 'the pane threw when the storage write failed');
+  assert(String(aiWidthCss(tree)).includes('%'), 'the in-memory ratio was lost after a failed write');
   assert(activationErrors(env).some((message) => message.includes('prefs-')), 'storage failures were not reported');
+});
+
+test('P3-016: the project picker menu manages focus and closes with Escape/Tab', async () => {
+  const sessions = makeSessionsService({ list: ['session-menu'] });
+  const hostFetch = sessionFetch({ activeSessionId: 'session-menu', sessions: ['session-menu'] });
+  const editor = await mountBootedPanel(hostFetch, { sessions: sessions, kit: makeSessionKit() });
+  try {
+    let tree = editor.tree();
+    let toggle = projectToggle(tree);
+    assert(toggle !== null, 'project picker arrow missing');
+    assert(toggle.props['aria-expanded'] === 'false', 'menu must start collapsed');
+    toggle.props.onClick();
+    tree = editor.rerender();
+    assert(projectToggle(tree).props['aria-expanded'] === 'true', 'the arrow did not expose the open state');
+    const menu = projectMenu(tree);
+    assert(menu !== null, 'the project menu did not open');
+    const activeItem = findNode(menu, (node) => node.type === 'button' && node.props.role === 'menuitemradio' && node.props['aria-checked'] === 'true');
+    assert(activeItem !== null, 'the current project item is missing');
+    const focused = editor.interactive.activeElement();
+    assert(focused !== null && focused.props && focused.props.role === 'menuitemradio', 'opening the menu did not focus the current project');
+    menu.props.onKeyDown({ key: 'Escape', preventDefault() {} });
+    tree = editor.rerender();
+    assert(projectMenu(tree) === null, 'Escape did not close the project menu');
+    const afterEscape = editor.interactive.activeElement();
+    assert(afterEscape !== null && String(afterEscape.props.className).split(/\s+/).includes('dv-project-toggle'), 'Escape did not return focus to the arrow');
+    let prevented = false;
+    projectToggle(tree).props.onKeyDown({ key: 'ArrowDown', preventDefault() { prevented = true; } });
+    assert(prevented === true, 'ArrowDown must be handled');
+    tree = editor.rerender();
+    assert(projectMenu(tree) !== null, 'ArrowDown did not open the project menu');
+    const focusedByArrow = editor.interactive.activeElement();
+    assert(focusedByArrow !== null && focusedByArrow.props.role === 'menuitemradio', 'ArrowDown did not focus the current project');
+    projectMenu(tree).props.onKeyDown({ key: 'Tab', preventDefault() {} });
+    tree = editor.rerender();
+    assert(projectMenu(tree) === null, 'Tab did not close the project menu');
+    const afterTab = editor.interactive.activeElement();
+    assert(afterTab !== null && String(afterTab.props.className).split(/\s+/).includes('dv-project-toggle'), 'Tab did not return focus to the arrow');
+    projectToggle(tree).props.onClick();
+    tree = editor.rerender();
+    assert(projectMenu(tree) !== null, 'menu did not reopen');
+    projectToggle(tree).props.onClick();
+    tree = editor.rerender();
+    assert(projectMenu(tree) === null, 'second arrow press did not close the menu');
+  } finally {
+    editor.interactive.unmount();
+  }
+});
+
+test('P3-016: the work name starts inline rename; Enter saves and Esc cancels without publishing', async () => {
+  const sessions = makeSessionsService({ list: ['session-rename'] });
+  const hostFetch = sessionFetch({ activeSessionId: 'session-rename', sessions: ['session-rename'] });
+  hostFetch.config.handler = (request) => {
+    if (request.body.method === 'project.rename') {
+      return {
+        ok: true,
+        result: {
+          projectId: request.body.params.projectId,
+          revision: 'c'.repeat(64),
+          title: request.body.params.title,
+          changed: true,
+        },
+      };
+    }
+    return undefined;
+  };
+  const editor = await mountBootedPanel(hostFetch, { sessions: sessions, kit: makeSessionKit() });
+  try {
+    let tree = editor.rerender();
+    const nameButton = projectNameButton(tree);
+    assert(nameButton !== null && textOf(nameButton) === 'Scene 1', 'the current work name is missing');
+    nameButton.props.onClick();
+    tree = editor.rerender();
+    let input = projectNameInput(tree);
+    assert(input !== null, 'clicking the name did not start inline rename');
+    assert(input.props.value === 'Scene 1', `rename draft is ${input.props.value}`);
+    assert(editor.interactive.activeElement() === input, 'the rename input was not focused');
+    assert(input.props['aria-label'] === '重命名工程', 'the rename input needs an accessible name');
+    input.props.onKeyDown({ key: 'Escape', preventDefault() {} });
+    tree = editor.rerender();
+    assert(projectNameInput(tree) === null && textOf(projectNameButton(tree)) === 'Scene 1', 'Escape did not cancel the rename');
+    assert(hostFetch.calls.every((call) => call.body.method !== 'project.rename'), 'Escape issued a rename request');
+    projectNameButton(tree).props.onClick();
+    tree = editor.rerender();
+    projectNameInput(tree).props.onChange({ target: { value: '  足球短片  ' } });
+    tree = editor.rerender();
+    assert(projectNameInput(tree).props.value === '  足球短片  ', 'the draft did not update');
+    projectNameInput(tree).props.onKeyDown({ key: 'Enter', preventDefault() {} });
+    await settlePanel(editor);
+    tree = editor.tree();
+    const calls = hostFetch.calls.filter((call) => call.body.method === 'project.rename');
+    assert(calls.length === 1, `expected one rename request, got ${calls.length}`);
+    assert(calls[0].body.params.title === '足球短片', `rename sent "${calls[0].body.params.title}"`);
+    assert(projectNameInput(tree) === null, 'the rename input stayed after a successful save');
+    assert(textOf(projectNameButton(tree)) === '足球短片', 'the saved title is not shown');
+    assert(hostFetch.calls.every((call) => call.body.method !== 'project.compose' && call.body.method !== 'edit'), 'rename triggered a content write');
+    // The new title also wins over the content-derived fallback in the picker.
+    projectToggle(tree).props.onClick();
+    tree = editor.rerender();
+    assert(textOf(projectMenu(tree)).includes('足球短片'), 'the picker did not adopt the renamed title');
+  } finally {
+    editor.interactive.unmount();
+  }
+});
+
+test('P3-016: rename failures stay local, keep the draft and never publish', async () => {
+  const sessions = makeSessionsService({ list: ['session-rename-fail'] });
+  const hostFetch = sessionFetch({ activeSessionId: 'session-rename-fail', sessions: ['session-rename-fail'] });
+  hostFetch.config.handler = (request) => {
+    if (request.body.method === 'project.rename') {
+      return { ok: false, error: { code: 'E_PARAMS', message: 'Invalid project title' } };
+    }
+    return undefined;
+  };
+  const editor = await mountBootedPanel(hostFetch, { sessions: sessions, kit: makeSessionKit() });
+  try {
+    let tree = editor.rerender();
+    projectNameButton(tree).props.onClick();
+    tree = editor.rerender();
+    projectNameInput(tree).props.onChange({ target: { value: '失败标题' } });
+    tree = editor.rerender();
+    projectNameInput(tree).props.onKeyDown({ key: 'Enter', preventDefault() {} });
+    await settlePanel(editor);
+    tree = editor.tree();
+    const alert = findNode(tree, (node) => node.props && node.props.className === 'dv-project-rename-error');
+    assert(alert !== null, 'a failed rename did not show an error');
+    assert(textOf(alert) === '重命名失败，请重试。', `rename error text is "${textOf(alert)}"`);
+    assert(projectNameInput(tree) !== null && projectNameInput(tree).props.value === '失败标题', 'the failed rename did not keep the draft');
+    assert(projectNameButton(tree) === null, 'a failed rename replaced the draft with the old name');
+    assert(hostFetch.calls.every((call) => call.body.method !== 'project.compose' && call.body.method !== 'edit'), 'a failed rename triggered a content write');
+    // An empty/blank title is refused locally without a worker round trip.
+    projectNameInput(tree).props.onChange({ target: { value: '   ' } });
+    tree = editor.rerender();
+    projectNameInput(tree).props.onKeyDown({ key: 'Enter', preventDefault() {} });
+    tree = editor.rerender();
+    const emptyAlert = findNode(tree, (node) => node.props && node.props.className === 'dv-project-rename-error');
+    assert(emptyAlert !== null && textOf(emptyAlert) === '工程名称不能为空。', 'a blank title was not refused locally');
+    assert(hostFetch.calls.filter((call) => call.body.method === 'project.rename').length === 1, 'a blank title was sent to the worker');
+    // Escape clears the failure and restores the name control.
+    projectNameInput(tree).props.onKeyDown({ key: 'Escape', preventDefault() {} });
+    tree = editor.rerender();
+    assert(projectNameInput(tree) === null, 'Escape did not close the failed rename');
+    assert(textOf(projectNameButton(tree)) === 'Scene 1', 'a failed rename changed the visible title');
+    assert(findNode(tree, (node) => node.props && node.props.className === 'dv-project-rename-error') === null, 'Escape left the rename error visible');
+  } finally {
+    editor.interactive.unmount();
+  }
 });
 //#endregion
 
 //#region tests: sidebar/main atomic lifecycle
 test('sidebar declared late: the pair mounts only together', () => {
   const loaded = loadClient();
-  const env = createFakeEnvironment({ declaredSlots: { [SIDEBAR_SLOT]: false } });
+  const env = createFakeEnvironment({
+    declaredSlots: { [SIDEBAR_SLOT]: false } });
   loaded.exports.apply(env.ctx);
   assert(liveRegistrations(env).length === 0, 'nothing may register before the sidebar entry exists');
   assert(registrationOf(env, 'main') === undefined, 'main panel must not exist before its sidebar entry');
@@ -2196,9 +2373,14 @@ test('P3-012: returning to the panel reopens the remembered managed project', as
   const kit = makeSessionKit();
   const first = await mountBootedPanel(hostFetch, { sessions: sessions, kit: kit });
   assert(panelRoot(first.tree()).props['data-project-id'] === 'proj-b', 'the first boot did not open the most recent project');
-  const select = findNode(first.tree(), (node) => node.type === 'select' && node.props && node.props['aria-label'] === translateFor(first.env)('video.project.open'));
-  assert(select !== null, 'the project switcher is missing');
-  select.props.onChange({ target: { value: 'proj-a' } });
+  const toggle = projectToggle(first.tree());
+  assert(toggle !== null, 'the project picker arrow is missing');
+  toggle.props.onClick();
+  const menu = projectMenu(first.rerender());
+  assert(menu !== null, 'the project picker did not open');
+  const target = projectMenuItems(first.tree()).find((item) => textOf(item) !== '' && item.props['aria-checked'] === 'false');
+  assert(target !== undefined, 'the other project is not listed in the picker');
+  target.props.onClick();
   await settlePanel(first);
   assert(panelRoot(first.tree()).props['data-project-id'] === 'proj-a', 'the switcher did not open the chosen project');
   const remounted = remountInteractivePanel(first, kit);
@@ -4129,17 +4311,25 @@ test('UI polish: project navigation uses readable names, retains distinct choice
     return undefined;
   };
   const editor = await mountBootedPanel(hostFetch, { sessions, kit: makeSessionKit() });
-  const tree = editor.tree();
+  let tree = editor.tree();
   const topbar = findNode(tree, (node) => node.props && node.props.className === 'dv-topbar');
-  const select = findNode(topbar, (node) => node.type === 'select');
-  assert(select !== null, 'project switching is still separated from the topbar');
-  const option = findNode(select, (node) => node.type === 'option' && node.props.value === 'proj-smoke');
-  assert(option !== null && textOf(option) === 'Scene 1', 'current project title is not read from inspect');
-  assert(!textOf(select).includes('proj-smoke') && !textOf(select).includes('proj-second'), 'technical project IDs leak into visible navigation');
-  const newOption = findNode(select, (node) => node.type === 'option' && node.props.value === '__new__');
-  assert(newOption !== null, 'new project is not available inside project navigation');
+  assert(topbar !== null, 'the topbar is missing');
+  const nameButton = projectNameButton(topbar);
+  assert(nameButton !== null, 'the inline project name is missing');
+  assert(textOf(nameButton) === 'Scene 1', 'current project title is not read from inspect');
+  assert(!textOf(topbar).includes('proj-smoke') && !textOf(topbar).includes('proj-second'), 'technical project IDs leak into visible navigation');
+  assert(projectMenu(tree) === null, 'the project menu must start closed');
+  projectToggle(tree).props.onClick();
+  tree = editor.rerender();
+  assert(projectMenu(tree) !== null, 'the project picker did not open');
+  const items = projectMenuItems(tree);
+  assert(items.length === 3, `expected two projects + new-project action, got ${items.length}`);
+  assert(items.some((item) => item.props.role === 'menuitemradio' && item.props['aria-checked'] === 'true' && textOf(item).includes('Scene 1')), 'the current project is not marked in the picker');
+  assert(items.some((item) => item.props.role === 'menuitem' && textOf(item).includes('新建工程')), 'new project is not available inside project navigation');
+  assert(!textOf(projectMenu(tree)).includes('proj-'), 'technical project IDs leak into the picker');
   assert(hostFetch.calls.filter((call) => call.body.method === 'project.create').length === 0, 'opening navigation created a project');
-  select.props.onChange({ target: { value: '__new__' } });
+  const newItem = items.find((item) => item.props.role === 'menuitem');
+  newItem.props.onClick();
   await settlePanel(editor);
   assert(hostFetch.calls.filter((call) => call.body.method === 'project.create').length === 1, 'explicit new-project selection did not create exactly one project');
 });

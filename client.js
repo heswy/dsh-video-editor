@@ -25,8 +25,8 @@
  *     / `ctx.effect`, so disabling the plugin removes it and the host's
  *     `retainMainPanels` mechanism can return the UI to the conversation.
  *
- * Browser persistence is limited to the reduced-effects preference, versioned and
- * corruption-safe. Project content is not stored here.
+ * Browser persistence is limited to the resizable AI-pane width preference,
+ * versioned and corruption-safe. Project content is not stored here.
  */
 window.__ModuleLoader__.load({
   id: 'dsh-video',
@@ -41,9 +41,9 @@ window.__ModuleLoader__.load({
     const PANEL_ID = 'dsh-video';
     /** Locale namespace registered for this plugin's UI text. */
     const NS = 'dshVideo';
-    /** Browser preference key (version lives in the key and in the payload). */
-    const PREFS_KEY = 'dsh-video.ui.v1';
-    const PREFS_VERSION = 1;
+    /** Versioned browser preference key for the resizable right pane (P3-016). */
+    const LAYOUT_PREFS_KEY = 'dsh-video.layout.v1';
+    const LAYOUT_PREFS_VERSION = 1;
     /**
      * Sidebar row position. The shipped panel rows use orders 0 (plugins),
      * 10 (schedules) and 20 (context). The workspace/session region is a
@@ -54,6 +54,66 @@ window.__ModuleLoader__.load({
     const SIDEBAR_ORDER = 30;
     //#endregion
 
+    //#region layout splitter helpers
+    /**
+     * P3-016: the right AI pane is a resizable split view. The ratio is the AI
+     * pane's share of the workspace width; CSS clamps it to a readable minimum,
+     * a 720px maximum and a protected left stage. These helpers are pure so the
+     * smoke test can execute the shipped bytes (same pattern as the canvas
+     * helpers): persistence/corruption handling never depends on the DOM.
+     */
+    const AI_PANE_DEFAULT_RATIO = 0.42;
+    const AI_PANE_RATIO_MIN = 0.2;
+    const AI_PANE_RATIO_MAX = 0.7;
+    const AI_PANE_KEYBOARD_STEP = 0.02;
+    const AI_PANE_MIN_WIDTH = 320;
+    const AI_PANE_MAX_WIDTH = 720;
+    const LEFT_PANE_MIN_WIDTH = 360;
+
+    function clampNumber(value, min, max) {
+      if (value < min) return min;
+      if (value > max) return max;
+      return value;
+    }
+
+    /** Finite ratio clamped to the resize bounds and rounded to 0.01%. */
+    function normalizeAiPaneRatio(value) {
+      const number = typeof value === 'number' ? value : Number(value);
+      if (Number.isFinite(number) === false) return AI_PANE_DEFAULT_RATIO;
+      return Math.round(clampNumber(number, AI_PANE_RATIO_MIN, AI_PANE_RATIO_MAX) * 10000) / 10000;
+    }
+
+    /**
+     * CSS width for `.dv-ai`: ratio-driven, but never below the readable AI
+     * minimum, above 720px, or wider than the container minus the left minimum.
+     * The narrow (stacked) container query overrides the width back to auto.
+     */
+    function aiPaneWidthCss(ratio) {
+      const percent = String(Math.round(normalizeAiPaneRatio(ratio) * 10000) / 100);
+      return (
+        'clamp(' + AI_PANE_MIN_WIDTH + 'px, ' + percent + '%, min(' + AI_PANE_MAX_WIDTH +
+        'px, calc(100% - ' + LEFT_PANE_MIN_WIDTH + 'px)))'
+      );
+    }
+
+    /** Keyboard stepping: positive moves the divider left (wider AI pane). */
+    function stepAiPaneRatio(ratio, delta) {
+      return normalizeAiPaneRatio(normalizeAiPaneRatio(ratio) + Number(delta));
+    }
+
+    /** Pixel width from one drag position, clamped for the measured container. */
+    function clampAiPaneWidth(width, containerWidth) {
+      const container = Number(containerWidth);
+      const upper = Number.isFinite(container) && container > 0
+        ? Math.min(AI_PANE_MAX_WIDTH, container - LEFT_PANE_MIN_WIDTH)
+        : AI_PANE_MAX_WIDTH;
+      const lower = Math.min(AI_PANE_MIN_WIDTH, upper);
+      const candidate = Number(width);
+      if (Number.isFinite(candidate) === false) return lower;
+      return clampNumber(candidate, lower, upper);
+    }
+    //#endregion
+
     //#region locale dictionaries
     const ZH = {
       'nav.label': 'Vedio Editor',
@@ -61,8 +121,6 @@ window.__ModuleLoader__.load({
       'video.empty': '尚无工程',
       'video.open': '打开示例',
       'video.opening': '正在打开…',
-      'video.display.label': '显示选项',
-      'video.display.simplified': '简化界面效果',
       'video.title': '标题',
       'video.timing': '时间',
       'video.timing.range': '开始时间与时长超出工程时长（最长 {duration} 秒）。',
@@ -132,6 +190,11 @@ window.__ModuleLoader__.load({
       'video.project.new': '新建工程',
       'video.project.untitled': '未命名作品',
       'video.project.open': '打开工程',
+      'video.project.rename': '重命名工程',
+      'video.project.renameHint': '点击重命名（回车保存，Esc 取消）',
+      'video.project.renameEmpty': '工程名称不能为空。',
+      'video.project.renameFailed': '重命名失败，请重试。',
+      'video.layout.resize': '调整面板宽度',
       'video.canvas.play': '播放',
       'video.canvas.pause': '暂停',
       'video.canvas.timeline': '时间轴',
@@ -192,8 +255,6 @@ window.__ModuleLoader__.load({
       'video.empty': 'No project yet',
       'video.open': 'Open example',
       'video.opening': 'Opening…',
-      'video.display.label': 'Display options',
-      'video.display.simplified': 'Reduce UI effects',
       'video.title': 'Title',
       'video.timing': 'Timing',
       'video.timing.range': 'Start time plus duration exceeds the project length (maximum {duration}s).',
@@ -263,6 +324,11 @@ window.__ModuleLoader__.load({
       'video.project.new': 'New project',
       'video.project.untitled': 'Untitled film',
       'video.project.open': 'Open project',
+      'video.project.rename': 'Rename project',
+      'video.project.renameHint': 'Click to rename (Enter saves, Esc cancels)',
+      'video.project.renameEmpty': 'A project name is required.',
+      'video.project.renameFailed': 'Could not rename the project; try again.',
+      'video.layout.resize': 'Resize panels',
       'video.canvas.play': 'Play',
       'video.canvas.pause': 'Pause',
       'video.canvas.timeline': 'Timeline',
@@ -347,7 +413,6 @@ window.__ModuleLoader__.load({
   animation:dv-panel-in var(--dv-dur-med) var(--dv-ease) both;
 }
 .dv-root *,.dv-root *::before,.dv-root *::after{box-sizing:border-box;}
-.dv-root[data-simplified="true"]{--dv-dur-fast:0ms;--dv-dur-med:0ms;}
 @keyframes dv-panel-in{
   from{opacity:0;transform:translateY(2px);}
   to{opacity:1;transform:none;}
@@ -392,6 +457,8 @@ window.__ModuleLoader__.load({
 .dv-back-label{white-space:nowrap;}
 .dv-sr-only{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0;}
 .dv-spacer{flex:1;min-width:0;}
+/* P3-017 B3: product export control in the topbar (right side). P3-016 keeps the
+   project name/arrow on the left and removed the display-settings menu. */
 .dv-export{display:inline-flex;align-items:center;gap:8px;flex:none;min-width:0;}
 .dv-export-status{display:inline-flex;align-items:center;gap:6px;min-width:0;max-width:220px;color:var(--dsw-alias-label-secondary,#a4a4ad);font-size:.78em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums;}
 .dv-export-note{color:var(--dsw-alias-label-secondary,#a4a4ad);font-size:.78em;white-space:nowrap;}
@@ -401,7 +468,42 @@ window.__ModuleLoader__.load({
 .dv-export-spinner{flex:none;}
 .dv-export-cancel{min-height:30px;padding:0 8px;}
 .dv-export-link{text-decoration:none;}
-.dv-display{position:relative;display:inline-flex;flex:none;}
+/* P3-016: draggable divider between the read-only stage and the AI pane. The
+   hit area overhangs the 1px rule so it is easy to grab without a visible
+   gutter; the pane width itself is driven by the --dv-ai-width variable. */
+.dv-splitter{
+  position:relative;
+  z-index:2;
+  flex:none;
+  width:9px;
+  margin:0 -4px;
+  padding:0;
+  border:0;
+  background:transparent;
+  cursor:col-resize;
+  touch-action:none;
+  -webkit-app-region:no-drag;
+}
+.dv-splitter::before{
+  content:'';
+  position:absolute;
+  top:0;
+  bottom:0;
+  left:50%;
+  width:1px;
+  transform:translateX(-50%);
+  background:transparent;
+  transition:background var(--dv-dur-fast) var(--dv-ease);
+}
+.dv-splitter:hover::before,.dv-splitter:focus-visible::before,.dv-splitter[data-dragging="true"]::before{
+  background:var(--dsw-alias-border-l1, rgba(127,127,140,.5));
+}
+.dv-splitter:focus-visible{
+  outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-brand-primary, #5b8cff));
+  outline-offset:-3px;
+  border-radius:4px;
+}
+.dv-main[data-resizing="true"]{user-select:none;}
 .dv-icon-button{
   display:inline-flex;
   align-items:center;
@@ -425,53 +527,6 @@ window.__ModuleLoader__.load({
   outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-brand-primary, #5b8cff));
   outline-offset:2px;
 }
-.dv-menu{
-  position:absolute;
-  top:calc(100% + 6px);
-  right:0;
-  z-index:2;
-  min-width:190px;
-  padding:6px;
-  border:1px solid color-mix(in srgb, var(--dsw-alias-border-l1, rgba(127,127,140,.28)) 84%, transparent);
-  border-radius:10px;
-  background:var(--dsw-alias-bg-overlay, var(--dsw-alias-bg-layer-1, #232327));
-  box-shadow:0 12px 32px -20px rgba(0,0,0,.5);
-  -webkit-app-region:no-drag;
-}
-.dv-menu-item{
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:12px;
-  width:100%;
-  height:34px;
-  padding:0 10px;
-  border:0;
-  border-radius:7px;
-  background:transparent;
-  color:var(--dsw-alias-label-primary, #f2f2f5);
-  font:inherit;
-  font-size:.86em;
-  text-align:left;
-  cursor:pointer;
-}
-.dv-menu-item:hover{background:var(--dsw-alias-interactive-bg-hover, rgba(127,127,140,.14));}
-.dv-menu-item:focus-visible{
-  outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-brand-primary, #5b8cff));
-  outline-offset:-2px;
-}
-.dv-menu-check{
-  flex:none;
-  min-width:1em;
-  color:var(--dsw-alias-label-secondary, #a4a4ad);
-  text-align:center;
-}
-.dv-menu-text{
-  min-width:0;
-  overflow:hidden;
-  text-overflow:ellipsis;
-  white-space:nowrap;
-}
 .dv-main{
   display:flex;
   flex:1;
@@ -492,7 +547,11 @@ window.__ModuleLoader__.load({
   display:flex;
   flex:none;
   flex-direction:column;
-  width:clamp(340px, 34%, 440px);
+  /* P3-016: --dv-ai-width is set inline from the dragged/persisted ratio; the
+     fallback is the same 42% default with a readable minimum, a 720px maximum
+     and a protected left stage. The stacked (narrow container) query below
+     overrides width back to auto. */
+  width:var(--dv-ai-width, clamp(320px, 42%, min(720px, calc(100% - 360px))));
   min-width:0;
   min-height:0;
   border-left:1px solid color-mix(in srgb, var(--dsw-alias-border-l1, rgba(127,127,140,.28)) 62%, transparent);
@@ -911,32 +970,106 @@ window.__ModuleLoader__.load({
   text-align:left;
 }
 
-.dv-projectbar{display:flex;align-items:center;min-width:0;max-width:min(55%, 360px);-webkit-app-region:no-drag;}
-.dv-project-picker{display:flex;align-items:center;min-width:0;max-width:100%;}
-.dv-project-picker select{
-  appearance:none;
-  width:100%;
-  min-width:120px;
+/* P3-016 topbar: back button -> clickable work name -> project menu arrow.
+   The name itself is the inline-rename trigger; the arrow only opens the picker
+   so a click on the title never silently switches projects. */
+.dv-projectbar{position:relative;display:flex;align-items:center;gap:2px;min-width:0;max-width:min(60%, 420px);-webkit-app-region:no-drag;}
+.dv-project-name{
+  min-width:0;
   max-width:320px;
-  height:36px;
-  padding:0 30px 0 10px;
+  height:32px;
+  padding:0 8px;
   border:0;
   border-radius:8px;
-  background-color:transparent;
-  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none'%3E%3Cpath d='m3 4.5 3 3 3-3' stroke='%2381858c' stroke-width='1.3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-  background-position:right 10px center;
-  background-repeat:no-repeat;
+  background:transparent;
   color:var(--dsw-alias-label-primary,#f2f2f5);
   font:inherit;
-  font-size:.92em;
+  font-size:.94em;
   font-weight:550;
+  text-align:left;
+  white-space:nowrap;
+  overflow:hidden;
   text-overflow:ellipsis;
+  cursor:text;
+  transition:background var(--dv-dur-fast) var(--dv-ease);
+}
+.dv-project-name:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover,rgba(127,127,140,.12));}
+.dv-project-name:focus-visible,.dv-project-name-input:focus-visible{
+  outline:var(--dsw-focus-ring-width,2px) solid var(--dsw-focus-ring-color,var(--dsw-alias-brand-primary,#5b8cff));
+  outline-offset:2px;
+}
+.dv-project-name:disabled{opacity:.55;cursor:default;}
+.dv-project-name-input{
+  width:min(260px, 40vw);
+  min-width:140px;
+  max-width:320px;
+  height:32px;
+  padding:0 8px;
+  border:1px solid color-mix(in srgb,var(--dsw-alias-border-l1,rgba(127,127,140,.28)) 86%,transparent);
+  border-radius:8px;
+  background:var(--dsw-alias-bg-base,#1a1a1c);
+  color:var(--dsw-alias-label-primary,#f2f2f5);
+  font:inherit;
+  font-size:.94em;
+  font-weight:550;
+}
+.dv-project-name-input:disabled{opacity:.6;}
+.dv-project-toggle{width:28px;height:28px;}
+.dv-project-menu{
+  position:absolute;
+  top:calc(100% + 6px);
+  left:0;
+  z-index:3;
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+  min-width:220px;
+  max-width:min(340px, calc(100vw - 48px));
+  max-height:320px;
+  overflow:auto;
+  padding:6px;
+  border:1px solid color-mix(in srgb, var(--dsw-alias-border-l1, rgba(127,127,140,.28)) 84%, transparent);
+  border-radius:10px;
+  background:var(--dsw-alias-bg-overlay, var(--dsw-alias-bg-layer-1,#232327));
+  box-shadow:0 12px 32px -20px rgba(0,0,0,.5);
+  -webkit-app-region:no-drag;
+}
+.dv-project-item{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  width:100%;
+  min-height:32px;
+  padding:0 9px;
+  border:0;
+  border-radius:7px;
+  background:transparent;
+  color:var(--dsw-alias-label-primary,#f2f2f5);
+  font:inherit;
+  font-size:.84em;
+  text-align:left;
   cursor:pointer;
 }
-.dv-project-picker select:hover{background-color:var(--dsw-alias-interactive-bg-hover,rgba(127,127,140,.12));}
-.dv-project-picker select:focus-visible{outline:2px solid var(--dsw-focus-ring-color,var(--dsw-alias-brand-primary,#5b8cff));outline-offset:2px;}
-.dv-project-picker select:disabled{opacity:.55;cursor:wait;}
-.dv-project-picker option{background:var(--dsw-alias-bg-base,#1a1a1c);color:var(--dsw-alias-label-primary,#f2f2f5);}
+.dv-project-item:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover,rgba(127,127,140,.14));}
+.dv-project-item[aria-checked="true"]{background:var(--dsw-alias-interactive-bg-hover,rgba(127,127,140,.14));}
+.dv-project-item:disabled{opacity:.55;cursor:default;}
+.dv-project-item:focus-visible{
+  outline:var(--dsw-focus-ring-width,2px) solid var(--dsw-focus-ring-color,var(--dsw-alias-brand-primary,#5b8cff));
+  outline-offset:-2px;
+}
+.dv-project-item-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.dv-project-item-check{flex:none;min-width:1em;color:var(--dsw-alias-label-secondary,#a4a4ad);text-align:center;}
+.dv-project-separator{height:1px;margin:4px 6px;background:color-mix(in srgb,var(--dsw-alias-border-l1,rgba(127,127,140,.28)) 62%,transparent);}
+.dv-project-rename-error{
+  min-width:0;
+  margin:0;
+  overflow:hidden;
+  color:var(--dsw-alias-state-error-primary,#e5484d);
+  font-size:.78em;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
 .dv-canvas-shell{
   display:flex;
   flex:1;
@@ -1127,11 +1260,10 @@ window.__ModuleLoader__.load({
 .dv-canvas-status-overlay{padding:20px;background:transparent;}
 .dv-loader{display:block;width:22px;height:22px;border:1.5px solid color-mix(in srgb,var(--dsw-alias-label-secondary,#a4a4ad) 20%,transparent);border-top-color:var(--dsw-alias-label-secondary,#a4a4ad);border-radius:50%;animation:dv-loading 1s linear infinite;}
 @keyframes dv-loading{to{transform:rotate(360deg);}}
-.dv-root[data-simplified="true"] .dv-loader{animation:none;}
 .dv-preview-progress{position:absolute;top:36px;right:36px;z-index:1;display:flex;align-items:center;gap:7px;padding:6px 10px;border-radius:99px;background:var(--dsw-alias-bg-base,#1a1a1c);color:var(--dsw-alias-label-secondary,#a4a4ad);font-size:.78em;box-shadow:0 2px 8px -4px rgba(0,0,0,.2);}
 .dv-status-dot{width:5px;height:5px;border-radius:50%;background:currentColor;}
 @supports (backdrop-filter: blur(16px)){
-  .dv-root:not([data-simplified="true"]) .dv-canvas-shell[data-preview-only="true"] .dv-canvas-bar{background:color-mix(in srgb,var(--dsw-alias-bg-base,#1a1a1c) 80%,transparent);backdrop-filter:blur(16px);}
+  .dv-canvas-shell[data-preview-only="true"] .dv-canvas-bar{background:color-mix(in srgb,var(--dsw-alias-bg-base,#1a1a1c) 80%,transparent);backdrop-filter:blur(16px);}
 }
 @media (prefers-reduced-transparency: reduce){
   .dv-root .dv-canvas-shell[data-preview-only="true"] .dv-canvas-bar{background:var(--dsw-alias-bg-base,#1a1a1c);backdrop-filter:none;}
@@ -1140,13 +1272,13 @@ window.__ModuleLoader__.load({
   .dv-root,.dv-loader{animation:none;}
 }
 @container dsh-video (max-width: 900px){
-  .dv-ai{width:clamp(300px, 38%, 340px);}
   .dv-canvas-shell[data-preview-only="true"]{padding:16px;gap:12px;}
   .dv-stage{padding:12px;}
   .dv-controls{padding:10px 12px 12px;}
 }
 @container dsh-video (max-width: 700px){
   .dv-main{flex-direction:column;}
+  .dv-splitter{display:none;}
   .dv-left{flex:1 1 48%;min-height:180px;}
   .dv-ai{
     width:auto;
@@ -1216,41 +1348,46 @@ window.__ModuleLoader__.load({
       }
     }
 
-    function defaultPrefs() {
-      return { simplifiedEffects: false };
-    }
-
     /**
-     * Read the versioned browser preference. Any absence, corrupt JSON, unexpected
-     * shape, unknown version, or storage exception falls back to defaults.
+     * Read the versioned layout preference (P3-016 resizable AI pane). Any
+     * absence, corrupt JSON, unexpected shape, unknown version, or storage
+     * exception falls back to the default ratio; the pure helpers clamp/bound
+     * an accepted ratio.
      */
-    function readPrefs() {
+    function readLayoutPrefs() {
       const storage = safeStorage();
-      if (storage === null) return defaultPrefs();
+      if (storage === null) return { aiPaneRatio: AI_PANE_DEFAULT_RATIO };
       let raw;
       try {
-        raw = storage.getItem(PREFS_KEY);
+        raw = storage.getItem(LAYOUT_PREFS_KEY);
       } catch (error) {
         reportOnce('prefs-read-failed', error);
-        return defaultPrefs();
+        return { aiPaneRatio: AI_PANE_DEFAULT_RATIO };
       }
-      if (typeof raw !== 'string' || raw === '') return defaultPrefs();
+      if (typeof raw !== 'string' || raw === '') return { aiPaneRatio: AI_PANE_DEFAULT_RATIO };
       try {
         const parsed = JSON.parse(raw);
-        if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return defaultPrefs();
-        if (parsed.version !== PREFS_VERSION) return defaultPrefs();
-        return { simplifiedEffects: parsed.simplifiedEffects === true };
+        if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+          return { aiPaneRatio: AI_PANE_DEFAULT_RATIO };
+        }
+        if (parsed.version !== LAYOUT_PREFS_VERSION) return { aiPaneRatio: AI_PANE_DEFAULT_RATIO };
+        return { aiPaneRatio: normalizeAiPaneRatio(parsed.aiPaneRatio) };
       } catch (error) {
         reportOnce('prefs-corrupt', error);
-        return defaultPrefs();
+        return { aiPaneRatio: AI_PANE_DEFAULT_RATIO };
       }
     }
 
+    /** Default ratio used by a fresh panel; kept as one call for tests/mount. */
+    function readAiPaneRatio() {
+      return readLayoutPrefs().aiPaneRatio;
+    }
+
     /**
-     * Best-effort write of the versioned preference. A failed write keeps the
-     * in-memory value and reports once; it never blocks the UI.
+     * Best-effort write of the versioned layout preference. A failed write keeps
+     * the in-memory ratio and reports once; it never blocks the UI.
      */
-    function writePrefs(state) {
+    function writeLayoutPrefs(ratio) {
       const storage = safeStorage();
       if (storage === null) {
         reportOnce('prefs-storage-unavailable');
@@ -1258,8 +1395,8 @@ window.__ModuleLoader__.load({
       }
       try {
         storage.setItem(
-          PREFS_KEY,
-          JSON.stringify({ version: PREFS_VERSION, simplifiedEffects: state.simplifiedEffects === true })
+          LAYOUT_PREFS_KEY,
+          JSON.stringify({ version: LAYOUT_PREFS_VERSION, aiPaneRatio: normalizeAiPaneRatio(ratio) })
         );
         return true;
       } catch (error) {
@@ -1295,17 +1432,14 @@ window.__ModuleLoader__.load({
       };
     }
 
-    /** Plugin-scope store shared by the panel and its display menu. */
+    /** Plugin-scope store for panel-level notices (no project/content truth). */
     let uiStore = null;
     /** Bounded panel-scope memory: a mode switch must not rewrite worker state. */
     let editorMemory = null;
 
     function getStore() {
       if (uiStore === null) {
-        uiStore = createUiStore(
-          { simplifiedEffects: false, navigationError: null },
-          function noop() {}
-        );
+        uiStore = createUiStore({ navigationError: null }, function noop() {});
       }
       return uiStore;
     }
@@ -1313,14 +1447,6 @@ window.__ModuleLoader__.load({
     function usePluginState() {
       const store = getStore();
       return React.useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
-    }
-
-    function setSimplifiedEffects(next) {
-      const store = getStore();
-      const value = next === true;
-      if (store.getSnapshot().simplifiedEffects === value) return;
-      store.setPatch({ simplifiedEffects: value });
-      writePrefs(store.getSnapshot());
     }
 
     function setNavigationError(code) {
@@ -1423,27 +1549,24 @@ window.__ModuleLoader__.load({
       );
     }
 
-    function DisplayOptionsIcon() {
+    /** P3-016 project-picker arrow; never the rename trigger itself. */
+    function ChevronDownIcon() {
       return h(
         'svg',
         {
-          width: 16,
-          height: 16,
+          width: 14,
+          height: 14,
           viewBox: '0 0 16 16',
           fill: 'none',
           xmlns: 'http://www.w3.org/2000/svg',
           'aria-hidden': 'true',
           focusable: 'false',
           stroke: 'currentColor',
-          strokeWidth: 1,
+          strokeWidth: 1.3,
           strokeLinecap: 'round',
+          strokeLinejoin: 'round',
         },
-        h('path', { d: 'M2.5 4.25h2.2M8.3 4.25h5.2' }),
-        h('circle', { cx: 6.5, cy: 4.25, r: 1.5 }),
-        h('path', { d: 'M2.5 8h5.3M11.4 8h2.1' }),
-        h('circle', { cx: 9.6, cy: 8, r: 1.5 }),
-        h('path', { d: 'M2.5 11.75h1.9M7.9 11.75h5.6' }),
-        h('circle', { cx: 6.1, cy: 11.75, r: 1.5 })
+        h('path', { d: 'm4 6.25 4 4 4-4' })
       );
     }
     function HistoryIcon() {
@@ -1575,9 +1698,17 @@ window.__ModuleLoader__.load({
       );
     }
 
-    /** Presentation only: never use UI labels as project identity or write truth. */
+    /**
+     * Presentation only: never use UI labels as project identity or write truth.
+     * P3-016: the explicit `project.json` title (returned by inspect/rename) wins;
+     * legacy projects without one keep the previous content-derived fallback.
+     */
     function studioProjectTitle(project, fallback) {
       if (project === null || typeof project !== 'object') return fallback;
+      if (typeof project.title === 'string') {
+        const stored = project.title.trim();
+        if (stored.length > 0) return stored.slice(0, 120);
+      }
       const scene = Array.isArray(project.scenes) ? project.scenes[0] : null;
       const textElement = Array.isArray(project.elements) ? project.elements.find(function titleText(element) {
         return element && typeof element.text === 'string' && element.text.trim().length > 0 && element.text.length <= 120 && hasCapability(element, 'text');
@@ -4247,9 +4378,25 @@ window.__ModuleLoader__.load({
       const layout = props.layout !== undefined && props.layout !== null ? props.layout : null;
       const sessionKitAvailable = typeof props.SessionProvider === 'function' && typeof props.renderFactorySlot === 'function';
       const ui = usePluginState();
-      const [menuOpen, setMenuOpen] = React.useState(false);
-      const triggerRef = React.useRef(null);
-      const itemRef = React.useRef(null);
+      // P3-016 resizable right pane: a reflected inline CSS variable; pointer
+      // and keyboard updates never touch project/revision authority.
+      const [aiPaneRatio, setAiPaneRatio] = React.useState(readAiPaneRatio);
+      const aiPaneRatioRef = React.useRef(aiPaneRatio);
+      aiPaneRatioRef.current = aiPaneRatio;
+      const [resizing, setResizing] = React.useState(false);
+      const dragRef = React.useRef(null);
+      const mainRef = React.useRef(null);
+      // P3-016: the work name is the inline-rename trigger; the arrow opens the
+      // project picker so clicking the name can never silently switch projects.
+      const [projectMenuOpen, setProjectMenuOpen] = React.useState(false);
+      const [renameDraft, setRenameDraft] = React.useState(null);
+      const [renameBusy, setRenameBusy] = React.useState(false);
+      const [renameError, setRenameError] = React.useState(null);
+      const projectToggleRef = React.useRef(null);
+      const projectItemRef = React.useRef(null);
+      const projectNameRef = React.useRef(null);
+      const renameInputRef = React.useRef(null);
+      const focusNameAfterRenameRef = React.useRef(false);
 
       // Panel-switch memory keeps only the visible view: the Host worker stays the
       // authority for project/revision/session truth. On a later mount the
@@ -4452,75 +4599,253 @@ window.__ModuleLoader__.load({
         };
       });
 
-      // Focus management for the single-item display menu. The trigger opens the
-      // menu; the open menu moves focus onto its item; Escape and Tab close it and
-      // return focus to the trigger (Tab is not prevented from leaving afterwards,
-      // and focus never stays on the removed node). No document/window listeners
-      // are installed, so unmount cannot leak a global handler.
+      // Focus management for the project picker menu: opening moves focus onto
+      // the current project item; Escape/Tab close it and return focus to the
+      // arrow button (never left on the removed node). Only element-level
+      // handlers are used, so unmount cannot leak a global listener.
       React.useEffect(
-        function focusOpenItem() {
-          if (!menuOpen || itemRef.current === null || typeof itemRef.current.focus !== 'function') return;
+        function focusOpenProjectItem() {
+          if (!projectMenuOpen || projectItemRef.current === null || typeof projectItemRef.current.focus !== 'function') return;
           try {
-            itemRef.current.focus();
+            projectItemRef.current.focus();
           } catch (_error) {
             /* focus is best-effort; the menu stays usable */
           }
         },
-        [menuOpen]
+        [projectMenuOpen]
       );
 
-      function focusTrigger() {
+      // Inline rename: focus (and select) the input when it appears.
+      React.useEffect(
+        function focusRenameInput() {
+          if (renameDraft === null || renameInputRef.current === null) return;
+          try {
+            renameInputRef.current.focus();
+            if (typeof renameInputRef.current.select === 'function') renameInputRef.current.select();
+          } catch (_error) {
+            /* focus is best-effort; the input stays usable */
+          }
+        },
+        [renameDraft === null]
+      );
+      // After a save/cancel settles, focus goes back to the name button once the
+      // input has been removed from the tree.
+      React.useEffect(function restoreNameFocus() {
+        if (focusNameAfterRenameRef.current === false || renameDraft !== null) return;
+        focusNameAfterRenameRef.current = false;
         try {
-          if (triggerRef.current !== null && typeof triggerRef.current.focus === 'function') {
-            triggerRef.current.focus();
+          if (projectNameRef.current !== null && typeof projectNameRef.current.focus === 'function') {
+            projectNameRef.current.focus();
+          }
+        } catch (_error) {
+          /* focus is best-effort */
+        }
+      });
+
+      function focusProjectToggle() {
+        try {
+          if (projectToggleRef.current !== null && typeof projectToggleRef.current.focus === 'function') {
+            projectToggleRef.current.focus();
           }
         } catch (_error) {
           /* focus is best-effort; the menu is already closed */
         }
       }
 
-      function openMenu() {
-        setMenuOpen(true);
+      function closeProjectMenu() {
+        setProjectMenuOpen(false);
+        focusProjectToggle();
       }
 
-      function closeMenu() {
-        setMenuOpen(false);
-        focusTrigger();
+      function toggleProjectMenu() {
+        if (projectMenuOpen) closeProjectMenu();
+        else setProjectMenuOpen(true);
       }
 
-      function onTriggerClick() {
-        if (menuOpen) closeMenu();
-        else openMenu();
-      }
-
-      function onTriggerKeyDown(event) {
+      function onProjectToggleKeyDown(event) {
         if (!event) return;
         if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
           event.preventDefault();
-          if (menuOpen) {
-            if (itemRef.current !== null && typeof itemRef.current.focus === 'function') itemRef.current.focus();
-          } else {
-            openMenu();
+          if (!projectMenuOpen) {
+            setProjectMenuOpen(true);
+            return;
           }
-        } else if (event.key === 'Escape' && menuOpen) {
+          if (projectItemRef.current !== null && typeof projectItemRef.current.focus === 'function') {
+            projectItemRef.current.focus();
+          }
+        } else if (event.key === 'Escape' && projectMenuOpen) {
           event.preventDefault();
-          closeMenu();
+          closeProjectMenu();
         }
       }
 
-      function onMenuKeyDown(event) {
+      function onProjectMenuKeyDown(event) {
         if (!event) return;
         if (event.key === 'Escape') {
           event.preventDefault();
-          closeMenu();
+          closeProjectMenu();
         } else if (event.key === 'Tab') {
           event.preventDefault();
-          closeMenu();
+          closeProjectMenu();
         }
       }
 
-      function onToggleSimplified() {
-        setSimplifiedEffects(!ui.simplifiedEffects);
+      // ── P3-016 inline project rename (presentation metadata only) ─────────
+      function projectDisplayTitle() {
+        return studioProjectTitle(project, t('video.project.untitled'));
+      }
+
+      function projectChoiceTitle(item, index) {
+        if (item !== null && typeof item === 'object' && typeof item.title === 'string') {
+          const stored = item.title.trim();
+          if (stored.length > 0) return stored.slice(0, 120);
+        }
+        const rememberedTitle = item !== null && typeof item === 'object'
+          ? projectTitlesRef.current.get(item.projectId)
+          : null;
+        if (typeof rememberedTitle === 'string' && rememberedTitle.length > 0) return rememberedTitle;
+        return t('video.project.untitled') + (typeof index === 'number' ? ' ' + String(index + 1) : '');
+      }
+
+      function startRename() {
+        if (renameBusy || projectBusy !== null || projectId === '') return;
+        setProjectMenuOpen(false);
+        setRenameError(null);
+        setRenameDraft(projectDisplayTitle());
+      }
+
+      function cancelRename() {
+        setRenameDraft(null);
+        setRenameError(null);
+        focusNameAfterRenameRef.current = true;
+      }
+
+      function onRenameChange(event) {
+        const raw = event !== null && event.target !== undefined ? event.target.value : '';
+        setRenameDraft(typeof raw === 'string' ? raw : '');
+        if (renameError !== null) setRenameError(null);
+      }
+
+      function onRenameKeyDown(event) {
+        if (!event) return;
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          void submitRename();
+        } else if (event.key === 'Escape') {
+          event.preventDefault();
+          cancelRename();
+        }
+      }
+
+      async function submitRename() {
+        if (renameBusy || renameDraft === null) return;
+        const title = renameDraft.trim();
+        if (title.length === 0) {
+          setRenameError(t('video.project.renameEmpty'));
+          return;
+        }
+        if (projectIdRef.current === '' || title === projectDisplayTitle()) {
+          cancelRename();
+          return;
+        }
+        setRenameBusy(true);
+        setRenameError(null);
+        const targetId = projectIdRef.current;
+        try {
+          const renamed = await hostRequest('project.rename', { projectId: targetId, title: title });
+          if (!aliveRef.current) return;
+          const renamedTitle = renamed !== null && typeof renamed === 'object' && typeof renamed.title === 'string' && renamed.title.length > 0
+            ? renamed.title
+            : title;
+          setProject(function applyRenamedTitle(previous) {
+            return previous === null || typeof previous !== 'object'
+              ? previous
+              : Object.assign({}, previous, { title: renamedTitle });
+          });
+          projectTitlesRef.current.set(targetId, renamedTitle);
+          setProjectChoices(function applyRenamedChoice(list) {
+            return list.map(function updateChoice(item) {
+              return item !== null && typeof item === 'object' && item.projectId === targetId
+                ? Object.assign({}, item, { title: renamedTitle })
+                : item;
+            });
+          });
+          setRenameDraft(null);
+          focusNameAfterRenameRef.current = true;
+        } catch (_error) {
+          // Keep the draft and show a localized failure; the next Enter retries.
+          if (aliveRef.current) setRenameError(t('video.project.renameFailed'));
+        } finally {
+          if (aliveRef.current) setRenameBusy(false);
+        }
+      }
+
+      // ── P3-016 draggable split between stage and AI pane ──────────────────
+      function setPaneRatio(next) {
+        aiPaneRatioRef.current = next;
+        setAiPaneRatio(next);
+      }
+
+      function onSplitterPointerDown(event) {
+        const main = mainRef.current;
+        if (main === null || typeof main.getBoundingClientRect !== 'function') return;
+        const rect = main.getBoundingClientRect();
+        if (!(Number(rect.width) > 0)) return;
+        dragRef.current = { containerWidth: rect.width, right: rect.left + rect.width };
+        setResizing(true);
+        if (event === null || typeof event !== 'object') return;
+        if (typeof event.preventDefault === 'function') event.preventDefault();
+        const target = event.currentTarget;
+        if (target !== null && target !== undefined && typeof target.setPointerCapture === 'function' && event.pointerId !== undefined) {
+          try {
+            target.setPointerCapture(event.pointerId);
+          } catch (_error) {
+            /* pointer capture is an enhancement; the drag still works */
+          }
+        }
+      }
+
+      function onSplitterPointerMove(event) {
+        const drag = dragRef.current;
+        if (drag === null || event === null || typeof event !== 'object') return;
+        const pointerX = Number(event.clientX);
+        if (Number.isFinite(pointerX) === false) return;
+        const width = clampAiPaneWidth(drag.right - pointerX, drag.containerWidth);
+        setPaneRatio(normalizeAiPaneRatio(width / drag.containerWidth));
+      }
+
+      function onSplitterPointerUp(event) {
+        if (dragRef.current === null) return;
+        dragRef.current = null;
+        setResizing(false);
+        if (event !== null && typeof event === 'object') {
+          const target = event.currentTarget;
+          if (target !== null && target !== undefined && typeof target.releasePointerCapture === 'function' && event.pointerId !== undefined) {
+            try {
+              target.releasePointerCapture(event.pointerId);
+            } catch (_error) {
+              /* capture cleanup is best effort */
+            }
+          }
+        }
+        writeLayoutPrefs(aiPaneRatioRef.current);
+      }
+
+      function resetAiPaneRatio() {
+        setPaneRatio(AI_PANE_DEFAULT_RATIO);
+        writeLayoutPrefs(AI_PANE_DEFAULT_RATIO);
+      }
+
+      function onSplitterKeyDown(event) {
+        if (!event) return;
+        let next = null;
+        if (event.key === 'ArrowLeft') next = stepAiPaneRatio(aiPaneRatioRef.current, AI_PANE_KEYBOARD_STEP);
+        else if (event.key === 'ArrowRight') next = stepAiPaneRatio(aiPaneRatioRef.current, -AI_PANE_KEYBOARD_STEP);
+        else if (event.key === 'Home') next = AI_PANE_DEFAULT_RATIO;
+        if (next === null) return;
+        if (typeof event.preventDefault === 'function') event.preventDefault();
+        setPaneRatio(next);
+        writeLayoutPrefs(next);
       }
 
       /** Managed projects only: demo/legacy entries never reach the product UI. */
@@ -4534,7 +4859,12 @@ window.__ModuleLoader__.load({
           if (typeof id !== 'string' || id.length === 0 || id === DEMO_PROJECT_ID || seen.has(id)) continue;
           seen.add(id);
           const updatedAt = Number.isFinite(Number(entry.updatedAt)) ? Number(entry.updatedAt) : 0;
-          choices.push({ projectId: id, updatedAt: updatedAt });
+          // P3-016: optional host-reported display title; null keeps the
+          // remembered/content-derived fallback for legacy projects.
+          const title = typeof entry.title === 'string' && entry.title.trim().length > 0
+            ? entry.title.trim().slice(0, 120)
+            : null;
+          choices.push({ projectId: id, updatedAt: updatedAt, title: title });
         }
         choices.sort(function recentFirst(left, right) {
           if (right.updatedAt !== left.updatedAt) return right.updatedAt - left.updatedAt;
@@ -4653,6 +4983,10 @@ window.__ModuleLoader__.load({
         setBoot('loading');
         setError(null);
         setProjectBusy('open');
+        // A project switch discards any in-flight title draft and picker menu.
+        setRenameDraft(null);
+        setRenameError(null);
+        setProjectMenuOpen(false);
         try {
           const opened = await hostRequest('open', { projectId: nextProjectId });
           if (!aliveRef.current || activeToken !== bootToken.current) return;
@@ -5387,28 +5721,118 @@ window.__ModuleLoader__.load({
         );
       }
 
+      function projectMenu() {
+        const options = projectChoices.slice();
+        if (projectId !== '' && options.some(function has(item) { return item.projectId === projectId; }) === false) {
+          options.unshift({ projectId: projectId, updatedAt: 0, title: null });
+        }
+        return h(
+          'div',
+          {
+            className: 'dv-project-menu',
+            id: 'dsh-video-project-menu',
+            role: 'menu',
+            'aria-label': t('video.project.open'),
+            key: 'project-menu',
+            onKeyDown: onProjectMenuKeyDown,
+          },
+          options.map(function projectRow(item, index) {
+            const id = item.projectId;
+            const active = id === projectId;
+            const name = projectChoiceTitle(item, index);
+            return h(
+              'button',
+              {
+                type: 'button',
+                key: id,
+                ref: active ? projectItemRef : null,
+                className: 'dv-project-item',
+                role: 'menuitemradio',
+                'aria-checked': active ? 'true' : 'false',
+                disabled: projectBusy !== null,
+                onClick: function switchProject() {
+                  setProjectMenuOpen(false);
+                  if (id === projectIdRef.current) return;
+                  void openProject(id);
+                },
+              },
+              h('span', { className: 'dv-project-item-title' }, name),
+              active ? h('span', { className: 'dv-project-item-check', 'aria-hidden': 'true' }, '✓') : null
+            );
+          }),
+          h('div', { className: 'dv-project-separator', key: 'separator', 'aria-hidden': 'true' }),
+          h(
+            'button',
+            {
+              type: 'button',
+              key: '__new__',
+              className: 'dv-project-item',
+              role: 'menuitem',
+              disabled: projectBusy !== null,
+              onClick: function newProject() {
+                setProjectMenuOpen(false);
+                void createManagedProject();
+              },
+            },
+            '+ ' + t('video.project.new')
+          )
+        );
+      }
+
       function projectBar() {
         if (projectId === '' && projectChoices.length === 0) return null;
-        const options = projectChoices.slice();
-        if (projectId !== '' && options.some(function has(item) { return item.projectId === projectId; }) === false) options.unshift({ projectId: projectId });
-        return h('div', { className: 'dv-projectbar', key: 'projects' },
-          h('label', { className: 'dv-project-picker' },
-            h('span', { className: 'dv-sr-only' }, t('video.project.label')),
-            h('select', {
-              value: projectId,
-              disabled: projectBusy !== null,
-              'aria-label': t('video.project.open'),
-              onChange: function switchProject(event) {
-                const next = event.target.value;
-                if (next === '__new__') { void createManagedProject(); return; }
-                if (next === projectId || next.length === 0) return;
-                void openProject(next);
+        const name = projectDisplayTitle();
+        const nameControl = renameDraft === null
+          ? h(
+              'button',
+              {
+                type: 'button',
+                key: 'name',
+                ref: projectNameRef,
+                className: 'dv-project-name',
+                disabled: projectBusy !== null,
+                title: t('video.project.renameHint'),
+                onClick: startRename,
               },
-            }, options.map(function option(item, index) {
-              const name = projectTitlesRef.current.get(item.projectId) || (t('video.project.untitled') + ' ' + String(index + 1));
-              return h('option', { key: item.projectId, value: item.projectId }, name);
-            }), h('option', { key: '__new__', value: '__new__' }, '+ ' + t('video.project.new')))
-          )
+              name
+            )
+          : h('input', {
+              type: 'text',
+              key: 'name-input',
+              ref: renameInputRef,
+              className: 'dv-project-name-input',
+              value: renameDraft,
+              maxLength: 120,
+              disabled: renameBusy,
+              spellCheck: false,
+              'aria-label': t('video.project.rename'),
+              onChange: onRenameChange,
+              onKeyDown: onRenameKeyDown,
+              onBlur: cancelRename,
+            });
+        return h(
+          'div',
+          { className: 'dv-projectbar', key: 'projects' },
+          nameControl,
+          h(
+            'button',
+            {
+              type: 'button',
+              key: 'toggle',
+              ref: projectToggleRef,
+              className: 'dv-icon-button dv-project-toggle',
+              'aria-haspopup': 'menu',
+              'aria-expanded': projectMenuOpen ? 'true' : 'false',
+              'aria-controls': 'dsh-video-project-menu',
+              'aria-label': t('video.project.open'),
+              title: t('video.project.open'),
+              disabled: projectBusy !== null,
+              onClick: toggleProjectMenu,
+              onKeyDown: onProjectToggleKeyDown,
+            },
+            h(ChevronDownIcon)
+          ),
+          projectMenuOpen ? projectMenu() : null
         );
       }
 
@@ -5473,7 +5897,6 @@ window.__ModuleLoader__.load({
         'div',
         {
           className: 'dv-root',
-          'data-simplified': ui.simplifiedEffects ? 'true' : 'false',
           'data-panel': PANEL_ID,
           'data-project-id': projectId,
           'data-boot': boot,
@@ -5506,71 +5929,48 @@ window.__ModuleLoader__.load({
             h('span', { className: 'dv-sr-only', key: 'label' }, t('video.back'))
           ),
           projectBar(),
+          // P3-016: inline rename feedback stays next to the left-aligned project
+          // name/arrow. P3-017: the product export control owns the right side.
+          renameError !== null
+            ? h('p', { className: 'dv-project-rename-error', role: 'alert', key: 'rename-error' }, renameError)
+            : null,
           h('span', { className: 'dv-spacer', key: 'spacer' }),
-          exportControl(),
-          h(
-            'div',
-            { className: 'dv-display', key: 'display' },
-            h(
-              'button',
-              {
-                type: 'button',
-                key: 'trigger',
-                ref: triggerRef,
-                className: 'dv-icon-button',
-                'aria-haspopup': 'menu',
-                'aria-expanded': menuOpen ? 'true' : 'false',
-                'aria-controls': 'dsh-video-display-menu',
-                'aria-label': t('video.display.label'),
-                title: t('video.display.label'),
-                onClick: onTriggerClick,
-                onKeyDown: onTriggerKeyDown,
-              },
-              h(DisplayOptionsIcon)
-            ),
-            menuOpen
-              ? h(
-                  'div',
-                  {
-                    className: 'dv-menu',
-                    id: 'dsh-video-display-menu',
-                    role: 'menu',
-                    'aria-label': t('video.display.label'),
-                    key: 'menu',
-                    onKeyDown: onMenuKeyDown,
-                  },
-                  h(
-                    'button',
-                    {
-                      type: 'button',
-                      key: 'item',
-                      ref: itemRef,
-                      className: 'dv-menu-item',
-                      role: 'menuitemcheckbox',
-                      tabIndex: -1,
-                      'aria-checked': ui.simplifiedEffects ? 'true' : 'false',
-                      onClick: onToggleSimplified,
-                    },
-                    h('span', { className: 'dv-menu-text', key: 'text' }, t('video.display.simplified')),
-                    h(
-                      'span',
-                      { className: 'dv-menu-check', 'aria-hidden': 'true', key: 'check' },
-                      ui.simplifiedEffects ? '✓' : ''
-                    )
-                  )
-                )
-              : null
-          )
+          exportControl()
         ),
         h(
           'main',
-          { className: 'dv-main', key: 'main' },
+          {
+            className: 'dv-main',
+            key: 'main',
+            ref: mainRef,
+            style: { '--dv-ai-width': aiPaneWidthCss(aiPaneRatio) },
+            'data-resizing': resizing ? 'true' : 'false',
+          },
           h('div', { className: 'dv-left', key: 'left' }, stageContent()),
+          h('div', {
+            className: 'dv-splitter',
+            key: 'splitter',
+            role: 'separator',
+            tabIndex: 0,
+            'aria-orientation': 'vertical',
+            'aria-label': t('video.layout.resize'),
+            'aria-valuemin': String(Math.round(AI_PANE_RATIO_MIN * 100)),
+            'aria-valuemax': String(Math.round(AI_PANE_RATIO_MAX * 100)),
+            'aria-valuenow': String(Math.round(aiPaneRatio * 100)),
+            'data-dragging': resizing ? 'true' : 'false',
+            onPointerDown: onSplitterPointerDown,
+            onPointerMove: onSplitterPointerMove,
+            onPointerUp: onSplitterPointerUp,
+            onPointerCancel: onSplitterPointerUp,
+            onDoubleClick: resetAiPaneRatio,
+            onKeyDown: onSplitterKeyDown,
+          }),
           aiPanel()
         )
       );
     }
     //#endregion
+
 
     //#region plugin
     const inject = ['slots', 'layout', 'locale'];
@@ -5578,11 +5978,7 @@ window.__ModuleLoader__.load({
     function apply(ctx) {
       reportIssue = makeReporter(ctx);
       reportedCodes.clear();
-      const initialPrefs = readPrefs();
-      uiStore = createUiStore(
-        { simplifiedEffects: initialPrefs.simplifiedEffects === true, navigationError: null },
-        reportIssue
-      );
+      uiStore = createUiStore({ navigationError: null }, reportIssue);
 
       // Browser-owned Session service face used only to retain/release our own
       // project Sessions. It is optional: a host without it keeps the preview

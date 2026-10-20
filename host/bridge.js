@@ -40,6 +40,7 @@ export const REQUEST_METHODS = Object.freeze([
   'session.diagnose',
   'preview',
   'project.create',
+  'project.rename',
   'project.compose',
   'project.source',
   'project.list',
@@ -72,6 +73,7 @@ const METHOD_PARAMS = Object.freeze({
   'session.diagnose': [],
   preview: ['projectId', 'sessionId', 'path'],
   'project.create': ['templateId', 'title', 'width', 'height', 'fps'],
+  'project.rename': ['projectId', 'title'],
   'project.compose': ['projectId', 'expectedRevision', 'operationId', 'html'],
   'project.source': ['projectId'],
   'project.list': [],
@@ -101,6 +103,10 @@ const MAX_REGISTRY_BYTES = 1024 * 1024;
 const SNAPSHOT_ID = /^[a-f0-9]{32}$/;
 const TEMPLATE_ID = 'product-launch-v1';
 const SCENE_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
+/** P3-016: trimmed display-title bound shared with the worker manifest contract. */
+const PROJECT_TITLE_MAX = 120;
+/** Bounded advisory read of one worker-owned `project.json`; never throws. */
+const PROJECT_MANIFEST_MAX_BYTES = 16384;
 /** Frame batch bounds shared with the worker contract. */
 const MAX_FRAME_TIMES = 4;
 /**
@@ -155,6 +161,21 @@ function text(value, name, max) {
 
 function projectId(value) {
   return text(value, 'projectId', 128);
+}
+
+/**
+ * P3-016 display title: trimmed 1..120 characters, no NUL. The Host always
+ * sends the normalized (trimmed) value so the worker manifest stays canonical.
+ */
+function projectTitle(value) {
+  if (typeof value !== 'string' || value.includes('\0')) {
+    fail('E_PARAMS', 'Invalid project title', 'params');
+  }
+  const title = value.trim();
+  if (title.length < 1 || title.length > PROJECT_TITLE_MAX) {
+    fail('E_PARAMS', 'Invalid project title', 'params');
+  }
+  return title;
 }
 
 function allowedProject(config, value) {
@@ -482,6 +503,12 @@ export function validateParams(config, method, params) {
     if (params.fps !== undefined && params.fps !== 30) fail('E_PARAMS', 'Only 30 fps is supported', 'params');
     return next;
   }
+  if (method === 'project.rename') {
+    return {
+      projectId: allowedProject(config, params.projectId),
+      title: projectTitle(params.title),
+    };
+  }
   if (method === 'project.list') return {};
   if (method === 'asset.import') {
     if (typeof params.receiptId !== 'string' || /^[0-9a-f-]{36}$/.test(params.receiptId) === false) fail('E_PARAMS', 'Invalid upload receipt', 'params');
@@ -590,6 +617,28 @@ async function canonicalFile(path, name) {
     return real;
   } catch (_error) {
     throw configurationError(`"${name}" must be an existing absolute file`);
+  }
+}
+
+/**
+ * Best-effort advisory title from a trusted project's worker-owned manifest.
+ * Display metadata only: an unreadable/corrupt/malformed/oversized manifest
+ * yields null and never fails the project list. The stored value must already
+ * be the canonical trimmed form written by the worker.
+ */
+async function readManifestTitle(directory) {
+  if (typeof directory !== 'string') return null;
+  try {
+    const manifestPath = join(directory, 'project.json');
+    const info = await stat(manifestPath);
+    if (info.isFile() === false || info.size > PROJECT_MANIFEST_MAX_BYTES) return null;
+    const parsed = JSON.parse(await readFile(manifestPath, 'utf8'));
+    if (isPlainObject(parsed) === false || typeof parsed.title !== 'string') return null;
+    const title = parsed.title;
+    if (title !== title.trim() || title.length < 1 || title.length > PROJECT_TITLE_MAX) return null;
+    return title;
+  } catch (_error) {
+    return null;
   }
 }
 
@@ -815,10 +864,11 @@ export class VideoBridge {
    *
    * Every trusted project is listed with the modification time of its entry
    * composition (`index.html`) so the client can auto-open the most recently
-   * updated managed project. Ids outside the trusted allowlist are never
-   * returned; a project whose directory or entry file cannot be stat'ed keeps
-   * updatedAt 0 instead of failing the whole list. The legacy fixture demo
-   * project is included here and filtered by the client.
+   * updated managed project, plus the optional P3-016 manifest `title` (null
+   * for legacy projects without one). Ids outside the trusted allowlist are
+   * never returned; a project whose directory/entry/manifest cannot be read
+   * keeps updatedAt 0 / title null instead of failing the whole list. The
+   * legacy fixture demo project is included here and filtered by the client.
    */
   async projectList() {
     const directories = await this.projectDirectories();
@@ -826,6 +876,7 @@ export class VideoBridge {
     for (const projectId of this.listProjects()) {
       const directory = directories.get(projectId);
       let updatedAt = 0;
+      let title = null;
       if (typeof directory === 'string') {
         try {
           const info = await stat(join(directory, 'index.html'));
@@ -833,8 +884,11 @@ export class VideoBridge {
         } catch (_error) {
           updatedAt = 0;
         }
+        // P3-016: the display title is optional metadata; old projects report
+        // null and the client keeps its content-derived fallback.
+        title = await readManifestTitle(directory);
       }
-      projects.push({ projectId, updatedAt });
+      projects.push({ projectId, updatedAt, title });
     }
     projects.sort((left, right) => right.updatedAt - left.updatedAt || (left.projectId < right.projectId ? -1 : left.projectId > right.projectId ? 1 : 0));
     return { projects, defaultProjectId: projects.length > 0 ? projects[0].projectId : null };
@@ -1266,8 +1320,8 @@ export class VideoBridge {
    * Every request that passes the closing gate enters the single `inFlight` set
    * before any await inside the dispatcher. Dispose therefore drains exactly the
    * work it accepted — including the early-return branches (project.list,
-   * project.create, asset.import, preview snapshots, preview, session.*) — and
-   * nothing they publish can outlive the teardown.
+   * project.create, project.rename, asset.import, preview snapshots, preview,
+   * session.*) — and nothing they publish can outlive the teardown.
    */
   invoke(method, params, options) {
     if (this.closing || this.disposed) {
@@ -1305,6 +1359,22 @@ export class VideoBridge {
         throw new BridgeError('E_PROJECT', 'The created project was not published to the trusted registry', { stage: 'project' });
       }
       return publicResult(this.requireConfig().maxResultBytes, created, settings.source);
+    }
+    if (method === 'project.rename') {
+      // P3-016: display-title metadata only. It never touches the composition,
+      // revision or history and stays out of the model Tool surface.
+      if (settings.source === 'tool') throw new BridgeError('E_METHOD', 'Project renaming is a UI-only action', { stage: 'params' });
+      const renamed = await this.callClient('project.rename', normalized);
+      if (
+        isPlainObject(renamed) === false ||
+        renamed.projectId !== normalized.projectId ||
+        typeof renamed.title !== 'string' ||
+        typeof renamed.revision !== 'string' ||
+        REVISION.test(renamed.revision) === false
+      ) {
+        throw new BridgeError('E_WORKER_RESPONSE', 'The worker returned an invalid rename result', { stage: 'response' });
+      }
+      return publicResult(this.requireConfig().maxResultBytes, renamed, settings.source);
     }
     if (method === 'asset.import') {
       if (settings.source === 'tool') throw new BridgeError('E_METHOD', 'Asset import is a UI-only action', { stage: 'params' });

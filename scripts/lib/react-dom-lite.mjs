@@ -401,19 +401,28 @@ function applyStyle(dom, previous, next) {
   for (const name of Object.keys(previousStyle)) {
     if (Object.prototype.hasOwnProperty.call(nextStyle, name)) continue;
     try {
-      dom.style[name] = '';
+      // Custom properties (used by the product layout, e.g. --dv-ai-width)
+      // are only writable through setProperty/removeProperty, exactly like
+      // React DOM's style handling.
+      if (name.startsWith('--')) dom.style.removeProperty(name);
+      else dom.style[name] = '';
     } catch (_error) {
       /* style property removal is best effort */
     }
   }
   for (const name of Object.keys(nextStyle)) {
     const value = nextStyle[name];
-    if (value === null || value === undefined || value === false) {
-      dom.style[name] = '';
-      continue;
-    }
     const text = typeof value === 'number' ? value + 'px' : String(value);
     try {
+      if (name.startsWith('--')) {
+        if (value === null || value === undefined || value === false) dom.style.removeProperty(name);
+        else dom.style.setProperty(name, text);
+        continue;
+      }
+      if (value === null || value === undefined || value === false) {
+        dom.style[name] = '';
+        continue;
+      }
       if (dom.style[name] !== text) dom.style[name] = text;
     } catch (_error) {
       /* an unknown CSS property must not break the commit */
