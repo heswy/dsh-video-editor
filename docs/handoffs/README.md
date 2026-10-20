@@ -6,6 +6,7 @@
 - 当前没有已下发的新功能任务；不继续旧p0/p1/video-studio/ui-polish/project-foundation分支。
 - P3-013保留为真实对话验收的行为清单，P3-014记录已整合UI候选。当前已安装并启用 **0.3.0-alpha.7**（root `bf38fd6` / engine `0deef8f`，staging `artifacts/p2-b/staging-alpha7-preview-public-0deef8f-bf38fd6`，INTEGRITY `775f4a3a…6d44`）；更换候选先核对实际包/版本/摘要。
 - **P3-015 提速**：分支 `codex/faster-video-turn`（base `1672a42`，PR #9）已完成代码/测试/固定 staging `artifacts/p2-b/staging-alpha8-faster-turn-cf7e593`（alpha.8、root=`engine`=`cf7e593`），并通过 2 次真实模型真机验收（3 步/44.2s、2 步/39.3s，对比基线 14 步/536s）。alpha.8 已安装启用；PR #9 已按授权合并。回滚 alpha.7 staging `artifacts/p2-b/staging-alpha7-preview-public-0deef8f-bf38fd6/bundle`。范围与证据见 [P3-015](../tasks/P3-015-faster-video-turn.md)、[提速记录](../research/2026-10-20-faster-video-turn.md)。
+- **P3-016 A / P3-017 B（并行候选，未合并）**：A `codex/p3-016-panel-title` 做右侧 AI 栏可拖拽加宽、工程标题 rename、移除简化效果设置；B `codex/p3-017-preview-export`（base `ec9ad47`）做预览稳定性（30s 独立预算、1s 去抖、失败自动重试 1 次、旧画面保留、有界诊断）、内嵌对话图片/文件本地 overlay 预览、产品顶栏“导出 MP4”（真实进度/已用时间/取消/下载、绑定点击时 revision、Host/worker render 时限 900s、frame 仍 120s）。B 门禁：check 52/52、smoke-client 81/81、check-host 67/67、worker 54/54；/tmp 真实 Host+worker 导出 5s/20s/120s 均成功（13.1s/28.2s/160.3s，120s 片超过旧 120s 上限）、并发 frame+snapshot 与取消（1.7s）通过。均未安装/重启/合并；合并时注意 A/B 在 `client.js` 顶栏与 docs 记录的冲突。范围与证据见 [P3-016](../tasks/P3-016-panel-title.md)（待建）、[P3-017](../tasks/P3-017-preview-export.md)。
 - 具体问题修复从main创建codex/<问题名>分支，按需隔离worktree；用户指定Agent负责实现并交PR。路径/权限/复用规则只维护在DEVELOPMENT。
 
 本目录旧按工作区/人员命名的handoff全部为历史证据，不作为新的开工指令。保留旧工作树和固定产物供追溯，不自动安装或清理用户作品。
