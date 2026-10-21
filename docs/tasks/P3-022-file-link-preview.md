@@ -1,6 +1,6 @@
 # P3-022 修复：read_image 文件链接点击仍触发 sidebarRight
 
-日期：2026-10-21（Asia/Shanghai）。状态：**修复与仓库门禁完成，已在 real Chrome /tmp hybrid staging 上以真实 ToolRow DOM 验证；候选版本已收口为 0.3.0-alpha.10；未合并、未安装、未发模型；待 Lead 合并 PR、构建 alpha.10 staging 并安装后由真机点击确认。**
+日期：2026-10-21（Asia/Shanghai）。状态：**修复已完成并随 PR #13 合并 main（`1cceb96`）；alpha.10 固定 staging 回归与独立 verifier 通过；alpha.10 已安装，用户真机点击 `read_image` 文件链接确认不再弹 sidebarRight、打开本地图片 overlay；用户最终 6 项验收全部通过。**
 
 - 分支：`codex/p3-022-file-link-preview`（base `origin/main` `0396838`），隔离 worktree `dsh-video-editor-worktrees/p3-022-file-link-preview`
 - 实现阶段只改 `client.js` 点击解析 + `scripts/smoke-client.mjs` 测试 + 本任务/handoff 文档，不改其它契约；候选版本收口（task-25）另统一 bump 到 **0.3.0-alpha.10**（package.json、check.mjs 版本断言、test-stage-version pin、README）；不安装/重启/合并/发模型
@@ -43,3 +43,13 @@
 
 1. Lead 开 PR 合并本分支并构建 **0.3.0-alpha.10** staging、安装；delivery-owner 重启验收：点击 read_image 文件链接、图片 gallery、普通聊天点击互不误伤。
 2. 若真机 DOM 与 `/tmp/chat-current.js` 证据有差异，按真实类名/分隔符扩展 selector 并同步 smoke 用例。
+
+## 合并 / 安装 / 真机验收（2026-10-21）
+
+- **合并**：PR #13 合并 main，merge `1cceb96b382f706de3e113d2fbc3ef95ade772d5`（含修复 `418c2ea` + alpha.10 bump `d6ad098`）。
+- **alpha.10 固定 staging**：`artifacts/p2-b/staging-alpha10-1cceb96`（root=`engine`=`1cceb96`、rootDirty=false；bundle `0.3.0-alpha.10`、client/worker `0.4.0`；INTEGRITY.json sha256 `6061004fd7b14b71fe0069f8ca5acf6fde045370672392e9e70cdd9079d3e4f9`；约 206 MB）。staging 审计：绝对路径仅出现在 config/managed/patch/INTEGRITY（预期），bundle 运行时代码无泄漏；全部回归后 INTEGRITY sha 未变。
+- **staging 回归**：`test-stage-version` **10/10**；`test-host-engine` **ok=true**（真实 Chrome/ffmpeg；frame PNG、demo 5s render MP4 150 帧、取消→`cancelled`；integrityVerified）；`test-conversation-chain` **261/261**；`test-conversation-preview`（仓库原脚本，real Chrome，fixed staging）**164/164**（B1–B5 全 true、staging 只读审计 same=true）；该 staging client 的 /tmp 真实 ToolRow DOM probe **167/167**（native openFile **0 次**、插件 overlay 打开、Host `preview` path 相对/绝对均原样转发）；独立 verifier **32/32**。证据：`artifacts/p2-b/evidence/engine-run-2026-10-21T00-45-57-850Z.json`，其余运行产物在 `/tmp/p3-026-alpha10/`（未入仓）。
+- **安装**：真实 DSH Plugins 页安装/启用 **v0.3.0-alpha.10 / 1 of 1 运行中**；重启 DSH 后加载新 client bundle；回滚保留 alpha.9 `artifacts/p2-b/staging-alpha9-573352e` 与 alpha.8 staging。
+- **用户真机验收（2026-10-21，口头确认）**：点击 `read_image` 工具行的文件链接不再弹出原生 sidebarRight 错误，改为打开插件本地图片 overlay；用户最终 6 项验收全部通过并在验收清单上确认，反馈“非常好，现在我觉得没什么问题了”。
+- **剩余观察（长期，不阻塞收尾）**：真实 20s/120s 用户作品长片导出的实际耗时/取消/失败路径仍需长时间使用确认；真实模型复杂多轮修改、极端窄窗口/字体缩放仍需持续观察；宿主未来若修改 ToolRow DOM/分隔符（如 `fileLink` 类名或 ` · ` 形式），需同步扩展 selector 与 smoke 用例；alpha.10 未额外发起真实模型请求。
+
