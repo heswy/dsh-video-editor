@@ -32,7 +32,7 @@
 | 面板 key | `main` keyed slot 的 `dsh-video`；另声明私有 session child，仅用于取得原生 `SessionProvider` kit |
 | 引擎依赖 | 独立 `dsh-video-engine-client` / `dsh-video-engine-worker`，仅开发 staging 快照内解析；两包维持 `0.4.0`（M1 未改引擎，升级 `0.5.0` 留到时间线里程碑）。M1 候选 root/engine 提交由 Lead 构建 staging 时固定并记录 |
 
-| 开发 staging | 当前已安装 `artifacts/p2-b/staging-alpha11-51b95dc`（0.3.0-alpha.11；回滚锚点）；M1 候选 `staging-v1.0.0-alpha.1-<sha8>` 由 Lead 构建后记录 INTEGRITY；alpha.10/alpha.9/alpha.8 staging 均保留回滚；仅开发快照，不随包分发 |
+| 开发 staging | 当前已安装 `artifacts/p2-b/staging-alpha11-51b95dc`（0.3.0-alpha.11；回滚锚点）；**M1 候选已构建** `artifacts/p2-b/staging-v1.0.0-alpha.1-5d42b1f`（root=engine=`5d42b1f`、bundle `1.0.0-alpha.1`、client/worker `0.4.0`、INTEGRITY sha256 `55e61ebbabee4df92b44d5ba6c3429a7bea5f7c58e2c27e8f9b58c50f55f958c`，约 203 MB），**未安装**；alpha.10/alpha.9/alpha.8 staging 均保留回滚；仅开发快照，不随包分发 |
 
 `index.js` 是 Host half：一个 plugin-local `VideoBridge` 同时服务精确 Fetch 路由和 Tool；`host/` 保存校验、错误映射、环境清理、worker 适配、产物发布、会话映射、局部图片预览、受控项目/素材收件箱与预览快照路由。`client.js` 是手写浏览器半（`window.__ModuleLoader__.load` 格式），只 `require('react')`，通过文档相对 `fetch('api/dsh-video/request')` 调用 Host；右侧 AI 直接渲染宿主原生 `conversation.content` Factory，不自建聊天。
 

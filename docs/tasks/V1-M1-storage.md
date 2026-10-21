@@ -169,3 +169,13 @@ L3 真链需 Lead 构建 staging 后跑；真机由用户验收。
 - `check.mjs` **58/58**、`smoke-client` **84/84**、`check-host` **71/71**（68 + 2 M1 + 1 L3 隔离）、`test-stage-version` **10/10**
 - L3（alpha.11 staging 1aabd6e 系列 51b95dc）：`test-host-engine --staging` **ok=true**（engine 51b95dc，real Chrome/ffmpeg）；`test-conversation-chain --staging` **261/261, ok=true**；`test-canvas-chain --staging` **ok=true**；三者均 `stagingReadOnly.same=true`，真实 `~/Movies/DSH Video` 未被创建。`test-conversation-preview`（real Chrome，时长较长）本轮未跑，M1 staging 构建后由 Lead 复跑。
 - 说明：alpha.11 staging 的 bridge 是旧代码、config 无 `legacyDataRoots`，因此 L3 走原布局（能力门控验证）；M1 快照的 dataRoot 路径将在 `1.0.0-alpha.1` staging 上执行同一套 harness。
+
+
+## 11. Lead 评审 / staging / L3 证据（2026-10-21）
+
+- 评审：Lead 复跑门禁 check 58/58、smoke-client 84/84、check-host 71/71、test-stage-version 10/10、test-v1-storage 21/21（无 env 与外部 `DSH_VIDEO_DATA_ROOT` 两种跑法），真实 `~/Movies/DSH Video` 未创建。
+- 发现并修复（staging 前）：test-v1-storage env 隔离；L3 harness dataRoot 隔离（`scripts/lib/data-root-isolation.mjs`，临时 `<base>/data`，真实数据根 baseline/断言）。
+- Commit：`99532f1`（M1 实现）、`5d42b1f`（bump `1.0.0-alpha.1`）。
+- 固定 staging：`artifacts/p2-b/staging-v1.0.0-alpha.1-5d42b1f`（root=engine=`5d42b1f`、bundle `1.0.0-alpha.1`、client/worker `0.4.0`；INTEGRITY sha256 `55e61ebbabee4df92b44d5ba6c3429a7bea5f7c58e2c27e8f9b58c50f55f958c`）。
+- L3（真 staging）：stage-version 10/10；host-engine ok=true；conversation-chain 261/261 ok=true；canvas-chain ok=true；conversation-preview 164/164 ok=true；staging 只读审计 same=true；真实数据根未创建。
+- 安装/验收：待用户授权（Plugins → Add plugin link `<staging>/bundle` → Install → Enable now → 如需重启）。回滚 = `artifacts/p2-b/staging-alpha11-51b95dc/bundle`。

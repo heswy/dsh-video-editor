@@ -38,5 +38,7 @@
 - 门禁（临时 HOME/dataRoot；真实 `~/Movies/DSH Video` 未创建）：check **58/58**、smoke-client **84/84**、check-host **71/71**、test-stage-version **10/10**、新增 `scripts/test-v1-storage.mjs` **21/21**（无外部 env 与 `DSH_VIDEO_DATA_ROOT` 外部注入两种跑法均 21/21）。
 - 迁移演练：alpha.11 staging 数据副本（只读）→ 数据根，demo + 真实工程 `proj-mvhq5nnj-3eb8e5db` 与会话映射迁移成功；重复激活幂等、旧目录未改写。
 - L3（alpha.11 staging 旧快照回归 + dataRoot 能力门控）：`test-host-engine` ok=true、`test-conversation-chain` 261/261 ok=true、`test-canvas-chain` ok=true；真实数据根未被创建/修改；conversation-preview/canvas-browser 本轮未跑。
-- 待 Lead：评审 + 复跑门禁 + commit + 构建 `1.0.0-alpha.1` staging（`--data-root`/`--legacy-data-root /…/staging-alpha11-51b95dc`）+ 用户真机验收（重启≥3 次、旧工程迁移、文件夹按钮、保存状态）。
+- 已评审/复跑并 commit：`99532f1`（M1 实现）+ `5d42b1f`（bump `1.0.0-alpha.1`）。候选 staging 已构建：`artifacts/p2-b/staging-v1.0.0-alpha.1-5d42b1f`（root=engine=`5d42b1f`、rootDirty=false、bundle `1.0.0-alpha.1`、client/worker `0.4.0`；INTEGRITY sha256 `55e61ebbabee4df92b44d5ba6c3429a7bea5f7c58e2c27e8f9b58c50f55f958c`）。
+- M1 候选 L3（真 staging）：`test-stage-version` 10/10；`test-host-engine --staging` **ok=true**（real Chrome/ffmpeg，frame/render/cancel）；`test-conversation-chain --staging` **261/261 ok=true**（stagingReadOnly.same=true）；`test-canvas-chain --staging` **ok=true**；`test-conversation-preview --staging`（real Chrome）**164/164 ok=true**；真实 `~/Movies/DSH Video` 全程未创建（harness 隔离断言）。
+- 待用户授权安装 alpha.1 并做 M1 真机验收：重启≥3 次数据在、旧工程迁移、可见文件夹按钮/菜单、保存状态、上次打开恢复、registry 单条破坏演练；回滚 = 重装 `artifacts/p2-b/staging-alpha11-51b95dc/bundle`。
 - 已知限制：迁移在首个业务请求同步执行（大工程可能拖慢首次 project.list，M3 评估后台化）；非 darwin 默认数据根与 reveal 命令未验证；v1 默认数据根以 macOS 为准。
