@@ -2,6 +2,7 @@
 
 更新：2026-10-21。alpha.11 已安装；用户明确“直接合码，这是 0.3.0 版本的最后一次改动”；P3-028 已合并 PR #15（`51b95dc`），未等待重启视觉复核（组件/真 Chrome 几何回归通过）。之后按具体问题从最新 main 建立修复分支。
 
+- **V1 M1（1.0.0-alpha.1）候选已构建、待安装验收（2026-10-21）**：分支 `codex/v1-m1-storage`，commit `99532f1`（M1 实现）+ `5d42b1f`（bump）。固定 staging `artifacts/p2-b/staging-v1.0.0-alpha.1-5d42b1f`（root=engine=`5d42b1f`、rootDirty=false、bundle `1.0.0-alpha.1`、client/worker `0.4.0`；INTEGRITY sha256 `55e61ebbabee4df92b44d5ba6c3429a7bea5f7c58e2c27e8f9b58c50f55f958c`）。L3：host-engine ok=true、conversation-chain 261/261、canvas-chain ok、conversation-preview 164/164；真实 `~/Movies/DSH Video` 未被测试创建。**未安装**；待用户 Plugins 页 link 安装并做 M1 真机验收（数据根/迁移/文件夹按钮/ui-state/容错）。回滚 `artifacts/p2-b/staging-alpha11-51b95dc/bundle`。详细见 [P3? → V1-M1 任务](tasks/V1-M1-storage.md) 与 STATUS。
 - 最新代码、规则、项目记忆统一读origin/main；先读STATUS、DEVELOPMENT、PRODUCT。
 - 当前没有已下发的新功能任务；不继续旧p0/p1/video-studio/ui-polish/project-foundation分支。
 - P3-013保留为真实对话验收的行为清单，P3-014记录已整合UI候选。**当前安装为 0.3.0-alpha.11**（root=`engine`=`51b95dc`，client/worker `0.4.0`，staging `artifacts/p2-b/staging-alpha11-51b95dc`，INTEGRITY sha256 `fd080d27086fa80bea8f4b0623d823c497c6281b8974ee1e0d0a2ac89db682ab`）；已通过真实 Plugins 页安装/启用（插件页 v0.3.0-alpha.11 / 1 of 1 运行中）。回滚保留 alpha.10 staging `artifacts/p2-b/staging-alpha10-1cceb96`（INTEGRITY `6061004f…3e4f9`）、alpha.9 staging `artifacts/p2-b/staging-alpha9-573352e`（INTEGRITY `28f319b9…3b9e`）、alpha.8 staging `artifacts/p2-b/staging-alpha8-faster-turn-cf7e593`（INTEGRITY `988302e9…6857`）与用户原作品；更换候选先核对实际包/版本/摘要。

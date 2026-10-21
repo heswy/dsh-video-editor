@@ -30,3 +30,15 @@
 3. 回滚入口：重新安装 alpha.10 staging `artifacts/p2-b/staging-alpha10-1cceb96/bundle`（或 alpha.9/alpha.8 staging）；保留用户工程、旧 staging 与作品。
 
 规则：[DEVELOPMENT](DEVELOPMENT.md)；当前入口：[handoffs/README](handoffs/README.md)；产品：[PRODUCT](product/PRODUCT.md)；预览修复：[预览管线修复](research/2026-10-19-preview-pipeline-fixes.md)；提速记录：[P3-015](research/2026-10-20-faster-video-turn.md)。
+
+## V1 M1（1.0.0-alpha.1）实现会话自测（2026-10-21，待 Lead 复跑/提交/staging）
+
+- 分支 `codex/v1-m1-storage`（base `1aabd6e`）；候选版本已 bump **`1.0.0-alpha.1`**；**已 commit，候选 staging 由 Lead 构建，未安装/未重启 DSH**。
+- 已完成 M1-01…M1-06 实现：稳定数据根（`~/Movies/DSH Video`，config `dataRoot` > env `DSH_VIDEO_DATA_ROOT`；目录 0700、不 chmod 父目录）、数据根两文件布局（worker `registry.json` 5 键不变 + `projects.json` 工程表）、旧 staging 只读迁移（`migration.json`、幂等、失败重试、session 合并）、registry/session/ui-state 容错与单工程 quarantine（含 map 从磁盘扫描重建 source=scan）、UI-only `project.path`/`project.reveal`（argv spawn、跨平台、错误 `E_REVEAL_FAILED`）+ 顶栏可见文件夹按钮与菜单「在 Finder 中显示/复制路径」、UI-only `ui.state.get/set` + 启动恢复 lastProjectId/比例 + 保存状态指示。
+- 门禁（临时 HOME/dataRoot；真实 `~/Movies/DSH Video` 未创建）：check **58/58**、smoke-client **84/84**、check-host **71/71**、test-stage-version **10/10**、新增 `scripts/test-v1-storage.mjs` **21/21**（无外部 env 与 `DSH_VIDEO_DATA_ROOT` 外部注入两种跑法均 21/21）。
+- 迁移演练：alpha.11 staging 数据副本（只读）→ 数据根，demo + 真实工程 `proj-mvhq5nnj-3eb8e5db` 与会话映射迁移成功；重复激活幂等、旧目录未改写。
+- L3（alpha.11 staging 旧快照回归 + dataRoot 能力门控）：`test-host-engine` ok=true、`test-conversation-chain` 261/261 ok=true、`test-canvas-chain` ok=true；真实数据根未被创建/修改；conversation-preview/canvas-browser 本轮未跑。
+- 已评审/复跑并 commit：`99532f1`（M1 实现）+ `5d42b1f`（bump `1.0.0-alpha.1`）。候选 staging 已构建：`artifacts/p2-b/staging-v1.0.0-alpha.1-5d42b1f`（root=engine=`5d42b1f`、rootDirty=false、bundle `1.0.0-alpha.1`、client/worker `0.4.0`；INTEGRITY sha256 `55e61ebbabee4df92b44d5ba6c3429a7bea5f7c58e2c27e8f9b58c50f55f958c`）。
+- M1 候选 L3（真 staging）：`test-stage-version` 10/10；`test-host-engine --staging` **ok=true**（real Chrome/ffmpeg，frame/render/cancel）；`test-conversation-chain --staging` **261/261 ok=true**（stagingReadOnly.same=true）；`test-canvas-chain --staging` **ok=true**；`test-conversation-preview --staging`（real Chrome）**164/164 ok=true**；真实 `~/Movies/DSH Video` 全程未创建（harness 隔离断言）。
+- 待用户授权安装 alpha.1 并做 M1 真机验收：重启≥3 次数据在、旧工程迁移、可见文件夹按钮/菜单、保存状态、上次打开恢复、registry 单条破坏演练；回滚 = 重装 `artifacts/p2-b/staging-alpha11-51b95dc/bundle`。
+- 已知限制：迁移在首个业务请求同步执行（大工程可能拖慢首次 project.list，M3 评估后台化）；非 darwin 默认数据根与 reveal 命令未验证；v1 默认数据根以 macOS 为准。

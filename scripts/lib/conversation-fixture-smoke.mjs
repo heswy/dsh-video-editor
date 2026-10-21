@@ -50,6 +50,7 @@ import {
   stamp,
   writeEvidence,
 } from './conversation-harness.mjs';
+import { assertStateRootIsolation } from './data-root-isolation.mjs';
 import { checkCompositionContract, genreA, genreB } from './conversation-fixtures.mjs';
 
 const KIND = 'p3-012-fixture-smoke';
@@ -356,6 +357,17 @@ async function main() {
     evidence.fatalError = { message: error instanceof Error ? error.message : String(error), stack: error instanceof Error ? error.stack : undefined };
     console.error('fixture smoke failed:', evidence.fatalError.message);
   } finally {
+    if (stateRoot !== null) {
+      try {
+        await assertStateRootIsolation(stateRoot);
+        evidence.dataRootIsolation = { ok: true, supported: stateRoot.dataRootSupported === true, realRootUntouched: true };
+      } catch (isolationError) {
+        evidence.dataRootIsolation = { ok: false, error: isolationError instanceof Error ? isolationError.message : String(isolationError) };
+        console.error('data-root isolation check failed: ' + evidence.dataRootIsolation.error);
+        process.exitCode = 1;
+      }
+    }
+
     if (browser !== null) await browser.close().catch(() => {});
     if (server !== null) await new Promise((resolveClose) => server.close(resolveClose)).catch(() => {});
     let teardown = null;

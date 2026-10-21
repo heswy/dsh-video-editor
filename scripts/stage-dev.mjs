@@ -45,6 +45,8 @@ const RUNTIME_PATHS = [
   'locale/en.json',
   'locale/zh.json',
   'host/bridge.js',
+  'host/data-root.js',
+  'host/ui-state.js',
   'host/config.js',
   'host/engine.js',
   'host/env.js',
@@ -87,11 +89,18 @@ function usage(message) {
 
 function parseArgs(argv) {
   const args = {};
+  args.legacyDataRoots = [];
   for (let index = 0; index < argv.length; index += 1) {
     const key = argv[index];
     if (key === '--skip-fixture') args.skipFixture = true;
     else if (key === '--allow-dirty') args.allowDirty = true;
-    else if (key === '--engine-commit' || key === '--bundle-version' || key === '--node' || key === '--browser' || key === '--font' || key === '--out') {
+    else if (key === '--legacy-data-root' || key === '--migrate-from') {
+      const value = argv[index + 1];
+      if (value === undefined || isAbsolute(value) === false) usage(`${key} must be an absolute path`);
+      args.legacyDataRoots.push(value);
+      index += 1;
+    }
+    else if (key === '--engine-commit' || key === '--bundle-version' || key === '--node' || key === '--browser' || key === '--font' || key === '--out' || key === '--data-root') {
       const value = argv[index + 1];
       if (value === undefined) usage(`missing value for ${key}`);
       const name = key.slice(2).replace(/-([a-z])/g, (_match, letter) => letter.toUpperCase());
@@ -110,6 +119,8 @@ function parseArgs(argv) {
   if (args.browser !== undefined && isAbsolute(args.browser) === false) usage('--browser must be absolute');
   if (args.font !== undefined && isAbsolute(args.font) === false) usage('--font must be absolute');
   if (args.out !== undefined && isAbsolute(args.out) === false) usage('--out must be absolute');
+  if (args.dataRoot !== undefined && isAbsolute(args.dataRoot) === false) usage('--data-root must be absolute');
+  args.legacyDataRoots = [...new Set(args.legacyDataRoots)];
   return args;
 }
 
@@ -334,6 +345,13 @@ async function main() {
       sessionStatePath: join(out, 'session-state.json'),
       sessionCwd,
       ...(managed === null ? {} : { projectsRoot: managed.projectsRoot, assetInboxRoot: managed.assetInboxRoot }),
+      ...(args.browser === undefined ? {} : { browserPath: args.browser }),
+      // M1: the stable user data root. When omitted the runtime resolves
+      // ~/Movies/DSH Video (or DSH_VIDEO_DATA_ROOT); it is never hardcoded to a
+      // developer path here. Legacy roots are explicit build inputs plus this
+      // snapshot's own fixture root so a fresh staging still shows the demo.
+      ...(args.dataRoot === undefined ? {} : { dataRoot: args.dataRoot }),
+      legacyDataRoots: [...new Set([...args.legacyDataRoots, out])],
     };
     const configPath = join(out, 'config.json');
     await writeFile(configPath, JSON.stringify(config, null, 2) + '\n');

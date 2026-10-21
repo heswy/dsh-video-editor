@@ -128,6 +128,8 @@ export class SessionStateStore {
     this.state = null;
     this.loadError = null;
     this.loaded = false;
+    this.recovered = null;
+    this.recoveryInfo = null;
     this.queue = Promise.resolve();
     this.disposed = false;
     this.ready = this.load();
@@ -172,6 +174,13 @@ export class SessionStateStore {
     try {
       this.state = validateState(parsed, this.allowedProjects);
       this.loaded = true;
+      // Keep one last-known-good copy so a later corruption can be rebuilt from
+      // the mapping instead of silently starting empty (best effort).
+      try {
+        await writeFile(this.path + '.bak', JSON.stringify(this.state, null, 2) + '\n', { encoding: 'utf8', mode: 0o600 });
+      } catch (_error) {
+        /* recovery copy is advisory */
+      }
     } catch (error) {
       this.loadError = error instanceof BridgeError ? error : stateError('E_SESSION_STATE_CORRUPT', 'Session state is invalid');
     }
@@ -266,6 +275,66 @@ export class SessionStateStore {
     });
   }
 
+  /**
+   * Merge one legacy state object (schema v1 shape) into the data-root store.
+   *
+   * Used only by the one-time staging migration: ids are de-duplicated, an
+   * existing data-root mapping always wins, and unknown shapes are rejected
+   * with a typed error instead of partially importing garbage. The merge is a
+   * normal copy-on-write mutation, so the file is written atomically.
+   */
+  async mergeLegacyState(parsed) {
+    const state = await this.ensureReady();
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw stateError('E_SESSION_STATE_CORRUPT', 'Legacy session state is not an object');
+    }
+    if (parsed.version !== SESSION_STATE_VERSION) {
+      throw stateError('E_SESSION_STATE_VERSION', 'Legacy session state has an unsupported version');
+    }
+    const legacyProjects = parsed.projects !== null && typeof parsed.projects === 'object' && Array.isArray(parsed.projects) === false ? parsed.projects : {};
+    const legacySessions = parsed.sessions !== null && typeof parsed.sessions === 'object' && Array.isArray(parsed.sessions) === false ? parsed.sessions : {};
+    const added = { projects: 0, sessions: 0 };
+    return this.queueWrite((candidate) => {
+      for (const [projectId, projectValue] of Object.entries(legacyProjects)) {
+        if (PROJECT_ID_PATTERN.test(projectId) === false) continue;
+        if (projectValue === null || typeof projectValue !== 'object' || Array.isArray(projectValue)) continue;
+        const existing = candidate.projects[projectId];
+        const record = existing === undefined
+          ? { sessionIds: [], activeSessionId: null, createdAt: numberOr(projectValue.createdAt, nowMs()), updatedAt: numberOr(projectValue.updatedAt, nowMs()) }
+          : existing;
+        const sessionIds = Array.isArray(projectValue.sessionIds) ? projectValue.sessionIds : [];
+        for (const sessionId of sessionIds) {
+          if (typeof sessionId !== 'string' || SESSION_ID_PATTERN.test(sessionId) === false) continue;
+          if (record.sessionIds.includes(sessionId)) continue;
+          if (record.sessionIds.length >= MAX_SESSIONS_PER_PROJECT) break;
+          record.sessionIds.push(sessionId);
+          added.sessions += 1;
+          const boundProject = candidate.sessions[sessionId];
+          if (boundProject === undefined) candidate.sessions[sessionId] = { projectId, createdAt: nowMs() };
+        }
+        const legacyActive = typeof projectValue.activeSessionId === 'string' ? projectValue.activeSessionId : null;
+        if (record.activeSessionId === null && legacyActive !== null && record.sessionIds.includes(legacyActive)) {
+          record.activeSessionId = legacyActive;
+        }
+        if (record.activeSessionId === null && record.sessionIds.length > 0) record.activeSessionId = record.sessionIds[0];
+        record.updatedAt = Math.max(record.updatedAt, numberOr(projectValue.updatedAt, 0));
+        candidate.projects[projectId] = record;
+        added.projects += 1;
+      }
+      for (const [sessionId, sessionValue] of Object.entries(legacySessions)) {
+        if (SESSION_ID_PATTERN.test(sessionId) === false) continue;
+        if (candidate.sessions[sessionId] !== undefined) continue;
+        if (sessionValue === null || typeof sessionValue !== 'object' || Array.isArray(sessionValue)) continue;
+        const projectId = sessionValue.projectId;
+        if (typeof projectId !== 'string' || candidate.projects[projectId] === undefined) continue;
+        if (candidate.projects[projectId].sessionIds.includes(sessionId) === false) continue;
+        candidate.sessions[sessionId] = { projectId, createdAt: numberOr(sessionValue.createdAt, nowMs()) };
+        added.sessions += 1;
+      }
+      return added;
+    });
+  }
+
   /** Mark one mapped session active; only project members qualify. */
   async selectSession(projectId, sessionId) {
     return this.queueWrite((state) => {
@@ -280,6 +349,46 @@ export class SessionStateStore {
     });
   }
 
+  /**
+   * Rebuild a corrupt session state (M1-03).
+   *
+   * The corrupt bytes are kept as `<path>.corrupt-<timestamp>`, a valid .bak is
+   * used when available, otherwise the mapping restarts empty (Session ids stay
+   * valid in DSH; the plugin-owned mapping is rebuildable). Writing the empty
+   * file keeps the next activation deterministic.
+   */
+  async recoverIfNeeded() {
+    await this.ready;
+    if (this.loadError === null) return { recovered: false, error: null };
+    const errorCode = this.loadError.code;
+    if (this.path === null) return { recovered: false, error: errorCode };
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    let backupPath = null;
+    try {
+      backupPath = `${this.path}.corrupt-${stamp}`;
+      await rename(this.path, backupPath);
+    } catch (_error) {
+      backupPath = null;
+    }
+    let recoveredState = null;
+    try {
+      const parsed = JSON.parse(await readFile(this.path + '.bak', 'utf8'));
+      recoveredState = validateState(parsed, this.allowedProjects);
+    } catch (_error) {
+      recoveredState = null;
+    }
+    this.state = recoveredState === null ? emptyState() : recoveredState;
+    this.loaded = true;
+    this.loadError = null;
+    this.recovered = { code: errorCode, backupCreated: backupPath !== null, fromBackup: recoveredState !== null };
+    try {
+      await this.write(this.state);
+    } catch (_error) {
+      this.loadError = stateError('E_SESSION_STATE_CORRUPT', 'Recovered session state could not be written');
+    }
+    return { recovered: true, ...this.recovered };
+  }
+
   /** Read-only diagnostic summary; never includes session titles or message text. */
   diagnose() {
     const state = this.state;
@@ -287,6 +396,7 @@ export class SessionStateStore {
       configured: this.path !== null,
       loaded: this.loaded,
       error: this.loadError === null ? null : this.loadError.code,
+      recovered: this.recovered === null ? null : { ...this.recovered },
       version: state === null ? null : state.version,
       projects: state === null ? 0 : Object.keys(state.projects).filter((projectId) => this.allowedProjects.has(projectId)).length,
       sessions: state === null ? 0 : Object.keys(state.sessions).length,

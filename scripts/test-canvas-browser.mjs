@@ -17,6 +17,7 @@ import { constants } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { loadStagedHost } from './lib/staged-host.mjs';
+import { assertRealDataRootUnchanged, disposeIsolatedBase, isolateStagedConfig, prepareIsolatedBase, snapshotRealDataRoot } from './lib/data-root-isolation.mjs';
 
 const INSTANCE = 'p3008browser1';
 const NONCE = '0123456789abcdef0123456789abcdef';
@@ -199,7 +200,10 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   const staging = resolve(args.staging);
   const staged = await loadStagedHost(staging);
-  const config = staged.config;
+  const realDataRootBaseline = await snapshotRealDataRoot();
+  const isolatedBase = await prepareIsolatedBase('dsh-canvas-browser-');
+  const isolation = isolateStagedConfig(staged.config, { stagingRoot: staging, base: isolatedBase });
+  const config = isolation.config;
   const integrity = staged.integrity;
   const browserPath = integrity.browser;
   assert(typeof browserPath === 'string' && isAbsolute(browserPath), 'staging has no absolute browser path');
@@ -356,6 +360,13 @@ async function main() {
     evidence.error = { message: error instanceof Error ? error.message : String(error), stack: error instanceof Error ? error.stack : undefined };
     throw error;
   } finally {
+    try {
+      await disposeIsolatedBase(isolatedBase);
+      await assertRealDataRootUnchanged(realDataRootBaseline);
+    } catch (isolationError) {
+      console.error('data-root isolation check failed: ' + (isolationError instanceof Error ? isolationError.message : String(isolationError)));
+      process.exitCode = 1;
+    }
     if (browser !== null) await browser.close().catch(() => {});
     if (server !== null) await new Promise((resolveClose) => server.close(resolveClose)).catch(() => {});
     try {

@@ -67,6 +67,7 @@ import {
   writeBinary,
   writeEvidence,
 } from './lib/conversation-harness.mjs';
+import { assertStateRootIsolation } from './lib/data-root-isolation.mjs';
 import {
   checkCompositionContract,
   failureFixtures,
@@ -982,6 +983,17 @@ async function main() {
     };
     console.error('harness failed:', evidence.fatalError.message);
   } finally {
+    if (stateRoot !== null) {
+      try {
+        await assertStateRootIsolation(stateRoot);
+        evidence.dataRootIsolation = { ok: true, supported: stateRoot.dataRootSupported === true, realRootUntouched: true };
+      } catch (isolationError) {
+        evidence.dataRootIsolation = { ok: false, error: isolationError instanceof Error ? isolationError.message : String(isolationError) };
+        console.error('data-root isolation check failed: ' + evidence.dataRootIsolation.error);
+        process.exitCode = 1;
+      }
+    }
+
     if (browser !== null) await browser.close().catch(() => {});
     if (server !== null) {
       if (typeof server.closeAllConnections === 'function') server.closeAllConnections();
