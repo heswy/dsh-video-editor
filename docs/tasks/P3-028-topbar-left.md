@@ -49,3 +49,12 @@
 - 门禁：`node scripts/check.mjs` **54/54**、`node scripts/test-stage-version.mjs` **10/10**；未改 CSS/客户端逻辑/测试断言。
 - 等待 Lead 开 PR 合并、构建 alpha.11 fixed staging 并安装；重启后交付方真机验收收起侧栏顶栏居左及展开侧栏/窄窗/导出/rename/拖拽不回归。
 
+## 合并 / 安装 / 收尾（2026-10-21）
+
+- **合并**：PR #15 合并 main，merge `51b95dcb033f169bf6e80e663a76ef163b5b663c`（含修复 `7c8f9ae` + alpha.11 bump `ed2480e`）。**这是用户明确的“0.3.0 版本最后一次改动”**。
+- **alpha.11 固定 staging**：`artifacts/p2-b/staging-alpha11-51b95dc`（root=`engine`=`51b95dc`、rootDirty=false；bundle `0.3.0-alpha.11`、client/worker `0.4.0`；INTEGRITY.json sha256 `fd080d27086fa80bea8f4b0623d823c497c6281b8974ee1e0d0a2ac89db682ab`；约 203 MB）。审计：绝对路径仅出现在 config/managed/patch/INTEGRITY（预期），bundle 运行时代码无泄漏；全部回归后 INTEGRITY sha 未变；alpha.10 staging 未动。
+- **staging 回归**：`test-stage-version` **10/10**；`test-ui-polish`（仓库 client）**27/27**、以 staging client.js 字节再跑 **27/27**；`test-host-engine` **ok=true**（真实 Chrome/ffmpeg；frame PNG、demo 5s render MP4 150 帧、取消→`cancelled`；integrityVerified）；`test-conversation-chain` **261/261**；`test-conversation-preview`（real Chrome，fixed staging）**164/164**（B1–B5 全 true、staging 只读审计 same=true）；独立 verifier **PASS**。darwin 几何（staging client 字节，真 Chrome）：`paddingLeft=16px`（旧 160px）、`paddingTop=56px`、返回 `left=16/top=56`、作品名 `left=58/top=56`；清除变量后非 darwin 与基线一致。
+- **安装**：真实 DSH Plugins 页安装/启用 **v0.3.0-alpha.11 / 1 of 1 运行中**；回滚保留 alpha.10 `artifacts/p2-b/staging-alpha10-1cceb96`、alpha.9 与 alpha.8 staging。
+- **用户决定与未复核项**：用户明确指示“直接合码，这是 0.3.0 版本的最后一次改动”，因此 **未等待重启后的最终视觉复核即合并**；安装已成功，但“收起侧边栏后顶栏居左”的**真机视觉确认未复核**（组件/真 Chrome 几何回归已通过）。后续如用户实际使用中发现问题，从最新 main 建独立分支修复。
+- **剩余观察**：非 darwin（Windows/Linux）窗口控制区/leading 行为未真机验证；宿主未来若改 `--dsh-frame-leading-clearance`/`--dsh-frame-top-clearance` 语义，需按真实证据重新核对本修复与回归用例。
+
