@@ -1,9 +1,9 @@
 # P3-028 修复：收起侧边栏后顶栏标题不居左（重复 leading 预留）
 
-日期：2026-10-21（Asia/Shanghai）。状态：**修复与真 Chrome 组件回归完成（待 alpha.11 构建/安装后真机验收）；未合并、未安装、未发模型。**
+日期：2026-10-21（Asia/Shanghai）。状态：**修复与真 Chrome 组件回归完成；候选版本已收口为 0.3.0-alpha.11；未合并、未安装、未发模型；待 PR 合并、alpha.11 staging 构建/安装后真机验收。**
 
 - 分支：`codex/p3-028-topbar-left`（base `origin/main` `9b0928e`），隔离 worktree `dsh-video-editor-worktrees/p3-028-topbar-left`
-- 只改 `client.js` 顶栏 CSS + `scripts/test-ui-polish.mjs` 回归；不改 Host/worker/版本/pin；不安装/重启/合并/发模型
+- 实现阶段只改 `client.js` 顶栏 CSS + `scripts/test-ui-polish.mjs` 回归，不改其它契约；候选版本收口（task-30）另统一 bump 到 **0.3.0-alpha.11**（package.json、check.mjs 版本断言、test-stage-version pin、README）；不安装/重启/合并/发模型
 
 ## 根因（DSH 当前 layout bundle 证据）
 
@@ -42,3 +42,10 @@
 
 1. Lead 版本收口 alpha.11 → 构建 staging → 安装/重启；delivery-owner 真机验收：收起侧边栏顶栏居左、展开侧栏/窄窗/导出/rename/拖拽不回归。
 2. 若宿主 DOM/变量再次变化，按真实证据更新 CSS 并同步本回归用例。
+
+## 候选版本（2026-10-21，task-30）
+
+- 统一 bump **0.3.0-alpha.11**：`package.json`、`scripts/check.mjs` 版本断言/标签、`scripts/test-stage-version.mjs` 的 `REVIEWED_BUNDLE_VERSION`、README 候选版本/安装说明；本任务卡与 handoff 版本改为 alpha.11。
+- 门禁：`node scripts/check.mjs` **54/54**、`node scripts/test-stage-version.mjs` **10/10**；未改 CSS/客户端逻辑/测试断言。
+- 等待 Lead 开 PR 合并、构建 alpha.11 fixed staging 并安装；重启后交付方真机验收收起侧栏顶栏居左及展开侧栏/窄窗/导出/rename/拖拽不回归。
+
