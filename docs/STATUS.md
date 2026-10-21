@@ -33,7 +33,7 @@
 
 ## V1 M1（1.0.0-alpha.1）实现会话自测（2026-10-21，待 Lead 复跑/提交/staging）
 
-- 分支 `codex/v1-m1-storage`（base `1aabd6e`，版本仍 `0.3.0-alpha.11`；`1.0.0-alpha.1` 由 Lead 统一 bump）；**未 commit/未安装/未重启 DSH**。
+- 分支 `codex/v1-m1-storage`（base `1aabd6e`）；候选版本已 bump **`1.0.0-alpha.1`**；**已 commit，候选 staging 由 Lead 构建，未安装/未重启 DSH**。
 - 已完成 M1-01…M1-06 实现：稳定数据根（`~/Movies/DSH Video`，config `dataRoot` > env `DSH_VIDEO_DATA_ROOT`；目录 0700、不 chmod 父目录）、数据根两文件布局（worker `registry.json` 5 键不变 + `projects.json` 工程表）、旧 staging 只读迁移（`migration.json`、幂等、失败重试、session 合并）、registry/session/ui-state 容错与单工程 quarantine（含 map 从磁盘扫描重建 source=scan）、UI-only `project.path`/`project.reveal`（argv spawn、跨平台、错误 `E_REVEAL_FAILED`）+ 顶栏可见文件夹按钮与菜单「在 Finder 中显示/复制路径」、UI-only `ui.state.get/set` + 启动恢复 lastProjectId/比例 + 保存状态指示。
 - 门禁（临时 HOME/dataRoot；真实 `~/Movies/DSH Video` 未创建）：check **58/58**、smoke-client **84/84**、check-host **71/71**、test-stage-version **10/10**、新增 `scripts/test-v1-storage.mjs` **21/21**（无外部 env 与 `DSH_VIDEO_DATA_ROOT` 外部注入两种跑法均 21/21）。
 - 迁移演练：alpha.11 staging 数据副本（只读）→ 数据根，demo + 真实工程 `proj-mvhq5nnj-3eb8e5db` 与会话映射迁移成功；重复激活幂等、旧目录未改写。

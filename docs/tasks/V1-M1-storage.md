@@ -1,7 +1,7 @@
 # V1-M1 存储与工程生命周期 · 实现契约与任务卡
 
 日期：2026-10-21（Asia/Shanghai）。状态：**in_progress（用户已说“开始”进入 M1）**。
-工作树：`/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/v1-m1-storage`（分支 `codex/v1-m1-storage`，base 缓存 `origin/main` `1aabd6e`，版本 `0.3.0-alpha.11`；M1 完成时 bump `1.0.0-alpha.1`）。
+工作树：`/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/v1-m1-storage`（分支 `codex/v1-m1-storage`，base 缓存 `origin/main` `1aabd6e`；M1 候选版本 `1.0.0-alpha.1`）。
 依据：[V1.0-PLAN](../../../v1-plan/docs/plans/V1.0-PLAN.md) §5 M1 · [开发运行指南](../../../v1-plan/docs/plans/V1.0-DEVELOPMENT-GUIDE.md) · [验收矩阵](../../../v1-plan/docs/plans/V1.0-ACCEPTANCE.md) §M1 · [M0 报告](../../../v1-m0-validation/docs/research/V1-M0-report.md)（存储/路径相关结论）。
 性质：**实现产品代码**（Host/worker/client/脚本），不安装、不重启 DSH、不合并 main；由实现会话改代码，Lead 评审/跑门禁/提交/staging。
 

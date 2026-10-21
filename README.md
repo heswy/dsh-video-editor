@@ -19,20 +19,20 @@
 - [P2-002 Host 契约调查](docs/research/P2-002-host-bridge-contract.md)
 - [P3-005-A 原生会话契约调查](docs/research/P3-005A-native-conversation-contract.md)
 
-## 本版交付（0.3.0-alpha.11，本地开发候选；P3-016 面板/标题 + P3-017 预览/导出 + P3-022 文件链接预览修复 + P3-028 顶栏窗口预留修复）
+## 本版交付（1.0.0-alpha.1 · M1 存储与工程生命周期，本地开发候选；稳定数据根 + 旧工程迁移 + 文件夹按钮 + 面板状态 + 容错）
 
 | 项 | 值 |
 |---|---|
 | 包名 / Loader 行 id / Client 模块 id | `dsh-video` |
-| Bundle 版本 | `0.3.0-alpha.11` |
+| Bundle 版本 | `1.0.0-alpha.1` |
 | Host 路由 | `POST /api/dsh-video/request`、`GET/HEAD /api/dsh-video/artifact?jobId=…`、`POST /api/dsh-video/asset-upload`、`GET/HEAD /api/dsh-video/preview/<snapshotId>/<manifest path>`、`GET/HEAD /api/dsh-video/canvas-runtime.js` |
 | Host 请求方法 | doctor/open/inspect/edit/frame/render/status/cancel/close、session.*、preview（文件预览），P3-008 的 project.create/project.list/asset.import/scene.create/scene.update/scene.remove/scene.reorder/project.revise/history/undo/redo/preview.snapshot/preview.release，P3-012 的 project.compose/project.source，以及 P3-016 的 project.rename；asset 上传、preview.snapshot 与 project.rename 为 UI-only，Tool 不能调用 |
 | Tool | `video_engine`（同一 dispatcher；非 doctor action 必须来自绑定工程的受信 Agent Session）；P3-012 增加 conversation-first 创作/修改入口 `project.compose`、`project.source` |
 | 侧栏入口 | `sidebar.panellist`，`id: dsh-video`、`order: 30`、label `Vedio Editor` |
 | 面板 key | `main` keyed slot 的 `dsh-video`；另声明私有 session child，仅用于取得原生 `SessionProvider` kit |
-| 引擎依赖 | 独立 `dsh-video-engine-client` / `dsh-video-engine-worker`，仅开发 staging 快照内解析；两包维持 `0.4.0`，alpha.10 固定 root=`engine`=`1cceb96`（已安装）；alpha.11 候选包含 P3-028 的 client CSS 修复，root/engine 提交由 Lead 构建 staging 时固定并记录 |
+| 引擎依赖 | 独立 `dsh-video-engine-client` / `dsh-video-engine-worker`，仅开发 staging 快照内解析；两包维持 `0.4.0`（M1 未改引擎，升级 `0.5.0` 留到时间线里程碑）。M1 候选 root/engine 提交由 Lead 构建 staging 时固定并记录 |
 
-| 开发 staging | 当前已安装 `artifacts/p2-b/staging-alpha10-1cceb96`（rootCommit=`engineCommit`=`1cceb96`，clean；`INTEGRITY.json` sha256 `6061004fd7b14b71fe0069f8ca5acf6fde045370672392e9e70cdd9079d3e4f9`）；alpha.11 候选 staging 由 Lead 在 PR 合并后构建，摘要后续记录；alpha.9 `artifacts/p2-b/staging-alpha9-573352e`、alpha.8 staging `artifacts/p2-b/staging-alpha8-faster-turn-cf7e593` 保留回滚；仅开发快照，不随包分发 |
+| 开发 staging | 当前已安装 `artifacts/p2-b/staging-alpha11-51b95dc`（0.3.0-alpha.11；回滚锚点）；M1 候选 `staging-v1.0.0-alpha.1-<sha8>` 由 Lead 构建后记录 INTEGRITY；alpha.10/alpha.9/alpha.8 staging 均保留回滚；仅开发快照，不随包分发 |
 
 `index.js` 是 Host half：一个 plugin-local `VideoBridge` 同时服务精确 Fetch 路由和 Tool；`host/` 保存校验、错误映射、环境清理、worker 适配、产物发布、会话映射、局部图片预览、受控项目/素材收件箱与预览快照路由。`client.js` 是手写浏览器半（`window.__ModuleLoader__.load` 格式），只 `require('react')`，通过文档相对 `fetch('api/dsh-video/request')` 调用 Host；右侧 AI 直接渲染宿主原生 `conversation.content` Factory，不自建聊天。
 
@@ -132,7 +132,7 @@
 node scripts/stage-dev.mjs   --engine-commit <reviewed-P2-003-sha>   --bundle-version <reviewed-bundle-version>   --node /absolute/real/node   --browser /absolute/chrome   [--font /absolute/font] [--out /absolute/staging-dir]   [--data-root /absolute/user-data-root]   [--legacy-data-root /absolute/previous-staging]
 ```
 
-`--bundle-version` 必须显式给出，且与所固定提交根 `package.json` 的版本（当前 **0.3.0-alpha.11**）完全一致；非法 semver 或不一致会在创建输出目录、安装依赖之前失败，脚本不会猜测或隐式接受任意版本。后续升级根版本时同步传入新版本，不删除这项校验。
+`--bundle-version` 必须显式给出，且与所固定提交根 `package.json` 的版本（当前 **1.0.0-alpha.1**）完全一致；非法 semver 或不一致会在创建输出目录、安装依赖之前失败，脚本不会猜测或隐式接受任意版本。后续升级根版本时同步传入新版本，不删除这项校验。
 
 引擎版本只接受主会话已复审的固定版本对（当前 `0.1.1/0.1.1`、`0.3.0/0.3.0`、`0.3.1/0.3.1`、`0.3.2/0.3.2`、`0.4.0/0.4.0`）；0.3.x 起使用 managed `projectsRoot`/`assetInboxRoot`。版本对只按主会话明确固定的提交维护，**绝不自动跟随 p1 分支 HEAD**。
 
@@ -140,7 +140,7 @@ node scripts/stage-dev.mjs   --engine-commit <reviewed-P2-003-sha>   --bundle-ve
 
 ```text
 <staging>/
-  bundle/                  # alpha.11 候选根 bundle；仅此快照内加本地依赖与 node_modules 链接
+  bundle/                  # 1.0.0-alpha.1 M1 候选根 bundle；仅此快照内加本地依赖与 node_modules 链接
   engine-client/           # 固定 engine commit 快照
   engine-worker/           # 固定 engine commit 快照 + 依赖闭包 + artifacts fixture/registry/output
   config.json              # 仅此快照的绝对路径 Host 配置（含 sessionStatePath/sessionCwd）
@@ -184,7 +184,7 @@ node scripts/test-host-engine.mjs --staging /absolute/staging-dir
 
 ## 安装（需用户明确授权；由 DSH 界面执行）
 
-本仓库未做 profile 修改；当前安装为 alpha.10（`artifacts/p2-b/staging-alpha10-1cceb96`），0.3.0-alpha.11 候选未安装。复审通过并完成 staging 后：
+本仓库未做 profile 修改；当前安装为 0.3.0-alpha.11（`artifacts/p2-b/staging-alpha11-51b95dc`），1.0.0-alpha.1 M1 候选 staging 构建后待安装。复审通过并完成 staging 后：
 
 1. 侧栏 **Plugins → Add plugin**，填入 staging 的 `bundle/` 绝对路径（开发 link）或审阅通过的固定包；
 2. **Install**，完成后 **Enable now**；
@@ -203,7 +203,7 @@ node scripts/test-host-engine.mjs --staging /absolute/staging-dir
 
 - **停用**：Plugins 页面关闭 `dsh-video`。Host 停止接受新请求并 `await` 一次 worker dispose；UI/侧栏/路由/Tool/会话引用与 prompt context 随 fiber 释放。worker 只在插件停用/移除时收尾，切换视频面板或返回对话不会停止共享 worker。
 - **重新启用**：再次打开开关；worker 在第一次业务请求时惰性启动，不随面板挂载启动；历史与映射从 `sessionStatePath` 恢复，草稿由宿主会话保留。
-- **回滚**：保留并恢复当前已安装的受控候选（alpha.10 staging、alpha.9 staging 与 alpha.8 staging 均保留）；移除 alpha.11 bundle 后重新安装上一固定 tarball/alpha.10，或按 Plugin Manager 历史选择回退。浏览器偏好可删除 `localStorage['dsh-video.ui.v1']`；如需清理插件映射，可在插件停用后按运维流程删除 `sessionStatePath`（不会删除 DSH Session）。
+- **回滚**：保留并恢复上一受控候选（alpha.11 staging 为 0.3 回滚锚点；alpha.10/alpha.9/alpha.8 staging 均保留）；移除 1.0.0-alpha.1 bundle 后重装 `staging-alpha11-51b95dc/bundle`，或按 Plugin Manager 历史选择回退。浏览器偏好可删除 `localStorage['dsh-video.ui.v1']`；如需清理插件映射，可在插件停用后按运维流程删除 `sessionStatePath`（不会删除 DSH Session）。
 - **数据影响**：本插件不写 DSH session 事件、不写 profile；工程内容只由受控 worker 写入其配置的 registry 工程目录；云不可用或映射文件损坏时不会静默删除任何会话或工程。
 
 ## 本地检查（零构建，无安装）
