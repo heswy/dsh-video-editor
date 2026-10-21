@@ -231,8 +231,16 @@ try {
           ? await bridge.uploadAsset(request)
           : await route.fetch(request);
       res.writeHead(response.status, Object.fromEntries(response.headers));
-      if (response.body) Readable.fromWeb(response.body).pipe(res);
-      else res.end();
+      if (response.body) {
+        const stream = Readable.fromWeb(response.body);
+        res.on("close", () => stream.destroy());
+        stream.on("error", (error) => {
+          if (!["ABORT_ERR", "ERR_STREAM_PREMATURE_CLOSE"].includes(error.code))
+            errors.push(error.message);
+          res.destroy();
+        });
+        stream.pipe(res);
+      } else res.end();
     } catch (e) {
       res.writeHead(500);
       res.end("test server error");

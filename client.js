@@ -3400,7 +3400,7 @@ window.__ModuleLoader__.load({
         }
       }
       React.useEffect(() => {
-        if (props.assetToAdd && data) {
+        if (props.assetToAdd && data && !busy) {
           const a = props.assetToAdd;
           props.onAssetConsumed();
           const tr = data.tracks.find((x) => x.kind === "video" && !x.locked);
@@ -3423,7 +3423,7 @@ window.__ModuleLoader__.load({
             },
           ]);
         }
-      }, [props.assetToAdd, data]);
+      }, [props.assetToAdd, data, busy]);
       if (!data)
         return h(
           "section",
@@ -3724,7 +3724,6 @@ window.__ModuleLoader__.load({
                               assetId: a,
                               trackId: tr.trackId,
                               startFrame,
-                              durationFrames: 150,
                               mode: "ripple",
                             },
                           ]);

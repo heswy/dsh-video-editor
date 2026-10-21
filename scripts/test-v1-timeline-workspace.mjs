@@ -236,8 +236,16 @@ try {
           ? await bridge.uploadAsset(request)
           : await route.fetch(request);
       res.writeHead(response.status, Object.fromEntries(response.headers));
-      if (response.body) Readable.fromWeb(response.body).pipe(res);
-      else res.end();
+      if (response.body) {
+        const stream = Readable.fromWeb(response.body);
+        res.on("close", () => stream.destroy());
+        stream.on("error", (error) => {
+          if (!["ABORT_ERR", "ERR_STREAM_PREMATURE_CLOSE"].includes(error.code))
+            errors.push(error.message);
+          res.destroy();
+        });
+        stream.pipe(res);
+      } else res.end();
     } catch (e) {
       res.writeHead(500);
       res.end("test server error");
@@ -447,6 +455,67 @@ try {
     () =>
       document.querySelector(".dv-canvas-shell").dataset.previewPending ===
       "false",
+  );
+  const beforeAdd = await bridge.invoke("timeline.inspect", { projectId }),
+    clipCount = beforeAdd.totalClips;
+  await page.click(".dv-canvas-bar button:last-child");
+  await page.waitForSelector(".dv-media-tile");
+  await page.click(".dv-media-tile");
+  await clickText("加入时间线");
+  await count(clipCount + 1);
+  assert.equal(await page.$(".dv-media-library"), null);
+  await page.waitForFunction(
+    () =>
+      document.querySelector(".dv-timeline").getAttribute("aria-busy") ===
+      "false",
+  );
+  let afterAdd = await bridge.invoke("timeline.inspect", { projectId });
+  assert.equal(afterAdd.tracks[0].clips.at(-1).durationFrames, 600);
+  checks++;
+  await clickText("撤销");
+  await count(clipCount);
+  await page.waitForFunction(
+    () =>
+      document.querySelector(".dv-timeline").getAttribute("aria-busy") ===
+      "false",
+  );
+  await page.click(".dv-canvas-bar button:last-child");
+  await page.waitForSelector(".dv-media-tile");
+  await page.evaluate(() => {
+    const transfer = new DataTransfer(),
+      tile = document.querySelector(".dv-media-tile"),
+      lane = [...document.querySelectorAll(".dv-timeline-lane")].at(-1);
+    tile.dispatchEvent(
+      new DragEvent("dragstart", { dataTransfer: transfer, bubbles: true }),
+    );
+    const rect = lane.getBoundingClientRect();
+    lane.dispatchEvent(
+      new DragEvent("drop", {
+        dataTransfer: transfer,
+        bubbles: true,
+        cancelable: true,
+        clientX: rect.left + 2,
+        clientY: rect.top + 10,
+      }),
+    );
+  });
+  await count(clipCount + 1);
+  afterAdd = await bridge.invoke("timeline.inspect", { projectId });
+  assert.equal(
+    afterAdd.tracks.at(-1).clips[0].durationFrames,
+    600,
+    "Dropped video should use its complete source duration",
+  );
+  checks++;
+  await page.click(".dv-media-library button[aria-label]");
+  await clickText("撤销");
+  await count(clipCount);
+  await page.waitForFunction(
+    () =>
+      document.querySelector(".dv-canvas-shell").dataset.previewPending ===
+        "false" &&
+      document.querySelector(".dv-timeline").getAttribute("aria-busy") ===
+        "false",
   );
   const timeBefore = await page.$eval(".dv-seek", (e) => Number(e.value));
   await page.click(".dv-play");
