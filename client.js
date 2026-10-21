@@ -1830,6 +1830,54 @@ window.__ModuleLoader__.load({
     // route, so the global right sidebar never has to be mounted.
     const PREVIEW_PATH_EXTENSION = /\.[A-Za-z0-9]{1,12}(?:$|[?#])/;
     const PREVIEW_EXTERNAL_PREFIX = /^(?:https?:|mailto:|tel:|javascript:|data:|#)/i;
+    // P3-022: the host chat renders a ToolRow's collapsed result summary as
+    // `<button type="button" class="<css-hash>_fileLink" onClick={openFile}>`
+    // (or an `<a class="..._fileLink">`) with NO title/data-* path attribute.
+    // The summary text is "<localized tool title> · <file path>" (U+00B7 middle
+    // dot separator); the path may be workspace-relative or absolute. A click on
+    // the button/child span would otherwise run the host `openFile`, which needs
+    // the host's global right-sidebar file opener and throws inside this
+    // plugin's embedded conversation (that surface is not mounted under a global
+    // main panel). Matching the CSS-module suffix keeps working when the hash
+    // changes.
+    const PREVIEW_FILE_LINK_SELECTOR = '[class*="fileLink"]';
+    const PREVIEW_SUMMARY_SEPARATOR = ' \u00b7 ';
+
+    /** Extract the file path from a ToolRow summary ("<title> · <path>"). */
+    function previewSummaryPath(text) {
+      if (typeof text !== 'string') return null;
+      const trimmed = text.replace(/\s+/g, ' ').trim();
+      if (trimmed.length === 0 || trimmed.length > 4096) return null;
+      const index = trimmed.lastIndexOf(PREVIEW_SUMMARY_SEPARATOR);
+      const candidate = (index >= 0 ? trimmed.slice(index + PREVIEW_SUMMARY_SEPARATOR.length) : trimmed).trim();
+      if (candidate.length === 0 || candidate.length > 4096) return null;
+      return localPathLike(candidate) ? candidate : null;
+    }
+
+    /** Resolve the file path of a host ToolRow file link (button or anchor). */
+    function fileLinkPathFromTarget(target) {
+      if (target === null || typeof target !== 'object' || typeof target.closest !== 'function') return null;
+      try {
+        const link = target.closest(PREVIEW_FILE_LINK_SELECTOR);
+        if (link === null || link === undefined) return null;
+        if (typeof link.getAttribute === 'function') {
+          const attributes = [
+            link.getAttribute('data-file-path'),
+            link.getAttribute('data-path'),
+            link.getAttribute('title'),
+          ];
+          for (const value of attributes) {
+            if (localPathLike(value)) return value;
+          }
+          const href = link.getAttribute('href');
+          if (localPathLike(href)) return href;
+        }
+        const text = typeof link.textContent === 'string' ? link.textContent : '';
+        return previewSummaryPath(text);
+      } catch (_error) {
+        return null;
+      }
+    }
 
     function localPathFromTarget(target) {
       if (target === null || typeof target !== 'object' || typeof target.closest !== 'function') return null;
@@ -1849,6 +1897,8 @@ window.__ModuleLoader__.load({
           const href = anchor.getAttribute('href');
           if (localPathLike(href)) return href;
         }
+        const fileLink = fileLinkPathFromTarget(target);
+        if (fileLink !== null) return fileLink;
       } catch (_error) {
         return null;
       }
@@ -5465,22 +5515,25 @@ window.__ModuleLoader__.load({
 
       function capturePreviewClick(event) {
         if (event === null || typeof event !== 'object') return;
-        const path = localPathFromTarget(event.target);
-        if (path !== null) {
+        // An image target (read_image thumbnail/gallery) is browser-owned: show
+        // its own source directly. This branch runs before the path/file-link
+        // branches so an <img> inside a file-link container cannot be routed to
+        // the native opener.
+        const image = imagePreviewTarget(event.target);
+        if (image !== null) {
           if (typeof event.preventDefault === 'function') event.preventDefault();
           if (typeof event.stopPropagation === 'function') event.stopPropagation();
-          openPreview(path);
+          if (image.kind === 'host') openPreview(image.path);
+          else openInlinePreview(image.src);
           return;
         }
-        const image = imagePreviewTarget(event.target);
-        if (image === null) return;
+        // File cards, Markdown links and host ToolRow fileLink summaries all end
+        // in the plugin's own overlay, never the native right sidebar.
+        const path = localPathFromTarget(event.target);
+        if (path === null) return;
         if (typeof event.preventDefault === 'function') event.preventDefault();
         if (typeof event.stopPropagation === 'function') event.stopPropagation();
-        if (image.kind === 'host') {
-          openPreview(image.path);
-        } else {
-          openInlinePreview(image.src);
-        }
+        openPreview(path);
       }
 
       function retrySession() {

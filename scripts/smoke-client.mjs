@@ -2564,6 +2564,29 @@ function interactiveTarget(options) {
   };
 }
 
+/**
+ * A DOM target whose closest() can expose several independent selector matches
+ * (e.g. an <img> inside a host ToolRow fileLink button). The returned ancestor
+ * carries the element `textContent` (used by the P3-022 summary parser) and its
+ * attributes feed getAttribute().
+ */
+function richTarget(options) {
+  const settings = options || {};
+  const attributes = settings.attributes || {};
+  const selectors = Array.isArray(settings.selectors) ? settings.selectors : settings.selector === undefined ? [] : [settings.selector];
+  const element = {
+    textContent: typeof settings.text === 'string' ? settings.text : '',
+    getAttribute(name) {
+      return Object.prototype.hasOwnProperty.call(attributes, name) ? attributes[name] : null;
+    },
+  };
+  return {
+    closest(selector) {
+      return selectors.indexOf(selector) === -1 ? null : element;
+    },
+  };
+}
+
 function clickCaptureNode(tree) {
   const aside = findNode(tree, (node) => node.props && typeof node.props.className === 'string' && node.props.className.split(' ').includes('dv-ai'));
   assert(aside !== null, 'the embedded AI surface is missing');
@@ -4551,6 +4574,90 @@ test('P3-017 B2: image and file clicks open the plugin overlay and never the nat
   });
   await settle();
   assert(prevented === 0 && (hostFetch.config.previewCalls || []).length === 1, 'a normal chat click was intercepted by the image path');
+});
+
+test('P3-022: DSH ToolRow fileLink summaries open the local preview instead of the native sidebar', async () => {
+  const sessions = makeSessionsService({ list: ['session-toolrow'] });
+  const hostFetch = sessionFetch({ activeSessionId: 'session-toolrow', sessions: ['session-toolrow'] });
+  const editor = mountSessionEditor(hostFetch, { sessions: sessions, kit: makeSessionKit() });
+  await settle();
+  editor.rerender();
+  await settle();
+  const aside = clickCaptureNode(editor.tree());
+  const previewCalls = () => hostFetch.config.previewCalls || [];
+  function click(target) {
+    let prevented = 0;
+    let stopped = 0;
+    aside.props.onClickCapture({
+      target: target,
+      preventDefault() { prevented += 1; },
+      stopPropagation() { stopped += 1; },
+    });
+    return { prevented: prevented, stopped: stopped };
+  }
+  function previewImage(tree) {
+    return findNode(tree, (node) => node.props && node.props.className === 'dv-preview-image');
+  }
+  function openPreviewTree() {
+    const tree = editor.rerender();
+    assert(findNode(tree, (node) => node.props && node.props.className === 'dv-preview') !== null, 'the click did not open the local preview overlay');
+    return tree;
+  }
+
+  // 1. Real collapsed ToolRow shape (current DSH chat bundle): a button with a
+  // CSS-module class such as Q2dzhW_fileLink, no title/data-* path attribute,
+  // and a TextShimmer child whose text is "<title> · <path>". The click target
+  // is the inner span (closest() resolves the fileLink button eventually).
+  let outcome = click(richTarget({ selectors: ['[class*="fileLink"]'], text: '读取图片 · .dsh-video-frames/latest.png' }));
+  assert(outcome.prevented === 1 && outcome.stopped === 1, 'the ToolRow fileLink click was not intercepted, so native openFile/sidebarRight would run');
+  await settle();
+  let tree = openPreviewTree();
+  let image = previewImage(tree);
+  assert(image !== null && image.props.src === 'data:image/png;base64,AAAA', 'the ToolRow fileLink did not render the bounded Host preview');
+  assert(previewCalls().length === 1, `expected one Host preview call, got ${previewCalls().length}`);
+  assert(previewCalls()[0].path === '.dsh-video-frames/latest.png', `the ToolRow summary path was not forwarded unchanged: ${previewCalls()[0].path}`);
+  assert(previewCalls()[0].projectId === 'proj-smoke' && previewCalls()[0].sessionId === 'session-toolrow', 'the ToolRow preview is not Session/project scoped');
+  closePreviewTree(tree);
+  tree = editor.rerender();
+
+  // 2. The same summary shape with an absolute path.
+  outcome = click(richTarget({ selectors: ['[class*="fileLink"]'], text: '读取图片 · /tmp/p3-022-toolrow.png' }));
+  assert(outcome.prevented === 1 && outcome.stopped === 1, 'the absolute-path ToolRow fileLink click was not intercepted');
+  await settle();
+  tree = openPreviewTree();
+  image = previewImage(tree);
+  assert(image !== null, 'the absolute-path ToolRow fileLink did not open the local preview');
+  assert(previewCalls().length === 2 && previewCalls()[1].path === '/tmp/p3-022-toolrow.png', `the absolute ToolRow path was not forwarded: ${JSON.stringify(previewCalls()[1])}`);
+  closePreviewTree(tree);
+  tree = editor.rerender();
+
+  // 3. A normal button with the same middle-dot text but no fileLink class is
+  // still a normal chat click: it must not be intercepted.
+  outcome = click(richTarget({ selectors: ['button[data-no-path]'], text: '读取图片 · .dsh-video-frames/latest.png' }));
+  assert(outcome.prevented === 0 && outcome.stopped === 0, 'a normal chat button with middle-dot text was intercepted');
+  await settle();
+  assert(previewCalls().length === 2, 'a normal chat button opened a file preview');
+  assert(previewImage(editor.rerender()) === null, 'a normal chat button opened the preview overlay');
+
+  // 4. A fileLink anchor exposes its real href; the anchor path wins unchanged.
+  outcome = click(richTarget({ selectors: ['a[href]', '[class*="fileLink"]'], attributes: { href: 'file:///tmp/output/photo.png' }, text: '读取图片 · photo.png' }));
+  assert(outcome.prevented === 1 && outcome.stopped === 1, 'the fileLink anchor click was not intercepted');
+  await settle();
+  tree = openPreviewTree();
+  assert(previewCalls().length === 3 && previewCalls()[2].path === 'file:///tmp/output/photo.png', `the fileLink anchor address was not forwarded unchanged: ${JSON.stringify(previewCalls()[2])}`);
+  closePreviewTree(tree);
+  tree = editor.rerender();
+
+  // 5. An image inside a fileLink container takes the browser-owned image branch
+  // first: no Host read and no native opener.
+  const callsBeforeImage = previewCalls().length;
+  outcome = click(richTarget({ selectors: ['img[src]', '[class*="fileLink"]'], attributes: { src: 'blob:http://dsh.internal/toolrow-image' }, text: '读取图片 · .dsh-video-frames/latest.png' }));
+  assert(outcome.prevented === 1 && outcome.stopped === 1, 'the image inside a fileLink container was not intercepted');
+  await settle();
+  tree = openPreviewTree();
+  image = previewImage(tree);
+  assert(image !== null && image.props.src === 'blob:http://dsh.internal/toolrow-image', 'the image branch did not win inside a fileLink container');
+  assert(previewCalls().length === callsBeforeImage, 'an image inside a fileLink container was sent through the Host file reader');
 });
 
 test('P3-017 B3: product export binds the clicked revision and reports stage/progress, cancel and download', async () => {
