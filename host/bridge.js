@@ -830,6 +830,7 @@ export class VideoBridge {
     this.projectFactsById = new Map();
     this.mediaImports = new Map();
     this.mediaCounts = new Map();
+    this.mediaStreams = new Set();
     this.environment = buildWorkerEnv(process.env);
     // M1-01: stable data root state. Path math is synchronous (pure) so the
     // Session store can be constructed against <dataRoot>/session-state.json;
@@ -2173,8 +2174,13 @@ export class VideoBridge {
     } catch (error) {
       this.log(error, 'asset inbox close');
     }
+    const mediaDrain=Promise.all([...this.mediaStreams].map(stream=>new Promise(resolveDrain=>{
+      if(stream.closed){resolveDrain();return;}
+      stream.once('close',resolveDrain);stream.destroy();
+    })));
     const startTask = this.starting;
     this.disposePromise = (async () => {
+      await mediaDrain;
       if (startTask !== null) {
         try {
           await startTask;

@@ -4,6 +4,8 @@ import { constants } from 'node:fs';
 import { Readable } from 'node:stream';
 
 export function createMediaRoute(bridge, derived = false) {
+  if(!bridge.mediaStreams)bridge.mediaStreams=new Set();
+  function requireActive(){if(bridge.closing||bridge.disposed)throw Object.assign(new Error('Media service is stopping'),{code:'E_WORKER_DISPOSED'});}
   return {
     path: derived ? '/api/dsh-video/derived' : '/api/dsh-video/media',
     methods: ['GET', 'HEAD'],
@@ -11,6 +13,7 @@ export function createMediaRoute(bridge, derived = false) {
     fetch: async (request) => {
       let handle;
       try {
+        requireActive();
         const url = new URL(request.url);
         const allowed = derived ? ['projectId', 'assetId', 'kind'] : ['projectId', 'assetId'];
         if (
@@ -28,6 +31,7 @@ export function createMediaRoute(bridge, derived = false) {
         const file = await bridge.resolveMedia(params);
         handle = await open(file.path, constants.O_RDONLY | constants.O_NOFOLLOW);
         const info = await handle.stat();
+        requireActive();
         if (!info.isFile()) throw new Error('Media unavailable');
         const size = info.size;
         let start = 0,
@@ -76,13 +80,14 @@ export function createMediaRoute(bridge, derived = false) {
         }
         const stream = handle.createReadStream({ start, end, autoClose: true });
         handle = null;
+        bridge.mediaStreams.add(stream);
         const abort = () => stream.destroy();
         request.signal?.addEventListener('abort', abort, { once: true });
-        stream.once('close', () => request.signal?.removeEventListener('abort', abort));
+        stream.once('close', () => {bridge.mediaStreams.delete(stream);request.signal?.removeEventListener('abort', abort);});
         return new Response(Readable.toWeb(stream), { status, headers });
       } catch (error) {
         if (handle) await handle.close().catch(() => {});
-        const status = ['E_ASSET_MISSING', 'ENOENT'].includes(error.code) ? 404 : 400;
+        const status = error.code==='E_WORKER_DISPOSED'?503:['E_ASSET_MISSING', 'ENOENT'].includes(error.code) ? 404 : 400;
         return new Response(
           request.method === 'HEAD'
             ? null

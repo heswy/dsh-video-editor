@@ -43,6 +43,7 @@ try {
     new Request('http://localhost/api/dsh-video/media?projectId=demo&assetId=as_12345678&path=/etc/passwd'),
   );
   assert.equal(r.status, 400);
+  bridge.closing=true; r=await get();assert.equal(r.status,503);
   console.log('PASS Range, suffix, open range, 416, HEAD, extra query rejection');
 } finally {
   await rm(root, { recursive: true, force: true });
