@@ -1,6 +1,6 @@
 # V1-M2 素材库与媒体管线 · 实现契约与任务卡
 
-日期：2026-10-21（Asia/Shanghai）。状态：**in_progress（实现与本地验证已接手；固定候选构建/整链回归进行中，M1/M2 真机验收延后）**。
+日期：2026-10-21（Asia/Shanghai）。状态：**delivered（开发与 L1–L3 已完成；固定 alpha.2 候选已验证，待用户真机验收，不标 accepted）**。
 工作树：`dsh-video-editor-worktrees/v1-m2-media`（分支 `codex/v1-m2-media`，**stacked on `codex/v1-m1-storage` @ `e810a68`**；因为 M1 尚未合并 main、也尚未真机验收，M2 PR 依赖 M1 PR）。
 依据：[V1.0-PLAN](../plans/V1.0-PLAN.md) §5 M2 · [M0 报告](../research/V1-M0-report.md) §2.4（Range/大文件）· [验收矩阵](../plans/V1.0-ACCEPTANCE.md) §M2。
 性质：实现产品代码（worker/Host/client/脚本），不安装、不重启 DSH、不合并 main；Lead 评审 → commit → 构建 `1.0.0-alpha.2` staging → 与 M1 一并在用户重启窗口验收。
@@ -140,10 +140,46 @@ node scripts/test-v1-storage.mjs && node scripts/test-v1-media.mjs
 
 ### 当前本地证据（不是 DSH 安装/真实模型验收）
 
-- `test-v1-media`：13 个场景，包括支持格式矩阵、探测、去重、真实 worker JSONL/schema、缩略图/波形/代理、短哈希碰撞、路径/缓存 symlink、引用删除保护、取消/限额/清理。
+- `test-v1-media`：15 个场景，包括支持格式矩阵、探测、去重、真实 worker JSONL/schema、缩略图/波形/代理、短哈希碰撞、路径/缓存 symlink、引用删除保护、取消/限额/清理。
 - `test-v1-media-routes`：Range 区间/后缀/open range、HEAD、416、额外参数拒绝。
 - `test-v1-media-host`：真实 Host→worker，导入/同请求重放/探测/缩略图/Range/重启/删除，作品 revision 不变，Tool 写入拒绝。
-- `--large`：有效 1 秒 MP4 补齐到 1 GiB（验证大字节吞吐与内存，不代表 1 GiB 复杂长片解码性能）；实际完成 1,073,741,824 字节导入，上传 Host RSS 峰值增量约 50 MiB；证据 `/tmp/m2-large.log`。最终候选另跑固定 staging 链。
-- Chrome 真实媒体 UI：`/tmp/m2-browser-evidence/result.json` 与截图，10 项：多文件上传、自动缩略图/波形、元数据、视频 seek/播放、搜索、音频加载、刷新保留、340px 不横向溢出。
-- 完整回归：check 58/58、smoke-client 85/85、check-host 71/71、worker 56/56；M1 存储 21/21。最终提交前重跑并记录差异。
+- `--large`：有效 1 秒 MP4 补齐到 1 GiB（验证大字节吞吐与内存，不代表 1 GiB 复杂长片解码性能）；实际完成 1,073,741,824 字节导入，上传 Host RSS 峰值增量各次运行约 46–74 MiB（均低于 256 MiB 测试门限）；证据 `/tmp/m2-large.log`。最终候选另跑固定 staging 链。
+- Chrome 真实媒体 UI：`/tmp/m2-browser-final/result.json` 与截图，13 项：多文件上传、自动缩略图/波形、元数据、视频 seek/播放、搜索、音频加载、刷新保留、340px 不横向溢出。
+- 引擎 client 单元/集成/打包回归：23/23（启用已配置 Node 24 的 opt-in 项，无跳过）。
+- 完整回归：check 58/58、smoke-client 86/86、check-host 71/71、worker 56/56；M1 存储 21/21。最终提交前重跑并记录差异。
 - 未验证：DSH 实际加载 alpha.2、用户真机拖放/取消/重启保留、真实模型查询素材、真实用户 1 GiB 长片、非 darwin 平台。安装/重启/真实模型/合并尚未执行。
+
+
+## 10. 固定候选交付（2026-10-21）
+
+- PR：[M2 #18](https://github.com/heswy/dsh-video-editor/pull/18)，base `codex/v1-m1-storage`，依赖 [M1 #17](https://github.com/heswy/dsh-video-editor/pull/17)。两份均保持草稿、未合并；M1 合入后将 M2 retarget 到 main。
+- 固定源码 root=engine=`939419e10fe5e0b3b9c526d6bc580558d850c9cb`，`rootDirty=false`；bundle `1.0.0-alpha.2`，client/worker `0.5.0`。
+- staging：`/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/artifacts/p2-b/staging-v1.0.0-alpha.2-939419e`。安装入口为该目录的 `bundle/`。
+- `INTEGRITY.json` SHA-256：`0ead5c6bf48b340dc6712fe457ee3c46cff46ce7603d05426a76b1a7ed3903fa`，所有回归结束后未变。
+- 持久证据：`/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/artifacts/v1/evidence/m2-alpha2-939419e-20261021/verification-summary.json`（含日志、真实 Chrome 截图、chain/preview 完整证据，均不入 Git）。
+- 前序 alpha.2 候选 `1e09a56`、`96cf93b`、`1476f91` 仅保留追溯，已被本候选替代，不安装、不热改、不删除。
+
+### 最终验证
+
+| 层 | 结果 |
+|---|---|
+| 静态/组件/Host | check **58/58**；smoke-client **86/86**；check-host **71/71**；stage-version **10/10** |
+| 引擎单元与协议 | worker **56/56**；client **23/23**（Node 24 opt-in 启用，无跳过；含固定 tarball/导出入口校验） |
+| 存储/素材 | M1 storage **21/21**；M2 media **15 个场景**；Range/HEAD/416/停用门禁通过 |
+| Chrome 媒体界面 | **13 项通过**：多文件选择上传、拖放、自动缩略图/波形、类型筛选/搜索、详情、视频播放/seek、音频加载、刷新保留、确认删除、340px 无横向溢出 |
+| 最终 staging 媒体 | 实际候选 Host/worker：带音轨有效 MP4 补齐到 **1,073,741,824 B**，上传/探测/去重语义/同请求重放/稳定 indexRevision/缩略图/Range/重启/删除通过；Host 上传 RSS 增量 **77,234,176 B（约 74 MiB）**；这是字节吞吐 fixture，不当作复杂长片解码性能 |
+| 最终 staging 引擎 | `test-host-engine` **ok=true**：实际 Node 24 / HyperFrames / Chrome / ffmpeg；frame、MP4 render、取消与清理通过；无 Host warning |
+| 最终 staging 画布 | `test-canvas-chain` **ok=true** |
+| 最终 staging 对话 | `test-conversation-chain` **261/261**；`test-conversation-preview` **164/164**，B1–B5 全 true，源码只读审计 **same=true（86→86）** |
+
+最终 staging 原始证据：`artifacts/p2-b/evidence/engine-run-2026-10-21T10-03-38-293Z.json`、`artifacts/p2-b/evidence/canvas-chain-2026-10-21T10-03-56-465Z.json`；对话/预览副本在上述持久证据目录。
+
+补充回归已关闭：音视频元数据键顺序改变索引摘要、筛选切换后迟到缩略图不显示、正在导入的过期 receipt 被 sweep 重复遍历；分别先复现失败，再修复并验证。原 M1 测试辅助解码/真实数据根已存在时的守卫也已修正，生产 Scene 文本逻辑未改。
+
+### 用户验收与下一步
+
+本轮**未安装 alpha.2、未重启 DSH、未请求真实模型、未合并 main、未发布**。下一次用户授权的重启窗口，通过 Plugins → Add plugin → 上述 `bundle/` → Install → Enable now；重启后核对实际加载的 client 为 alpha.2，再按 V1.0-ACCEPTANCE 的 M1/M2 清单逐项记录。
+
+M2 真机重点：①视频/音频/图片导入、进度/取消与重复去重；②筛选/搜索/详情/工程隔离；③缩略图/波形/重启后恢复；④素材播放/seek；⑤未用素材确认删除；⑥原生对话真实模型 `asset.list`。在用素材保护已由真实 worker/受控 timeline fixture 验证，真实片段的引用删除路径留待 M3 时间线接入时补验，不能代填为真机通过。
+
+回滚保留 alpha.11 `artifacts/p2-b/staging-alpha11-51b95dc/bundle`，以及 M1 alpha.1 固定候选。保留已有数据根、用户作品、旧 staging；不回滚或删除用户数据。M3 及后续 V1 开发继续由当前会话负责，按用户联合验收结果推进，无需重新指定开发 Agent。

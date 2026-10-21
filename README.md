@@ -21,6 +21,8 @@
 
 ## 本版交付（1.0.0-alpha.2 · M2 素材库与媒体管线）
 
+固定候选：`artifacts/p2-b/staging-v1.0.0-alpha.2-939419e`（同级 worktrees/artifacts 下），root=engine=`939419e10fe5e0b3b9c526d6bc580558d850c9cb`、rootDirty=false，INTEGRITY sha256 `0ead5c6bf48b340dc6712fe457ee3c46cff46ce7603d05426a76b1a7ed3903fa`。本轮未安装/重启/合并；[M2 PR #18](https://github.com/heswy/dsh-video-editor/pull/18) 依赖 [M1 PR #17](https://github.com/heswy/dsh-video-editor/pull/17)。
+
 - 素材按钮打开工程素材抽屉：视频/图片/音频，多文件选择或拖入、上传百分比与取消、筛选/搜索/分页、详情和播放/seek、确认删除、可复制的素材引用标记。
 - 认证流式上传：默认单文件 2 GiB / 工程 8 GiB（`maxAssetBytes` / `maxProjectAssetBytes` 可降低），剩余磁盘预检；临时 receipt 定时过期与实例资源清理。Worker 按完整 SHA-256 去重，ffprobe 探测；短 ID 冲突拒绝，不覆盖。
 - 媒体认证路由：GET/HEAD、Range/206/416，读取索引后检查工程/文件 realpath，媒体字节流式响应；界面与 Tool 都不能传磁盘路径。
@@ -41,7 +43,7 @@
 | 面板 key | `main` keyed slot 的 `dsh-video`；另声明私有 session child，仅用于取得原生 `SessionProvider` kit |
 | 引擎依赖 | 独立 `dsh-video-engine-client` / `dsh-video-engine-worker`，仅开发 staging 快照内解析；两包维持 `0.4.0`（M1 未改引擎，升级 `0.5.0` 留到时间线里程碑）。M1 候选 root/engine 提交由 Lead 构建 staging 时固定并记录 |
 
-| 开发 staging | 当前已安装 `artifacts/p2-b/staging-alpha11-51b95dc`（0.3.0-alpha.11；回滚锚点）；**M1 候选已构建** `artifacts/p2-b/staging-v1.0.0-alpha.1-5d42b1f`（root=engine=`5d42b1f`、bundle `1.0.0-alpha.1`、client/worker `0.4.0`、INTEGRITY sha256 `55e61ebbabee4df92b44d5ba6c3429a7bea5f7c58e2c27e8f9b58c50f55f958c`，约 203 MB），**未安装**；alpha.10/alpha.9/alpha.8 staging 均保留回滚；仅开发快照，不随包分发 |
+| 开发 staging | M2 固定候选 `artifacts/p2-b/staging-v1.0.0-alpha.2-939419e`（bundle alpha.2 / engine 0.5.0，本轮未安装）；M1 `staging-v1.0.0-alpha.1-5d42b1f` 和 0.3 回滚锚点 `staging-alpha11-51b95dc` 均保留。详见 M2 任务卡 |
 
 `index.js` 是 Host half：一个 plugin-local `VideoBridge` 同时服务精确 Fetch 路由和 Tool；`host/` 保存校验、错误映射、环境清理、worker 适配、产物发布、会话映射、局部图片预览、受控项目/素材收件箱与预览快照路由。`client.js` 是手写浏览器半（`window.__ModuleLoader__.load` 格式），只 `require('react')`，通过文档相对 `fetch('api/dsh-video/request')` 调用 Host；右侧 AI 直接渲染宿主原生 `conversation.content` Factory，不自建聊天。
 

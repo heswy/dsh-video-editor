@@ -1,8 +1,13 @@
 # 当前交接入口
 
-### V1 M2 / 后续开发负责人（2026-10-21）
+### V1 M2 delivered / 后续开发负责人（2026-10-21）
 
-用户已指派当前会话负责 M2 及后续 V1 全部开发。当前树 `v1-m2-media` / `codex/v1-m2-media`，base M1 `e810a68`，M2 待固定候选与整链验证；任务 [V1-M2-media](../tasks/V1-M2-media.md)，规划 [V1.0-PLAN](../plans/V1.0-PLAN.md)，验收 [V1.0-ACCEPTANCE](../plans/V1.0-ACCEPTANCE.md)。不再等待另一个开发会话；不自动跨会话联系。M1/M2 真机验收延期到用户下一次重启窗口，M3 之后按里程碑门推进。
+- 当前会话已获用户授权负责 M2 及后续 V1 全部开发；不等待另一个开发会话、不自动跨会话联系。
+- 树 `v1-m2-media` / `codex/v1-m2-media`，base M1 `e810a68`；[PR #18](https://github.com/heswy/dsh-video-editor/pull/18) 依赖 [M1 PR #17](https://github.com/heswy/dsh-video-editor/pull/17)，均未合并。
+- 固定候选 `artifacts/p2-b/staging-v1.0.0-alpha.2-939419e`，root=engine=`939419e`、rootDirty=false、bundle `1.0.0-alpha.2` / engine `0.5.0`，INTEGRITY `0ead5c6b…ed3903fa`。前序 alpha.2 目录仅追溯，不继续安装。
+- L1–L3：58/86/71/10、worker 56、client 23、storage 21、media 15、Chrome 媒体 UI 13 全过；最终 staging 引擎/画布/1 GiB 媒体通过，对话 261/261、预览 164/164、same=true。
+- 本轮未安装/重启/真实模型/合并/发布。下一步是用户授权的 M1/M2 联合真机验收，再由本会话继续 M3。完整清单与持久证据见 [V1-M2-media](../tasks/V1-M2-media.md)；规划 [V1.0-PLAN](../plans/V1.0-PLAN.md)，验收 [V1.0-ACCEPTANCE](../plans/V1.0-ACCEPTANCE.md)。
+- 回滚：alpha.11 `staging-alpha11-51b95dc/bundle` 与 M1 alpha.1 候选保留；不删除用户数据或旧 staging。
 
 以下为 0.3 稳定线历史交接与回滚依据。
 
