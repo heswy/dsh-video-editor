@@ -52,6 +52,8 @@ try {
     'lavfi',
     '-i',
     'color=c=blue:s=64x64:r=30:d=1',
+    '-f', 'lavfi', '-i', 'sine=frequency=440:duration=1',
+    '-c:a', 'aac', '-shortest',
     '-c:v',
     'libx264',
     path,
@@ -106,6 +108,8 @@ try {
   assert.equal(imported.asset.name, '测试视频.mp4');
   const listed = await bridge.invoke('asset.list', { projectId }, { source: 'http' });
   assert.equal(listed.total, 1);
+  assert.equal(imported.asset.media.hasAudio,true);
+  assert.equal(listed.indexRevision,imported.indexRevision);
   assert.ok(!JSON.stringify(listed).includes(base));
   assert.equal((await bridge.invoke('inspect', { projectId }, { source: 'http' })).revision, inspected.revision);
   await bridge.invoke(

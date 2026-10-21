@@ -2888,7 +2888,7 @@ window.__ModuleLoader__.load({
                   assetId: asset.assetId,
                   kind: asset.kind === 'audio' ? 'waveform' : 'thumb',
                 });
-                if (!cancelled && alive.current) setDerivedReady((previous) => ({ ...previous, [asset.assetId]: true }));
+                if (alive.current) setDerivedReady((previous) => ({ ...previous, [asset.assetId]: true }));
               } catch (e) {
                 delete deriveSeen.current[asset.assetId];
               }

@@ -132,6 +132,12 @@ try {
   checks++;
   await page.waitForFunction(() => document.querySelectorAll('.dv-media-tile img').length === 2, { timeout: 30000 });
   checks++;
+  const png=join(root,'drop.png');execFileSync('ffmpeg',['-v','error','-f','lavfi','-i','color=c=red:s=64x64:d=0.1','-frames:v','1',png]);
+  await page.evaluate(bytes=>{const transfer=new DataTransfer();transfer.items.add(new File([Uint8Array.from(bytes)],'拖入.png',{type:'image/png'}));document.querySelector('.dv-media-library').dispatchEvent(new DragEvent('drop',{dataTransfer:transfer,bubbles:true,cancelable:true}));},Array.from(await readFile(png)));
+  await page.waitForFunction(()=>document.querySelectorAll('.dv-media-tile').length===3);checks++;
+  await page.evaluate(()=>{[...document.querySelectorAll('.dv-media-filters button')].find(e=>e.textContent==='图片').click();});
+  await page.waitForFunction(()=>document.querySelectorAll('.dv-media-tile').length===1&&document.querySelector('.dv-media-tile').textContent.includes('拖入'));checks++;
+  await page.evaluate(()=>{[...document.querySelectorAll('.dv-media-filters button')].find(e=>e.textContent==='全部').click();});await page.waitForFunction(()=>document.querySelectorAll('.dv-media-tile').length===3);
   await page.screenshot({ path: join(out, '01-library.png') });
   await page.evaluate(() => {
     [...document.querySelectorAll('.dv-media-tile')].find((e) => e.textContent.includes('视频')).click();
@@ -166,8 +172,14 @@ try {
   await page.waitForSelector('audio');
   checks++;
   await page.reload();
-  await page.waitForFunction(() => document.querySelectorAll('.dv-media-tile').length === 2);
+  await page.waitForFunction(() => document.querySelectorAll('.dv-media-tile').length === 3);
   checks++;
+  await page.evaluate(()=>{[...document.querySelectorAll('.dv-media-tile')].find(e=>e.textContent.includes('拖入')).click();});
+  await page.waitForSelector('.dv-media-detail');
+  await page.evaluate(()=>{[...document.querySelectorAll('.dv-media-detail button')].find(e=>e.textContent==='删除素材').click();});
+  await page.waitForFunction(()=>[...document.querySelectorAll('.dv-media-detail button')].some(e=>e.textContent==='确认删除素材'));
+  await page.evaluate(()=>{[...document.querySelectorAll('.dv-media-detail button')].find(e=>e.textContent==='确认删除素材').click();});
+  await page.waitForFunction(()=>document.querySelectorAll('.dv-media-tile').length===2);checks++;
   await page.setViewport({ width: 340, height: 760 });
   await page.evaluate(() => {
     document.getElementById('mount').style.width = '100%';

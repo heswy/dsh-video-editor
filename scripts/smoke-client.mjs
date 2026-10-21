@@ -5071,6 +5071,22 @@ test('V1 M2: product material library loads scoped metadata and exposes import/f
   assert(findNode(tree,n=>n.type==='input'&&n.props.type==='search')!==null,'Search missing');
 });
 
+test('V1 M2: a thumbnail finishing during a filter change remains visible',async()=>{
+  const hostFetch=canvasFetch({});let completeDerive;
+  hostFetch.config.handler=request=>{
+    if(request.body.method==='asset.list')return {ok:true,result:{assets:[{assetId:'as_12345678',name:'Example movie',kind:'video',bytes:100,media:{durationSec:1}}],nextCursor:null,total:1}};
+    if(request.body.method==='asset.derive')return new Promise(resolve=>{completeDerive=()=>resolve({ok:true,result:{ready:true}});});
+  };
+  const loaded=loadClient({fetch:hostFetch});const env=createFakeEnvironment();loaded.exports.apply(env.ctx);
+  const component=extractCanvasModule(loaded).MediaLibraryPanel;
+  const mounted=loaded.react.renderInteractive(component,{t:translateFor(env),projectId:'proj-smoke',onClose:()=>{}});
+  mounted.render();await new Promise(resolve=>setTimeout(resolve,200));let tree=mounted.render();await new Promise(resolve=>setTimeout(resolve,10));
+  assert(typeof completeDerive==='function','Background thumbnail request missing');
+  buttonByText(tree,translateFor(env)('video.media.video')).props.onClick();mounted.render();
+  await new Promise(resolve=>setTimeout(resolve,200));mounted.render();completeDerive();await new Promise(resolve=>setTimeout(resolve,20));tree=mounted.render();
+  assert(findNode(tree,n=>n.type==='img'&&String(n.props.src).includes('derived'))!==null,'Completed thumbnail disappeared after filter change');
+});
+
 async function runTests() {
   for (const [name, fn] of tests) {
     try {
