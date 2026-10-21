@@ -120,7 +120,14 @@ export function canonicalAsset(asset) {
     ext: asset.ext,
     sha256: asset.sha256,
     bytes: asset.bytes,
-    media: asset.media === undefined ? null : asset.media,
+    media:
+      asset.media && typeof asset.media === "object"
+        ? Object.fromEntries(
+            Object.keys(asset.media)
+              .sort()
+              .map((key) => [key, asset.media[key]]),
+          )
+        : null,
     origin: asset.origin,
     createdAt: asset.createdAt,
   };

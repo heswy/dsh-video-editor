@@ -61,6 +61,35 @@ try {
     assert.equal((await lib.importMedia({ projectId: 'demo', sourceName: 'movie.mp4' })).deduped, true);
     assert.equal((await lib.list({ projectId: 'demo' })).total, 1);
   });
+  await test('index revision stays stable across import, reopen and metadata key order', async () => {
+    execFileSync('ffmpeg', [
+      '-v',
+      'error',
+      '-f',
+      'lavfi',
+      '-i',
+      'color=c=blue:s=64x64:r=30:d=0.2',
+      '-f',
+      'lavfi',
+      '-i',
+      'sine=frequency=440:duration=0.2',
+      '-c:v',
+      'libx264',
+      '-c:a',
+      'aac',
+      '-shortest',
+      join(inbox, 'av.mp4'),
+    ]);
+    const fresh = await lib.importMedia({ projectId: 'demo', sourceName: 'av.mp4', operationId: 'av' });
+    const reopened = await lib.list({ projectId: 'demo' });
+    assert.equal(reopened.indexRevision, fresh.indexRevision);
+    const path = join(project, 'asset-index.json');
+    const index = JSON.parse(await readFile(path, 'utf8'));
+    index.assets[0].media = Object.fromEntries(Object.entries(index.assets[0].media).reverse());
+    await writeFile(path, JSON.stringify(index));
+    assert.equal((await lib.list({ projectId: 'demo' })).indexRevision, fresh.indexRevision);
+    await lib.remove({ projectId: 'demo', assetId: fresh.asset.assetId });
+  });
   await test('derived thumbnail persists and media path is scoped', async () => {
     const file = await lib.resolveFile({ projectId: 'demo', assetId: asset.assetId });
     assert.equal(file.size, asset.bytes);
