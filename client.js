@@ -410,7 +410,18 @@ window.__ModuleLoader__.load({
   font-family:inherit;
   font-size:var(--dsh-content-font-size, 14px);
   line-height:1.5;
+  /* P3-028: the host may publish a large --dsh-frame-leading-clearance when the
+     macOS sidebar is collapsed (160px) because its own title row shares the
+     window-chrome seat. This panel's topbar already sits below that seat via
+     --dsh-frame-top-clearance, so re-applying the full leading clearance would
+     shift the back button / project name to the right. Darwin therefore clamps
+     the topbar leading to its normal padding; other platforms keep the host
+     safety clearance. */
+  --dv-topbar-leading:max(16px, var(--dsh-frame-leading-clearance, 0px));
   animation:dv-panel-in var(--dv-dur-med) var(--dv-ease) both;
+}
+[data-platform="darwin"] .dv-root{
+  --dv-topbar-leading:16px;
 }
 .dv-root *,.dv-root *::before,.dv-root *::after{box-sizing:border-box;}
 @keyframes dv-panel-in{
@@ -423,7 +434,7 @@ window.__ModuleLoader__.load({
   gap:8px;
   flex:none;
   min-height:56px;
-  padding:8px 20px 8px max(16px, var(--dsh-frame-leading-clearance, 0px));
+  padding:8px 20px 8px var(--dv-topbar-leading);
   border-bottom:1px solid color-mix(in srgb, var(--dsw-alias-border-l1, rgba(127,127,140,.28)) 62%, transparent);
 }
 [data-platform="darwin"] .dv-topbar{
@@ -1291,7 +1302,7 @@ window.__ModuleLoader__.load({
   .dv-stage{padding-bottom:8px;}
 }
 @container dsh-video (max-width: 520px){
-  .dv-topbar{padding-left:max(12px, var(--dsh-frame-leading-clearance, 0px));padding-right:12px;}
+  .dv-topbar{padding-left:max(12px, var(--dv-topbar-leading));padding-right:12px;}
   .dv-projectbar{max-width:calc(100% - 90px);}
   .dv-canvas-shell[data-preview-only="true"]{padding:12px;gap:8px;}
   .dv-ai-head{min-height:48px;padding:6px 12px;}

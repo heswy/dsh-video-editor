@@ -119,6 +119,42 @@ try {
   });
   check('topbar orders return -> work name -> project arrow on the left',nav.name.left>=nav.back.right-1 && nav.name.left<nav.back.right+40 && nav.toggle.left>=nav.name.right-1 && nav.toggle.left<nav.name.right+16,nav);
   check('work name is readable and the removed display trigger is gone',!nav.nameText.includes('proj-') && nav.nameText.length>0 && nav.display===null,nav);
+  // P3-028: macOS collapsed-sidebar frame clearance (leading 160px / top 48px)
+  // must not pad the topbar horizontally again: the content already clears the
+  // window-chrome seat through the top clearance, so its back button / work name
+  // stay at the left edge.
+  const baseTopbar = await page.evaluate(()=>{
+    const topbar=document.querySelector('.dv-topbar'),back=document.querySelector('.dv-back'),name=document.querySelector('.dv-project-name');
+    const s=getComputedStyle(topbar),rect=e=>e.getBoundingClientRect();
+    return {paddingLeft:s.paddingLeft,paddingTop:s.paddingTop,backLeft:rect(back).left,nameLeft:rect(name).left};
+  });
+  await page.evaluate(()=>{
+    document.documentElement.dataset.platform='darwin';
+    document.documentElement.style.setProperty('--dsh-frame-leading-clearance','160px');
+    document.documentElement.style.setProperty('--dsh-frame-top-clearance','48px');
+  });
+  await new Promise(r=>setTimeout(r,120));
+  const darwinTopbar = await page.evaluate(()=>{
+    const topbar=document.querySelector('.dv-topbar'),back=document.querySelector('.dv-back'),name=document.querySelector('.dv-project-name');
+    const s=getComputedStyle(topbar),rect=e=>e.getBoundingClientRect();
+    return {paddingLeft:s.paddingLeft,paddingTop:s.paddingTop,backLeft:rect(back).left,backRight:rect(back).right,backTop:rect(back).top,nameLeft:rect(name).left,nameTop:rect(name).top};
+  });
+  check('darwin collapsed-sidebar leading clearance no longer pads the topbar left',parseFloat(darwinTopbar.paddingLeft)<=24,darwinTopbar);
+  check('darwin topbar keeps the window-chrome top clearance',parseFloat(darwinTopbar.paddingTop)>=48,darwinTopbar);
+  check('darwin back / work name stay left-aligned below the window controls',darwinTopbar.backLeft<=24 && darwinTopbar.nameLeft<darwinTopbar.backRight+40 && darwinTopbar.backTop>=48 && darwinTopbar.nameTop>=48,darwinTopbar);
+  await shot('00-darwin-collapsed-sidebar');
+  await page.evaluate(()=>{
+    delete document.documentElement.dataset.platform;
+    document.documentElement.style.removeProperty('--dsh-frame-leading-clearance');
+    document.documentElement.style.removeProperty('--dsh-frame-top-clearance');
+  });
+  await new Promise(r=>setTimeout(r,120));
+  const restoredTopbar = await page.evaluate(()=>{
+    const topbar=document.querySelector('.dv-topbar'),name=document.querySelector('.dv-project-name');
+    const s=getComputedStyle(topbar);
+    return {paddingLeft:s.paddingLeft,paddingTop:s.paddingTop,nameLeft:name.getBoundingClientRect().left};
+  });
+  check('non-darwin topbar geometry is unchanged after restoring the host variables',restoredTopbar.paddingLeft===baseTopbar.paddingLeft && restoredTopbar.paddingTop===baseTopbar.paddingTop && Math.abs(restoredTopbar.nameLeft-baseTopbar.nameLeft)<1,{baseTopbar,restoredTopbar});
   // P3-016 resizable AI pane: drag, persistence, double-click reset, keyboard step.
   const aiBefore=await page.$eval('.dv-ai',e=>e.getBoundingClientRect().width);
   async function dragSplitter(deltaX){
