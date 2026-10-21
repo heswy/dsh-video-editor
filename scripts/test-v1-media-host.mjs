@@ -8,12 +8,22 @@ import { join, resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { VideoBridge } from '../host/bridge.js';
 import { createMediaRoute } from '../host/media-routes.js';
+import { pathToFileURL } from 'node:url';
+import { loadStagedHost } from './lib/staged-host.mjs';
+import { snapshotRealDataRoot,assertRealDataRootUnchanged } from './lib/data-root-isolation.mjs';
 import { WorkerClient } from '../packages/video-engine-client/src/index.mjs';
 const base = await mkdtemp(join(tmpdir(), 'm2-real-host-'));
 let bridge;
+const realRootBefore=await snapshotRealDataRoot();
+const stagingArg=process.argv.indexOf('--staging');
+const staging=stagingArg>=0?resolve(process.argv[stagingArg+1]):null;
+const staged=staging?await loadStagedHost(staging):null;
+const Bridge=staged?staged.VideoBridge:VideoBridge;
+const mediaRoute=staged?(await import(pathToFileURL(join(staging,'bundle/host/media-routes.js')).href)).createMediaRoute:createMediaRoute;
+if(staged)await import(pathToFileURL(join(staging,'bundle/index.js')).href);
 try {
   const ctx = { logger: { warn: () => {} }, subprocess: { resolveExecutable: async (command) => command } };
-  const rawConfig = {
+  let rawConfig = {
     workerNode: process.execPath,
     workerEntry: resolve('packages/video-engine-worker/src/worker.mjs'),
     workerCwd: base,
@@ -24,16 +34,9 @@ try {
     legacyDataRoots: [],
     requestTimeoutMs: 120000,
   };
-  bridge = new VideoBridge({
-    ctx,
-    rawConfig,
-    engineLoader: async () => ({
-      WorkerClient,
-      workerEntry: rawConfig.workerEntry,
-      clientVersion: '0.4.0',
-      workerVersion: '0.4.0',
-    }),
-  });
+  if(staged)rawConfig={...staged.config,dataRoot:join(base,'data'),legacyDataRoots:[staging],requestTimeoutMs:120000};
+  const bridgeOptions={ctx,rawConfig,...(staged?{}:{engineLoader:async()=>({WorkerClient,workerEntry:rawConfig.workerEntry,clientVersion:'0.5.0',workerVersion:'0.5.0'})})};
+  bridge=new Bridge(bridgeOptions);
   const created = await bridge.invoke(
     'project.create',
     { templateId: 'product-launch-v1', title: 'M2 fixture' },
@@ -110,7 +113,7 @@ try {
     { projectId, assetId: imported.asset.assetId, kind: 'thumb' },
     { source: 'http' },
   );
-  const route = createMediaRoute(bridge);
+  const route = mediaRoute(bridge);
   const response = await route.fetch(
     new Request('http://localhost/api/dsh-video/media?projectId=' + projectId + '&assetId=' + imported.asset.assetId, {
       headers: { range: 'bytes=0-31' },
@@ -123,16 +126,7 @@ try {
     (e) => e.code === 'E_METHOD',
   );
   await bridge.dispose();
-  bridge = new VideoBridge({
-    ctx,
-    rawConfig,
-    engineLoader: async () => ({
-      WorkerClient,
-      workerEntry: rawConfig.workerEntry,
-      clientVersion: '0.4.0',
-      workerVersion: '0.4.0',
-    }),
-  });
+  bridge=new Bridge(bridgeOptions);
   assert.equal((await bridge.invoke('asset.list', { projectId }, { source: 'http' })).total, 1);
   await bridge.invoke(
     'asset.remove',
@@ -144,6 +138,7 @@ try {
   console.log(
     JSON.stringify({
       ok: true,
+      staging,
       bytes,
       uploadRssDelta: peak - memoryBefore,
       checks: [
@@ -161,4 +156,6 @@ try {
 } finally {
   if (bridge) await bridge.dispose();
   await rm(base, { recursive: true, force: true });
+  await assertRealDataRootUnchanged(realRootBefore);
+  if(staged)await loadStagedHost(staging);
 }

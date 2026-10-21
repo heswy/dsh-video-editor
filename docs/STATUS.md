@@ -4,7 +4,7 @@
 
 - 用户已指派本会话负责 M2 及后续 V1.0.0 全部开发；规则见 DEVELOPMENT。
 - main 稳定基线为 `1aabd6e`（PR #16）；M1 `e810a68` 已在独立分支形成 alpha.1 候选，未合 main；M1 真机验收延期。
-- M2 `codex/v1-m2-media` 叠加 M1，已集成 V1 规划文档；媒体库/流式上传/Range/缩略图波形代理/AI asset.list 已实现，正在构建 alpha.2 固定候选并复跑整链。
+- M2 `codex/v1-m2-media` 叠加 M1，已集成 V1 规划文档；媒体库/流式上传/Range/缩略图波形代理/AI asset.list 已实现，候选版本 `1.0.0-alpha.2` / engine `0.5.0`，正在构建固定候选并复跑整链。
 - 本地验证与未测边界见 [M2 任务卡](tasks/V1-M2-media.md)。M1/M2 真机验收在下一次用户重启窗口合并执行；未安装 alpha.2、未合 main、未发真实模型请求。
 
 ## 0.3 稳定线历史记录与回滚

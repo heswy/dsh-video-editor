@@ -37,8 +37,8 @@ try {
     engineLoader: async () => ({
       WorkerClient,
       workerEntry: config.workerEntry,
-      clientVersion: '0.4.0',
-      workerVersion: '0.4.0',
+      clientVersion: '0.5.0',
+      workerVersion: '0.5.0',
     }),
   });
   const created = await bridge.invoke(
