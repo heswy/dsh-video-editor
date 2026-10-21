@@ -19,6 +19,7 @@ import { constants } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { snapshotRealDataRoot, supportsDataRoot } from './data-root-isolation.mjs';
 
 export const LIB_DIR = dirname(fileURLToPath(import.meta.url));
 export const WORKTREE_ROOT = resolve(LIB_DIR, '..', '..');
@@ -103,13 +104,26 @@ export function createChecks() {
  */
 export async function prepareStateRoot(staging, config, prefix) {
   const base = await mkdtemp(join(tmpdir(), prefix || 'dsh-p3012-'));
-  const directories = {
-    projects: join(base, 'projects'),
-    output: join(base, 'output'),
-    inbox: join(base, 'asset-inbox'),
-    sessionCwd: join(base, 'session-cwd'),
-    managed: join(base, 'managed'),
-  };
+  const dataRootSupported = supportsDataRoot(config);
+  const realDataRootBaseline = await snapshotRealDataRoot();
+  // M1+ bundles treat <dataRoot> as authoritative; pre-M1 snapshots keep the
+  // historical sibling layout so the same harness runs against both.
+  const dataRoot = dataRootSupported ? join(base, 'data') : null;
+  const directories = dataRootSupported
+    ? {
+        projects: join(dataRoot, 'projects'),
+        output: join(dataRoot, 'cache', 'output'),
+        inbox: join(dataRoot, 'asset-inbox'),
+        sessionCwd: join(dataRoot, 'session-cwd'),
+        managed: dataRoot,
+      }
+    : {
+        projects: join(base, 'projects'),
+        output: join(base, 'output'),
+        inbox: join(base, 'asset-inbox'),
+        sessionCwd: join(base, 'session-cwd'),
+        managed: join(base, 'managed'),
+      };
   for (const directory of Object.values(directories)) await mkdir(directory, { recursive: true });
   const stagingRegistry = JSON.parse(await readFile(config.registryPath, 'utf8'));
   assert(stagingRegistry !== null && typeof stagingRegistry === 'object' && typeof stagingRegistry.projectsRoot === 'string',
@@ -126,16 +140,18 @@ export async function prepareStateRoot(staging, config, prefix) {
   const registryPath = join(directories.managed, 'registry.json');
   await writeFile(registryPath, JSON.stringify(registry, null, 2) + '\n');
   await writeFile(projectsRegistryPath, JSON.stringify({ projects: {} }, null, 2) + '\n');
+  const { legacyDataRoots: ignoredLegacyRoots, ...redirectedBase } = config;
   const redirected = {
-    ...config,
+    ...redirectedBase,
     registryPath,
     artifactRoot: directories.output,
     projectsRoot: directories.projects,
     assetInboxRoot: directories.inbox,
     sessionStatePath: join(base, 'session-state.json'),
     sessionCwd: directories.sessionCwd,
+    ...(dataRootSupported ? { dataRoot, legacyDataRoots: [] } : {}),
   };
-  return { base, registryPath, projectsRegistryPath, directories, config: redirected, stagingRegistry };
+  return { base, dataRoot, dataRootSupported, realDataRootBaseline, registryPath, projectsRegistryPath, directories, config: redirected, stagingRegistry };
 }
 
 /** Resolve one executable from PATH or as an absolute path. */

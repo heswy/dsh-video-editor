@@ -33,6 +33,9 @@ export const CONFIG_KEYS = Object.freeze([
   'projectsRoot',
   'assetInboxRoot',
   'maxAssetBytes',
+  'dataRoot',
+  'legacyDataRoots',
+  'browserPath',
 ]);
 
 const DEFAULT_LIMITS = Object.freeze({
@@ -106,7 +109,24 @@ export function normalizeConfig(raw) {
   const sessionCwd = optionalPath(raw.sessionCwd, 'sessionCwd');
   const projectsRoot = optionalPath(raw.projectsRoot, 'projectsRoot');
   const assetInboxRoot = optionalPath(raw.assetInboxRoot, 'assetInboxRoot');
-  for (const [name, value] of [['workerEntry', workerEntry], ['workerCwd', workerCwd], ['registryPath', registryPath], ['artifactRoot', artifactRoot], ['sessionStatePath', sessionStatePath], ['sessionCwd', sessionCwd], ['projectsRoot', projectsRoot], ['assetInboxRoot', assetInboxRoot]]) {
+  const dataRoot = optionalPath(raw.dataRoot, 'dataRoot');
+  const browserPath = optionalPath(raw.browserPath, 'browserPath');
+  let legacyDataRoots = [];
+  if (raw.legacyDataRoots !== undefined) {
+    if (Array.isArray(raw.legacyDataRoots) === false || raw.legacyDataRoots.length > 16) {
+      throw configurationError('"legacyDataRoots" must be an array of at most 16 absolute paths');
+    }
+    const seenRoots = new Set();
+    for (const value of raw.legacyDataRoots) {
+      if (typeof value !== 'string' || value.length === 0 || value.length > MAX_PATH || value.includes('\0') || isAbsolute(value) === false) {
+        throw configurationError('"legacyDataRoots" entries must be absolute path strings');
+      }
+      if (seenRoots.has(value)) throw configurationError('"legacyDataRoots" contains a duplicate path');
+      seenRoots.add(value);
+      legacyDataRoots.push(value);
+    }
+  }
+  for (const [name, value] of [['workerEntry', workerEntry], ['workerCwd', workerCwd], ['registryPath', registryPath], ['artifactRoot', artifactRoot], ['sessionStatePath', sessionStatePath], ['sessionCwd', sessionCwd], ['projectsRoot', projectsRoot], ['assetInboxRoot', assetInboxRoot], ['dataRoot', dataRoot], ['browserPath', browserPath]]) {
     if (value !== undefined && isAbsolute(value) === false) throw configurationError(`"${name}" must be an absolute path`);
   }
 
@@ -143,6 +163,9 @@ export function normalizeConfig(raw) {
     ...(sessionCwd === undefined ? {} : { sessionCwd }),
     ...(projectsRoot === undefined ? {} : { projectsRoot }),
     ...(assetInboxRoot === undefined ? {} : { assetInboxRoot }),
+    ...(dataRoot === undefined ? {} : { dataRoot }),
+    ...(browserPath === undefined ? {} : { browserPath }),
+    ...(legacyDataRoots.length === 0 ? {} : { legacyDataRoots: Object.freeze(legacyDataRoots) }),
     projectIds,
     allowedProjects: Object.freeze([...projectIds]),
     ...limits,

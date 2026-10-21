@@ -1456,6 +1456,234 @@ test('P3-016: the project picker menu manages focus and closes with Escape/Tab',
   }
 });
 
+test('M1-04: the project menu shows the folder actions and copies the Host-authoritative path', async () => {
+  const sessions = makeSessionsService({ list: ['session-folder'] });
+  const baseFetch = sessionFetch({ activeSessionId: 'session-folder', sessions: ['session-folder'] });
+  const seen = [];
+  const hostFetch = makeHostFetch(async (request) => {
+    const method = request.body && request.body.method;
+    seen.push(method);
+    if (method === 'project.path') {
+      return { ok: true, result: { projectId: 'demo', path: '/Users/test/Movies/DSH Video/projects/demo' } };
+    }
+    if (method === 'project.reveal') {
+      return { ok: true, result: { projectId: 'demo', opened: true } };
+    }
+    const response = await baseFetch(request.url, { method: 'POST', body: JSON.stringify(request.body) });
+    return response.json();
+  });
+
+  async function mountFolderPanel(navigatorMock) {
+    const loaded = loadClient({ fetch: hostFetch });
+    loaded.sandbox.navigator = navigatorMock;
+    const env = createFakeEnvironment({ services: { sessions } });
+    loaded.exports.apply(env.ctx);
+    const main = registrationOf(env, 'main');
+    assert(main !== undefined, 'main panel is not registered');
+    const props = Object.assign({ t: translateFor(env) }, main.options.inject(), makeSessionKit());
+    const interactive = loaded.react.renderInteractive(main.component, props);
+    let tree = interactive.render();
+    for (let round = 0; round < 14; round += 1) {
+      await settle();
+      tree = interactive.rerender();
+    }
+    return { loaded, env, interactive, tree: () => tree, rerender() { tree = interactive.rerender(); return tree; } };
+  }
+
+  let clipboardValue = null;
+  const editor = await mountFolderPanel({ platform: 'MacIntel', clipboard: { writeText: async (value) => { clipboardValue = value; } } });
+  try {
+    let tree = editor.tree();
+    const toggle = projectToggle(tree);
+    assert(toggle !== null, 'project picker arrow missing for the folder actions');
+    toggle.props.onClick();
+    tree = editor.rerender();
+    const revealItem = findNode(tree, (node) => node.type === 'button' && node.props && node.props['data-action'] === 'reveal');
+    const copyItem = findNode(tree, (node) => node.type === 'button' && node.props && node.props['data-action'] === 'copy-path');
+    assert(revealItem !== null && copyItem !== null, 'the folder actions are missing from the project menu');
+    assert(textOf(revealItem) === '在 Finder 中显示', `macOS reveal label is wrong: ${textOf(revealItem)}`);
+    assert(textOf(copyItem) === '复制路径', 'copy-path label is wrong');
+    assert(revealItem.props.role === 'menuitem' && revealItem.props.disabled === false, 'the reveal item must be an enabled menuitem');
+
+    // A visible folder button in the project bar is the primary affordance; it
+    // reveals directly without opening the picker menu.
+    const folderButton = findNode(tree, (node) => node.type === 'button' && node.props && node.props['data-action'] === 'reveal-folder');
+    assert(folderButton !== null, 'the visible folder button is missing from the project bar');
+    assert(folderButton.props['aria-label'] === '在 Finder 中显示', `folder button aria-label is wrong: ${folderButton.props['aria-label']}`);
+    const revealsBefore = seen.filter((method) => method === 'project.reveal').length;
+    folderButton.props.onClick();
+    await settle(10);
+    tree = editor.rerender();
+    assert(seen.filter((method) => method === 'project.reveal').length === revealsBefore + 1, 'the folder button did not issue exactly one reveal request');
+    assert(projectMenu(tree) === null, 'the folder button opened the project menu');
+
+    projectToggle(tree).props.onClick();
+    tree = editor.rerender();
+    projectMenu(tree).props.onKeyDown({ key: 'Escape', preventDefault() {} });
+    tree = editor.rerender();
+    projectToggle(tree).props.onClick();
+    tree = editor.rerender();
+    const menuReveal = findNode(tree, (node) => node.type === 'button' && node.props && node.props['data-action'] === 'reveal');
+    menuReveal.props.onClick();
+    await settle(10);
+    tree = editor.rerender();
+    assert(seen.includes('project.reveal'), 'the reveal action did not reach the Host');
+    assert(projectMenu(tree) === null, 'the menu stayed open after reveal');
+    assert(findNode(tree, (node) => node.props && node.props.className === 'dv-project-folder-notice') === null, 'a successful reveal showed an error notice');
+
+    projectToggle(tree).props.onClick();
+    tree = editor.rerender();
+    findNode(tree, (node) => node.type === 'button' && node.props && node.props['data-action'] === 'copy-path').props.onClick();
+    await settle(10);
+    tree = editor.rerender();
+    assert(seen.includes('project.path'), 'the copy action did not ask the Host for the authoritative path');
+    assert(clipboardValue === '/Users/test/Movies/DSH Video/projects/demo', `clipboard received ${String(clipboardValue)}`);
+    const notice = findNode(tree, (node) => node.props && node.props.className === 'dv-project-folder-notice');
+    assert(notice !== null && textOf(notice) === '路径已复制', 'the copy success notice is missing');
+  } finally {
+    editor.interactive.unmount();
+  }
+
+  // No open project: the folder button is not rendered.
+  const emptyLoaded = loadClient({ fetch: hostFetch });
+  const emptyEnv = createFakeEnvironment({ services: { sessions } });
+  emptyLoaded.exports.apply(emptyEnv.ctx);
+  const emptyMain = registrationOf(emptyEnv, 'main');
+  const emptyProps = Object.assign({ t: translateFor(emptyEnv) }, emptyMain.options.inject(), makeSessionKit());
+  const emptyInteractive = emptyLoaded.react.renderInteractive(emptyMain.component, emptyProps);
+  const emptyTree = emptyInteractive.render();
+  assert(findNode(emptyTree, (node) => node.props && node.props['data-action'] === 'reveal-folder') === null, 'the folder button is rendered without an open project');
+  emptyInteractive.unmount();
+
+  // Non-macOS label and clipboard fallback: the toast shows the path for manual copy.
+  const failing = makeHostFetch(async (request) => {
+    const method = request.body && request.body.method;
+    if (method === 'project.path') return { ok: true, result: { projectId: 'demo', path: '/tmp/工程 目录/demo' } };
+    const response = await baseFetch(request.url, { method: 'POST', body: JSON.stringify(request.body) });
+    return response.json();
+  });
+  const failingEditor = await (async () => {
+    const loaded = loadClient({ fetch: failing });
+    loaded.sandbox.navigator = { platform: 'Win32' };
+    const env = createFakeEnvironment({ services: { sessions } });
+    loaded.exports.apply(env.ctx);
+    const main = registrationOf(env, 'main');
+    const props = Object.assign({ t: translateFor(env) }, main.options.inject(), makeSessionKit());
+    const interactive = loaded.react.renderInteractive(main.component, props);
+    let tree = interactive.render();
+    for (let round = 0; round < 14; round += 1) {
+      await settle();
+      tree = interactive.rerender();
+    }
+    return { tree: () => tree, rerender() { tree = interactive.rerender(); return tree; }, interactive };
+  })();
+  try {
+    let tree = failingEditor.tree();
+    projectToggle(tree).props.onClick();
+    tree = failingEditor.rerender();
+    const revealItem = findNode(tree, (node) => node.type === 'button' && node.props && node.props['data-action'] === 'reveal');
+    assert(textOf(revealItem) === '在文件管理器中显示', 'the non-macOS reveal label is wrong');
+    findNode(tree, (node) => node.type === 'button' && node.props && node.props['data-action'] === 'copy-path').props.onClick();
+    await settle(10);
+    tree = failingEditor.rerender();
+    const notice = findNode(tree, (node) => node.props && node.props.className === 'dv-project-folder-notice');
+    assert(notice !== null && notice.props.role === 'alert', 'a failed copy did not surface an alert notice');
+    assert(textOf(notice).includes('/tmp/工程 目录/demo'), 'the fallback notice does not expose the path for manual copy');
+  } finally {
+    failingEditor.interactive.unmount();
+  }
+});
+
+test('M1-05: the Host ui-state restores the last project and exposes the save status', async () => {
+  const sessions = makeSessionsService({ list: ['session-state'] });
+  const hostFetch = sessionFetch({ activeSessionId: 'session-state', sessions: ['session-state'] });
+  const uiSets = [];
+  hostFetch.config.handler = (request) => {
+    const method = request.body.method;
+    if (method === 'ui.state.get') {
+      return { ok: true, result: { version: 1, lastProjectId: 'proj-restored', layout: { aiPaneRatio: 0.55 }, timelineOpen: null, updatedAt: null } };
+    }
+    if (method === 'ui.state.set') {
+      uiSets.push(request.body.params.patch);
+      return { ok: true, result: { version: 1, lastProjectId: request.body.params.patch.lastProjectId === undefined ? 'proj-restored' : request.body.params.patch.lastProjectId, layout: { aiPaneRatio: 0.55 }, timelineOpen: null, updatedAt: null } };
+    }
+    if (method === 'project.list') {
+      return {
+        ok: true,
+        result: {
+          projects: [
+            { projectId: 'proj-smoke', updatedAt: 2000 },
+            { projectId: 'proj-restored', updatedAt: 1000 },
+          ],
+          defaultProjectId: 'proj-smoke',
+        },
+      };
+    }
+    return undefined;
+  };
+  const editor = await mountBootedPanel(hostFetch, { sessions: sessions, kit: makeSessionKit() });
+  try {
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    await settlePanel(editor);
+    let tree = editor.tree();
+    const root = findNode(tree, (node) => node.props && node.props.className === 'dv-root');
+    assert(root !== null && root.props['data-project-id'] === 'proj-restored', `the Host lastProjectId was not restored: ${root && root.props['data-project-id']}`);
+    assert(String(aiWidthCss(tree)).includes('55%'), `the Host pane ratio was not restored: ${aiWidthCss(tree)}`);
+    await new Promise((resolve) => setTimeout(resolve, 700));
+    await settlePanel(editor);
+    assert(uiSets.some((patch) => patch.lastProjectId === 'proj-restored'), 'the restored project was not written back to the Host ui-state');
+    const chip = findNode(tree, (node) => node.type === 'button' && node.props && node.props.className === 'dv-save-status');
+    assert(chip !== null && chip.props['data-status'] === 'saved', `the saved indicator is missing: ${chip && chip.props['data-status']}`);
+    assert(textOf(chip) === '已保存', `the saved indicator text is wrong: ${textOf(chip)}`);
+    // Changing the splitter persists the new ratio to the Host ui-state.
+    const splitter = splitterOf(tree);
+    assert(splitter !== null, 'splitter missing for ratio persistence');
+    splitter.props.onKeyDown({ key: 'ArrowLeft', preventDefault() {} });
+    await new Promise((resolve) => setTimeout(resolve, 700));
+    await settlePanel(editor);
+    assert(uiSets.some((patch) => patch.layout && Math.abs(patch.layout.aiPaneRatio - 0.55) > 0.01), 'the pane ratio change was not persisted to the Host ui-state');
+  } finally {
+    editor.interactive.unmount();
+  }
+});
+
+test('M1-05: a failed panel-state save is visible and retryable', async () => {
+  const sessions = makeSessionsService({ list: ['session-state'] });
+  const hostFetch = sessionFetch({ activeSessionId: 'session-state', sessions: ['session-state'] });
+  let setAttempts = 0;
+  hostFetch.config.handler = (request) => {
+    const method = request.body.method;
+    if (method === 'ui.state.get') {
+      return { ok: true, result: { version: 1, lastProjectId: null, layout: null, timelineOpen: null, updatedAt: null } };
+    }
+    if (method === 'ui.state.set') {
+      setAttempts += 1;
+      return { ok: false, error: { code: 'E_INTERNAL', message: 'disk unavailable', stage: 'ui-state' } };
+    }
+    return undefined;
+  };
+  const editor = await mountBootedPanel(hostFetch, { sessions: sessions, kit: makeSessionKit() });
+  try {
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    await settlePanel(editor);
+    let tree = editor.tree();
+    let chip = findNode(tree, (node) => node.type === 'button' && node.props && node.props.className === 'dv-save-status');
+    assert(chip !== null && chip.props['data-status'] === 'failed', `a failed save was not surfaced: ${chip && chip.props['data-status']}`);
+    assert(textOf(chip) === '保存失败 · 重试', `unexpected failed-save copy: ${textOf(chip)}`);
+    const attemptsBefore = setAttempts;
+    chip.props.onClick();
+    tree = editor.rerender();
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    await settlePanel(editor);
+    tree = editor.tree();
+    chip = findNode(tree, (node) => node.type === 'button' && node.props && node.props.className === 'dv-save-status');
+    assert(setAttempts > attemptsBefore, 'retrying the failed save did not issue another Host write');
+    assert(chip !== null && chip.props['data-status'] === 'failed', 'the retried save did not settle back to failed');
+  } finally {
+    editor.interactive.unmount();
+  }
+});
+
 test('P3-016: the work name starts inline rename; Enter saves and Esc cancels without publishing', async () => {
   const sessions = makeSessionsService({ list: ['session-rename'] });
   const hostFetch = sessionFetch({ activeSessionId: 'session-rename', sessions: ['session-rename'] });
@@ -4346,12 +4574,13 @@ test('UI polish: project navigation uses readable names, retains distinct choice
   tree = editor.rerender();
   assert(projectMenu(tree) !== null, 'the project picker did not open');
   const items = projectMenuItems(tree);
-  assert(items.length === 3, `expected two projects + new-project action, got ${items.length}`);
+  assert(items.length === 5, `expected two projects + folder actions + new-project action, got ${items.length}`);
+  assert(items.some((item) => item.props['data-action'] === 'reveal') && items.some((item) => item.props['data-action'] === 'copy-path'), 'the folder actions are missing from project navigation');
   assert(items.some((item) => item.props.role === 'menuitemradio' && item.props['aria-checked'] === 'true' && textOf(item).includes('Scene 1')), 'the current project is not marked in the picker');
   assert(items.some((item) => item.props.role === 'menuitem' && textOf(item).includes('新建工程')), 'new project is not available inside project navigation');
   assert(!textOf(projectMenu(tree)).includes('proj-'), 'technical project IDs leak into the picker');
   assert(hostFetch.calls.filter((call) => call.body.method === 'project.create').length === 0, 'opening navigation created a project');
-  const newItem = items.find((item) => item.props.role === 'menuitem');
+  const newItem = items.find((item) => item.props.role === 'menuitem' && textOf(item).includes('新建工程'));
   newItem.props.onClick();
   await settlePanel(editor);
   assert(hostFetch.calls.filter((call) => call.body.method === 'project.create').length === 1, 'explicit new-project selection did not create exactly one project');

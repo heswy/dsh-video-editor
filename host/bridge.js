@@ -9,6 +9,7 @@
  * re-verifying the worker's succeeded artifact record.
  */
 
+import { spawn } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
 import { mkdir, realpath, readFile, rename, stat, unlink, writeFile } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
@@ -23,6 +24,8 @@ import { SESSION_ID_PATTERN } from './session-state.js';
 import { readPreviewFile } from './preview.js';
 import { AssetInbox, ASSET_UPLOAD_ROUTE } from './asset-inbox.js';
 import { SnapshotRoutes, SNAPSHOT_ROUTE_BASE } from './snapshot.js';
+import { UiStateStore } from './ui-state.js';
+import { dataRootLayout, ensureDataRoot, legacyRootsFromConfig, loadManagedProjects, migrateLegacyRoots, quarantineCorruptFile, readWorkerRegistry, repairProjectsRegistry, resolveDataRoot, scanProjectsRoot, writeProjectsBackup } from './data-root.js';
 
 export const REQUEST_METHODS = Object.freeze([
   'doctor',
@@ -41,6 +44,8 @@ export const REQUEST_METHODS = Object.freeze([
   'preview',
   'project.create',
   'project.rename',
+  'project.path',
+  'project.reveal',
   'project.compose',
   'project.source',
   'project.list',
@@ -55,6 +60,8 @@ export const REQUEST_METHODS = Object.freeze([
   'redo',
   'preview.snapshot',
   'preview.release',
+  'ui.state.get',
+  'ui.state.set',
 ]);
 
 const METHOD_PARAMS = Object.freeze({
@@ -74,6 +81,8 @@ const METHOD_PARAMS = Object.freeze({
   preview: ['projectId', 'sessionId', 'path'],
   'project.create': ['templateId', 'title', 'width', 'height', 'fps'],
   'project.rename': ['projectId', 'title'],
+  'project.path': ['projectId'],
+  'project.reveal': ['projectId'],
   'project.compose': ['projectId', 'expectedRevision', 'operationId', 'html'],
   'project.source': ['projectId'],
   'project.list': [],
@@ -88,6 +97,8 @@ const METHOD_PARAMS = Object.freeze({
   redo: ['projectId', 'expectedRevision', 'operationId'],
   'preview.snapshot': ['projectId', 'revision', 'ttlMs'],
   'preview.release': ['snapshotId'],
+  'ui.state.get': [],
+  'ui.state.set': ['patch'],
 });
 
 const SESSION_METHODS = Object.freeze(['session.list', 'session.create', 'session.select', 'session.diagnose']);
@@ -509,6 +520,14 @@ export function validateParams(config, method, params) {
       title: projectTitle(params.title),
     };
   }
+  if (method === 'project.path' || method === 'project.reveal') {
+    return { projectId: allowedProject(config, params.projectId) };
+  }
+  if (method === 'ui.state.get') return {};
+  if (method === 'ui.state.set') {
+    if (isPlainObject(params.patch) === false) fail('E_PARAMS', 'UI state patch must be an object', 'params');
+    return { patch: params.patch };
+  }
   if (method === 'project.list') return {};
   if (method === 'asset.import') {
     if (typeof params.receiptId !== 'string' || /^[0-9a-f-]{36}$/.test(params.receiptId) === false) fail('E_PARAMS', 'Invalid upload receipt', 'params');
@@ -773,6 +792,7 @@ export class VideoBridge {
     this.ctx = settings.ctx;
     this.engineLoader = typeof settings.engineLoader === 'function' ? settings.engineLoader : loadEngine;
     this.baseUrl = settings.baseUrl;
+    this.spawnImpl = typeof settings.spawn === 'function' ? settings.spawn : spawn;
     const parsed = tryNormalizeConfig(settings.rawConfig);
     this.config = parsed.ok ? parsed.config : null;
     this.configError = parsed.ok ? null : parsed.error;
@@ -787,10 +807,44 @@ export class VideoBridge {
     this.inFlight = new Set();
     this.projectFactsById = new Map();
     this.environment = buildWorkerEnv(process.env);
+    // M1-01: stable data root state. Path math is synchronous (pure) so the
+    // Session store can be constructed against <dataRoot>/session-state.json;
+    // directory creation and legacy migration happen on the first request.
+    this.dataRootState = null;
+    this.dataRootPreparing = null;
+    this.registryState = null;
+    this.registryBackupWritten = false;
+    this.legacyRoots = [];
+    this.legacyBrowserPath = undefined;
+    this.registryRecovery = null;
+    this.registryScanQuarantine = new Map();
+    this.projectsBackupWritten = false;
+    this.stateRecovery = null;
+    this.uiState = null;
+    this.uiStateRecovery = null;
+    let sessionConfig = this.config;
+    let assetInboxRoot = this.config === null ? undefined : this.config.assetInboxRoot;
+    let uiStatePath = null;
+    if (this.config !== null) {
+      try {
+        const resolvedRoot = resolveDataRoot(this.config, process.env);
+        const layout = dataRootLayout(resolvedRoot.root);
+        sessionConfig = Object.freeze({
+          ...this.config,
+          sessionStatePath: layout.sessionStatePath,
+          sessionCwd: layout.sessionCwd,
+        });
+        assetInboxRoot = layout.assetInboxRoot;
+        uiStatePath = layout.uiStatePath;
+      } catch (_error) {
+        sessionConfig = this.config;
+      }
+    }
+    this.uiState = uiStatePath === null ? null : new UiStateStore({ path: uiStatePath, logger: this.ctx && this.ctx.logger });
     this.sessions = new SessionService({
       ctx: this.ctx,
       bridge: this,
-      config: this.config,
+      config: sessionConfig,
       configError: this.configError,
     });
     this.managedProjects = null;
@@ -804,11 +858,11 @@ export class VideoBridge {
     );
     this.assets = new AssetInbox({
       connection: this.ctx !== undefined && this.ctx !== null ? this.ctx.connection : undefined,
-      root: this.config !== null && this.config.assetInboxRoot !== undefined ? this.config.assetInboxRoot : undefined,
+      root: assetInboxRoot,
       maxBytes: this.config !== null ? this.config.maxAssetBytes : undefined,
       // The bridge owns the trusted allowlist; an upload may only land in the
       // inbox for a project this deployment has actually registered.
-      isTrustedProject: (id) => this.config !== null && this.config.projectIds.has(id),
+      isTrustedProject: (id) => this.isTrustedProject(id),
     });
   }
 
@@ -825,37 +879,225 @@ export class VideoBridge {
 
   /** Exact route handler for the authenticated asset upload. */
   async uploadAsset(request) {
+    await this.ensurePrepared();
     return this.assets.handle(request);
   }
 
-  /** Re-read the worker-managed project registry and add trusted ids to the allowlist. */
-  async discoverManagedProjects() {
-    const config = this.requireConfig();
-    if (config.projectsRoot === undefined && this.runtime?.managed === null) return null;
-    let managedConfig;
-    try {
-      managedConfig = parseRegistry(await readFile(config.registryPath, 'utf8'));
-    } catch (_error) {
-      return null;
-    }
-    if (managedConfig.managed !== true) return null;
-    const projectsRoot = await canonicalDirectory(managedConfig.root, 'registry.projectsRoot');
-    const registryPath = await canonicalFile(managedConfig.managedRegistryPath, 'registry.registryPath');
-    const projects = await readManagedProjectMap(registryPath, projectsRoot, PROJECT_ID);
-    for (const id of projects.keys()) config.projectIds.add(id);
-    const next = { ...managedConfig, projectsRoot, registryPath, projects };
-    if (managedConfig.assetInboxRoot !== undefined) {
-      next.assetInboxRoot = await canonicalDirectory(managedConfig.assetInboxRoot, 'assetInboxRoot');
-    }
-    this.managedProjects = next;
-    this.projectDirectoryCache = projects;
-    if (this.runtime !== null) this.runtime.managed = next;
-    return next;
+  /** Trusted data-root paths after prepare; throws E_CONFIGURATION before that. */
+  requireDataRootPaths() {
+    if (this.dataRootState === null) throw configurationError('The video data root is not prepared yet');
+    return this.dataRootState.paths;
   }
 
-  /** Trusted managed project ids, or the static allowlist in legacy mode. */
+  /**
+   * Ensure the stable data root once per plugin lifetime (V1 M1-01).
+   *
+   * Single-flight and side-effect free before the first business request, so
+   * activation alone never creates user data and contract tests can drive the
+   * same code against a temporary HOME/dataRoot.
+   */
+  async ensurePrepared() {
+    if (this.dataRootState !== null) return this.dataRootState;
+    if (this.dataRootPreparing !== null) return this.dataRootPreparing;
+    this.dataRootPreparing = (async () => {
+      const config = this.requireConfig();
+      const resolved = resolveDataRoot(config, process.env);
+      const ensured = await ensureDataRoot(resolved.root, {
+        browserPath: config.browserPath !== undefined ? config.browserPath : this.legacyBrowserPath,
+      });
+      this.legacyRoots = legacyRootsFromConfig(config, process.env, resolved.root);
+      this.dataRootState = { ...ensured, source: resolved.source };
+      if (this.uiState !== null) {
+        try {
+          this.uiStateRecovery = await this.uiState.prepare();
+        } catch (error) {
+          this.log(error, 'ui state prepare');
+          this.uiStateRecovery = { recovered: false, error: 'E_UI_STATE_CORRUPT' };
+        }
+      }
+      this.stateRecovery = await this.sessions.recoverState();
+      await this.runLegacyMigration();
+      await this.refreshRegistry();
+      return this.dataRootState;
+    })();
+    try {
+      return await this.dataRootPreparing;
+    } finally {
+      this.dataRootPreparing = null;
+    }
+  }
+
+  /**
+   * One-time copy-only legacy migration (M1-02).
+   *
+   * Runs before the first successful business request and is idempotent via
+   * <dataRoot>/migration.json. Old roots are never rewritten/deleted; failures
+   * are recorded per source/project and retried on the next activation.
+   */
+  async runLegacyMigration() {
+    const state = this.dataRootState;
+    if (state === null || this.legacyRoots.length === 0) return null;
+    let result;
+    try {
+      result = await migrateLegacyRoots({
+        paths: state.paths,
+        legacyRoots: this.legacyRoots,
+        logger: this.ctx && this.ctx.logger,
+      });
+    } catch (error) {
+      this.log(error, 'legacy migration');
+      this.migrationStatus = { status: 'failed', sources: this.legacyRoots.length };
+      return null;
+    }
+    for (const parsed of result.mergedStates) {
+      try {
+        await this.sessions.store.mergeLegacyState(parsed);
+      } catch (error) {
+        this.log(error, 'legacy session merge');
+      }
+    }
+    const sources = result.results.length;
+    const copied = result.results.reduce((sum, entry) => sum + (entry.copied ? entry.copied.length : 0), 0);
+    const skipped = result.results.reduce((sum, entry) => sum + (entry.skipped ? entry.skipped.length : 0), 0);
+    const errors = result.results.reduce((sum, entry) => sum + (entry.errors ? entry.errors.length : 0), 0);
+    const pending = result.results.some((entry) => entry.completed === false);
+    this.migrationStatus = { status: pending ? 'partial' : 'complete', sources, copied, skipped, errors };
+    return this.migrationStatus;
+  }
+
+  /** Trusted project ids: available directories only (asset uploads/ads). */
+  isTrustedProject(id) {
+    if (this.registryState !== null) return this.registryState.projects.has(id);
+    return this.config !== null && this.config.projectIds.has(id);
+  }
+
+  /** A registered project whose directory is currently unavailable. */
+  isQuarantinedProject(id) {
+    return this.registryState !== null && this.registryState.quarantined.has(id);
+  }
+
+  /** Quarantine reason for diagnostics, or null. */
+  projectQuarantineReason(id) {
+    if (this.registryState === null) return null;
+    return this.registryState.quarantined.get(id) || null;
+  }
+
+  /**
+   * Re-read the data-root worker registry + project map.
+   *
+   * The worker registry is derived bookkeeping (paths only) and can be rebuilt
+   * when missing; the project map is user data and is only ever read (a corrupt
+   * map yields a typed error + empty table, never a rewrite/delete).
+   */
+  async refreshRegistry() {
+    if (this.dataRootState === null) return null;
+    const config = this.requireConfig();
+    const paths = this.dataRootState.paths;
+    let worker = await readWorkerRegistry(paths.registryPath);
+    if (worker.ok === false) {
+      // Derived worker registry: keep the corrupt bytes aside (never delete),
+      // then rebuild the path-only managed config from the data-root layout.
+      this.registryRecovery = { ...(this.registryRecovery || {}), workerRegistry: 'rebuilt', workerRegistryError: worker.error };
+      await quarantineCorruptFile(paths.registryPath);
+      await ensureDataRoot(paths.root, {
+        browserPath: config.browserPath !== undefined ? config.browserPath : this.legacyBrowserPath,
+      });
+      worker = await readWorkerRegistry(paths.registryPath);
+    }
+    const workerBrowser = worker.ok && typeof worker.value.browserPath === 'string' ? worker.value.browserPath : undefined;
+    if (workerBrowser !== undefined) this.legacyBrowserPath = workerBrowser;
+    let loaded = await loadManagedProjects(paths.projectsRegistryPath, paths.projectsRoot);
+    let scanQuarantined = null;
+    if (loaded.error !== null && loaded.error !== 'E_PROJECTS_ROOT') {
+      // Corrupt project map: readProjectsRegistry already tried .bak / atomic
+      // temp residue. Last resort before starting empty: rebuild the map from
+      // the project directories actually present on disk (user data is never
+      // touched; incomplete directories are quarantined).
+      const scan = await scanProjectsRoot(paths);
+      const recovered = scan.projects.size > 0
+        ? scan.projects
+        : (loaded.recoveredProjects === undefined ? new Map() : loaded.recoveredProjects);
+      if (scan.quarantined.size > 0) {
+        scanQuarantined = scan.quarantined;
+        for (const [id, reason] of scan.quarantined) this.registryScanQuarantine.set(id, reason);
+      }
+      await repairProjectsRegistry(paths, recovered);
+      this.registryRecovery = {
+        ...(this.registryRecovery || {}),
+        projectsRegistry: scan.projects.size > 0 ? 'scanned' : 'repaired',
+        projectsRegistryError: loaded.error,
+        recoveredProjects: recovered.size,
+        ...(scan.quarantined.size > 0 ? { scanQuarantined: [...scan.quarantined.keys()].sort() } : {}),
+      };
+      loaded = await loadManagedProjects(paths.projectsRegistryPath, paths.projectsRoot);
+    } else if (loaded.error === null && loaded.source !== null && loaded.source !== 'file') {
+      // The current map was unreadable but a .bak/temp copy was usable: keep the
+      // corrupt bytes aside and restore the recovered map atomically.
+      await repairProjectsRegistry(paths, loaded.recoveredProjects);
+      this.registryRecovery = { ...(this.registryRecovery || {}), projectsRegistry: 'restored', projectsRegistrySource: loaded.source };
+      loaded = await loadManagedProjects(paths.projectsRegistryPath, paths.projectsRoot);
+    } else if (loaded.error === null && loaded.source === 'file' && this.projectsBackupWritten === false) {
+      // Keep one last-known-good project map for recovery (advisory, best effort).
+      try {
+        await writeProjectsBackup(paths, loaded.recoveredProjects);
+        this.projectsBackupWritten = true;
+      } catch (_error) {
+        /* recovery copy is advisory; never fail a request for it */
+      }
+    }
+    if (scanQuarantined !== null) {
+      for (const [id, reason] of scanQuarantined) {
+        if (loaded.projects.has(id) === false) loaded.quarantined.set(id, reason);
+      }
+    }
+    // Keep scan-quarantined directories visible for this plugin lifetime even
+    // after the repaired map makes the corruption invisible on later refreshes.
+    for (const [id, reason] of this.registryScanQuarantine) {
+      if (loaded.projects.has(id) === true) {
+        this.registryScanQuarantine.delete(id);
+        continue;
+      }
+      if (loaded.quarantined.has(id) === false) loaded.quarantined.set(id, reason);
+    }
+    this.registryState = {
+      projects: loaded.projects,
+      quarantined: loaded.quarantined,
+      rejected: loaded.rejected,
+      error: worker.ok === false ? worker.error : loaded.error,
+      registrySource: loaded.source,
+      recovery: this.registryRecovery,
+    };
+    for (const id of loaded.projects.keys()) config.projectIds.add(id);
+    for (const id of loaded.quarantined.keys()) config.projectIds.add(id);
+    if (this.registryState.error === null && worker.ok === true && this.registryBackupWritten === false) {
+      // Keep one last-known-good worker registry for M1-03 recovery; best effort.
+      try {
+        const { writeFile } = await import('node:fs/promises');
+        await writeFile(paths.registryPath + '.bak', JSON.stringify(worker.value, null, 2) + '\n', { mode: 0o600 });
+        this.registryBackupWritten = true;
+      } catch (_error) {
+        /* recovery copy is advisory; never fail a request for it */
+      }
+    }
+    return this.registryState;
+  }
+
+  /**
+   * Re-read the data-root project registry and add trusted ids to the allowlist.
+   * Kept as the named discovery seam used by request dispatch and the static
+   * contract checks.
+   */
+  async discoverManagedProjects() {
+    await this.ensurePrepared();
+    return this.refreshRegistry();
+  }
+
+  /** Trusted project ids from the data-root registry (legacy allowlist fallback). */
   listProjects() {
     const config = this.requireConfig();
+    if (this.registryState !== null) {
+      return [...this.registryState.projects.keys(), ...this.registryState.quarantined.keys()].sort();
+    }
     return [...config.projectIds].sort();
   }
 
@@ -888,7 +1130,11 @@ export class VideoBridge {
         // null and the client keeps its content-derived fallback.
         title = await readManifestTitle(directory);
       }
+      const quarantined = this.isQuarantinedProject(projectId);
       projects.push({ projectId, updatedAt, title });
+      if (quarantined) {
+        Object.assign(projects[projects.length - 1], { quarantined: true, error: 'E_PROJECT_UNAVAILABLE' });
+      }
     }
     projects.sort((left, right) => right.updatedAt - left.updatedAt || (left.projectId < right.projectId ? -1 : left.projectId > right.projectId ? 1 : 0));
     return { projects, defaultProjectId: projects.length > 0 ? projects[0].projectId : null };
@@ -909,6 +1155,7 @@ export class VideoBridge {
    * id allowlist. Never starts the worker.
    */
   async projectDirectories() {
+    if (this.registryState !== null) return this.registryState.projects;
     const config = this.requireConfig();
     if (this.managedProjects !== null) return this.managedProjects.projects;
     if (this.projectDirectoryCache !== null) return this.projectDirectoryCache;
@@ -1072,6 +1319,18 @@ export class VideoBridge {
       jobs: this.jobs.size,
       inFlight: this.inFlight.size,
       sessions: this.sessions.diagnose(),
+      dataRoot: this.dataRootState === null
+        ? null
+        : {
+            source: this.dataRootState.source,
+            projects: this.registryState === null ? 0 : this.registryState.projects.size,
+            quarantined: this.registryState === null ? 0 : this.registryState.quarantined.size,
+            registryError: this.registryState === null ? null : this.registryState.error,
+            registryRecovery: this.registryState === null || this.registryState.recovery === undefined ? null : this.registryState.recovery,
+            migration: this.migrationStatus === undefined ? null : this.migrationStatus,
+            sessionRecovery: this.stateRecovery === undefined ? null : this.stateRecovery,
+            uiState: this.uiState === null ? null : this.uiState.diagnose(),
+          },
     };
   }
 
@@ -1090,9 +1349,88 @@ export class VideoBridge {
     return this.config;
   }
 
-  /** Resolve paths, validate the registry and load the reviewed engine packages once. */
+  /**
+   * Resolve one registered project directory from the data-root registry and
+   * re-verify it with realpath + projectsRoot containment. Never accepts a path
+   * from the caller; a missing/quarantined project is a typed unavailable error.
+   */
+  async requireProjectDirectory(projectId) {
+    const directories = await this.projectDirectories();
+    const directory = directories.get(projectId);
+    if (typeof directory !== 'string') {
+      throw new BridgeError('E_PROJECT_UNAVAILABLE', 'The project directory is currently unavailable', { stage: 'project' });
+    }
+    let real;
+    try {
+      real = await realpath(directory);
+      if ((await stat(real)).isDirectory() === false) throw new Error('not a directory');
+    } catch (_error) {
+      throw new BridgeError('E_PROJECT_UNAVAILABLE', 'The project directory is currently unavailable', { stage: 'project' });
+    }
+    if (this.dataRootState !== null) {
+      let rootReal;
+      try {
+        rootReal = await realpath(this.dataRootState.paths.projectsRoot);
+      } catch (_error) {
+        throw new BridgeError('E_PROJECT_UNAVAILABLE', 'The project directory is currently unavailable', { stage: 'project' });
+      }
+      if (inside(rootReal, real) === false) {
+        throw new BridgeError('E_PROJECT_UNAVAILABLE', 'The project directory is currently unavailable', { stage: 'project' });
+      }
+    }
+    return real;
+  }
+
+  /**
+   * Open one project folder in the platform file browser (M1-04).
+   *
+   * argv form only — project paths may contain spaces/CJK, so no shell string is
+   * ever composed. The child is detached and unref-ed so the worker/fiber can be
+   * disposed while the OS window stays open; a spawn failure is a typed error.
+   */
+  async revealProjectDirectory(directory) {
+    const platform = process.platform;
+    const command = platform === 'darwin' ? 'open' : platform === 'win32' ? 'explorer' : 'xdg-open';
+    try {
+      await new Promise((resolve, reject) => {
+        let settled = false;
+        const child = this.spawnImpl(command, [directory], { detached: true, stdio: 'ignore' });
+        if (child === null || typeof child !== 'object') throw new Error('spawn returned no child');
+        if (typeof child.unref === 'function') child.unref();
+        if (typeof child.once === 'function') {
+          child.once('error', (error) => {
+            if (settled) return;
+            settled = true;
+            reject(error);
+          });
+          child.once('spawn', () => {
+            if (settled) return;
+            settled = true;
+            resolve();
+          });
+        } else {
+          resolve();
+        }
+      });
+    } catch (_error) {
+      throw new BridgeError('E_REVEAL_FAILED', 'The project folder could not be opened', { stage: 'reveal' });
+    }
+  }
+
+  /**
+   * Resolve the authoritative data-root paths, validate the worker managed
+   * registry against them and load the reviewed engine packages once.
+   *
+   * The data root (not the old staging directory) is the single authority:
+   * projects live in <dataRoot>/projects, artifacts in <dataRoot>/cache/output
+   * and the worker is started with <dataRoot>/registry.json. Legacy config keys
+   * (registryPath/artifactRoot/projectsRoot/...) are tolerated for upgrade and
+   * migration but never override the data root.
+   */
   async prepareRuntime() {
     const config = this.requireConfig();
+    const prepared = await this.ensurePrepared();
+    const paths = prepared.paths;
     const subprocess = this.ctx && this.ctx.subprocess;
     if (!subprocess || typeof subprocess.resolveExecutable !== 'function') {
       throw configurationError('Host subprocess.resolveExecutable is unavailable');
@@ -1110,67 +1448,41 @@ export class VideoBridge {
     }
     const nodeReal = await canonicalFile(nodeExecutable, 'workerNode');
 
-    const registryPath = await canonicalFile(config.registryPath, 'registryPath');
+    const registryPath = await canonicalFile(paths.registryPath, 'dataRoot/registry.json');
     const registryStat = await stat(registryPath);
     if (registryStat.size > MAX_REGISTRY_BYTES) throw configurationError('The worker registry exceeds the size limit');
     const registry = parseRegistry(await readFile(registryPath, 'utf8'));
-    const artifactRoot = await canonicalDirectory(config.artifactRoot, 'artifactRoot');
-    let managed = null;
-    let outputRoot;
-    if (registry.managed === true) {
-      const projectsRoot = await canonicalDirectory(registry.root, 'registry.projectsRoot');
-      const managedRegistryPath = await canonicalFile(registry.managedRegistryPath, 'registry.registryPath');
-      const managedProjects = await readManagedProjectMap(managedRegistryPath, projectsRoot, PROJECT_ID);
-      if (config.projectsRoot !== undefined) {
-        const configuredRoot = await canonicalDirectory(config.projectsRoot, 'projectsRoot');
-        if (configuredRoot !== projectsRoot) throw configurationError('"projectsRoot" must resolve to the managed projectsRoot');
-      }
-      let assetInboxRoot = null;
-      if (registry.assetInboxRoot !== undefined) {
-        assetInboxRoot = await canonicalDirectory(registry.assetInboxRoot, 'assetInboxRoot');
-        if (config.assetInboxRoot !== undefined) {
-          const configuredInbox = await canonicalDirectory(config.assetInboxRoot, 'assetInboxRoot');
-          if (configuredInbox !== assetInboxRoot) throw configurationError('"assetInboxRoot" must resolve to the managed assetInboxRoot');
-        }
-      } else if (config.assetInboxRoot !== undefined) {
-        assetInboxRoot = await canonicalDirectory(config.assetInboxRoot, 'assetInboxRoot');
-      }
-      outputRoot = await canonicalDirectory(registry.outputRoot, 'registry.outputRoot');
-      if (outputRoot !== artifactRoot) throw configurationError('"artifactRoot" must resolve to the worker registry outputRoot');
-      for (const [id, projectPath] of managedProjects) config.projectIds.add(id);
-      managed = { projectsRoot, registryPath: managedRegistryPath, assetInboxRoot, projects: managedProjects };
-      if (registry.browserPath !== undefined) await stat(registry.browserPath).catch(() => {});
-    } else {
-      const registryRoot = await canonicalDirectory(registry.root, 'registry.root');
-      outputRoot = await canonicalDirectory(registry.outputRoot, 'registry.outputRoot');
-      if (outputRoot !== artifactRoot) {
-        throw configurationError('"artifactRoot" must resolve to the worker registry outputRoot');
-      }
-      for (const allowed of config.allowedProjects) {
-        const projectPath = registry.projects[allowed];
-        if (typeof projectPath !== 'string') {
-          throw configurationError(`Allowed project "${allowed}" is not present in the worker registry`);
-        }
-        let projectReal;
-        try {
-          projectReal = await realpath(projectPath);
-          if ((await stat(projectReal)).isDirectory() === false) throw new Error('not a directory');
-        } catch (_error) {
-          throw configurationError(`Allowed project "${allowed}" is unavailable in the trusted registry`);
-        }
-        if (inside(registryRoot, projectReal) === false) {
-          throw configurationError(`Allowed project "${allowed}" escapes the trusted registry root`);
-        }
-      }
-      if (registry.browserPath !== undefined) {
-        try {
-          await stat(registry.browserPath);
-        } catch (_error) {
-          // The worker doctor reports an unavailable browser; a missing configured
-          // browser path must not make the shell unusable before the first request.
-        }
+    if (registry.managed !== true) {
+      throw configurationError('The data root worker registry is not a managed registry');
+    }
+    const artifactRoot = await canonicalDirectory(paths.outputRoot, 'dataRoot/cache/output');
+    const projectsRoot = await canonicalDirectory(registry.root, 'dataRoot/projects');
+    const managedRegistryPath = await canonicalFile(registry.managedRegistryPath, 'dataRoot/projects.json');
+    if (projectsRoot !== (await canonicalDirectory(paths.projectsRoot, 'dataRoot/projects'))) {
+      throw configurationError('The data root worker registry points at another projects root');
+    }
+    if (managedRegistryPath !== (await canonicalFile(paths.projectsRegistryPath, 'dataRoot/projects.json'))) {
+      throw configurationError('The data root worker registry points at another project registry');
+    }
+    const registryOutputRoot = await canonicalDirectory(registry.outputRoot, 'dataRoot/cache/output');
+    if (registryOutputRoot !== artifactRoot) {
+      throw configurationError('The data root worker registry output root is inconsistent');
+    }
+    let assetInboxRoot = null;
+    if (registry.assetInboxRoot !== undefined) {
+      assetInboxRoot = await canonicalDirectory(registry.assetInboxRoot, 'dataRoot/asset-inbox');
+      if (assetInboxRoot !== (await canonicalDirectory(paths.assetInboxRoot, 'dataRoot/asset-inbox'))) {
+        throw configurationError('The data root worker registry points at another asset inbox');
       }
     }
+    if (registry.browserPath !== undefined) {
+      // A missing configured browser is reported by the worker doctor; it must
+      // not make the shell unusable before the first request.
+      this.legacyBrowserPath = registry.browserPath;
+      await stat(registry.browserPath).catch(() => {});
+    }
+    const projects = this.registryState !== null ? this.registryState.projects : new Map();
+    const managed = { projectsRoot, registryPath: managedRegistryPath, assetInboxRoot, projects };
 
     const engine = await this.engineLoader({ baseUrl: this.baseUrl, workerEntry: config.workerEntry });
     if (typeof engine === 'object' && engine !== null && typeof engine.WorkerClient !== 'function') {
@@ -1192,6 +1504,7 @@ export class VideoBridge {
       workerCwd,
       registryPath,
       artifactRoot,
+      dataRoot: paths.root,
       managed,
       WorkerClient: engine.WorkerClient,
       workerVersion: engine.workerVersion,
@@ -1338,15 +1651,19 @@ export class VideoBridge {
 
   async dispatch(method, params, settings) {
     const config = this.requireConfig();
-    if (config.projectsRoot !== undefined) {
-      try {
-        await this.discoverManagedProjects();
-      } catch (error) {
-        if (error instanceof BridgeError) throw error;
-        throw new BridgeError('E_CONFIGURATION', 'The managed project registry could not be read', { stage: 'project' });
-      }
+    await this.ensurePrepared();
+    try {
+      await this.refreshRegistry();
+    } catch (error) {
+      // A transient registry read failure keeps the last known good project
+      // table; it must not take the whole shell down. The user-data file is
+      // never rewritten here.
+      this.log(error, 'registry refresh');
     }
     const normalized = this.validate(method, params);
+    if (normalized.projectId !== undefined && this.isQuarantinedProject(normalized.projectId)) {
+      throw new BridgeError('E_PROJECT_UNAVAILABLE', 'The project directory is currently unavailable', { stage: 'project' });
+    }
     if (method === 'project.list') {
       if (settings.source === 'tool') throw new BridgeError('E_METHOD', 'Project listing is a UI-only action', { stage: 'params' });
       return this.projectList();
@@ -1375,6 +1692,28 @@ export class VideoBridge {
         throw new BridgeError('E_WORKER_RESPONSE', 'The worker returned an invalid rename result', { stage: 'response' });
       }
       return publicResult(this.requireConfig().maxResultBytes, renamed, settings.source);
+    }
+    if (method === 'project.path' || method === 'project.reveal') {
+      // UI-only, data-root-authoritative: the path is resolved from the trusted
+      // registry + realpath, never accepted from the UI/Tool.
+      if (settings.source === 'tool') throw new BridgeError('E_METHOD', 'Project folders are a UI-only action', { stage: 'params' });
+      const directory = await this.requireProjectDirectory(normalized.projectId);
+      if (method === 'project.path') {
+        return publicResult(this.requireConfig().maxResultBytes, { projectId: normalized.projectId, path: directory }, settings.source);
+      }
+      await this.revealProjectDirectory(directory);
+      return publicResult(this.requireConfig().maxResultBytes, { projectId: normalized.projectId, opened: true }, settings.source);
+    }
+    if (method === 'ui.state.get' || method === 'ui.state.set') {
+      // UI-only panel state (last project / layout); it never enters a project
+      // revision and is never part of the model Tool surface.
+      if (settings.source === 'tool') throw new BridgeError('E_METHOD', 'Panel state is a UI-only action', { stage: 'params' });
+      if (this.uiState === null) throw new BridgeError('E_UI_STATE_UNAVAILABLE', 'Panel state persistence is not configured', { stage: 'ui-state' });
+      if (method === 'ui.state.get') {
+        return publicResult(this.requireConfig().maxResultBytes, this.uiState.get(), settings.source);
+      }
+      const updated = await this.uiState.set(normalized.patch);
+      return publicResult(this.requireConfig().maxResultBytes, updated, settings.source);
     }
     if (method === 'asset.import') {
       if (settings.source === 'tool') throw new BridgeError('E_METHOD', 'Asset import is a UI-only action', { stage: 'params' });

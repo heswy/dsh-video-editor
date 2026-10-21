@@ -17,6 +17,7 @@ import { constants } from 'node:fs';
 import { delimiter, dirname, isAbsolute, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { loadStagedHost, sha256 } from './lib/staged-host.mjs';
+import { assertRealDataRootUnchanged, disposeIsolatedBase, isolateStagedConfig, prepareIsolatedBase, snapshotRealDataRoot } from './lib/data-root-isolation.mjs';
 
 const PNG = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2nXQAAAAASUVORK5CYII=',
@@ -208,7 +209,10 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   const staging = resolve(args.staging);
   const staged = await loadStagedHost(staging);
-  const config = staged.config;
+  const realDataRootBaseline = await snapshotRealDataRoot();
+  const isolatedBase = await prepareIsolatedBase('dsh-canvas-chain-');
+  const isolation = isolateStagedConfig(staged.config, { stagingRoot: staging, base: isolatedBase });
+  const config = isolation.config;
   const integrity = staged.integrity;
   const host = fakeCtx();
   const bridge = new staged.VideoBridge({ ctx: host.ctx, rawConfig: config });
@@ -605,6 +609,13 @@ async function main() {
     evidence.hostWarnings = host.warnings.slice(-20);
     throw error;
   } finally {
+    try {
+      await disposeIsolatedBase(isolatedBase);
+      await assertRealDataRootUnchanged(realDataRootBaseline);
+    } catch (isolationError) {
+      console.error('data-root isolation check failed: ' + (isolationError instanceof Error ? isolationError.message : String(isolationError)));
+      process.exitCode = 1;
+    }
     try {
       await bridge.dispose();
     } catch (_error) {

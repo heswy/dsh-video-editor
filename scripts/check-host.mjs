@@ -152,12 +152,20 @@ function sleep(ms) {
 
 async function makeWorkspace(overrides) {
   const root = await mkdtemp(join(tmpdir(), 'dsh-video-host-'));
-  const projectsRoot = join(root, 'projects');
+  // M1-01: the authoritative layout is the stable data root. The fixture keeps
+  // every test path under a temporary directory and never touches the real
+  // ~/Movies/DSH Video.
+  const dataRoot = join(root, 'data-root');
+  const projectsRoot = join(dataRoot, 'projects');
   const projectDir = join(projectsRoot, PROJECT);
-  const outputRoot = join(root, 'output');
+  const outputRoot = join(dataRoot, 'cache', 'output');
+  const assetInboxRoot = join(dataRoot, 'asset-inbox');
   const workerCwd = join(root, 'worker-cwd');
+  const projectsRegistryPath = join(dataRoot, 'projects.json');
+  const registryPath = join(dataRoot, 'registry.json');
   await mkdir(projectDir, { recursive: true });
   await mkdir(outputRoot, { recursive: true });
+  await mkdir(assetInboxRoot, { recursive: true });
   await mkdir(workerCwd, { recursive: true });
   const extraProjects = (overrides && overrides.projects) || {};
   const projectMap = { [PROJECT]: projectDir };
@@ -168,16 +176,25 @@ async function makeWorkspace(overrides) {
     projectMap[id] = directory;
     extraAllowed.push(id);
   }
-  const sessionDir = join(root, 'session');
-  const sessionCwd = join(sessionDir, 'cwd');
+  const sessionCwd = join(dataRoot, 'session-cwd');
   await mkdir(sessionCwd, { recursive: true });
-  const sessionStatePath = join(sessionDir, 'state.json');
-  const registryPath = join(root, 'registry.json');
-  const registry = Object.assign(
+  const sessionStatePath = join(dataRoot, 'session-state.json');
+  const uiStatePath = join(dataRoot, 'ui-state.json');
+  const legacyRegistry = Object.assign(
     { root: projectsRoot, projects: projectMap, outputRoot },
     (overrides && overrides.registry) || {}
   );
-  await writeFile(registryPath, JSON.stringify(registry));
+  // Worker-managed external registry: exactly the 5 keys the frozen worker
+  // schema accepts. The project map lives in projects.json (extra bookkeeping
+  // keys are ignored by both readers).
+  await writeFile(registryPath, JSON.stringify({
+    projectsRoot,
+    registryPath: projectsRegistryPath,
+    outputRoot,
+    assetInboxRoot,
+  }, null, 2));
+  await writeFile(projectsRegistryPath, JSON.stringify({ version: 1, managed: true, projects: projectMap }, null, 2));
+  await writeFile(uiStatePath, JSON.stringify({ version: 1, lastProjectId: null, layout: null, updatedAt: null }, null, 2));
   const workerEntry = join(root, 'worker.mjs');
   await writeFile(workerEntry, '// fake worker entry\n');
   const config = Object.assign(
@@ -189,6 +206,8 @@ async function makeWorkspace(overrides) {
       allowedProjects: [PROJECT, ...extraAllowed],
       sessionStatePath,
       sessionCwd,
+      dataRoot,
+      browserPath: undefined,
       startupTimeoutMs: 1000,
       requestTimeoutMs: 1000,
       shutdownTimeoutMs: 500,
@@ -196,7 +215,9 @@ async function makeWorkspace(overrides) {
     },
     (overrides && overrides.config) || {}
   );
-  return { root, projectDir, outputRoot, workerCwd, registryPath, workerEntry, sessionDir, sessionCwd, sessionStatePath, config, registry };
+  if (config.dataRoot === undefined) delete config.dataRoot;
+  if (config.browserPath === undefined) delete config.browserPath;
+  return { root, dataRoot, projectsRoot, projectDir, outputRoot, workerCwd, registryPath, projectsRegistryPath, assetInboxRoot, uiStatePath, workerEntry, sessionDir: dataRoot, sessionCwd, sessionStatePath, config, registry: legacyRegistry };
 }
 
 function fakeSessionController(options) {
@@ -505,13 +526,28 @@ async function main() {
     let error = await rejects(() => relative.invoke('doctor', {}));
     assert(error.code === 'E_CONFIGURATION', 'relative registryPath accepted');
 
-    const mismatched = new VideoBridge({
+    const relativeDataRoot = new VideoBridge({
       ctx: makeCtx(workspace).ctx,
-      rawConfig: Object.assign({}, workspace.config, { artifactRoot: workspace.workerCwd }),
+      rawConfig: Object.assign({}, workspace.config, { dataRoot: 'relative/data-root' }),
       engineLoader: engine.engineLoader,
     });
-    error = await rejects(() => mismatched.invoke('doctor', {}));
-    assert(error.code === 'E_CONFIGURATION', 'registry.outputRoot/artifactRoot mismatch accepted');
+    error = await rejects(() => relativeDataRoot.invoke('doctor', {}));
+    assert(error.code === 'E_CONFIGURATION', 'relative dataRoot accepted');
+
+    // The data-root worker registry is derived bookkeeping; tampering with it
+    // must fail the preflight instead of silently starting on another root.
+    const tamperedWorkspace = await makeWorkspace();
+    const tamperedRegistry = JSON.parse(await readFile(tamperedWorkspace.registryPath, 'utf8'));
+    tamperedRegistry.outputRoot = join(tamperedWorkspace.root, 'elsewhere');
+    await writeFile(tamperedWorkspace.registryPath, JSON.stringify(tamperedRegistry));
+    const tamperedEngine = fakeEngine(tamperedWorkspace, {});
+    const tampered = new VideoBridge({
+      ctx: makeCtx(tamperedWorkspace).ctx,
+      rawConfig: tamperedWorkspace.config,
+      engineLoader: tamperedEngine.engineLoader,
+    });
+    error = await rejects(() => tampered.invoke('doctor', {}));
+    assert(error.code === 'E_CONFIGURATION', 'inconsistent data-root worker registry accepted');
   });
 
   await run('unknown project, path-like project and extra parameters are rejected before worker start', async () => {
@@ -1268,7 +1304,8 @@ async function main() {
       },
     });
     const running = bridge.invoke('doctor', {});
-    await new Promise((resolve) => setImmediate(resolve));
+    for (let attempt = 0; attempt < 200 && engine.instances.length === 0; attempt += 1) await sleep(2);
+    assert(engine.instances.length === 1, 'the accepted request never reached the worker');
     const disposing = bridge.dispose();
     const refused = await rejects(() => bridge.invoke('doctor', {}));
     assert(refused.code === 'E_WORKER_DISPOSED', `dispose did not refuse: ${refused.code}`);
@@ -1452,7 +1489,7 @@ async function main() {
     assert(badRequest.code === 'E_PARAMS', 'invalid requestId was accepted');
   });
 
-  await run('sessions: mapping survives reload; unregistered ids and corrupt state are rejected without data loss', async () => {
+  await run('sessions: mapping survives reload; corrupt state is backed up and rebuilt without data loss', async () => {
     const workspace = await makeWorkspace();
     const firstBag = makeCtx(workspace);
     const first = makeBridge(workspace, { handler: () => ({}) }, firstBag.ctx).bridge;
@@ -1466,37 +1503,48 @@ async function main() {
     assert(cross.code === 'E_SESSION_NOT_BOUND', `unregistered session select was not rejected: ${cross.code}`);
     await second.dispose();
 
+    // M1-03: corrupt bytes are preserved as .corrupt-<ts>, the last-known-good
+    // mapping is restored, and the bridged API keeps working (no whole-bridge
+    // failure, no silent deletion of the corrupt evidence).
     const corruptLiteral = '{not json';
     await writeFile(workspace.sessionStatePath, corruptLiteral);
-    const thirdBag = makeCtx(workspace);
-    const third = makeBridge(workspace, { handler: () => ({}) }, thirdBag.ctx).bridge;
-    const corrupt = await rejects(() => third.invoke('session.list', { projectId: PROJECT }, { source: 'http' }));
-    assert(corrupt.code === 'E_SESSION_STATE_CORRUPT', `corrupt state was not typed: ${corrupt.code}`);
-    assert((await readFile(workspace.sessionStatePath, 'utf8')) === corruptLiteral, 'corrupt state file was rewritten');
+    const third = makeBridge(workspace, { handler: () => ({}) }, makeCtx(workspace).ctx).bridge;
+    const recoveredList = await third.invoke('session.list', { projectId: PROJECT }, { source: 'http' });
+    assert(recoveredList.enabled === true, 'a corrupt mapping blocked the session list');
+    assert(third.stateRecovery !== null && third.stateRecovery.recovered === true, 'session recovery was not recorded');
+    const rootNames = await readdir(workspace.dataRoot);
+    const corruptBackups = rootNames.filter((name) => name.startsWith('session-state.json.corrupt-'));
+    assert(corruptBackups.length === 1, 'corrupt session state was not backed up');
+    assert((await readFile(join(workspace.dataRoot, corruptBackups[0]), 'utf8')) === corruptLiteral, 'the corrupt bytes were not preserved');
+    const rebuilt = JSON.parse(await readFile(workspace.sessionStatePath, 'utf8'));
+    assert(rebuilt.version === 1, 'rebuilt session state is not v1');
     await third.dispose();
 
     await writeFile(workspace.sessionStatePath, JSON.stringify({ version: 99, projects: {}, sessions: {} }));
-    const fourthBag = makeCtx(workspace);
-    const fourth = makeBridge(workspace, { handler: () => ({}) }, fourthBag.ctx).bridge;
-    const versionError = await rejects(() => fourth.invoke('session.list', { projectId: PROJECT }, { source: 'http' }));
-    assert(versionError.code === 'E_SESSION_STATE_VERSION', `unknown version was not typed: ${versionError.code}`);
+    const fourth = makeBridge(workspace, { handler: () => ({}) }, makeCtx(workspace).ctx).bridge;
+    const versionList = await fourth.invoke('session.list', { projectId: PROJECT }, { source: 'http' });
+    assert(versionList.enabled === true, 'an unknown session-state version blocked the session list');
+    assert(fourth.stateRecovery !== null && fourth.stateRecovery.recovered === true, 'unknown version recovery was not recorded');
     await fourth.dispose();
   });
 
-  await run('sessions: missing session configuration disables only the session features', async () => {
+  await run('sessions: the stable data root always configures session features', async () => {
+    // M1-01: session storage now derives from <dataRoot>/session-state.json, so
+    // legacy sessionStatePath/sessionCwd keys no longer control availability.
     const workspace = await makeWorkspace({ config: { sessionStatePath: undefined, sessionCwd: undefined } });
     const bag = makeCtx(workspace);
     const { bridge } = makeBridge(workspace, { handler: () => ({}) }, bag.ctx);
-    const disabled = await rejects(() => bridge.invoke('session.list', { projectId: PROJECT }, { source: 'http' }));
-    assert(disabled.code === 'E_SESSION_CONFIG', `unconfigured session feature did not report E_SESSION_CONFIG: ${disabled.code}`);
+    const list = await bridge.invoke('session.list', { projectId: PROJECT }, { source: 'http' });
+    assert(list !== null && list.enabled === true && Array.isArray(list.sessions), 'data-root session list is unavailable');
     const doctor = await bridge.invoke('doctor', {}, { source: 'http' });
-    assert(doctor !== null && typeof doctor === 'object', 'preview/doctor path must keep working without session config');
+    assert(doctor !== null && typeof doctor === 'object', 'preview/doctor path must keep working');
+    assert(bridge.dataRootState !== null && bridge.dataRootState.paths.sessionStatePath === workspace.sessionStatePath, 'session state is not under the data root');
   });
 
 
   await run('P3-006-C: preview reads only this project\'s owned roots without starting the worker', async () => {
     const workspace = await makeWorkspace();
-    const inboxRoot = join(workspace.root, 'asset-inbox');
+    const inboxRoot = workspace.assetInboxRoot;
     const bag = makeCtx(workspace);
     const { bridge, engine } = makeBridgeWithConfig(workspace, { assetInboxRoot: inboxRoot }, { handler: () => ({}) }, bag.ctx);
     const sessionId = await createBoundSession(bridge);
@@ -1609,7 +1657,7 @@ async function main() {
     const OTHER = 'other';
     const OTHER_JOB = '99999999-2222-4333-8444-555555555555';
     const workspace = await makeWorkspace({ projects: { [OTHER]: 'projects-other/other' } });
-    const inboxRoot = join(workspace.root, 'asset-inbox');
+    const inboxRoot = workspace.assetInboxRoot;
     const bag = makeCtx(workspace);
     const { bridge } = makeBridgeWithConfig(workspace, { assetInboxRoot: inboxRoot }, { handler: () => ({}) }, bag.ctx);
     const sessionId = await createBoundSession(bridge);
@@ -2130,9 +2178,8 @@ async function main() {
 
   await run('P3-008: asset inbox validates bytes/receipts and feeds asset.import without a Host path', async () => {
     const workspace = await makeWorkspace();
-    const inbox = join(workspace.root, 'asset-inbox');
-    await mkdir(inbox, { recursive: true });
-    const bag = makeCtx(workspace);
+    const inbox = workspace.assetInboxRoot;
+        const bag = makeCtx(workspace);
     const { bridge } = makeBridge(workspace, {
       handler: (method, params) => {
         if (method === 'asset.import') {
@@ -2579,9 +2626,9 @@ async function main() {
     // A registry project outside the trusted allowlist must never be listed.
     const hiddenDir = join(workspace.root, 'projects', 'hidden');
     await mkdir(hiddenDir, { recursive: true });
-    const registry = JSON.parse(await readFile(workspace.registryPath, 'utf8'));
+    const registry = JSON.parse(await readFile(workspace.projectsRegistryPath, 'utf8'));
     registry.projects.hidden = hiddenDir;
-    await writeFile(workspace.registryPath, JSON.stringify(registry));
+    await writeFile(workspace.projectsRegistryPath, JSON.stringify(registry));
     const demoEntry = join(workspace.projectDir, 'index.html');
     const otherEntry = join(workspace.registry.projects[OTHER], 'index.html');
     await writeFile(demoEntry, '<!doctype html>');
@@ -2757,26 +2804,34 @@ async function main() {
     assert(bag.contexts.length === 1, 'a late create registered prompt context after cleanup');
   });
 
-  await run('R3: known mapping faults are rejected before the Host creates a Session', async () => {
+  await run('R3: recoverable mapping faults are rebuilt before the Host creates a Session', async () => {
+    // M1-03: corrupt/unknown-version mappings no longer block the whole bridge;
+    // the corrupt bytes are preserved and a legitimate create still reaches the
+    // Host controller exactly once.
     const workspace = await makeWorkspace();
     const corruptLiteral = '{broken';
     await writeFile(workspace.sessionStatePath, corruptLiteral);
     let bag = makeCtx(workspace);
     let bridge = makeBridge(workspace, { handler: () => ({}) }, bag.ctx).bridge;
-    const corrupt = await rejects(() => bridge.invoke('session.create', { projectId: PROJECT, requestId: 'corrupt-key' }, { source: 'http' }));
-    assert(corrupt.code === 'E_SESSION_STATE_CORRUPT', `corrupt state did not block create: ${corrupt.code}`);
-    assert(bag.sessionController.created.length === 0, 'a Host Session was created despite a corrupt mapping');
-    assert((await readFile(workspace.sessionStatePath, 'utf8')) === corruptLiteral, 'corrupt mapping file was modified');
+    const recovered = await bridge.invoke('session.create', { projectId: PROJECT, requestId: 'corrupt-key' }, { source: 'http' });
+    assert(typeof recovered.sessionId === 'string', 'a corrupt mapping blocked a legitimate session create');
+    assert(bag.sessionController.created.length === 1, 'the recovery path did not reach the controller exactly once');
+    const rootNames = await readdir(workspace.dataRoot);
+    const corruptBackups = rootNames.filter((name) => name.startsWith('session-state.json.corrupt-'));
+    assert(corruptBackups.length === 1, 'corrupt mapping evidence was not preserved');
+    assert((await readFile(join(workspace.dataRoot, corruptBackups[0]), 'utf8')) === corruptLiteral, 'corrupt mapping bytes were not preserved');
     await bridge.dispose();
 
-    await writeFile(workspace.sessionStatePath, JSON.stringify({ version: 99, projects: {}, sessions: {} }));
-    bag = makeCtx(workspace);
-    bridge = makeBridge(workspace, { handler: () => ({}) }, bag.ctx).bridge;
-    const versionError = await rejects(() => bridge.invoke('session.create', { projectId: PROJECT, requestId: 'version-key' }, { source: 'http' }));
-    assert(versionError.code === 'E_SESSION_STATE_VERSION', `unknown version did not block create: ${versionError.code}`);
-    assert(bag.sessionController.created.length === 0, 'a Host Session was created despite an unknown state version');
+    const versionWorkspace = await makeWorkspace();
+    await writeFile(versionWorkspace.sessionStatePath, JSON.stringify({ version: 99, projects: {}, sessions: {} }));
+    bag = makeCtx(versionWorkspace);
+    bridge = makeBridge(versionWorkspace, { handler: () => ({}) }, bag.ctx).bridge;
+    const versionRecovered = await bridge.invoke('session.create', { projectId: PROJECT, requestId: 'version-key' }, { source: 'http' });
+    assert(typeof versionRecovered.sessionId === 'string', 'an unknown state version blocked a legitimate session create');
+    assert(bag.sessionController.created.length === 1, 'a Session was not created through the version recovery path');
     await bridge.dispose();
 
+    const capWorkspace = await makeWorkspace();
     const projects = { [PROJECT]: { sessionIds: [], activeSessionId: null, createdAt: 1, updatedAt: 1 } };
     const sessions = {};
     for (let index = 0; index < 200; index += 1) {
@@ -2785,9 +2840,9 @@ async function main() {
       sessions[sessionId] = { projectId: PROJECT, createdAt: 1 };
     }
     projects[PROJECT].activeSessionId = 'session-cap-0';
-    await writeFile(workspace.sessionStatePath, JSON.stringify({ version: 1, projects, sessions }));
-    bag = makeCtx(workspace);
-    bridge = makeBridge(workspace, { handler: () => ({}) }, bag.ctx).bridge;
+    await writeFile(capWorkspace.sessionStatePath, JSON.stringify({ version: 1, projects, sessions }));
+    bag = makeCtx(capWorkspace);
+    bridge = makeBridge(capWorkspace, { handler: () => ({}) }, bag.ctx).bridge;
     const limit = await rejects(() => bridge.invoke('session.create', { projectId: PROJECT, requestId: 'limit-key' }, { source: 'http' }));
     assert(limit.code === 'E_SESSION_STATE_LIMIT', `project cap did not block create: ${limit.code}`);
     assert(bag.sessionController.created.length === 0, 'a Host Session was created despite the per-project cap');
@@ -2817,7 +2872,7 @@ async function main() {
 
   await run('R4: every accepted bridge request is admitted synchronously into one inFlight set', async () => {
     const workspace = await makeWorkspace();
-    const inboxRoot = join(workspace.root, 'asset-inbox');
+    const inboxRoot = workspace.assetInboxRoot;
     const bag = makeCtx(workspace);
     let release;
     const gate = new Promise((resolve) => {
@@ -2894,6 +2949,8 @@ async function main() {
       (error) => ({ ok: false, error })
     );
     assert(bridge.inFlight.size === 1, `snapshot request was not admitted: ${bridge.inFlight.size}`);
+    for (let attempt = 0; attempt < 200 && engine.instances.length === 0; attempt += 1) await sleep(2);
+    assert(engine.instances.length === 1, 'the snapshot request never reached the worker');
     const dispose = bridge.dispose();
     await new Promise((resolve) => setImmediate(resolve));
     assert(bridge.disposed === false, 'dispose resolved before the accepted snapshot settled');
@@ -2911,7 +2968,7 @@ async function main() {
 
   await run('R4: a delayed upload body cannot write a file or receipt after dispose', async () => {
     const workspace = await makeWorkspace();
-    const inboxRoot = join(workspace.root, 'asset-inbox');
+    const inboxRoot = workspace.assetInboxRoot;
     const { bridge } = makeBridgeWithConfig(workspace, { assetInboxRoot: inboxRoot }, { handler: () => ({}) });
     let streamController;
     const request = new Request('http://127.0.0.1/api/dsh-video/asset-upload', {
@@ -2947,7 +3004,7 @@ async function main() {
 
   await run('R4: asset inbox enforces trusted projects, expiry, failure cleanup and idempotent dispose', async () => {
     const workspace = await makeWorkspace();
-    const inboxRoot = join(workspace.root, 'asset-inbox');
+    const inboxRoot = workspace.assetInboxRoot;
     await mkdir(inboxRoot, { recursive: true });
     const inbox = new AssetInbox({ root: inboxRoot, maxReceipts: 2, isTrustedProject: (id) => id === PROJECT });
 
@@ -3069,24 +3126,84 @@ async function main() {
     const workspace = await makeWorkspace();
     const fake = makeCtx(workspace);
     apply(fake.ctx, workspace.config);
-    assert(fake.routes.length === 2, `routes ${fake.routes.length}`);
+    // M1-01: the stable data root always provides an asset inbox, so the effect
+    // registers request + artifact + streaming upload in every valid deployment.
+    assert(fake.routes.length === 3, `routes ${fake.routes.length}`);
     assert(fake.routes[0].path === '/api/dsh-video/request', 'request route path');
     assert(fake.routes[1].path === '/api/dsh-video/artifact', 'artifact route path');
+    assert(fake.routes[2].path === '/api/dsh-video/asset-upload' && fake.routes[2].requestBody === 'streaming', 'asset upload route is not the streaming route');
     assert(fake.tools.length === 1 && fake.tools[0].name === TOOL_NAME, 'tool registration');
     assert(fake.cleanups.length === 1 && typeof fake.cleanups[0] === 'function', 'effect cleanup');
     await fake.cleanups[0]();
     assert(fake.routes.length === 0, 'effect cleanup left routes registered');
+  });
 
-    // With a configured inbox the same effect installs the streaming upload route
-    // and its cleanup removes it before the bridge drains accepted work.
-    const withInbox = await makeWorkspace();
-    const inboxRoot = join(withInbox.root, 'asset-inbox');
-    const inboxCtx = makeCtx(withInbox);
-    apply(inboxCtx.ctx, Object.assign({}, withInbox.config, { assetInboxRoot: inboxRoot }));
-    assert(inboxCtx.routes.length === 3, `expected three routes, saw ${inboxCtx.routes.length}`);
-    assert(inboxCtx.routes[2].path === '/api/dsh-video/asset-upload' && inboxCtx.routes[2].requestBody === 'streaming', 'asset upload route is not the streaming route');
-    await inboxCtx.cleanups[0]();
-    assert(inboxCtx.routes.length === 0, 'asset route cleanup left routes registered');
+  await run('M1: the stable data root is authoritative and project.path/reveal are UI-only', async () => {
+    const workspace = await makeWorkspace();
+    const { EventEmitter } = await import('node:events');
+    const spawnCalls = [];
+    const spawn = (command, args, options) => {
+      spawnCalls.push({ command, args, options });
+      const child = new EventEmitter();
+      child.unref = () => {};
+      setImmediate(() => child.emit('spawn'));
+      return child;
+    };
+    const bag = makeCtx(workspace);
+    const engine = fakeEngine(workspace, {});
+    const bridge = new VideoBridge({ ctx: bag.ctx, rawConfig: workspace.config, engineLoader: engine.engineLoader, spawn });
+    await bridge.invoke('doctor', {});
+    assert(bridge.dataRootState !== null, 'the bridge did not prepare the stable data root');
+    assert((await realpath(bridge.dataRootState.paths.root)) === (await realpath(workspace.dataRoot)), 'the prepared data root is not the configured one');
+    const path = await bridge.invoke('project.path', { projectId: PROJECT });
+    assert(path.path === (await realpath(workspace.projectDir)), 'project.path is not the canonical project directory');
+    const list = await bridge.invoke('project.list', {});
+    assert(list.projects.every((item) => Object.prototype.hasOwnProperty.call(item, 'path') === false), 'project.list leaked a filesystem path');
+    const denied = await rejects(() => bridge.invoke('project.path', { projectId: PROJECT }, { source: 'tool', agentSessionId: 'session-x' }));
+    assert(denied.code === 'E_METHOD', 'project.path reached the model Tool');
+    const opened = await bridge.invoke('project.reveal', { projectId: PROJECT });
+    assert(opened.opened === true, 'project.reveal did not report an opened folder');
+    assert(spawnCalls.length === 1, `expected one reveal spawn, saw ${spawnCalls.length}`);
+    assert(Array.isArray(spawnCalls[0].args) && spawnCalls[0].args.length === 1 && spawnCalls[0].args[0] === (await realpath(workspace.projectDir)), 'reveal must pass the canonical directory as one argv entry');
+    assert(spawnCalls[0].options.detached === true && spawnCalls[0].options.stdio === 'ignore', 'reveal child must be detached with ignored stdio');
+    await bridge.dispose();
+  });
+
+  await run('M1: panel state is a whitelisted UI-only Host store outside project revisions', async () => {
+    const workspace = await makeWorkspace();
+    const { bridge } = makeBridge(workspace, { handler: () => ({}) });
+    const initial = await bridge.invoke('ui.state.get', {});
+    assert(initial.version === 1 && initial.lastProjectId === null && initial.layout === null, 'ui.state.get defaults are wrong');
+    const saved = await bridge.invoke('ui.state.set', { patch: { lastProjectId: PROJECT, layout: { aiPaneRatio: 0.5 } } });
+    assert(saved.lastProjectId === PROJECT && saved.layout.aiPaneRatio === 0.5, 'ui.state.set did not persist the whitelisted patch');
+    const bad = await rejects(() => bridge.invoke('ui.state.set', { patch: { html: '<x>' } }));
+    assert(bad.code === 'E_UI_STATE_PARAMS', 'an unknown ui-state field was accepted');
+    const toolDenied = await rejects(() => bridge.invoke('ui.state.get', {}, { source: 'tool', agentSessionId: 'session-x' }));
+    assert(toolDenied.code === 'E_METHOD', 'ui-state was reachable from the model Tool');
+    const onDisk = JSON.parse(await readFile(join(workspace.dataRoot, 'ui-state.json'), 'utf8'));
+    assert(onDisk.lastProjectId === PROJECT && onDisk.layout.aiPaneRatio === 0.5, 'ui-state.json does not contain the persisted values');
+    const revisionFiles = await readdir(workspace.dataRoot);
+    assert(revisionFiles.includes('projects.json') && revisionFiles.includes('ui-state.json'), 'data-root bookkeeping files are missing');
+    await bridge.dispose();
+  });
+
+  await run('M1: L3 staging isolation keeps staged bridges inside a temporary dataRoot', async () => {
+    const { isolateStagedConfig, prepareIsolatedBase, supportsDataRoot, realDataRootPath } = await import('./lib/data-root-isolation.mjs');
+    const base = await prepareIsolatedBase('dsh-m1-isolation-');
+    try {
+      const preM1 = { workerNode: process.execPath, allowedProjects: ['demo'] };
+      assert(supportsDataRoot(preM1) === false, 'a pre-M1 config was treated as dataRoot aware');
+      assert(isolateStagedConfig(preM1, { stagingRoot: '/staging', base }).config === preM1, 'a pre-M1 config must pass through unchanged');
+      const m1 = { ...preM1, registryPath: '/staging/managed/registry.json', legacyDataRoots: ['/staging'] };
+      const isolated = isolateStagedConfig(m1, { stagingRoot: '/staging', base });
+      assert(isolated.supported === true, 'an M1 config was not isolated');
+      assert(isolated.config.dataRoot === (await import('node:path')).join(base, 'data'), 'the isolated dataRoot is not under the temp base');
+      assert(Array.isArray(isolated.config.legacyDataRoots) && isolated.config.legacyDataRoots.length === 1 && isolated.config.legacyDataRoots[0] === '/staging', 'legacy sources are not limited to the staging snapshot');
+      assert(JSON.stringify(isolated.config).includes(realDataRootPath()) === false, 'the isolated config names the real user data root');
+    } finally {
+      const { disposeIsolatedBase } = await import('./lib/data-root-isolation.mjs');
+      await disposeIsolatedBase(base);
+    }
   });
 
   console.log(`\n${passes} passed, ${failures.length} failed`);

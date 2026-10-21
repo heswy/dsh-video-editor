@@ -20,6 +20,7 @@ import { access, mkdir, realpath, writeFile } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { delimiter, dirname, isAbsolute, join, resolve } from 'node:path';
 import { loadStagedHost, sha256 } from './lib/staged-host.mjs';
+import { assertRealDataRootUnchanged, disposeIsolatedBase, isolateStagedConfig, prepareIsolatedBase, snapshotRealDataRoot } from './lib/data-root-isolation.mjs';
 
 const TERMINAL = new Set(['succeeded', 'failed', 'cancelled', 'timed_out']);
 
@@ -125,7 +126,12 @@ async function main() {
   // R3: execute the staged Host implementation, after reproducing the recorded
   // snapshot digests. The development worktree Host is never imported here.
   const staged = await loadStagedHost(staging);
-  const config = staged.config;
+  // M1+: never let a staged bridge fall back to the real ~/Movies/DSH Video.
+  // Pre-M1 staging configs are returned unchanged by isolateStagedConfig.
+  const realDataRootBaseline = await snapshotRealDataRoot();
+  const isolatedBase = await prepareIsolatedBase('dsh-host-engine-');
+  const isolation = isolateStagedConfig(staged.config, { stagingRoot: staging, base: isolatedBase });
+  const config = isolation.config;
   const integrity = staged.integrity;
   const worktreeHead = spawnSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).stdout.trim();
   const worktreeStatus = spawnSync('git', ['status', '--porcelain'], { encoding: 'utf8' }).stdout.trim();
@@ -146,6 +152,7 @@ async function main() {
     executedHost: staged.evidence,
     worktree: { head: worktreeHead, dirty: worktreeStatus.length > 0, note: 'recorded only; the run imports the staged Host bytes above' },
     hostWarnings: host.warnings,
+    dataRootIsolated: isolation.supported === true,
   };
 
   try {
@@ -269,6 +276,14 @@ async function main() {
     } catch (error) {
       evidence.disposed = false;
       evidence.disposeError = error instanceof Error ? error.message : String(error);
+    }
+    try {
+      await disposeIsolatedBase(isolatedBase);
+      await assertRealDataRootUnchanged(realDataRootBaseline);
+    } catch (isolationError) {
+      evidence.isolationError = isolationError instanceof Error ? isolationError.message : String(isolationError);
+      console.error('data-root isolation check failed: ' + evidence.isolationError);
+      process.exitCode = 1;
     }
     evidence.finishedAt = new Date().toISOString();
     evidence.hostWarnings = host.warnings.slice(-20);

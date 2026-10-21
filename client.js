@@ -194,6 +194,16 @@ window.__ModuleLoader__.load({
       'video.project.renameHint': '点击重命名（回车保存，Esc 取消）',
       'video.project.renameEmpty': '工程名称不能为空。',
       'video.project.renameFailed': '重命名失败，请重试。',
+      'video.project.reveal': '在 Finder 中显示',
+      'video.project.revealGeneric': '在文件管理器中显示',
+      'video.project.copyPath': '复制路径',
+      'video.project.copyPathDone': '路径已复制',
+      'video.project.copyPathFailed': '复制路径失败，请手动复制：',
+      'video.project.revealFailed': '无法打开工程文件夹，请重试。',
+      'video.save.saving': '保存中…',
+      'video.save.saved': '已保存',
+      'video.save.failed': '保存失败 · 重试',
+      'video.save.retryHint': '面板状态保存失败，点击重试',
       'video.layout.resize': '调整面板宽度',
       'video.canvas.play': '播放',
       'video.canvas.pause': '暂停',
@@ -328,6 +338,16 @@ window.__ModuleLoader__.load({
       'video.project.renameHint': 'Click to rename (Enter saves, Esc cancels)',
       'video.project.renameEmpty': 'A project name is required.',
       'video.project.renameFailed': 'Could not rename the project; try again.',
+      'video.project.reveal': 'Show in Finder',
+      'video.project.revealGeneric': 'Show in file manager',
+      'video.project.copyPath': 'Copy path',
+      'video.project.copyPathDone': 'Path copied',
+      'video.project.copyPathFailed': 'Could not copy the path; copy it manually:',
+      'video.project.revealFailed': 'Could not open the project folder; try again.',
+      'video.save.saving': 'Saving…',
+      'video.save.saved': 'Saved',
+      'video.save.failed': 'Save failed · Retry',
+      'video.save.retryHint': 'Panel state could not be saved; click to retry',
       'video.layout.resize': 'Resize panels',
       'video.canvas.play': 'Play',
       'video.canvas.pause': 'Pause',
@@ -1072,6 +1092,13 @@ window.__ModuleLoader__.load({
 .dv-project-item-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .dv-project-item-check{flex:none;min-width:1em;color:var(--dsw-alias-label-secondary,#a4a4ad);text-align:center;}
 .dv-project-separator{height:1px;margin:4px 6px;background:color-mix(in srgb,var(--dsw-alias-border-l1,rgba(127,127,140,.28)) 62%,transparent);}
+.dv-project-folder-notice{margin:0 8px;max-width:min(420px,42vw);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.78em;color:var(--dsw-alias-label-secondary,#a4a4ad);}
+.dv-project-folder-notice[data-kind="error"]{color:var(--dsw-alias-state-error-primary,#e06c75);}
+.dv-save-status{flex:none;margin-right:6px;padding:0 8px;height:22px;border:1px solid color-mix(in srgb,var(--dsw-alias-border-l1,rgba(127,127,140,.32)) 82%,transparent);border-radius:999px;background:transparent;color:var(--dsw-alias-label-secondary,#a4a4ad);font:inherit;font-size:.72em;line-height:20px;cursor:default;white-space:nowrap;}
+.dv-save-status[data-status="failed"]{color:var(--dsw-alias-state-error-primary,#e06c75);cursor:pointer;}
+.dv-save-status:disabled{opacity:1;}
+.dv-folder-button{flex:none;margin-left:2px;}
+@media (max-width: 640px){.dv-folder-button{display:none;}}
 .dv-project-rename-error{
   min-width:0;
   margin:0;
@@ -1537,6 +1564,14 @@ window.__ModuleLoader__.load({
         },
         h('rect', { x: 1.25, y: 3.5, width: 8.75, height: 9, rx: 2 }),
         h('path', { d: 'M10 7.15 13.9 5a.55.55 0 0 1 .82.48v5.04a.55.55 0 0 1-.82.48L10 8.85' })
+      );
+    }
+
+    function FolderIcon() {
+      return h(
+        'svg',
+        { viewBox: '0 0 16 16', width: '16', height: '16', fill: 'none', stroke: 'currentColor', strokeWidth: '1.4', 'aria-hidden': 'true', focusable: 'false' },
+        h('path', { d: 'M1.8 4.3c0-.7.6-1.3 1.3-1.3h3.1l1.4 1.6h5.3c.7 0 1.3.6 1.3 1.3v6.8c0 .7-.6 1.3-1.3 1.3H3.1c-.7 0-1.3-.6-1.3-1.3V4.3z' })
       );
     }
 
@@ -4442,6 +4477,10 @@ window.__ModuleLoader__.load({
       // P3-016 resizable right pane: a reflected inline CSS variable; pointer
       // and keyboard updates never touch project/revision authority.
       const [aiPaneRatio, setAiPaneRatio] = React.useState(readAiPaneRatio);
+      // M1-05: Host ui-state (last project / layout) + visible save status.
+      const [uiStateSupported, setUiStateSupported] = React.useState(true);
+      const [saveStatus, setSaveStatus] = React.useState('idle');
+      const [saveRetryToken, setSaveRetryToken] = React.useState(0);
       const aiPaneRatioRef = React.useRef(aiPaneRatio);
       aiPaneRatioRef.current = aiPaneRatio;
       const [resizing, setResizing] = React.useState(false);
@@ -4453,6 +4492,8 @@ window.__ModuleLoader__.load({
       const [renameDraft, setRenameDraft] = React.useState(null);
       const [renameBusy, setRenameBusy] = React.useState(false);
       const [renameError, setRenameError] = React.useState(null);
+      const [folderBusy, setFolderBusy] = React.useState(null);
+      const [folderNotice, setFolderNotice] = React.useState(null);
       const projectToggleRef = React.useRef(null);
       const projectItemRef = React.useRef(null);
       const projectNameRef = React.useRef(null);
@@ -4660,6 +4701,74 @@ window.__ModuleLoader__.load({
         };
       });
 
+      // M1-05: Host ui-state writes are scheduled imperatively by the event that
+      // changed the state (no effect churn). The save indicator stays visible;
+      // an older Host without ui-state degrades silently to local view memory.
+      const uiStateSupportedRef = React.useRef(true);
+      const lastProjectSaveTimer = React.useRef(null);
+      const paneRatioSaveTimer = React.useRef(null);
+      const lastWrittenProjectId = React.useRef('');
+
+      function markUiStateSupport(value) {
+        uiStateSupportedRef.current = value;
+        setUiStateSupported(value);
+      }
+
+      function classifyUiStateError(error) {
+        const code = error && error.code;
+        if (code === 'E_METHOD' || code === 'E_UI_STATE_CONFIG' || code === 'E_CONFIGURATION' || code === 'E_UI_STATE_UNAVAILABLE') {
+          markUiStateSupport(false);
+          return 'unsupported';
+        }
+        return 'failed';
+      }
+
+      function scheduleLastProjectWrite(targetProjectId) {
+        if (typeof targetProjectId !== 'string' || targetProjectId === '') return;
+        if (uiStateSupportedRef.current === false) return;
+        if (lastWrittenProjectId.current === targetProjectId) return;
+        lastWrittenProjectId.current = targetProjectId;
+        if (lastProjectSaveTimer.current !== null) clearTimeout(lastProjectSaveTimer.current);
+        setSaveStatus('saving');
+        lastProjectSaveTimer.current = setTimeout(function writeLastProject() {
+          lastProjectSaveTimer.current = null;
+          hostRequest('ui.state.set', { patch: { lastProjectId: targetProjectId } }).then(
+            function saved() {
+              if (aliveRef.current) setSaveStatus('saved');
+            },
+            function failed(error) {
+              if (!aliveRef.current) return;
+              const kind = classifyUiStateError(error);
+              setSaveStatus(kind === 'unsupported' ? 'idle' : 'failed');
+            }
+          );
+        }, 250);
+      }
+
+      function schedulePaneRatioWrite(ratio) {
+        if (uiStateSupportedRef.current === false) return;
+        if (typeof ratio !== 'number' || Number.isFinite(ratio) === false) return;
+        if (paneRatioSaveTimer.current !== null) clearTimeout(paneRatioSaveTimer.current);
+        paneRatioSaveTimer.current = setTimeout(function writeLayout() {
+          paneRatioSaveTimer.current = null;
+          hostRequest('ui.state.set', { patch: { layout: { aiPaneRatio: ratio } } }).catch(function failed(error) {
+            if (aliveRef.current) classifyUiStateError(error);
+          });
+        }, 400);
+      }
+
+      function retrySaveLastProject() {
+        if (saveStatus !== 'failed') return;
+        setSaveStatus('saving');
+        const target = projectIdRef.current;
+        if (typeof target !== 'string' || target === '') {
+          setSaveStatus('idle');
+          return;
+        }
+        lastWrittenProjectId.current = '';
+        scheduleLastProjectWrite(target);
+      }
+
       // Focus management for the project picker menu: opening moves focus onto
       // the current project item; Escape/Tab close it and return focus to the
       // arrow button (never left on the removed node). Only element-level
@@ -4719,8 +4828,12 @@ window.__ModuleLoader__.load({
       }
 
       function toggleProjectMenu() {
-        if (projectMenuOpen) closeProjectMenu();
-        else setProjectMenuOpen(true);
+        if (projectMenuOpen) {
+          closeProjectMenu();
+        } else {
+          setFolderNotice(null);
+          setProjectMenuOpen(true);
+        }
       }
 
       function onProjectToggleKeyDown(event) {
@@ -4890,11 +5003,13 @@ window.__ModuleLoader__.load({
           }
         }
         writeLayoutPrefs(aiPaneRatioRef.current);
+        schedulePaneRatioWrite(aiPaneRatioRef.current);
       }
 
       function resetAiPaneRatio() {
         setPaneRatio(AI_PANE_DEFAULT_RATIO);
         writeLayoutPrefs(AI_PANE_DEFAULT_RATIO);
+        schedulePaneRatioWrite(AI_PANE_DEFAULT_RATIO);
       }
 
       function onSplitterKeyDown(event) {
@@ -4907,6 +5022,7 @@ window.__ModuleLoader__.load({
         if (typeof event.preventDefault === 'function') event.preventDefault();
         setPaneRatio(next);
         writeLayoutPrefs(next);
+        schedulePaneRatioWrite(next);
       }
 
       /** Managed projects only: demo/legacy entries never reach the product UI. */
@@ -4952,6 +5068,31 @@ window.__ModuleLoader__.load({
         const token = ++bootToken.current;
         setBoot('loading');
         setError(null);
+        // M1-05: the Host is authoritative for the last opened project and the
+        // pane ratio; an older Host without ui-state falls back to the in-memory
+        // view memory / localStorage silently.
+        let restored = null;
+        try {
+          restored = await hostRequest('ui.state.get', {});
+        } catch (_restoreError) {
+          restored = null;
+        }
+        if (!aliveRef.current || token !== bootToken.current) return;
+        if (restored !== null && typeof restored === 'object') {
+          markUiStateSupport(true);
+          if (restored.layout !== null && typeof restored.layout === 'object' && typeof restored.layout.aiPaneRatio === 'number') {
+            try {
+              setAiPaneRatio(normalizeAiPaneRatio(restored.layout.aiPaneRatio));
+            } catch (_ratioError) {
+              /* an invalid persisted ratio keeps the local preference */
+            }
+          }
+        } else {
+          markUiStateSupport(false);
+        }
+        const restoredLastProjectId = restored !== null && typeof restored === 'object' && typeof restored.lastProjectId === 'string'
+          ? restored.lastProjectId
+          : '';
         let listed = null;
         try {
           listed = await hostRequest('project.list', {});
@@ -4964,9 +5105,12 @@ window.__ModuleLoader__.load({
         if (!aliveRef.current || token !== bootToken.current) return;
         const choices = managedProjectChoices(listed);
         setProjectChoices(choices);
-        const rememberedId = typeof projectIdRef.current === 'string' && projectIdRef.current.length > 0 && projectIdRef.current !== DEMO_PROJECT_ID
+        const memoryId = typeof projectIdRef.current === 'string' && projectIdRef.current.length > 0 && projectIdRef.current !== DEMO_PROJECT_ID
           ? projectIdRef.current
           : '';
+        const rememberedId = memoryId !== ''
+          ? memoryId
+          : (restoredLastProjectId !== '' && restoredLastProjectId !== DEMO_PROJECT_ID ? restoredLastProjectId : '');
         const rememberedAvailable = rememberedId !== '' && choices.some(function known(item) {
           return item.projectId === rememberedId;
         });
@@ -5056,6 +5200,8 @@ window.__ModuleLoader__.load({
           latestRevisionRef.current = typeof inspected.revision === 'string' ? inspected.revision : null;
           projectIdRef.current = opened.projectId;
           setProjectId(opened.projectId);
+          lastWrittenProjectId.current = '';
+          scheduleLastProjectWrite(opened.projectId);
           setProject(inspected);
           setBoot('ready');
           setActiveSessionId(null);
@@ -5785,6 +5931,88 @@ window.__ModuleLoader__.load({
         );
       }
 
+      // ── M1-04 project folder actions (Host-authoritative path) ─────────────
+      function platformIsMac() {
+        try {
+          const platform = typeof navigator === 'undefined' ? '' : String(navigator.platform || '');
+          if (/Mac|iPhone|iPad|iPod/.test(platform)) return true;
+          if (typeof navigator !== 'undefined' && typeof navigator.userAgent === 'string' && navigator.userAgent.indexOf('Macintosh') >= 0) return true;
+        } catch (_error) {
+          /* platform sniffing is presentation-only */
+        }
+        return false;
+      }
+
+      function folderRevealLabel() {
+        return platformIsMac() ? t('video.project.reveal') : t('video.project.revealGeneric');
+      }
+
+      async function writeClipboardText(value) {
+        try {
+          if (typeof navigator !== 'undefined' && navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+            await navigator.clipboard.writeText(value);
+            return true;
+          }
+        } catch (_error) {
+          /* fall through to the legacy path */
+        }
+        try {
+          if (typeof document !== 'undefined' && typeof document.execCommand === 'function') {
+            const area = document.createElement('textarea');
+            area.value = value;
+            area.setAttribute('readonly', 'readonly');
+            area.style.position = 'fixed';
+            area.style.opacity = '0';
+            const host = document.documentElement || document;
+            host.appendChild(area);
+            const selected = typeof area.select === 'function' ? area.select() : false;
+            const copied = selected !== false && document.execCommand('copy') === true;
+            host.removeChild(area);
+            return copied;
+          }
+        } catch (_error) {
+          /* the caller shows the fallback toast */
+        }
+        return false;
+      }
+
+      async function revealProjectFolder() {
+        if (folderBusy !== null || projectIdRef.current === '') return;
+        setProjectMenuOpen(false);
+        setFolderBusy('reveal');
+        setFolderNotice(null);
+        try {
+          const result = await hostRequest('project.reveal', { projectId: projectIdRef.current });
+          if (result === null || typeof result !== 'object' || result.opened !== true) throw new Error('reveal failed');
+        } catch (_error) {
+          if (aliveRef.current) setFolderNotice({ kind: 'error', text: t('video.project.revealFailed') });
+        } finally {
+          if (aliveRef.current) setFolderBusy(null);
+        }
+      }
+
+      async function copyProjectPath() {
+        if (folderBusy !== null || projectIdRef.current === '') return;
+        setProjectMenuOpen(false);
+        setFolderBusy('copy');
+        setFolderNotice(null);
+        let path = '';
+        try {
+          const result = await hostRequest('project.path', { projectId: projectIdRef.current });
+          path = result !== null && typeof result === 'object' && typeof result.path === 'string' ? result.path : '';
+          if (path === '') throw new Error('path unavailable');
+          const copied = await writeClipboardText(path);
+          if (!copied) throw new Error('clipboard unavailable');
+          if (aliveRef.current) setFolderNotice({ kind: 'status', text: t('video.project.copyPathDone') });
+        } catch (_error) {
+          if (aliveRef.current) {
+            setFolderNotice({ kind: 'error', text: t('video.project.copyPathFailed') + (path === '' ? '' : path) });
+          }
+        } finally {
+          if (aliveRef.current) setFolderBusy(null);
+        }
+      }
+
       function projectMenu() {
         const options = projectChoices.slice();
         if (projectId !== '' && options.some(function has(item) { return item.projectId === projectId; }) === false) {
@@ -5825,6 +6053,37 @@ window.__ModuleLoader__.load({
             );
           }),
           h('div', { className: 'dv-project-separator', key: 'separator', 'aria-hidden': 'true' }),
+          h(
+            'button',
+            {
+              type: 'button',
+              key: '__reveal__',
+              className: 'dv-project-item',
+              'data-action': 'reveal',
+              role: 'menuitem',
+              disabled: projectBusy !== null || folderBusy !== null,
+              onClick: function revealFolder() {
+                void revealProjectFolder();
+              },
+            },
+            h('span', { className: 'dv-project-item-title' }, folderRevealLabel())
+          ),
+          h(
+            'button',
+            {
+              type: 'button',
+              key: '__copy_path__',
+              className: 'dv-project-item',
+              'data-action': 'copy-path',
+              role: 'menuitem',
+              disabled: projectBusy !== null || folderBusy !== null,
+              onClick: function copyFolderPath() {
+                void copyProjectPath();
+              },
+            },
+            h('span', { className: 'dv-project-item-title' }, t('video.project.copyPath'))
+          ),
+          h('div', { className: 'dv-project-separator', key: 'separator-new', 'aria-hidden': 'true' }),
           h(
             'button',
             {
@@ -5896,6 +6155,27 @@ window.__ModuleLoader__.load({
             },
             h(ChevronDownIcon)
           ),
+          // M1-04: a visible, always-reachable folder button (the menu items are
+          // the discoverable/copy-path fallback). Hidden when no project is open.
+          projectId !== ''
+            ? h(
+                'button',
+                {
+                  type: 'button',
+                  key: 'folder',
+                  className: 'dv-icon-button dv-folder-button',
+                  'data-action': 'reveal-folder',
+                  'aria-label': folderRevealLabel(),
+                  title: folderRevealLabel(),
+                  disabled: projectBusy !== null || folderBusy !== null,
+                  onClick: function revealFolder() {
+                    setFolderNotice(null);
+                    void revealProjectFolder();
+                  },
+                },
+                h(FolderIcon)
+              )
+            : null,
           projectMenuOpen ? projectMenu() : null
         );
       }
@@ -5993,10 +6273,42 @@ window.__ModuleLoader__.load({
             h('span', { className: 'dv-sr-only', key: 'label' }, t('video.back'))
           ),
           projectBar(),
+          projectId !== '' && saveStatus !== 'idle'
+            ? h(
+                'button',
+                {
+                  type: 'button',
+                  key: 'save-status',
+                  className: 'dv-save-status',
+                  'data-status': saveStatus,
+                  role: saveStatus === 'failed' ? 'alert' : 'status',
+                  disabled: saveStatus !== 'failed',
+                  title: saveStatus === 'failed' ? t('video.save.retryHint') : t('video.save.saved'),
+                  onClick: retrySaveLastProject,
+                },
+                saveStatus === 'saving'
+                  ? t('video.save.saving')
+                  : saveStatus === 'saved'
+                    ? t('video.save.saved')
+                    : t('video.save.failed')
+              )
+            : null,
           // P3-016: inline rename feedback stays next to the left-aligned project
           // name/arrow. P3-017: the product export control owns the right side.
           renameError !== null
             ? h('p', { className: 'dv-project-rename-error', role: 'alert', key: 'rename-error' }, renameError)
+            : null,
+          folderNotice !== null
+            ? h(
+                'p',
+                {
+                  className: 'dv-project-folder-notice',
+                  key: 'folder-notice',
+                  role: folderNotice.kind === 'error' ? 'alert' : 'status',
+                  'data-kind': folderNotice.kind,
+                },
+                folderNotice.text
+              )
             : null,
           h('span', { className: 'dv-spacer', key: 'spacer' }),
           exportControl()

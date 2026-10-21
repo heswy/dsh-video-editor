@@ -55,6 +55,7 @@ import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { loadStagedHost, sha256 } from './lib/staged-host.mjs';
+import { assertStateRootIsolation, snapshotRealDataRoot, supportsDataRoot } from './lib/data-root-isolation.mjs';
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const LIB_DIR = join(SCRIPT_DIR, 'lib');
@@ -289,14 +290,25 @@ function rendererPageSource(moduleSource) {
 // ─── isolated mutable bridge state ─────────────────────────────────────────
 
 async function prepareStateRoot(staging, config) {
-  const base = await mkdtemp(join(tmpdir(), 'dsh-p3008-canvas-'));
-  const directories = {
-    projects: join(base, 'projects'),
-    output: join(base, 'output'),
-    inbox: join(base, 'asset-inbox'),
-    sessionCwd: join(base, 'session-cwd'),
-    managed: join(base, 'managed'),
-  };
+  const base = await mkdtemp(join(tmpdir(), 'dsh-p3008-workspace-'));
+  const dataRootSupported = supportsDataRoot(config);
+  const realDataRootBaseline = await snapshotRealDataRoot();
+  const dataRoot = dataRootSupported ? join(base, 'data') : null;
+  const directories = dataRootSupported
+    ? {
+        projects: join(dataRoot, 'projects'),
+        output: join(dataRoot, 'cache', 'output'),
+        inbox: join(dataRoot, 'asset-inbox'),
+        sessionCwd: join(dataRoot, 'session-cwd'),
+        managed: dataRoot,
+      }
+    : {
+        projects: join(base, 'projects'),
+        output: join(base, 'output'),
+        inbox: join(base, 'asset-inbox'),
+        sessionCwd: join(base, 'session-cwd'),
+        managed: join(base, 'managed'),
+      };
   for (const directory of Object.values(directories)) await mkdir(directory, { recursive: true });
   const stagingRegistry = JSON.parse(await readFile(config.registryPath, 'utf8'));
   assert(stagingRegistry !== null && typeof stagingRegistry === 'object' && typeof stagingRegistry.projectsRoot === 'string',
@@ -313,30 +325,18 @@ async function prepareStateRoot(staging, config) {
   const registryPath = join(directories.managed, 'registry.json');
   await writeFile(registryPath, JSON.stringify(registry, null, 2) + '\n');
   await writeFile(projectsRegistryPath, JSON.stringify({ projects: {} }, null, 2) + '\n');
+  const { legacyDataRoots: ignoredLegacyRoots, ...redirectedBase } = config;
   const redirected = {
-    ...config,
+    ...redirectedBase,
     registryPath,
     artifactRoot: directories.output,
     projectsRoot: directories.projects,
     assetInboxRoot: directories.inbox,
     sessionStatePath: join(base, 'session-state.json'),
     sessionCwd: directories.sessionCwd,
+    ...(dataRootSupported ? { dataRoot, legacyDataRoots: [] } : {}),
   };
-  return { base, registryPath, projectsRegistryPath, directories, config: redirected, stagingRegistry };
-}
-
-function fakeSessionController() {
-  return {
-    async create() {
-      return { sessionId: 'session-browser-1' };
-    },
-    async rename(request) {
-      return { title: request.title, seq: 1 };
-    },
-    async inspect(id) {
-      return { meta: { id }, events: [] };
-    },
-  };
+  return { base, dataRoot, dataRootSupported, realDataRootBaseline, registryPath, projectsRegistryPath, directories, config: redirected, stagingRegistry };
 }
 
 function fakeCtx() {
@@ -2120,6 +2120,17 @@ async function main() {
     ok = false;
     console.error('harness failed:', evidence.fatalError.message);
   } finally {
+    if (stateRoot !== null) {
+      try {
+        await assertStateRootIsolation(stateRoot);
+        evidence.dataRootIsolation = { ok: true, supported: stateRoot.dataRootSupported === true, realRootUntouched: true };
+      } catch (isolationError) {
+        evidence.dataRootIsolation = { ok: false, error: isolationError instanceof Error ? isolationError.message : String(isolationError) };
+        console.error('data-root isolation check failed: ' + evidence.dataRootIsolation.error);
+        process.exitCode = 1;
+      }
+    }
+
     // Resource teardown is idempotent: a thrown assertion must not leak a
     // browser, server or worker process.
     if (browser !== null) await browser.close().catch(() => {});

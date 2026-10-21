@@ -113,7 +113,7 @@ check('host half exports a Cordis plugin body and declares required services', (
   assert(/export\s+function\s+apply\s*\(/.test(hostSource), 'index.js must export function apply()');
   assert(/export\s+const\s+inject\s*=\s*\[\s*'connection'\s*,\s*'tools'\s*,\s*'subprocess'\s*\]/.test(hostSource), 'index.js must declare connection/tools/subprocess injection');
   assert(/@deepseek-ai\//.test(hostSource) === false, 'index.js must not import @deepseek-ai/* (profile path packages cannot resolve them)');
-  for (const module of ['host/bridge.js', 'host/routes.js', 'host/tool.js', 'host/config.js', 'host/env.js', 'host/errors.js', 'host/engine.js', 'host/limits.js', 'host/sessions.js', 'host/session-state.js']) {
+  for (const module of ['host/bridge.js', 'host/routes.js', 'host/tool.js', 'host/config.js', 'host/env.js', 'host/errors.js', 'host/engine.js', 'host/limits.js', 'host/sessions.js', 'host/session-state.js', 'host/data-root.js', 'host/ui-state.js']) {
     assert(exists(module), `missing Host module ${module}`);
   }
   return 'apply(), inject, nine Host modules';
@@ -174,12 +174,12 @@ check('entrypoints and exports resolve to shipped files', () => {
 
 check('package files list covers every shipped artifact', () => {
   assert(Array.isArray(pkg.files) && pkg.files.length > 0, 'package.json needs a files list for a reproducible install');
-  const required = ['index.js', 'client.js', 'cordis.patch.yml', 'icon.svg', 'locale/en.json', 'locale/zh.json', 'README.md', 'host/bridge.js', 'host/routes.js', 'host/tool.js', 'host/config.js', 'host/env.js', 'host/errors.js', 'host/engine.js', 'host/limits.js', 'host/sessions.js', 'host/session-state.js', 'host/preview.js', 'host/snapshot.js', 'host/asset-inbox.js', 'host/canvas-runtime.js'];
+  const required = ['index.js', 'client.js', 'cordis.patch.yml', 'icon.svg', 'locale/en.json', 'locale/zh.json', 'README.md', 'host/bridge.js', 'host/routes.js', 'host/tool.js', 'host/config.js', 'host/env.js', 'host/errors.js', 'host/engine.js', 'host/limits.js', 'host/sessions.js', 'host/session-state.js', 'host/preview.js', 'host/snapshot.js', 'host/asset-inbox.js', 'host/canvas-runtime.js', 'host/data-root.js', 'host/ui-state.js'];
   for (const artifact of required) {
     const covered = pkg.files.some((pattern) => listMatchingFiles(pattern).includes(artifact));
     assert(covered, `files list does not cover required artifact "${artifact}"`);
   }
-  const extra = ['scripts/check.mjs', 'scripts/smoke-client.mjs', 'scripts/check-host.mjs', 'scripts/stage-dev.mjs', 'scripts/test-host-engine.mjs', 'scripts/test-stage-version.mjs', 'scripts/lib/staged-host.mjs', 'scripts/lib/stage-version.mjs', 'scripts/test-canvas-chain.mjs', 'scripts/test-canvas-browser.mjs', 'scripts/test-canvas-workspace.mjs', 'scripts/lib/react-dom-lite.mjs', 'scripts/lib/canvas-harness-page.js', 'scripts/lib/canvas-harness-page.html'];
+  const extra = ['scripts/check.mjs', 'scripts/smoke-client.mjs', 'scripts/check-host.mjs', 'scripts/stage-dev.mjs', 'scripts/test-host-engine.mjs', 'scripts/test-stage-version.mjs', 'scripts/lib/staged-host.mjs', 'scripts/lib/stage-version.mjs', 'scripts/test-canvas-chain.mjs', 'scripts/test-canvas-browser.mjs', 'scripts/test-canvas-workspace.mjs', 'scripts/lib/react-dom-lite.mjs', 'scripts/lib/canvas-harness-page.js', 'scripts/lib/canvas-harness-page.html', 'scripts/test-v1-storage.mjs'];
   for (const tool of extra) {
     assert(exists(tool), `local check tool "${tool}" is missing from the workspace`);
     const packaged = pkg.files.some((pattern) => listMatchingFiles(pattern).includes(tool));
@@ -824,8 +824,100 @@ check('P3-008 R4: accepted requests and uploads are admitted, drained and cleane
   return 'single inFlight drain + trusted upload lifecycle + no publication after dispose';
 });
 
+check('M1: the stable data root is authoritative and the worker registry format is unchanged', () => {
+  const config = read('host/config.js');
+  const dataRoot = read('host/data-root.js');
+  const bridge = read('host/bridge.js');
+  const stage = read('scripts/stage-dev.mjs');
+  const pkg = JSON.parse(read('package.json'));
+  for (const key of ["'dataRoot'", "'legacyDataRoots'", "'browserPath'"]) {
+    assert(config.includes(key), `trusted config key ${key} is missing`);
+  }
+  assert(dataRoot.includes('export function resolveDataRoot('), 'data-root resolver missing');
+  assert(dataRoot.includes("env && typeof env.DSH_VIDEO_DATA_ROOT === 'string'"), 'DSH_VIDEO_DATA_ROOT override missing');
+  assert(dataRoot.includes("join(home, ...DEFAULT_SEGMENTS)") && dataRoot.includes("'Movies', 'DSH Video'"), 'default ~/Movies/DSH Video root missing');
+  assert(dataRoot.includes('export async function ensureDataRoot(') && dataRoot.includes('0o700'), 'ensureDataRoot/permissions missing');
+  assert(dataRoot.includes('export async function migrateLegacyRoots('), 'legacy migration missing');
+  assert(dataRoot.includes('export async function scanProjectsRoot('), 'disk-scan registry fallback missing');
+  assert(dataRoot.includes('workerRegistry') || dataRoot.includes("registryPath: paths.projectsRegistryPath"), 'data-root worker registry wiring missing');
+  // The frozen worker managed schema (5 keys) must stay unchanged: no version/managed on registry.json.
+  assert(dataRoot.includes("const workerRegistry = {") && dataRoot.includes('projectsRoot: paths.projectsRoot'), 'worker managed registry is not derived from the data root');
+  assert(bridge.includes('ensureDataRoot(') && bridge.includes('migrateLegacyRoots('), 'bridge does not prepare/migrate the data root');
+  assert(bridge.includes('dataRootLayout(') && bridge.includes('sessionStatePath: layout.sessionStatePath'), 'session store is not rooted at the data root');
+  assert(bridge.includes('const registryPath = await canonicalFile(paths.registryPath'), 'bridge does not resolve the worker registry from the data root');
+  assert(bridge.includes('registryPath: runtime.registryPath'), 'worker is not started with the data-root registry');
+  assert(stage.includes("'host/data-root.js'") && stage.includes("'host/ui-state.js'"), 'staging runtime paths are missing the new Host files');
+  assert(stage.includes('legacyDataRoots') && stage.includes('--legacy-data-root') && stage.includes('dataRoot'), 'staging config injection is missing dataRoot/legacy sources');
+  assert(Array.isArray(pkg.files) && pkg.files.includes('host/*.js'), 'package files do not ship the Host modules');
+  // stage-dev: dataRoot only injected when explicitly requested; legacy roots are
+  // always explicit build inputs (never a hardcoded user home path).
+  assert(stage.includes('...(args.dataRoot === undefined ? {} : { dataRoot: args.dataRoot })'), 'stage-dev does not gate dataRoot injection');
+  assert(stage.includes('legacyDataRoots: [...new Set([...args.legacyDataRoots, out])]'), 'stage-dev does not inject legacyDataRoots');
+  assert(stage.includes("'--legacy-data-root'") && stage.includes("'--migrate-from'"), 'stage-dev legacy CLI arguments are missing');
+  // L3 harnesses must isolate the data root instead of writing the real home.
+  assert(existsSync('scripts/lib/data-root-isolation.mjs'), 'L3 data-root isolation helper missing');
+  const isolation = read('scripts/lib/data-root-isolation.mjs');
+  assert(isolation.includes('exports') === false && isolation.includes('supportsDataRoot(') && isolation.includes('legacyDataRoots'), 'L3 isolation helper does not gate on M1 configs');
+  const harness = read('scripts/lib/conversation-harness.mjs');
+  assert(harness.includes('dataRootSupported') && harness.includes('dataRoot,') && harness.includes("legacyDataRoots: []"), 'conversation harness does not isolate dataRoot');
+  const canvas = read('scripts/test-canvas-workspace.mjs');
+  assert(canvas.includes('dataRootSupported') && canvas.includes('assertStateRootIsolation('), 'canvas workspace harness does not isolate dataRoot');
+  for (const runner of ['scripts/test-host-engine.mjs', 'scripts/test-canvas-chain.mjs', 'scripts/test-canvas-browser.mjs']) {
+    const source = read(runner);
+    assert(source.includes('isolateStagedConfig(') && source.includes('assertRealDataRootUnchanged('), runner + ' does not isolate/verify the data root');
+  }
+  return 'dataRoot priority/ensure/migration/scan; frozen 5-key worker registry; staging injection; L3 isolation';
+});
+
+check('M1: registry/session/ui-state corruption degrades without deleting user evidence', () => {
+  const dataRoot = read('host/data-root.js');
+  const bridge = read('host/bridge.js');
+  const state = read('host/session-state.js');
+  const uiState = read('host/ui-state.js');
+  assert(dataRoot.includes('corrupt-') && dataRoot.includes('quarantineCorruptFile'), 'corrupt files are not preserved');
+  assert(bridge.includes("registryRecovery") && bridge.includes("'scanned'"), 'registry scan recovery evidence missing');
+  assert(bridge.includes('E_PROJECT_UNAVAILABLE') && bridge.includes('quarantined'), 'project quarantine contract missing');
+  assert(state.includes('recoverIfNeeded(') && state.includes(".corrupt-"), 'session-state recovery/backup missing');
+  assert(state.includes('mergeLegacyState('), 'legacy session merge missing');
+  assert(uiState.includes('UI_STATE_VERSION = 1') && uiState.includes('.corrupt-'), 'ui-state recovery/versioning missing');
+  assert(uiState.includes("'lastProjectId'") && uiState.includes("'aiPaneRatio'"), 'ui-state whitelist missing');
+  return 'preserve corrupt evidence; scan/bak recovery; quarantine; session/ui-state rebuild';
+});
+
+check('M1: folder actions are UI-only, argv-based and never expose paths through the Tool', () => {
+  const bridge = read('host/bridge.js');
+  const client = read('client.js');
+  const routes = read('host/routes.js');
+  assert(bridge.includes("'project.path'") && bridge.includes("'project.reveal'"), 'folder Host methods missing');
+  assert(bridge.includes("'ui.state.get'") && bridge.includes("'ui.state.set'"), 'ui-state Host methods missing');
+  assert(bridge.includes('Project folders are a UI-only action'), 'folder actions are not gated from the Tool');
+  assert(bridge.includes('Panel state is a UI-only action'), 'ui-state is not gated from the Tool');
+  assert(bridge.includes('E_REVEAL_FAILED'), 'reveal failure code missing');
+  assert(bridge.includes("spawn(command, [directory], { detached: true, stdio: 'ignore' })") || (bridge.includes('this.spawnImpl(command, [directory]') && bridge.includes('detached: true')), 'reveal is not argv-form detached spawn');
+  assert(/spawn\([^)]*\+\s*directory/.test(bridge) === false && /open \$\{|shell: true/.test(bridge) === false, 'reveal must never compose a shell string');
+  assert(routes.includes('E_REVEAL_FAILED') && routes.includes('E_PROJECT_UNAVAILABLE'), 'route status mapping is missing the new errors');
+  assert(client.includes("'project.reveal'") && client.includes("'project.path'"), 'client folder actions are missing');
+  assert(client.includes('writeClipboardText') && client.includes('document.execCommand') , 'clipboard fallback missing');
+  assert(client.includes("data-action': 'reveal'") || client.includes('data-action') , 'folder menu items are not testable');
+  assert(client.includes("video.project.copyPath") && client.includes("video.project.reveal"), 'folder action copy is missing');
+  assert(client.includes('document.body') === false, 'client touches document.body (static scope gate)');
+  return 'UI-only path/reveal/ui-state, argv spawn, clipboard fallback, localized copy';
+});
+
+check('M1: panel state is whitelisted, atomic and UI-only; boot restores it', () => {
+  const uiState = read('host/ui-state.js');
+  const bridge = read('host/bridge.js');
+  const client = read('client.js');
+  assert(uiState.includes('MAX_UI_STATE_BYTES') && uiState.includes('rename(temporary, this.path)'), 'ui-state atomic bounded write missing');
+  assert(uiState.includes('E_UI_STATE_PARAMS'), 'ui-state rejects unknown fields');
+  assert(bridge.includes('ui.state.get') && bridge.includes('ui.state.set'), 'Host ui-state dispatcher missing');
+  assert(client.includes("hostRequest('ui.state.get'") && client.includes("hostRequest('ui.state.set'"), 'client does not use the Host ui-state');
+  assert(client.includes('lastProjectId') && client.includes('video.save.saving') && client.includes('video.save.failed'), 'last-project restore/save indicator missing');
+  assert(client.includes('readAiPaneRatio') && client.includes('schedulePaneRatioWrite'), 'pane ratio Host persistence fallback wiring missing');
+  return 'whitelist/atomic UI state, boot restore, save indicator, layout fallback';
+});
+
 for (const [name, detail] of passes) console.log(`PASS  ${name}${detail === 'ok' ? '' : `  [${detail}]`}`);
 for (const [name, message] of failures) console.error(`FAIL  ${name}: ${message}`);
-
 console.log(`\n${passes.length} passed, ${failures.length} failed`);
 if (failures.length > 0) process.exitCode = 1;

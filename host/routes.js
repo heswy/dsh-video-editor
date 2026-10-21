@@ -30,10 +30,12 @@ export function statusForError(error) {
       return 413;
     case 'E_PARAMS':
     case 'E_METHOD':
+    case 'E_UI_STATE_PARAMS':
       return 400;
     case 'E_CONTENT_TYPE':
       return 415;
     case 'E_PROJECT_NOT_FOUND':
+    case 'E_PROJECT_UNAVAILABLE':
     case 'E_JOB_NOT_FOUND':
     case 'E_PREVIEW_NOT_FOUND':
       return 404;
@@ -41,6 +43,9 @@ export function statusForError(error) {
       return 403;
     case 'E_PREVIEW_UNSUPPORTED':
       return 415;
+    case 'E_UI_STATE_UNAVAILABLE':
+    case 'E_UI_STATE_CORRUPT':
+    case 'E_UI_STATE_LIMIT':
     case 'E_ARTIFACT_NOT_READY':
     case 'E_PROJECT_CLOSING':
     case 'E_PROJECT_NOT_OPEN':
@@ -50,6 +55,8 @@ export function statusForError(error) {
     case 'E_PERSIST':
     case 'E_PROJECT':
       return 409;
+    case 'E_DATA_ROOT':
+    case 'E_REVEAL_FAILED':
     case 'E_ARTIFACT_INTEGRITY':
     case 'E_INTERNAL':
     case 'E_WORKER_RESPONSE':

@@ -366,6 +366,21 @@ export class SessionService {
     return record === undefined ? null : record.projectId;
   }
 
+  /**
+   * Rebuild a corrupt persisted mapping once per activation (M1-03). Never
+   * throws: a failure keeps the typed state error visible in diagnose().
+   */
+  async recoverState() {
+    const error = this.configurationError();
+    if (error !== null) return { recovered: false, error: error.code };
+    try {
+      return await this.store.recoverIfNeeded();
+    } catch (recoveryError) {
+      this.report(recoveryError, 'state recovery');
+      return { recovered: false, error: recoveryError && recoveryError.code ? recoveryError.code : 'E_SESSION_STATE_CORRUPT' };
+    }
+  }
+
   /** Read-only preflight used by the panel and installation acceptance. */
   async diagnose() {
     const error = this.configurationError();
