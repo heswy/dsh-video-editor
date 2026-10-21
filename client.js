@@ -116,6 +116,27 @@ window.__ModuleLoader__.load({
 
     //#region locale dictionaries
     const ZH = {
+'video.timeline.title': "时间线",
+'video.timeline.loading': "正在读取时间线…",
+'video.timeline.updated': "修改已保存",
+'video.timeline.saved': "已保存",
+'video.timeline.needTrack': "请先添加视频轨",
+'video.timeline.cutHint': "将播放头移到选中片段内再切分",
+'video.timeline.split': "切分",
+'video.timeline.delete': "删除",
+'video.timeline.duplicate': "复制",
+'video.timeline.addTrack': "加轨",
+'video.timeline.snap': "吸附",
+'video.timeline.zoom': "缩放时间线",
+'video.timeline.compact': "片条",
+'video.timeline.trimIn': "调节入点",
+'video.timeline.trimOut': "调节出点",
+'video.timeline.track': "轨道",
+'video.timeline.speed': "速度",
+'video.timeline.saving': "正在保存…",
+'video.timeline.hint': "选择片段 · S 切分 · 拖边精调 · Delete 删除",
+'video.timeline.add': "加入时间线",
+
       'nav.label': 'Vedio Editor',
       'video.back': '返回对话',
       'video.empty': '尚无工程',
@@ -282,6 +303,27 @@ window.__ModuleLoader__.load({
     };
 
     const EN = {
+'video.timeline.title': "Timeline",
+'video.timeline.loading': "Loading timeline…",
+'video.timeline.updated': "Changes saved",
+'video.timeline.saved': "Saved",
+'video.timeline.needTrack': "Add a video track first",
+'video.timeline.cutHint': "Move the playhead inside the selected clip",
+'video.timeline.split': "Split",
+'video.timeline.delete': "Delete",
+'video.timeline.duplicate': "Duplicate",
+'video.timeline.addTrack': "Add track",
+'video.timeline.snap': "Snap",
+'video.timeline.zoom': "Timeline zoom",
+'video.timeline.compact': "Compact",
+'video.timeline.trimIn': "Trim in",
+'video.timeline.trimOut': "Trim out",
+'video.timeline.track': "Track",
+'video.timeline.speed': "Speed",
+'video.timeline.saving': "Saving…",
+'video.timeline.hint': "Select a clip · S to split · drag edges to trim · Delete",
+'video.timeline.add': "Add to timeline",
+
       'nav.label': 'Vedio Editor',
       'video.back': 'Back to conversation',
       'video.empty': 'No project yet',
@@ -455,6 +497,8 @@ window.__ModuleLoader__.load({
     // The empty workspace is deliberately plain: one quiet sentence, no cards,
     // badges, stage framing, decorative motion or future-capability copy.
     const CSS = `
+.dv-timeline{flex-shrink:0;border-top:1px solid var(--dsw-alias-border-l1,rgba(127,127,140,.28));padding:10px 0 0;min-height:150px;max-height:340px;background:var(--dsw-alias-bg-base,#1a1a1c);font-size:11px}.dv-timeline-toolbar{display:flex;gap:4px;align-items:center;padding:0 10px 8px;flex-wrap:wrap}.dv-timeline-toolbar strong{margin-right:auto}.dv-timeline-toolbar label{display:flex;align-items:center;gap:3px}.dv-timeline-toolbar input[type=range]{width:72px}.dv-timeline-scroll{overflow:auto;max-height:200px}.dv-timeline-content{position:relative}.dv-timeline-ruler{height:24px;position:relative;cursor:crosshair;border-bottom:1px solid var(--dsw-alias-border-l1,rgba(127,127,140,.28))}.dv-timeline-ruler span{position:absolute;top:3px;border-left:1px solid var(--dsw-alias-border-l1,rgba(127,127,140,.28));padding-left:3px;color:var(--dsw-alias-label-tertiary,#86868f);font-size:10px}.dv-timeline-track{display:flex;height:48px;border-bottom:1px solid var(--dsw-alias-border-l1,rgba(127,127,140,.28))}.dv-timeline-track-name{width:100px;flex-shrink:0;padding:14px 8px;box-sizing:border-box;position:sticky;left:0;z-index:4;background:var(--dsw-alias-bg-base,#1a1a1c);overflow:hidden;white-space:nowrap}.dv-timeline-lane{position:relative;background:rgba(128,128,128,.035)}.dv-timeline-clip{position:absolute;top:5px;bottom:5px;box-sizing:border-box;border:1px solid #4c6873;background:#314a54;border-radius:4px;color:#eef5f5;cursor:grab;overflow:hidden;touch-action:none;display:flex;align-items:center}.dv-timeline-clip.is-selected{outline:2px solid #a6d5e4;outline-offset:-2px}.dv-timeline-clip-label{padding:0 10px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;pointer-events:none}.dv-timeline-edge{position:absolute;left:0;top:0;bottom:0;width:7px;background:rgba(255,255,255,.13);cursor:ew-resize;z-index:2}.dv-timeline-edge-out{left:auto;right:0}.dv-timeline-playhead{position:absolute;top:0;bottom:0;width:1px;background:#f2ae78;pointer-events:none;z-index:3}.dv-timeline-inspector{display:flex;align-items:center;gap:12px;padding:8px 10px;flex-wrap:wrap}.dv-timeline-inspector label{display:flex;gap:5px;align-items:center}.dv-timeline-inspector select{max-width:120px;color:inherit;background:var(--dsw-alias-bg-layer-1,#232327);border:1px solid var(--dsw-alias-border-l1,rgba(127,127,140,.28));border-radius:4px}.dv-timeline-notice{padding:5px 10px;color:var(--dsw-alias-label-tertiary,#86868f);min-height:16px}.dv-timeline-compact .dv-timeline-track{height:28px}.dv-timeline-compact .dv-timeline-track-name{padding-top:5px}.dv-timeline-compact .dv-timeline-clip{top:3px;bottom:3px}@media(max-width:480px){.dv-timeline-toolbar{gap:2px}.dv-timeline-inspector code{max-width:180px;overflow:hidden}.dv-timeline-toolbar .dv-button{padding:4px 6px}}
+
 .dv-root{
   --dv-dur-fast:120ms;
   --dv-dur-med:160ms;
@@ -3124,7 +3168,7 @@ window.__ModuleLoader__.load({
               {
                 key: asset.assetId,
                 type: 'button',
-                className: 'dv-media-tile',
+                draggable:asset.kind!=='audio',onDragStart:e=>e.dataTransfer.setData('application/x-dsh-asset',asset.assetId),className: 'dv-media-tile',
                 'aria-pressed': selected?.assetId === asset.assetId ? 'true' : 'false',
                 onClick: () => choose(asset),
               },
@@ -3169,6 +3213,7 @@ window.__ModuleLoader__.load({
               'section',
               { className: 'dv-media-detail', key: selected.assetId },
               h('strong', null, selected.name),
+              props.onAdd&&selected.kind!=='audio'?h('button',{className:'dv-button dv-button-primary',onClick:()=>props.onAdd(selected)},t('video.timeline.add')):null,
               selected.kind === 'image'
                 ? h('img', { className: 'dv-media-preview', src: mediaUrl(selected), alt: selected.name })
                 : h(selected.kind === 'audio' ? 'audio' : 'video', {
@@ -3258,6 +3303,591 @@ window.__ModuleLoader__.load({
       );
     }
 
+    function TimelinePanel(props) {
+      const h = React.createElement,
+        t = props.t;
+      const [data, setData] = React.useState(null),
+        [selected, setSelected] = React.useState(null),
+        [busy, setBusy] = React.useState(false),
+        [notice, setNotice] = React.useState(""),
+        [zoom, setZoom] = React.useState(36),
+        [compact, setCompact] = React.useState(false),
+        [snap, setSnap] = React.useState(true),
+        [drag, setDrag] = React.useState(null);
+      const alive = React.useRef(true),
+        current = React.useRef(null),
+        viewport = React.useRef(null),laneRefs=React.useRef(new Map()),gestureMoved=React.useRef(false);
+      React.useEffect(() => {
+        alive.current = true;
+        return () => {
+          alive.current = false;
+        };
+      }, []);
+      async function load() {
+        let page = await hostRequest("timeline.inspect", {
+          projectId: props.projectId,
+          limit: 100,
+        });
+        const loadRevision=page.revision;
+        let tracks = page.tracks;
+        while (page.nextOffset !== null) {
+          page = await hostRequest("timeline.inspect", {
+            projectId: props.projectId,
+            offset: page.nextOffset,
+            limit: 100,
+          });
+          if(page.revision!==loadRevision)throw {code:'E_REVISION_CONFLICT',message:'作品已更新，请刷新时间线'};
+          tracks = tracks.map((tr) => ({
+            ...tr,
+            clips: [
+              ...tr.clips,
+              ...(page.tracks.find((x) => x.trackId === tr.trackId)?.clips || []),
+            ],
+          }));
+        }
+        const next = { ...page, tracks };
+        if (alive.current) {
+          current.current = next;
+          setData(next);
+        }
+        return next;
+      }
+      React.useEffect(() => {
+        let stop = false;
+        (async () => {
+          try {
+            await load();
+            if (!stop) await props.onReload();
+          } catch (e) {
+            if (!stop) setNotice(errorText(hostError(e), t));
+          }
+        })();
+        return () => {
+          stop = true;
+        };
+      }, [props.projectId]);
+      React.useEffect(() => {
+        if (current.current && props.revision !== current.current.revision)
+          void load().catch((e) => setNotice(errorText(hostError(e), t)));
+      }, [props.revision]);
+      async function write(ops, action) {
+        if (busy || !current.current) return;
+        setBusy(true);
+        setNotice("");
+        try {
+          const result = await hostRequest(action || "timeline.apply", {
+            projectId: props.projectId,
+            expectedRevision: current.current.revision,
+            operationId: operationId(),
+            ...(ops ? { ops } : {}),
+          });
+          if (!alive.current) return;
+          setNotice(
+            result.changeSummary?.summary || t("video.timeline.saved"),
+          );
+          await load();
+          await props.onReload();
+        } catch (e) {
+          if (alive.current) {
+            setNotice(errorText(hostError(e), t));
+            if (hostError(e).code === "E_REVISION_CONFLICT") {
+              await load();
+              await props.onReload();
+            }
+          }
+        } finally {
+          if (alive.current) setBusy(false);
+        }
+      }
+      React.useEffect(() => {
+        if (props.assetToAdd && data) {
+          const a = props.assetToAdd;
+          props.onAssetConsumed();
+          const tr = data.tracks.find((x) => x.kind === "video" && !x.locked);
+          if (!tr) {
+            setNotice(t("video.timeline.needTrack"));
+            return;
+          }
+          const start = Math.max(
+            0,
+            ...tr.clips.map((c) => c.startFrame + c.durationFrames),
+          );
+          void write([
+            {
+              op: "clip.insert",
+              assetId: a.assetId,
+              trackId: tr.trackId,
+              startFrame: start,
+              ...(a.kind === "image" ? { durationFrames: 150 } : {}),
+              mode: "ripple",
+            },
+          ]);
+        }
+      }, [props.assetToAdd, data]);
+      if (!data)
+        return h(
+          "section",
+          { className: "dv-timeline", role: "status" },
+          t("video.timeline.loading"),
+        );
+      const clips = data.tracks.flatMap((tr) =>
+          tr.clips.map((c) => ({ ...c, trackId: tr.trackId })),
+        ),
+        chosen = clips.find((c) => c.clipId === selected),
+        frame = Math.round(props.time * 30),
+        duration = data.settings.durationFrames,
+        width = Math.max(520, (duration / 30) * zoom + 60);
+      function nearest(raw, except) {
+        let value = Math.max(0, Math.round(raw));
+        if (!snap) return value;
+        const points = [
+          0,
+          frame,
+          ...clips
+            .filter((c) => c.clipId !== except)
+            .flatMap((c) => [c.startFrame, c.startFrame + c.durationFrames]),
+        ];
+        const at = points.find((x) => Math.abs(x - value) <= 180 / zoom);
+        return at ?? value;
+      }
+      function cut() {
+        if (
+          chosen &&
+          frame > chosen.startFrame &&
+          frame < chosen.startFrame + chosen.durationFrames
+        )
+          void write([{ op: "clip.split", clipId: chosen.clipId, atFrame: frame }]);
+        else setNotice(t("video.timeline.cutHint"));
+      }
+      function moveOrder(delta) {
+        if (!chosen) return;
+        const tr = data.tracks.find((tr) => tr.trackId === chosen.trackId),
+          ids = tr.clips.map((c) => c.clipId),
+          i = ids.indexOf(chosen.clipId),
+          j = i + delta;
+        if (j < 0 || j >= ids.length) return;
+        [ids[i], ids[j]] = [ids[j], ids[i]];
+        void write([{ op: "clip.reorder", trackId: tr.trackId, clipIds: ids }]);
+      }
+      function pointerDown(e, c, edge) {
+        if (busy) return;
+        e.preventDefault();
+        e.stopPropagation();
+        setSelected(c.clipId);
+        e.currentTarget.setPointerCapture(e.pointerId);
+        gestureMoved.current=false;setDrag({ clipId: c.clipId, x: e.clientX,y:e.clientY, edge, delta: 0 });
+      }
+      function pointerMove(e) {
+        if (!drag) return;
+        setDrag({ ...drag, delta: Math.round(((e.clientX - drag.x) / zoom) * 30) });
+      }
+      function pointerUp(e, c) {
+        if (!drag) return;
+        if(Math.hypot(e.clientX-drag.x,e.clientY-drag.y)<4){setDrag(null);return;}
+        gestureMoved.current=true;
+        const delta = drag.delta,
+          edge = drag.edge;
+        const lane=[...laneRefs.current.values()].find(el=>{if(!el)return false;const r=el.getBoundingClientRect();return e.clientY>=r.top&&e.clientY<=r.bottom;});
+        const trackId =
+          lane?.dataset.trackId ||
+          data.tracks.find((tr) => tr.clips.some((x) => x.clipId === c.clipId))
+            ?.trackId;
+        setDrag(null);
+        if (
+          !delta &&
+          trackId ===
+            data.tracks.find((tr) => tr.clips.some((x) => x.clipId === c.clipId))
+              ?.trackId
+        )
+          return;
+        const fromTrack=data.tracks.find(tr=>tr.clips.some(x=>x.clipId===c.clipId));
+        const startFrame=nearest(c.startFrame+delta,c.clipId);
+        if(!edge&&trackId===fromTrack?.trackId){const hit=fromTrack.clips.find(x=>x.clipId!==c.clipId&&startFrame<x.startFrame+x.durationFrames&&startFrame+c.durationFrames>x.startFrame);if(hit){const order=fromTrack.clips.filter(x=>x.clipId!==c.clipId).map(x=>x.clipId);let at=order.indexOf(hit.clipId);if(startFrame>=hit.startFrame+hit.durationFrames/2)at++;order.splice(at,0,c.clipId);void write([{op:'clip.reorder',trackId,clipIds:order}]);return;}}
+        const ops = edge
+          ? [{ op: "clip.trim", clipId: c.clipId, edge, deltaFrames: delta }]
+          : [
+              {
+                op: "clip.move",
+                clipId: c.clipId,
+                startFrame: nearest(c.startFrame + delta, c.clipId),
+                trackId,
+                mode: "reject",
+              },
+            ];
+        void write(ops);
+      }
+      return h(
+        "section",
+        {
+          className: "dv-timeline" + (compact ? " dv-timeline-compact" : ""),
+          "aria-label": t("video.timeline.title"),"aria-busy":busy?"true":"false",
+          tabIndex: 0,
+          onKeyDown: (e) => {
+            if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT")
+              return;
+            if (e.key === "Delete" || e.key === "Backspace") {
+              e.preventDefault();
+              if (chosen)
+                void write([
+                  { op: "clip.delete", clipId: chosen.clipId, ripple: false },
+                ]);
+            }
+            if (e.key === "s" && !e.metaKey && !e.ctrlKey) cut();
+            if ((e.metaKey || e.ctrlKey) && e.key === "z") {
+              e.preventDefault();
+              void write(null, e.shiftKey ? "timeline.redo" : "timeline.undo");
+            }
+          },
+        },
+        h(
+          "div",
+          { className: "dv-timeline-toolbar" },
+          h("strong", null, t("video.timeline.title")),
+          h(
+            "button",
+            {
+              className: "dv-button dv-button-quiet",
+              disabled: busy || !data.undoHint.canUndo,
+              onClick: () => write(null, "timeline.undo"),
+            },
+            t("video.canvas.undo"),
+          ),
+          h(
+            "button",
+            {
+              className: "dv-button dv-button-quiet",
+              disabled: busy || !data.undoHint.canRedo,
+              onClick: () => write(null, "timeline.redo"),
+            },
+            t("video.canvas.redo"),
+          ),
+          h(
+            "button",
+            {
+              className: "dv-button dv-button-quiet",
+              disabled: busy || !chosen,
+              onClick: cut,
+            },
+            t("video.timeline.split"),
+          ),
+          h(
+            "button",
+            {
+              className: "dv-button dv-button-quiet",
+              disabled: busy || !chosen,
+              onClick: () =>
+                chosen &&
+                write([
+                  { op: "clip.delete", clipId: chosen.clipId, ripple: false },
+                ]),
+            },
+            t("video.timeline.delete"),
+          ),
+          h(
+            "button",
+            {
+              className: "dv-button dv-button-quiet",
+              disabled: busy || !chosen,
+              onClick: () =>
+                chosen &&
+                write([
+                  { op: "clip.duplicate", clipId: chosen.clipId, mode: "ripple" },
+                ]),
+            },
+            t("video.timeline.duplicate"),
+          ),
+          h(
+            "button",
+            {
+              className: "dv-button dv-button-quiet",
+              disabled: busy || !chosen,
+              onClick: () => moveOrder(-1),
+            },
+            "←",
+          ),
+          h(
+            "button",
+            {
+              className: "dv-button dv-button-quiet",
+              disabled: busy || !chosen,
+              onClick: () => moveOrder(1),
+            },
+            "→",
+          ),
+          h(
+            "button",
+            {
+              className: "dv-button dv-button-quiet",
+              disabled: busy,
+              onClick: () => write([{ op: "track.add", kind: "video" }]),
+            },
+            t("video.timeline.addTrack"),
+          ),
+          h(
+            "label",
+            null,
+            h("input", {
+              type: "checkbox",
+              checked: snap,
+              onChange: (e) => setSnap(e.target.checked),
+            }),
+            t("video.timeline.snap"),
+          ),
+          h("input", {
+            type: "range",
+            min: 8,
+            max: 100,
+            value: zoom,
+            "aria-label": t("video.timeline.zoom"),
+            onChange: (e) => setZoom(Number(e.target.value)),
+          }),
+          h(
+            "button",
+            {
+              className: "dv-button dv-button-quiet",
+              "aria-pressed": compact,
+              onClick: () => setCompact(!compact),
+            },
+            t("video.timeline.compact"),
+          ),
+        ),
+        h(
+          "div",
+          { className: "dv-timeline-scroll", ref: viewport },
+          h(
+            "div",
+            { className: "dv-timeline-content", style: { width: width + 100 } },
+            h(
+              "div",
+              {
+                className: "dv-timeline-ruler",
+                style: { marginLeft: 100, width },
+                onClick: (e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  props.onSeek(
+                    Math.min(
+                      duration / 30,
+                      Math.max(0, (e.clientX - rect.left) / zoom),
+                    ),
+                  );
+                },
+              },
+              Array.from(
+                { length: Math.min(1000, Math.ceil(duration / 30) + 1) },
+                (_, i) =>
+                  h(
+                    "span",
+                    { key: i, style: { left: i * zoom } },
+                    zoom < 20 && i % 5 ? "" : i + "s",
+                  ),
+              ),
+            ),
+            data.tracks
+              .filter((tr) => tr.kind === "video")
+              .map((tr) =>
+                h(
+                  "div",
+                  { key: tr.trackId, className: "dv-timeline-track" },
+                  h("span", { className: "dv-timeline-track-name" }, tr.name),
+                  h(
+                    "div",
+                    {
+                      className: "dv-timeline-lane",ref:el=>{if(el)laneRefs.current.set(tr.trackId,el);else laneRefs.current.delete(tr.trackId);},
+                      "data-track-id": tr.trackId,
+                      style: { width },
+                      onDragOver: (e) => e.preventDefault(),
+                      onDrop: (e) => {
+                        e.preventDefault();
+                        const clipId = e.dataTransfer.getData(
+                          "application/x-dsh-clip",
+                        );
+                        const a = e.dataTransfer.getData("application/x-dsh-asset");
+                        const rect = e.currentTarget.getBoundingClientRect(),
+                          startFrame = nearest(
+                            ((e.clientX - rect.left) / zoom) * 30,
+                            clipId,
+                          );
+                        if (clipId)
+                          void write([
+                            {
+                              op: "clip.move",
+                              clipId,
+                              trackId: tr.trackId,
+                              startFrame,
+                              mode: "reject",
+                            },
+                          ]);
+                        else if (a)
+                          void write([
+                            {
+                              op: "clip.insert",
+                              assetId: a,
+                              trackId: tr.trackId,
+                              startFrame,
+                              durationFrames: 150,
+                              mode: "ripple",
+                            },
+                          ]);
+                      },
+                    },
+                    tr.clips.map((c) =>
+                      h(
+                        "div",
+                        {
+                          key: c.clipId,
+                          className:
+                            "dv-timeline-clip" +
+                            (selected === c.clipId ? " is-selected" : ""),
+                          "data-clip-id": c.clipId,
+                          tabIndex: 0,
+                          role: "button",
+                          "aria-label": c.label || c.clipId,
+                          "aria-pressed": selected === c.clipId,
+                          onClick: () => {
+                            if(gestureMoved.current){gestureMoved.current=false;return;}
+                            setSelected(c.clipId);
+                            props.onSeek(c.startFrame / 30);
+                          },
+                          onKeyDown:e=>{if(e.target!==e.currentTarget)return;if(e.key==='Enter'||e.key===' '){e.preventDefault();setSelected(c.clipId);props.onSeek(c.startFrame/30);}},
+                          onPointerDown: (e) => pointerDown(e, c, null),
+                          onPointerMove: pointerMove,
+                          onPointerUp: (e) => pointerUp(e, c),
+                          onPointerCancel: () => setDrag(null),
+                          style: {
+                            left: ((c.startFrame+(drag?.clipId===c.clipId&&drag.edge==="in"?drag.delta:0)) / 30) * zoom,
+                            width: Math.max(8, ((c.durationFrames+(drag?.clipId===c.clipId&&drag.edge?(drag.edge==="in"?-drag.delta:drag.delta):0)) / 30) * zoom),
+                            transform:
+                              drag?.clipId === c.clipId && !drag.edge
+                                ? "translateX(" + (drag.delta / 30) * zoom + "px)"
+                                : undefined,
+                          },
+                        },
+                        h("span", {
+                          className: "dv-timeline-edge",
+                          role: "slider",
+                          tabIndex: 0,
+                          "aria-label": t("video.timeline.trimIn"),
+                          "aria-valuenow": c.startFrame,
+                          onPointerDown: (e) => pointerDown(e, c, "in"),
+                          onKeyDown: (e) => {
+                            if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              void write([
+                                {
+                                  op: "clip.trim",
+                                  clipId: c.clipId,
+                                  edge: "in",
+                                  deltaFrames: e.key === "ArrowLeft" ? -1 : 1,
+                                },
+                              ]);
+                            }
+                          },
+                        }),
+                        h(
+                          "span",
+                          { className: "dv-timeline-clip-label" },
+                          c.label || c.clipId,
+                        ),
+                        h("span", {
+                          className: "dv-timeline-edge dv-timeline-edge-out",
+                          role: "slider",
+                          tabIndex: 0,
+                          "aria-label": t("video.timeline.trimOut"),
+                          "aria-valuenow": c.durationFrames,
+                          onPointerDown: (e) => pointerDown(e, c, "out"),
+                          onKeyDown: (e) => {
+                            if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              void write([
+                                {
+                                  op: "clip.trim",
+                                  clipId: c.clipId,
+                                  edge: "out",
+                                  deltaFrames: e.key === "ArrowLeft" ? -1 : 1,
+                                },
+                              ]);
+                            }
+                          },
+                        }),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            h("div", {
+              className: "dv-timeline-playhead",
+              style: { left: 100 + props.time * zoom },
+            }),
+          ),
+        ),
+        chosen
+          ? h(
+              "div",
+              { className: "dv-timeline-inspector" },
+              h("code", null, "@clip:" + chosen.clipId),
+              h("span", null, (chosen.durationFrames / 30).toFixed(2) + "s"),
+              h(
+                "label",
+                null,
+                t("video.timeline.track"),
+                h(
+                  "select",
+                  {
+                    value: chosen.trackId,
+                    disabled: busy,
+                    onChange: (e) =>
+                      write([
+                        {
+                          op: "clip.move",
+                          clipId: chosen.clipId,
+                          trackId: e.target.value,
+                          startFrame: chosen.startFrame,
+                        },
+                      ]),
+                  },
+                  data.tracks
+                    .filter((x) => x.kind === "video")
+                    .map((tr) =>
+                      h("option", { key: tr.trackId, value: tr.trackId }, tr.name),
+                    ),
+                ),
+              ),
+              h(
+                "label",
+                null,
+                t("video.timeline.speed"),
+                h(
+                  "select",
+                  {
+                    value: chosen.speed || 1,
+                    disabled: busy || chosen.kind !== "media",
+                    onChange: (e) =>
+                      write([
+                        {
+                          op: "clip.speed",
+                          clipId: chosen.clipId,
+                          speed: Number(e.target.value),
+                          ripple: true,
+                        },
+                      ]),
+                  },
+                  [0.25, 0.5, 1, 1.5, 2, 4].map((x) =>
+                    h("option", { key: x, value: x }, x + "×"),
+                  ),
+                ),
+              ),
+            )
+          : null,
+        h(
+          "div",
+          { className: "dv-timeline-notice", role: "status" },
+          busy ? t("video.timeline.saving") : notice || t("video.timeline.hint"),
+        ),
+      );
+    }
+
     function CanvasWorkspace(props) {
       const t = props.t;
       const projectId = props.projectId;
@@ -3305,6 +3935,7 @@ window.__ModuleLoader__.load({
       const [busy, setBusy] = React.useState(null);
       const [actionError, setActionError] = React.useState(null);
       const [stageSize, setStageSize] = React.useState({ width: 0, height: 0 });
+      const [assetToAdd,setAssetToAdd]=React.useState(null);
       const [drawerOpen, setDrawerOpen] = React.useState(false);
       const [uploadBusy, setUploadBusy] = React.useState(false);
       const [sceneChoice, setSceneChoice] = React.useState(scenes[0] ? scenes[0].sceneId : null);
@@ -4041,7 +4672,7 @@ window.__ModuleLoader__.load({
           if (!playing) return function noPoll() {};
           const timer = setInterval(function pollState() {
             void postActiveCommand('state');
-          }, 250);
+          }, 33);
           return function stopPoll() {
             clearInterval(timer);
           };
@@ -4942,7 +5573,8 @@ window.__ModuleLoader__.load({
           actionError !== null ? h('span', { className: 'dv-tool-error', role: 'alert' }, errorText(actionError, t)) : null,
           busy !== null ? h('span', { className: 'dv-tool-hint' }, t('video.canvas.busy')) : null
         ),
-        drawerOpen && previewOnly ? h(MediaLibraryPanel,{key:projectId,t:t,projectId:projectId,onClose:()=>setDrawerOpen(false)}) : null,
+        previewOnly && props.timelineEnabled!==false ? h(TimelinePanel,{key:projectId,t,projectId,revision:inspected.revision,time,onSeek:seekTo,onReload,assetToAdd,onAssetConsumed:()=>setAssetToAdd(null)}) : null,
+        drawerOpen && previewOnly ? h(MediaLibraryPanel,{key:projectId,t:t,projectId:projectId,onClose:()=>setDrawerOpen(false),onAdd:asset=>{setAssetToAdd(asset);setDrawerOpen(false);}}) : null,
         drawerOpen && previewOnly === false
           ? h(
               'aside',
@@ -5849,7 +6481,7 @@ window.__ModuleLoader__.load({
           job = await hostRequest('render', {
             projectId: projectIdRef.current,
             revision: revisionAtClick,
-            timeoutMs: PRODUCT_RENDER_TIMEOUT_MS,
+            timeoutMs: Math.min(21600000,Math.max(PRODUCT_RENDER_TIMEOUT_MS,60000+140*Math.round((project?.duration||0)*30))),
           });
         } catch (error) {
           settleFailure(error !== null && typeof error === 'object' && typeof error.code === 'string' ? error.code : 'E_RENDER');
@@ -5869,7 +6501,7 @@ window.__ModuleLoader__.load({
             progress: Number.isFinite(job.progress) ? job.progress : 0,
           });
         });
-        const deadline = startedAt + PRODUCT_EXPORT_DEADLINE_MS;
+        const deadline = startedAt + Math.max(PRODUCT_EXPORT_DEADLINE_MS,120000+140*Math.round((project?.duration||0)*30));
         let result = job;
         let consecutiveStatusErrors = 0;
         while (isTerminalJob(result) === false && Date.now() < deadline) {
@@ -6741,6 +7373,7 @@ window.__ModuleLoader__.load({
             projectId: projectId,
             inspected: project,
             previewOnly: true,
+            timelineEnabled:props.timelineEnabled,
             onReload: reloadCanvasProject,
             onError: function canvasError(nextError) {
               setError(nextError);

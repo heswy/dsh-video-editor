@@ -316,3 +316,15 @@ JSONL v1 方法集新增 1 个 UI-only 方法（共 25 个）；既有方法的�
 | `asset.remove` | `{projectId,assetId,operationId?}`；检查 timeline/project/composition 引用；先暂存媒体，再原子提交索引，失败恢复媒体 |
 
 媒体索引与派生缓存独立于 composition revision。所有媒体操作复用工程写入队列，关闭/退出排空；单文件 2 GiB、工程 8 GiB。损坏索引保留 `.corrupt-*` 后重建，缺失索引从 media 重建。M2 不把素材自动放入作品，时间线由 M3 接入。
+
+### M3 timeline methods
+
+| `timeline.inspect` | Timeline truth, integer frames, expectedRevision for writes |
+| `timeline.apply` | Timeline truth, integer frames, expectedRevision for writes |
+| `timeline.resolve` | Timeline truth, integer frames, expectedRevision for writes |
+| `timeline.undo` | Timeline truth, integer frames, expectedRevision for writes |
+| `timeline.redo` | Timeline truth, integer frames, expectedRevision for writes |
+| `scene.compose` | Timeline truth, integer frames, expectedRevision for writes |
+| `scene.inspect` | Timeline truth, integer frames, expectedRevision for writes |
+
+`preview.files` paginates the private snapshot manifest in 100-file pages; Host assembles it before registering exact routes.

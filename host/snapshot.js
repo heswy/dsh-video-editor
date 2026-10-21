@@ -1,3 +1,5 @@
+import { createReadStream } from 'node:fs';
+import { Readable } from 'node:stream';
 /**
  * Host-owned preview snapshot routes (P3-008).
  *
@@ -37,6 +39,7 @@ export const MAX_SNAPSHOTS_PER_PROJECT = 4;
 const NONCE = /^[a-f0-9]{32}$/;
 const MAX_FILE_BYTES = 64 * 1024 * 1024;
 const MIME = Object.freeze({
+  '.mp4':'video/mp4', '.mov':'video/quicktime', '.m4v':'video/mp4', '.webm':'video/webm',
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
   '.mjs': 'text/javascript; charset=utf-8',
@@ -88,6 +91,7 @@ export class SnapshotRoutes {
     this.connection = connection;
     this.webServer = webServer !== undefined && webServer !== null ? webServer : null;
     this.records = new Map();
+    this.mediaStreams=new Map();
     this.projectSnapshots = new Map();
     this.disposers = [];
   }
@@ -194,16 +198,15 @@ export class SnapshotRoutes {
       if (typeof filePath !== 'string' || filePath.length === 0 || filePath.startsWith('/') || filePath.includes('..') || filePath.includes('\\') || filePath.includes('\0')) {
         throw new Error('invalid snapshot file path');
       }
-      if (!Number.isSafeInteger(declared.bytes) || declared.bytes < 0 || declared.bytes > MAX_FILE_BYTES) throw new Error('invalid snapshot file size');
+      if (!Number.isSafeInteger(declared.bytes) || declared.bytes < 0 || declared.bytes > (declared.media===true?2*1024*1024*1024:MAX_FILE_BYTES)) throw new Error('invalid snapshot file size');
       if (typeof declared.sha256 !== 'string' || /^[a-f0-9]{64}$/.test(declared.sha256) === false) throw new Error('invalid snapshot file hash');
       const target = resolve(directory, filePath);
       if (inside(directory, target) === false) throw new Error('snapshot file escapes directory');
       const info = await stat(target);
       if (info.isFile() === false) throw new Error('snapshot entry is not a file');
-      const bytes = await readFile(target);
-      if (bytes.length !== declared.bytes || sha256(bytes) !== declared.sha256) throw new Error('snapshot file failed verification');
-      total += bytes.length;
-      files.set(filePath, { absPath: target, bytes: declared.bytes, sha256: declared.sha256 });
+      if(declared.media===true){if(!/^media\/[a-f0-9]{8}\.[a-z0-9]+$/.test(filePath)||info.size!==declared.bytes)throw new Error('invalid snapshot media');}
+      else {const bytes=await readFile(target);if(bytes.length!==declared.bytes||sha256(bytes)!==declared.sha256)throw new Error('snapshot file failed verification');total+=bytes.length;}
+      files.set(filePath, { absPath: target, bytes: declared.bytes, sha256: declared.sha256, media:declared.media===true,snapshotId:snapshot.snapshotId,mtimeMs:info.mtimeMs,ino:info.ino });
     }
     if (files.has(snapshot.entry) === false) throw new Error('snapshot entry is not in the manifest');
     if (total > 128 * 1024 * 1024) throw new Error('snapshot exceeds preview byte limit');
@@ -217,6 +220,7 @@ export class SnapshotRoutes {
       expiresAt: typeof snapshot.expiresAt === 'string' ? snapshot.expiresAt : null,
       disposers: [],
     };
+    try {
     for (const [filePath, declared] of files) {
       const route = this.routePath(snapshot.snapshotId, filePath);
       let disposer;
@@ -249,6 +253,7 @@ export class SnapshotRoutes {
       }
       record.disposers.push(disposer);
     }
+    } catch(error){for(const dispose of record.disposers.splice(0).reverse()){try{dispose();}catch{}}throw error;}
     this.records.set(snapshot.snapshotId, record);
     const retained = this.projectSnapshots.get(projectId) || [];
     retained.push(snapshot.snapshotId);
@@ -264,7 +269,7 @@ export class SnapshotRoutes {
       entry: snapshot.entry,
       expiresAt: record.expiresAt,
       entryUrl: this.routePath(snapshot.snapshotId, snapshot.entry),
-      files: snapshot.files.map((file) => ({ path: file.path, bytes: file.bytes, sha256: file.sha256 })),
+      files: snapshot.files.map((file) => ({ path: file.path, bytes: file.bytes, sha256: file.sha256,...(file.media?{media:true}:{}) })),
     };
   }
 
@@ -273,6 +278,7 @@ export class SnapshotRoutes {
       this.revoke(record.snapshotId);
       return new Response('snapshot expired', { status: 404 });
     }
+    if(declared.media)return this.serveMedia(declared,filePath,request);
     let bytes;
     try {
       bytes = await readFile(declared.absPath);
@@ -286,6 +292,7 @@ export class SnapshotRoutes {
       });
     }
     if (filePath === record.entry) return this.serveEntry(record, bytes, request);
+    if(filePath.endsWith('.html'))return new Response(request.method==='HEAD'?null:bytes,{headers:{'content-type':'text/html; charset=utf-8','content-security-policy':"default-src 'none'; script-src 'self' "+inlineScriptHashes(bytes.toString()).join(' ')+"; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'",'cache-control':'no-store'}});
     const headers = {
       'content-type': contentType(filePath),
       'content-length': String(bytes.length),
@@ -314,6 +321,8 @@ export class SnapshotRoutes {
       response.end('snapshot expired');
       return;
     }
+    if(filePath.endsWith('.html')){const res=await this.serveFile(record,filePath,declared,{method:request.method,headers:new Headers(request.headers)});response.writeHead(res.status,Object.fromEntries(res.headers));response.end(request.method==='HEAD'?undefined:Buffer.from(await res.arrayBuffer()));return;}
+    if(declared.media){const res=await this.serveMedia(declared,filePath,{method:request.method,headers:new Headers(request.headers)});response.writeHead(res.status,Object.fromEntries(res.headers));if(res.body){const stream=Readable.fromWeb(res.body);response.on('close',()=>stream.destroy());stream.on('error',()=>response.destroy());stream.pipe(response);}else response.end();return;}
     let bytes;
     try {
       bytes = await readFile(declared.absPath);
@@ -345,6 +354,14 @@ export class SnapshotRoutes {
     response.end(bytes);
   }
 
+  async serveMedia(declared,filePath,request){
+    const info=await stat(declared.absPath).catch(()=>null);if(!info||!info.isFile()||info.size!==declared.bytes||info.mtimeMs!==declared.mtimeMs||info.ino!==declared.ino)return new Response('media unavailable',{status:409});
+    let start=0,end=info.size-1,status=200;const range=request.headers.get('range');
+    const headers={'content-type':contentType(filePath),'accept-ranges':'bytes','cache-control':'no-store','access-control-allow-origin':'*','cross-origin-resource-policy':'cross-origin','x-content-type-options':'nosniff'};
+    if(range){const m=/^bytes=(\d*)-(\d*)$/.exec(range);if(!m||(!m[1]&&!m[2]))return new Response(null,{status:416,headers:{...headers,'content-range':`bytes */${info.size}`}});if(!m[1])start=Math.max(0,info.size-Number(m[2]));else{start=Number(m[1]);if(m[2])end=Math.min(end,Number(m[2]));}if(start>end||start>=info.size||!Number.isSafeInteger(start)||!Number.isSafeInteger(end))return new Response(null,{status:416,headers:{...headers,'content-range':`bytes */${info.size}`}});status=206;headers['content-range']=`bytes ${start}-${end}/${info.size}`;}
+    headers['content-length']=String(end-start+1);let body=null;if(request.method!=='HEAD'){const stream=createReadStream(declared.absPath,{start,end});const streams=this.mediaStreams.get(declared.snapshotId)||new Set();this.mediaStreams.set(declared.snapshotId,streams);streams.add(stream);stream.on('close',()=>{streams.delete(stream);if(!streams.size)this.mediaStreams.delete(declared.snapshotId);});body=Readable.toWeb(stream);}return new Response(body,{status,headers});
+  }
+
   serveEntry(record, original, request) {
     const url = new URL(request.url);
     const instanceId = url.searchParams.get('instance') || '';
@@ -372,8 +389,8 @@ export class SnapshotRoutes {
       "img-src 'self' data:",
       "font-src 'self'",
       "connect-src 'none'",
-      "frame-src 'none'",
-      "media-src 'none'",
+      "frame-src 'self'",
+      "media-src 'self'",
       "object-src 'none'",
       "base-uri 'none'",
       "form-action 'none'",
@@ -393,6 +410,8 @@ export class SnapshotRoutes {
   revoke(snapshotId) {
     const record = this.records.get(snapshotId);
     if (record === undefined) return false;
+    for(const stream of this.mediaStreams.get(snapshotId)||[])stream.destroy();
+    this.mediaStreams.delete(snapshotId);
     for (const dispose of record.disposers.splice(0).reverse()) {
       try {
         dispose();

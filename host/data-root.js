@@ -775,7 +775,7 @@ export async function scanProjectsRoot(paths) {
     } catch (_error) {
       continue;
     }
-    const hasIndex = await fileExists(join(real, 'index.html'));
+    const hasIndex = await fileExists(join(real, 'index.html')) || await fileExists(join(real,'timeline.json'));
     const hasManifest = await fileExists(join(real, 'project.json'));
     if (hasIndex && hasManifest) projects.set(name, real);
     else quarantined.set(name, 'E_PROJECT_INCOMPLETE');

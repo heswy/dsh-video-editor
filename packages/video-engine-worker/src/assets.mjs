@@ -914,7 +914,7 @@ export class MediaLibrary {
               references.push(String(id || "timeline.json").slice(0, 120));
             for (const child of Object.values(value)) visit(child, id);
           };
-          visit(timeline, null);
+          if(timeline.timeline||timeline.schema==="dsh-video/timeline@1"){visit(timeline.timeline?.tracks||timeline.tracks,null);for(const entry of timeline.history||timeline._history||[]){visit(entry.before?.tracks,"undo history");visit(entry.after?.tracks,"undo history");}}else visit(timeline,null);
         } else if (
           source.includes(asset.assetId) ||
           source.includes("media/" + mediaFileName(asset))

@@ -1,13 +1,13 @@
 # DSH Video
 
-> V1 开发候选：bundle `1.0.0-alpha.2` / engine `0.5.0`，在 M1 稳定存储上新增工程素材库、流式导入、媒体 Range、缩略图/波形/兼容代理与 AI 素材查询。该分支尚未合入 main、未安装验收；main 的 0.3 稳定线与回滚锚点保留。当前状态读 [STATUS](docs/STATUS.md)。
+> V1 开发候选：bundle `1.0.0-alpha.4` / engine `0.6.0`。工程素材库已接统一时间线，可剪切、拖动重排、trim、换轨、撤销/重做，并与 AI 场景混排预览、导出静音 MP4。M1/M2 已合入 main，M3 固定候选和验证读 [STATUS](docs/STATUS.md)；真实 DSH 安装/重启验收待下一窗口，0.3 回滚锚点保留。
 
 
-运行在 DeepSeek Harness 内的 AI 视频创作与编辑插件。当前目标是用户通过右侧对话生成视频，左侧自动预览/播放，再通过对话持续修改同一作品；用户手动编辑后续再加。
+运行在 DeepSeek Harness 内的 AI 视频创作与编辑插件。当前目标是用户通过右侧对话生成视频，左侧自动预览/播放，再通过对话持续修改同一作品；时间线支持手动剪辑与 AI 共用操作历史；画布内对象编辑仍延期。
 
 用户确定的入口（P0-005，延续到本阶段）：DSH 左侧原生导航中，在「上下文洞察」之后、「工作区」分组之前，单行 **Vedio Editor** + 细线条视频图标。原顶部「普通｜视频」胶囊已移除。入口是产品工作区导航，不改变 Agent preset、模型或权限。
 
-当前只维护 **main** 作为长期主线。右侧原生对话生成/续改，左侧自动预览/播放；用户手动编辑延期。用户实机测试发现问题后，从最新main建立独立codex/<问题名>分支、验证并交PR。规则读[DEVELOPMENT](docs/DEVELOPMENT.md)，当前交接读[handoffs](docs/handoffs/README.md)。真实DSH/模型闭环仍需验收，不把开发组件/工具模拟当作通过。
+当前只维护 **main** 作为长期主线。右侧原生对话生成/续改，左侧自动预览/播放；时间线剪辑按 V1 里程碑开放，画布内对象编辑延期。用户实机测试发现问题后，从最新main建立独立codex/<问题名>分支、验证并交PR。规则读[DEVELOPMENT](docs/DEVELOPMENT.md)，当前交接读[handoffs](docs/handoffs/README.md)。真实DSH/模型闭环仍需验收，不把开发组件/工具模拟当作通过。
 
 - [当前状态与下一步](docs/STATUS.md)
 - [开发与协作规则](docs/DEVELOPMENT.md)

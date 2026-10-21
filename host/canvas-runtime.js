@@ -243,6 +243,19 @@ export const CANVAS_RUNTIME_SOURCE = String.raw`// P3-008 fixed preview runtime,
     const animationTime = Math.min(time, timeline.duration());
     timeline.time(animationTime);
     applyTimeWindows(time);
+    for(const el of main.querySelectorAll('video[data-start]')){
+      const start=Number(el.dataset.start),duration=Number(el.dataset.duration),rate=Number(el.dataset.playbackRate||1);
+      const active=time>=start&&time<start+duration;
+      const target=Number(el.dataset.mediaStart||0)+Math.max(0,time-start)*rate;
+      el.muted=true;el.playbackRate=rate;
+      if(active&&Math.abs(el.currentTime-target)>1/30){try{el.currentTime=target;}catch{}}
+      if(active&&playing&&el.paused)el.play().catch(()=>diagnostic('media-play-failed'));
+      else if((!active||!playing)&&!el.paused)el.pause();
+    }
+    for(const el of main.querySelectorAll('[data-composition-src]')){
+      const frame=el.querySelector('iframe');if(!frame?.contentWindow)continue;
+      frame.contentWindow.postMessage({type:'dsh-scene-time',time:Math.max(0,time-Number(el.dataset.start))+Number(el.dataset.sceneOffset||0)},'*');
+    }
   }
 
   function state() {
@@ -268,6 +281,17 @@ export const CANVAS_RUNTIME_SOURCE = String.raw`// P3-008 fixed preview runtime,
       return;
     }
     rafId = requestAnimationFrame(tick);
+  }
+
+  async function loadScenes(){
+    const nodes=[...document.querySelectorAll('[data-composition-src]')];
+    const results=await Promise.all(nodes.map(el=>new Promise(resolve=>{
+      const frame=document.createElement('iframe');frame.style.cssText='width:100%;height:100%;border:0;pointer-events:none';
+      let done=false;const finish=ok=>{if(done)return;done=true;clearTimeout(timer);window.removeEventListener('message',ready);resolve(ok);};
+      const ready=event=>{if(event.source===frame.contentWindow&&event.data?.type==='dsh-scene-ready'&&event.data.clipId===el.id)finish(true);};
+      window.addEventListener('message',ready);const timer=setTimeout(()=>finish(false),10000);frame.onerror=()=>finish(false);frame.src=el.getAttribute('data-composition-src');el.appendChild(frame);
+    })));
+    return results.every(Boolean);
   }
 
   function startClock() {
@@ -410,7 +434,7 @@ export const CANVAS_RUNTIME_SOURCE = String.raw`// P3-008 fixed preview runtime,
     handleCommand(command);
   }
 
-  function start() {
+  async function start() {
     main = document.querySelector("#main[data-composition-id]");
     timeline = window.__timelines?.main;
     if (!main || !timeline) {
@@ -435,6 +459,8 @@ export const CANVAS_RUNTIME_SOURCE = String.raw`// P3-008 fixed preview runtime,
         windows.push({ element, start: startAt, duration });
     }
     timeline.pause();
+    if(!await loadScenes()){send("error",{code:"E_SCENE_PREVIEW",message:"场景预览加载失败，请重试"});return;}
+    for(const video of main.querySelectorAll('video[data-start]')){video.addEventListener('loadedmetadata',()=>renderAt(compositionTime));video.addEventListener('error',()=>send("error",{code:"E_MEDIA_PREVIEW",message:"素材无法播放，请生成兼容副本后重试"}));}
     renderAt(0);
     window.addEventListener("message", onMessage);
     send("ready", {

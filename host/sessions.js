@@ -466,6 +466,16 @@ export class SessionService {
         '<!doctype html><html><head><script src="./assets/gsap.min.js"></script></head><body><div id="main" data-composition-id="main" data-width="1280" data-height="720" data-fps="30" data-start="0" data-duration="5">...inline SVG/HTML artwork...<script>const tl = gsap.timeline(); /* tweens */ window.__timelines = { main: tl }; tl.seek(0);</script></div></body></html>',
         'Never write project files (index.html, project.json, assets) with shell or file tools, and never search the plugin source repository to satisfy a normal creative request. If a request cannot be expressed, say so briefly instead of faking completion.',
       ];
+      if(facts?.mode==='timeline'){
+        const contractStart=lines.indexOf('Composition contract (Host-validated before publishing; invalid input rejected atomically):');
+        lines.splice(2,contractStart-2,
+          'This project uses a unified timeline. First call timeline.inspect for current revision and stable clip/track IDs.',
+          'Resolve index/label/range descriptions with timeline.resolve; ambiguous references require a brief clarification, never guess.',
+          'Apply UI/AI edits through timeline.apply: expectedRevision, unique operationId, ops. Integer frames at 30fps. Operations: clip.split (atFrame, left ID retained), trim (edge,in/out,deltaFrames,ripple), delete, move (startFrame,trackId,mode), reorder (all clipIds on track), insert (assetId,trackId,startFrame,mode), duplicate, speed, replace, set, fade, volume, transition; track.add/update/remove; timeline.settings.',
+          'Create or refine ONE AI scene with scene.compose (html plus clipId for replacement, or trackId/startFrame for insertion). Read scene.inspect first for an existing scene. Keep other clips intact. Never call project.compose/project.source or legacy scene writes for a timeline project.',
+          'Use timeline.undo/redo for shared UI/AI history. On E_REVISION_CONFLICT inspect and reconsider; never overwrite or blindly replay stale ops. Report success only after written:true, with the affected clip IDs/summary.'
+        );
+      }
       const factsLines = [];
       if (facts !== null) {
         factsLines.push(`Last known project revision: ${facts.revision}.`);
@@ -489,7 +499,7 @@ export class SessionService {
       } else {
         factsLines.push('Inspect the project before editing so the revision and target ids are current.');
       }
-      factsLines.push('Imported media: query video_engine asset.list (projectId, kind/query/cursor/limit); timeline placement comes in M3.');
+      factsLines.push('Imported media: query video_engine asset.list (projectId, kind/query/cursor/limit); place video/image assets with timeline.apply clip.insert. Audio editing comes in M4.');
       const mediaCount=this.bridge?.mediaCounts?.get(projectId);
       if(Number.isSafeInteger(mediaCount))factsLines.splice(1,0,`Imported media: ${mediaCount} assets. Use video_engine asset.list for paginated metadata.`);
       // Whole-line budget: the fixed instructions above are never truncated;

@@ -572,6 +572,7 @@ function mountHostFiber(vnode, parentDom) {
   fiber.dom = svg ? document.createElementNS('http://www.w3.org/2000/svg', vnode.type) : document.createElement(vnode.type);
   applyProps(fiber, {}, vnode.props, true);
   fiber.children = reconcileChildren(fiber.dom, [], normalizeChildren(vnode.props.children));
+  if(fiber.type==='select'&&vnode.props.value!==undefined)fiber.dom.value=String(vnode.props.value);
   parentDom.appendChild(fiber.dom);
   setRef(fiber.ref, fiber.dom);
   if (vnode.props.autoFocus === true) focusQueue.push(fiber.dom);
@@ -635,6 +636,7 @@ function updateFiber(fiber, vnode) {
   fiber.props = vnode.props;
   applyProps(fiber, previousProps, vnode.props, false);
   fiber.children = reconcileChildren(fiber.dom, fiber.children, normalizeChildren(vnode.props.children));
+  if(fiber.type==='select'&&vnode.props.value!==undefined)fiber.dom.value=String(vnode.props.value);
 }
 
 function unmountFiber(fiber) {

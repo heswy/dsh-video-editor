@@ -28,6 +28,14 @@ import { UiStateStore } from './ui-state.js';
 import { dataRootLayout, ensureDataRoot, legacyRootsFromConfig, loadManagedProjects, migrateLegacyRoots, quarantineCorruptFile, readWorkerRegistry, repairProjectsRegistry, resolveDataRoot, scanProjectsRoot, writeProjectsBackup } from './data-root.js';
 
 export const REQUEST_METHODS = Object.freeze([
+'timeline.inspect',
+'timeline.apply',
+'timeline.resolve',
+'timeline.undo',
+'timeline.redo',
+'scene.compose',
+'scene.inspect',
+
   'doctor',
   'open',
   'inspect',
@@ -66,6 +74,14 @@ export const REQUEST_METHODS = Object.freeze([
 ]);
 
 const METHOD_PARAMS = Object.freeze({
+'timeline.inspect': ['projectId', 'view', 'trackId', 'offset', 'limit'],
+'timeline.apply': ['projectId', 'expectedRevision', 'operationId', 'ops', 'dryRun'],
+'timeline.resolve': ['projectId', 'revision', 'refs'],
+'timeline.undo': ['projectId', 'expectedRevision', 'operationId'],
+'timeline.redo': ['projectId', 'expectedRevision', 'operationId'],
+'scene.compose': ['projectId', 'expectedRevision', 'operationId', 'clipId', 'trackId', 'startFrame', 'html', 'mode', 'label'],
+'scene.inspect': ['projectId', 'clipId'],
+
   doctor: [],
   open: ['projectId'],
   inspect: ['projectId'],
@@ -133,7 +149,7 @@ const MAX_FRAME_TIMES = 4;
  * worker so a direct JSONL caller cannot widen them.
  */
 const MAX_FRAME_TIMEOUT_MS = 120000;
-const MAX_RENDER_TIMEOUT_MS = 900000;
+const MAX_RENDER_TIMEOUT_MS = 21600000;
 const TERMINAL_JOB_STATES = Object.freeze(['succeeded', 'failed', 'cancelled', 'timed_out']);
 const FRAME_WAIT_MAX_MS = 30000;
 const FRAME_WAIT_INTERVAL_MS = 250;
@@ -421,6 +437,13 @@ export function validateParams(config, method, params) {
     if (allowed.includes(key) === false) fail('E_PARAMS', `Unexpected "${key}" parameter`, 'params');
   }
 
+  if (['timeline.inspect','timeline.apply','timeline.resolve','timeline.undo','timeline.redo','scene.compose','scene.inspect'].includes(method)) {
+    const next={...params,projectId:allowedProject(config,params.projectId)};
+    if(['timeline.apply','timeline.undo','timeline.redo','scene.compose'].includes(method)){next.expectedRevision=revision(params.expectedRevision);next.operationId=operationId(params.operationId);}
+    if(method==='timeline.apply'&&(!Array.isArray(params.ops)||!params.ops.length||params.ops.length>32))fail('E_PARAMS','Provide 1–32 operations','params');
+    if(params.dryRun!==undefined&&typeof params.dryRun!=='boolean')fail('E_PARAMS','dryRun must be boolean','params');
+    return next;
+  }
   if (method === 'doctor') return {};
   if (method === 'open' || method === 'inspect' || method === 'close') {
     return { projectId: allowedProject(config, params.projectId) };
@@ -1166,7 +1189,7 @@ export class VideoBridge {
       let title = null;
       if (typeof directory === 'string') {
         try {
-          const info = await stat(join(directory, 'index.html'));
+          const info = await stat(join(directory, 'timeline.json')).catch(()=>stat(join(directory, 'index.html')));
           updatedAt = Number.isFinite(info.mtimeMs) ? info.mtimeMs : 0;
         } catch (_error) {
           updatedAt = 0;
@@ -1794,6 +1817,8 @@ export class VideoBridge {
     if (method === 'preview.snapshot') {
       if (settings.source === 'tool') throw new BridgeError('E_METHOD', 'Preview snapshot is a UI-only action', { stage: 'params' });
       const snapshot = await this.callClient('preview.snapshot', normalized);
+      while(snapshot.nextOffset!==undefined&&snapshot.nextOffset!==null){const offset=snapshot.nextOffset;const page=await this.callClient('preview.files',{snapshotId:snapshot.snapshotId,offset});if(page.snapshotId!==snapshot.snapshotId||page.revision!==snapshot.revision||!Array.isArray(page.files)||page.files.length>100||page.nextOffset!==null&&page.nextOffset<=offset||snapshot.files.length+page.files.length>1280)throw new BridgeError('E_SNAPSHOT','Invalid snapshot file page',{stage:'preview'});snapshot.files.push(...page.files);snapshot.nextOffset=page.nextOffset;}
+
       // A worker result that arrives after disable began must not publish routes;
       // release the private snapshot instead of registering it.
       if (this.closing || this.disposed) {
@@ -1807,7 +1832,7 @@ export class VideoBridge {
       if (root === null) throw new BridgeError('E_WORKER_START', 'The preview root is unavailable before worker startup', { stage: 'preview' });
       try {
         const registered = await this.snapshots.register(normalized.projectId, snapshot, root);
-        return publicResult(this.requireConfig().maxResultBytes, { ...snapshot, ...registered, routeBase: SNAPSHOT_ROUTE_BASE }, settings.source);
+        const published={...snapshot,...registered,routeBase:SNAPSHOT_ROUTE_BASE};if(published.files.length>100){published.fileCount=published.files.length;published.files=published.files.slice(0,100);published.filesTruncated=true;}return publicResult(this.requireConfig().maxResultBytes,published,settings.source);
       } catch (error) {
         if (error instanceof BridgeError) throw error;
         try {
@@ -1879,7 +1904,7 @@ export class VideoBridge {
     if(method==='asset.remove')this.mediaCounts.delete(normalized.projectId);
     if (method === 'frame' || method === 'render') {
       this.rememberJob(method, workerParams, result);
-    } else if (method === 'inspect' || method === 'open' || method === 'project.compose') {
+    } else if (method === 'inspect' || method === 'open' || method === 'project.compose' || method.startsWith('timeline.') || method === 'scene.compose') {
       // inspect/open and project.compose results both carry the authoritative
       // revision for the next prompt assembly; a free-form composition project
       // reports `scenes: []`, which is how the composition mode is detected.
@@ -2027,6 +2052,7 @@ export class VideoBridge {
     if (typeof projectId !== 'string' || this.config === null || this.config.projectIds.has(projectId) === false) return;
     const revision = typeof result.revision === 'string' && REVISION.test(result.revision) ? result.revision : null;
     if (revision === null) return;
+    const priorFacts=this.projectFactsById.get(projectId);
     const elements = Array.isArray(result.elements) ? result.elements : [];
     const targets = [];
     for (const element of elements.slice(0, 40)) {
@@ -2050,12 +2076,12 @@ export class VideoBridge {
       : [];
     // A free-form composition is a project whose worker result has an empty
     // scene list (`scenes: []`), both for inspect and for a compose publish.
-    const mode = Array.isArray(result.scenes) ? (result.scenes.length === 0 ? 'composition' : 'scenes') : null;
+    const mode = result.timeline===true || result.schema==='dsh-video/timeline@1' ? 'timeline' : Array.isArray(result.scenes) ? (result.scenes.length === 0 ? 'composition' : 'scenes') : priorFacts?.mode??null;
     this.projectFactsById.set(projectId, {
       revision,
-      width: Number.isFinite(Number(result.width)) ? Number(result.width) : null,
-      height: Number.isFinite(Number(result.height)) ? Number(result.height) : null,
-      duration: Number.isFinite(Number(result.duration)) ? Number(result.duration) : null,
+      width: Number.isFinite(Number(result.width)) ? Number(result.width) : result.settings?.width??priorFacts?.width??null,
+      height: Number.isFinite(Number(result.height)) ? Number(result.height) : result.settings?.height??priorFacts?.height??null,
+      duration: Number.isFinite(Number(result.duration)) ? Number(result.duration) : result.settings?.durationFrames/30||priorFacts?.duration||null,
       targets,
       scenes,
       images,

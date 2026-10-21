@@ -15,6 +15,14 @@ import { agentSessionIdFromToolExec } from './sessions.js';
 export const TOOL_NAME = 'video_engine';
 
 const ACTIONS = Object.freeze([
+'timeline.inspect',
+'timeline.apply',
+'timeline.resolve',
+'timeline.undo',
+'timeline.redo',
+'scene.compose',
+'scene.inspect',
+
   'doctor',
   'open',
   'inspect',
@@ -40,6 +48,7 @@ const ACTIONS = Object.freeze([
 const TOOL_PARAMETERS = Object.freeze({
   type: 'object',
   properties: {
+    dryRun: {type:'boolean'}, view:{type:'string',enum:['summary','full']}, trackId:{type:'string'}, clipId:{type:'string'}, startFrame:{type:'integer',minimum:0}, offset:{type:'integer',minimum:0}, mode:{type:'string',enum:['reject','ripple','overwrite']}, label:{type:'string',maxLength:120}, refs:{type:'array',maxItems:32,items:{type:'object',additionalProperties:true}},
     kind: {type:'string',enum:['video','audio','image']},
     query: {type:'string',maxLength:120},
     cursor: {type:'string',pattern:'^[0-9]{1,12}$'},
@@ -69,43 +78,7 @@ const TOOL_PARAMETERS = Object.freeze({
       type: 'string',
       description: 'Caller-generated idempotency key for one edit.',
     },
-    ops: {
-      type: 'array',
-      description: 'One to thirty-two typed text/timing/layout/style edits for an existing element.',
-      items: {
-        type: 'object',
-        properties: {
-          type: { type: 'string', enum: ['text', 'timing', 'layout', 'style'] },
-          target: { type: 'string', description: 'Stable element id from inspect.' },
-          text: { type: 'string', description: 'Replacement text for a text edit.' },
-          start: { type: 'number', description: 'New start time in seconds for a timing edit.' },
-          duration: { type: 'number', description: 'New duration in seconds for a timing edit.' },
-          unit: { const: 'composition-px', description: 'Layout unit.' },
-          box: {
-            type: 'object',
-            properties: {
-              left: { type: 'number' },
-              top: { type: 'number' },
-              width: { type: 'number' },
-              height: { type: 'number' },
-            },
-            additionalProperties: false,
-          },
-          styles: {
-            type: 'object',
-            properties: {
-              color: { type: 'string' },
-              fontSize: { type: 'number' },
-              fontWeight: { type: 'integer' },
-              textAlign: { type: 'string', enum: ['left', 'center', 'right'] },
-            },
-            additionalProperties: false,
-          },
-        },
-        required: ['type', 'target'],
-        additionalProperties: false,
-      },
-    },
+    ops: {type:'array',minItems:1,maxItems:32,items:{type:'object',additionalProperties:true},description:'Typed timeline operations. First timeline.inspect, then apply ops with op, stable clipId/trackId and integer frames @30fps. Legacy edit uses type/target.'},
     time: { type: 'number', description: 'Frame time in seconds (legacy single-frame form).' },
     times: {
       type: 'array',
@@ -153,6 +126,14 @@ const TOOL_PARAMETERS = Object.freeze({
 });
 
 const ACTION_FIELDS = Object.freeze({
+'timeline.inspect': ['projectId', 'view', 'trackId', 'offset', 'limit'],
+'timeline.apply': ['projectId', 'expectedRevision', 'operationId', 'ops', 'dryRun'],
+'timeline.resolve': ['projectId', 'revision', 'refs'],
+'timeline.undo': ['projectId', 'expectedRevision', 'operationId'],
+'timeline.redo': ['projectId', 'expectedRevision', 'operationId'],
+'scene.compose': ['projectId', 'expectedRevision', 'operationId', 'clipId', 'trackId', 'startFrame', 'html', 'mode', 'label'],
+'scene.inspect': ['projectId', 'clipId'],
+
   doctor: [],
   open: ['projectId'],
   inspect: ['projectId'],
@@ -221,7 +202,7 @@ export function createVideoTool(bridge) {
   return {
     name: TOOL_NAME,
     description:
-      'Open, inspect, edit, publish a complete HTML composition, frame, render, observe, cancel, close, and operate on Scenes/history of a controlled video project configured by the Host. To create or change the video, read the current revision with inspect (and project.source for the current full HTML), then submit the complete document once with project.compose and the current expectedRevision; the left preview follows the published revision automatically. When a visual self-check is genuinely needed, call frame once with wait:true and up to 3 times (one call returns a single contact-sheet image), then read that image at most once; do not render locally or use shell/file probing tools to find frames. A succeeded wait:true frame result also carries frameImage, a workspace-relative PNG path you can pass directly to read_image (read it once). Accepts only configured project ids; never accepts paths or URLs. Never write project files with shell or file tools; report typed errors honestly instead of claiming success.',
+      'Open, inspect, edit, publish a complete HTML composition, frame, render, observe, cancel, close, and operate on Scenes/history of a controlled video project configured by the Host. For timeline projects, first timeline.inspect; resolve ordinal or label references with timeline.resolve, then timeline.apply with expectedRevision, unique operationId and ops. Split retains the left clip ID and returns lineage. Use scene.inspect/scene.compose for one AI scene. Use timeline.undo/redo for shared UI/AI history. Never replace a migrated timeline with project.compose. Legacy projects can still use inspect/project.source/project.compose; the left preview follows the published revision automatically. When a visual self-check is genuinely needed, call frame once with wait:true and up to 3 times (one call returns a single contact-sheet image), then read that image at most once; do not render locally or use shell/file probing tools to find frames. A succeeded wait:true frame result also carries frameImage, a workspace-relative PNG path you can pass directly to read_image (read it once). Accepts only configured project ids; never accepts paths or URLs. Never write project files with shell or file tools; report typed errors honestly instead of claiming success.',
     parameters: TOOL_PARAMETERS,
     output: {
       schema: { type: 'object', additionalProperties: true },

@@ -2,12 +2,22 @@
 
 ## V1 当前开发（2026-10-21）
 
+- 当前主会话负责 M3 及后续 V1 开发。用户本轮授权自行判断合码；M1 [#17](https://github.com/heswy/dsh-video-editor/pull/17)、M2 [#18](https://github.com/heswy/dsh-video-editor/pull/18) 已合入 main，开发基线 `00223dd`。
+- **M3 时间线与视频轨**：完整 alpha.4 候选，包含时间线内核/原子操作/共享撤销、AI 场景、素材上轨、剪切/拖动/重排/trim、媒体+场景预览和静音导出；任务与验证见 [M3 任务卡](tasks/V1-M3-timeline.md)。不以 alpha.3 内核阶段作为终点。
+- 版本为 bundle `1.0.0-alpha.4` / client+worker `0.6.0`。固定候选与最终证据见下方交付记录（构建时填写）。
+- 本轮没有安装插件、重启 DSH、请求真实模型或公开发布。M1/M2/M3 的真实 DSH 与用户素材联合验收仍待下次安装/重启窗口；这些待验项不冒充组件/真实引擎验证通过。
+- M4 音频轨/音频生成尚未开发；M3 静音是明确阶段边界。M5 原生 @ 候选和复杂语义协作按计划继续。
+- 0.3 alpha.11、M1 alpha.1、M2 alpha.2 固定候选、旧 staging 与用户工程全部保留。旧 0.3“手动编辑延期”不再限制已获用户授权的 M3 时间线。
+
+## M2 交付时的历史记录（后续状态以上文为准）
+
 - 用户已指派本会话负责 M2 及后续 V1.0.0 全部开发；规则见 DEVELOPMENT。main 稳定基线仍是 `1aabd6e`（PR #16），本轮没有改 main。
 - **M2 开发 delivered，待真机验收**：素材库/流式上传/Range/缩略图/波形/兼容代理/AI `asset.list` 已实现；[M2 PR #18](https://github.com/heswy/dsh-video-editor/pull/18) 叠加 [M1 PR #17](https://github.com/heswy/dsh-video-editor/pull/17)，均为草稿、未合并。
 - **唯一当前候选**：`artifacts/p2-b/staging-v1.0.0-alpha.2-939419e`（同级 worktrees/artifacts）；root=engine=`939419e10fe5e0b3b9c526d6bc580558d850c9cb`、rootDirty=false；bundle `1.0.0-alpha.2` / engine `0.5.0`；INTEGRITY sha256 `0ead5c6bf48b340dc6712fe457ee3c46cff46ce7603d05426a76b1a7ed3903fa`。
 - 验证：check **58/58**、smoke **86/86**、Host **71/71**、stage-version **10/10**、worker **56/56**、client **23/23**、storage **21/21**、media **15 场景**、Chrome 素材 UI **13 项**。最终 staging 的 1 GiB 流式导入/重启/删除、引擎 frame/render/cancel、画布链通过；对话 **261/261**、预览 **164/164**、只读审计 same=true。
 - 本轮未安装/重启/真实模型/合并/发布；M1/M2 真机验收在用户下一次授权重启窗口合并执行。素材进入作品和真实片段引用在 M3 接入；当前画布仍只读。详情、证据与未测边界见 [M2 任务卡](tasks/V1-M2-media.md)。
 - 下一步：用户授权安装上述固定候选 → 核对实际 client → M1/M2 联合验收 → 当前会话继续 M3。0.3 alpha.11、M1 alpha.1、用户数据与旧候选均保留。
+
 
 ## 0.3 稳定线历史记录与回滚
 
