@@ -210,6 +210,11 @@ test("schema params and worker validation agree for every method; results valida
     });
     state.revision = imported.result.revision;
 
+    const media = await sendValid("asset.importMedia", {projectId:state.projectId,sourceName:"logo.png",operationId:"schema-media"});
+    assert.equal(media.ok,true,JSON.stringify(media));
+    await sendValid("asset.list", {projectId:state.projectId});
+    await sendValid("asset.derive", {projectId:state.projectId,assetId:media.result.asset.assetId,kind:"thumb"});
+    await sendValid("asset.remove", {projectId:state.projectId,assetId:media.result.asset.assetId,operationId:"schema-remove"});
     const edited = await sendValid("edit", {
       projectId: state.projectId,
       expectedRevision: state.revision,
@@ -512,6 +517,10 @@ function buildSample(method, state) {
       };
     case "project.source":
       return { projectId };
+    case "asset.importMedia": return {projectId,sourceName:"logo.png",operationId:"probe-media"};
+    case "asset.list": return {projectId};
+    case "asset.derive": return {projectId,assetId:"as_00000000",kind:"thumb"};
+    case "asset.remove": return {projectId,assetId:"as_00000000",operationId:"probe-remove"};
     case "asset.import":
       return {
         projectId,

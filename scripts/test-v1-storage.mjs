@@ -29,6 +29,11 @@ import { BridgeError } from '../host/errors.js';
 
 const REAL_HOME = homedir();
 const REAL_DATA_ROOT = join(REAL_HOME, 'Movies', 'DSH Video');
+async function realRootMetadata(){
+  try {const info=await stat(REAL_DATA_ROOT);return {ino:info.ino,mtimeMs:info.mtimeMs};}
+  catch(error){if(error.code==='ENOENT')return null;throw error;}
+}
+const REAL_ROOT_BASELINE=await realRootMetadata();
 const PROJECT = 'demo';
 const REVISION = 'a'.repeat(64);
 
@@ -275,7 +280,8 @@ async function modeOf(path) {
 }
 
 async function assertRealRootUntouched() {
-  assert(existsSync(REAL_DATA_ROOT) === false, `the real user data root ${REAL_DATA_ROOT} must never be created by tests`);
+  const current=await realRootMetadata();
+  assert(JSON.stringify(current)===JSON.stringify(REAL_ROOT_BASELINE), 'The real user data root changed during the storage tests');
 }
 
 async function main() {

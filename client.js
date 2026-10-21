@@ -211,6 +211,28 @@ window.__ModuleLoader__.load({
       'video.canvas.undo': '撤销',
       'video.canvas.redo': '重做',
       'video.canvas.materials': '素材',
+      'video.media.compatibility': '生成兼容预览',
+      'video.media.import': '导入素材 · 或拖入文件',
+      'video.media.search': '搜索素材',
+      'video.media.filter': '素材类型',
+      'video.media.all': '全部',
+      'video.media.video': '视频',
+      'video.media.image': '图片',
+      'video.media.audio': '音频',
+      'video.media.cancel': '取消',
+      'video.media.processing': '处理中…',
+      'video.media.failed': '导入失败，请重试',
+      'video.media.cancelled': '已取消导入',
+      'video.media.retry': '重试',
+      'video.media.loading': '正在读取素材…',
+      'video.media.empty': '拖入视频、图片或音频',
+      'video.media.more': '加载更多',
+      'video.media.waveform': '波形',
+      'video.media.thumbnail': '缩略图',
+      'video.media.rebuild': '重新生成预览图',
+      'video.media.reference': '引用标记（选择复制）',
+      'video.media.remove': '删除素材',
+      'video.media.confirmRemove': '确认删除素材',
       'video.canvas.addScene': '添加场景',
       'video.canvas.export': '导出 MP4',
       'video.canvas.exporting': '正在导出…',
@@ -355,6 +377,28 @@ window.__ModuleLoader__.load({
       'video.canvas.undo': 'Undo',
       'video.canvas.redo': 'Redo',
       'video.canvas.materials': 'Assets',
+      'video.media.compatibility': 'Build compatible preview',
+      'video.media.import': 'Import media · or drop files',
+      'video.media.search': 'Search media',
+      'video.media.filter': 'Media type',
+      'video.media.all': 'All',
+      'video.media.video': 'Video',
+      'video.media.image': 'Images',
+      'video.media.audio': 'Audio',
+      'video.media.cancel': 'Cancel',
+      'video.media.processing': 'Processing…',
+      'video.media.failed': 'Import failed. Try again.',
+      'video.media.cancelled': 'Import cancelled',
+      'video.media.retry': 'Retry',
+      'video.media.loading': 'Loading media…',
+      'video.media.empty': 'Drop video, images or audio',
+      'video.media.more': 'Load more',
+      'video.media.waveform': 'Waveform',
+      'video.media.thumbnail': 'Thumbnail',
+      'video.media.rebuild': 'Rebuild preview image',
+      'video.media.reference': 'Reference (select to copy)',
+      'video.media.remove': 'Delete media',
+      'video.media.confirmRemove': 'Confirm deletion',
       'video.canvas.addScene': 'Add scene',
       'video.canvas.export': 'Export MP4',
       'video.canvas.exporting': 'Exporting…',
@@ -611,6 +655,24 @@ window.__ModuleLoader__.load({
   font-size:.9em;
   font-weight:600;
 }
+/* M2 media drawer floats over the preview, preserving the conversation width. */
+.dv-drawer.dv-media-library{width:min(360px,calc(100% - 16px));max-height:calc(100% - 56px);overflow:auto;gap:12px;z-index:12;}
+.dv-media-search,.dv-media-reference input{box-sizing:border-box;width:100%;padding:9px 10px;border:1px solid var(--dsw-alias-border-secondary,#ffffff20);border-radius:8px;background:transparent;color:inherit;font:inherit;}
+.dv-media-filters{display:flex;gap:2px;flex-wrap:wrap;}
+.dv-media-filters [aria-pressed="true"],.dv-media-tile[aria-pressed="true"]{background:var(--dsw-alias-fill-secondary,#ffffff12);outline:1px solid var(--dsw-alias-label-secondary,#999);}
+.dv-media-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;}
+.dv-media-tile{display:flex;flex-direction:column;gap:5px;min-width:0;padding:7px;text-align:left;background:transparent;color:inherit;border:1px solid var(--dsw-alias-border-secondary,#ffffff14);border-radius:8px;cursor:pointer;}
+.dv-media-tile img,.dv-media-placeholder{width:100%;height:76px;object-fit:contain;background:#00000018;border-radius:4px;}
+.dv-media-placeholder{display:grid;place-items:center;font-size:28px;}
+.dv-media-name{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.dv-media-tile small{opacity:.6;font-variant-numeric:tabular-nums;}
+.dv-media-detail{display:flex;flex-direction:column;gap:10px;padding-top:12px;border-top:1px solid var(--dsw-alias-border-secondary,#ffffff20);overflow-wrap:anywhere;}
+.dv-media-preview{width:100%;max-height:180px;object-fit:contain;}
+.dv-media-derived{width:100%;max-height:100px;object-fit:contain;}
+.dv-media-progress{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:.85em;}
+.dv-media-progress span:first-child{width:100%;overflow-wrap:anywhere;}
+.dv-upload:focus-within{outline:2px solid var(--dsw-focus-ring-color,#4578dd);outline-offset:2px;}
+.dv-media-reference{font-size:.8em;opacity:.8;}
 .dv-ai-session{
   min-width:0;
   overflow:hidden;
@@ -2747,6 +2809,455 @@ window.__ModuleLoader__.load({
       return Number.isFinite(Number(value)) ? Number(value) : fallback;
     }
 
+    function MediaLibraryPanel(props) {
+      const t = props.t,
+        projectId = props.projectId;
+      const [assets, setAssets] = React.useState([]),
+        [kind, setKind] = React.useState(''),
+        [query, setQuery] = React.useState('');
+      const [cursor, setCursor] = React.useState(null),
+        [selected, setSelected] = React.useState(null),
+        [error, setError] = React.useState(null);
+      const [loading, setLoading] = React.useState(false),
+        [upload, setUpload] = React.useState(null),
+        [confirmRemove, setConfirmRemove] = React.useState(false);
+      const [cacheVersion, setCacheVersion] = React.useState(0),
+        [deriveBusy, setDeriveBusy] = React.useState(false);
+      const [derivedReady, setDerivedReady] = React.useState({});
+      const deriveSeen = React.useRef({});
+      const [proxyReady, setProxyReady] = React.useState({});
+      const requestSerial = React.useRef(0),
+        uploadRef = React.useRef(null),
+        alive = React.useRef(true);
+      function mediaUrl(asset, derived) {
+        return (
+          'api/dsh-video/' +
+          (derived ? 'derived' : 'media') +
+          '?projectId=' +
+          encodeURIComponent(projectId) +
+          '&assetId=' +
+          encodeURIComponent(asset.assetId) +
+          (derived ? '&kind=' + derived : '')
+        );
+      }
+      async function load(nextCursor) {
+        const serial = ++requestSerial.current;
+        setLoading(true);
+        setError(null);
+        try {
+          const page = await hostRequest('asset.list', {
+            projectId: projectId,
+            limit: 30,
+            ...(kind ? { kind: kind } : {}),
+            ...(query.trim() ? { query: query.trim() } : {}),
+            ...(nextCursor ? { cursor: nextCursor } : {}),
+          });
+          if (!alive.current || serial !== requestSerial.current) return;
+          setAssets((previous) => (nextCursor ? previous.concat(page.assets) : page.assets));
+          setCursor(page.nextCursor);
+        } catch (e) {
+          if (alive.current && serial === requestSerial.current) setError(hostError(e));
+        } finally {
+          if (alive.current && serial === requestSerial.current) setLoading(false);
+        }
+      }
+      React.useEffect(
+        function mediaLoad() {
+          alive.current = true;
+          setSelected(null);
+          const timer = setTimeout(() => {
+            void load(null);
+          }, 150);
+          return () => {
+            clearTimeout(timer);
+            requestSerial.current++;
+          };
+        },
+        [projectId, kind, query],
+      );
+      React.useEffect(
+        function mediaDerivatives() {
+          let cancelled = false;
+          void (async () => {
+            for (const asset of assets) {
+              if (cancelled || deriveSeen.current[asset.assetId]) continue;
+              deriveSeen.current[asset.assetId] = true;
+              try {
+                await hostRequest('asset.derive', {
+                  projectId: projectId,
+                  assetId: asset.assetId,
+                  kind: asset.kind === 'audio' ? 'waveform' : 'thumb',
+                });
+                if (alive.current) setDerivedReady((previous) => ({ ...previous, [asset.assetId]: true }));
+              } catch (e) {
+                delete deriveSeen.current[asset.assetId];
+              }
+            }
+          })();
+          return () => {
+            cancelled = true;
+          };
+        },
+        [assets, projectId],
+      );
+      React.useEffect(function mediaCleanup() {
+        return () => {
+          alive.current = false;
+          requestSerial.current++;
+          if (uploadRef.current) uploadRef.current.abort();
+        };
+      }, []);
+      async function derive(asset) {
+        setDeriveBusy(true);
+        setError(null);
+        try {
+          await hostRequest('asset.derive', {
+            projectId: projectId,
+            assetId: asset.assetId,
+            kind: asset.kind === 'audio' ? 'waveform' : 'thumb',
+          });
+          if (alive.current) {
+            setCacheVersion((v) => v + 1);
+            setDerivedReady((previous) => ({ ...previous, [asset.assetId]: true }));
+          }
+        } catch (e) {
+          if (alive.current) setError(hostError(e));
+        } finally {
+          if (alive.current) setDeriveBusy(false);
+        }
+      }
+      async function compatibilityPreview(asset) {
+        setDeriveBusy(true);
+        setError(null);
+        try {
+          await hostRequest('asset.derive', { projectId: projectId, assetId: asset.assetId, kind: 'proxy' });
+          if (alive.current) setProxyReady((previous) => ({ ...previous, [asset.assetId]: true }));
+        } catch (e) {
+          if (alive.current) setError(hostError(e));
+        } finally {
+          if (alive.current) setDeriveBusy(false);
+        }
+      }
+      function choose(asset) {
+        setSelected(asset);
+        setConfirmRemove(false);
+        void derive(asset);
+      }
+      async function removeSelected() {
+        if (!selected) return;
+        setError(null);
+        try {
+          await hostRequest('asset.remove', {
+            projectId: projectId,
+            assetId: selected.assetId,
+            operationId: operationId(),
+          });
+          if (alive.current) {
+            setSelected(null);
+            setConfirmRemove(false);
+            await load(null);
+          }
+        } catch (e) {
+          if (alive.current) setError(hostError(e));
+        }
+      }
+      async function importFiles(files) {
+        if (uploadRef.current || !files || !files.length) return;
+        setError(null);
+        try {
+          for (const file of Array.from(files)) {
+            if (!alive.current) break;
+            const receipt = await new Promise((yes, no) => {
+              const xhr = new XMLHttpRequest();
+              uploadRef.current = xhr;
+              xhr.open('POST', 'api/dsh-video/asset-upload');
+              xhr.withCredentials = true;
+              xhr.setRequestHeader('content-type', file.type || 'application/octet-stream');
+              xhr.setRequestHeader('x-dsh-project-id', projectId);
+              xhr.setRequestHeader('x-dsh-file-name', encodeURIComponent(file.name));
+              setUpload({ name: file.name, percent: 0, processing: false });
+              xhr.upload.onprogress = (e) => {
+                if (alive.current && e.lengthComputable)
+                  setUpload({ name: file.name, percent: Math.round((e.loaded / e.total) * 100), processing: false });
+              };
+              xhr.onerror = () => no({ code: 'E_ASSET_UPLOAD', message: t('video.media.failed') });
+              xhr.onabort = () => no({ code: 'E_CANCELLED', message: t('video.media.cancelled') });
+              xhr.onload = () => {
+                try {
+                  const value = JSON.parse(xhr.responseText);
+                  xhr.status >= 200 && xhr.status < 300 ? yes(value) : no(value.error || value);
+                } catch (e) {
+                  no(e);
+                }
+              };
+              xhr.send(file);
+            });
+            uploadRef.current = null;
+            if (!alive.current) break;
+            setUpload({ name: file.name, percent: 100, processing: true });
+            await hostRequest('asset.importMedia', {
+              projectId: projectId,
+              receiptId: receipt.receiptId,
+              operationId: operationId(),
+            });
+            if (alive.current) await load(null);
+          }
+        } catch (e) {
+          if (alive.current) setError(hostError(e));
+        } finally {
+          uploadRef.current = null;
+          if (alive.current) setUpload(null);
+        }
+      }
+      const busy = upload !== null;
+      return h(
+        'aside',
+        {
+          className: 'dv-drawer dv-media-library',
+          'aria-label': t('video.canvas.materials'),
+          onDragOver: (e) => {
+            e.preventDefault();
+          },
+          onDrop: (e) => {
+            e.preventDefault();
+            if (!busy) void importFiles(e.dataTransfer.files);
+          },
+        },
+        h(
+          'div',
+          { className: 'dv-drawer-head' },
+          h('strong', null, t('video.canvas.materials')),
+          h(
+            'button',
+            { type: 'button', className: 'dv-icon-button', onClick: props.onClose, 'aria-label': t('video.canvas.close') },
+            '×',
+          ),
+        ),
+        h(
+          'label',
+          { className: 'dv-upload' },
+          t('video.media.import'),
+          h('input', {
+            type: 'file',
+            multiple: true,
+            accept: '.mp4,.mov,.m4v,.webm,.mp3,.wav,.m4a,.aac,.flac,.png,.jpg,.jpeg',
+            disabled: busy,
+            onChange: (e) => {
+              void importFiles(e.target.files);
+              e.target.value = '';
+            },
+          }),
+        ),
+        h('input', {
+          type: 'search',
+          className: 'dv-media-search',
+          value: query,
+          maxLength: 120,
+          placeholder: t('video.media.search'),
+          'aria-label': t('video.media.search'),
+          onChange: (e) => setQuery(e.target.value),
+        }),
+        h(
+          'div',
+          { className: 'dv-media-filters', role: 'group', 'aria-label': t('video.media.filter') },
+          ['', 'video', 'image', 'audio'].map((k) =>
+            h(
+              'button',
+              {
+                key: k,
+                type: 'button',
+                className: 'dv-button dv-button-quiet',
+                'aria-pressed': kind === k ? 'true' : 'false',
+                onClick: () => setKind(k),
+              },
+              t('video.media.' + (k || 'all')),
+            ),
+          ),
+        ),
+        busy
+          ? h(
+              'div',
+              { role: 'status', className: 'dv-media-progress' },
+              h('span', null, upload.name),
+              h('progress', { max: 100, value: upload.processing ? undefined : upload.percent }),
+              h('span', null, upload.processing ? t('video.media.processing') : upload.percent + '%'),
+              h(
+                'button',
+                {
+                  type: 'button',
+                  className: 'dv-button dv-button-quiet',
+                  disabled: upload.processing,
+                  onClick: () => uploadRef.current?.abort(),
+                },
+                t('video.media.cancel'),
+              ),
+            )
+          : null,
+        error
+          ? h(
+              'div',
+              { role: 'alert', className: 'dv-tool-error' },
+              errorText(error, t),
+              h(
+                'button',
+                {
+                  type: 'button',
+                  className: 'dv-button dv-button-quiet',
+                  onClick: () => {
+                    void load(null);
+                  },
+                },
+                t('video.media.retry'),
+              ),
+            )
+          : null,
+        loading && assets.length === 0
+          ? h('p', { className: 'dv-tool-hint', role: 'status' }, t('video.media.loading'))
+          : null,
+        !loading && assets.length === 0 ? h('p', { className: 'dv-tool-hint' }, t('video.media.empty')) : null,
+        h(
+          'div',
+          { className: 'dv-media-grid' },
+          assets.map((asset) =>
+            h(
+              'button',
+              {
+                key: asset.assetId,
+                type: 'button',
+                className: 'dv-media-tile',
+                'aria-pressed': selected?.assetId === asset.assetId ? 'true' : 'false',
+                onClick: () => choose(asset),
+              },
+              derivedReady[asset.assetId]
+                ? h('img', {
+                    src: mediaUrl(asset, asset.kind === 'audio' ? 'waveform' : 'thumb'),
+                    alt: '',
+                    loading: 'lazy',
+                  })
+                : h(
+                    'span',
+                    { className: 'dv-media-placeholder', 'aria-hidden': 'true' },
+                    asset.kind === 'video' ? '▷' : '♪',
+                  ),
+              h('span', { className: 'dv-media-name', title: asset.name }, asset.name),
+              h(
+                'small',
+                null,
+                asset.kind === 'image'
+                  ? (asset.media?.width || '—') + ' × ' + (asset.media?.height || '—')
+                  : formatSeconds(asset.media?.durationSec || 0),
+              ),
+            ),
+          ),
+        ),
+        cursor
+          ? h(
+              'button',
+              {
+                type: 'button',
+                className: 'dv-button dv-button-quiet',
+                disabled: loading,
+                onClick: () => {
+                  void load(cursor);
+                },
+              },
+              t('video.media.more'),
+            )
+          : null,
+        selected
+          ? h(
+              'section',
+              { className: 'dv-media-detail', key: selected.assetId },
+              h('strong', null, selected.name),
+              selected.kind === 'image'
+                ? h('img', { className: 'dv-media-preview', src: mediaUrl(selected), alt: selected.name })
+                : h(selected.kind === 'audio' ? 'audio' : 'video', {
+                    className: 'dv-media-preview',
+                    src: mediaUrl(selected, proxyReady[selected.assetId] ? 'proxy' : undefined),
+                    controls: true,
+                    preload: 'metadata',
+                  }),
+              h('img', {
+                className: 'dv-media-derived',
+                key: cacheVersion,
+                src: mediaUrl(selected, selected.kind === 'audio' ? 'waveform' : 'thumb') + '#v=' + cacheVersion,
+                alt: t('video.media.' + (selected.kind === 'audio' ? 'waveform' : 'thumbnail')),
+                onError: (e) => {
+                  e.target.style.visibility = 'hidden';
+                },
+                onLoad: (e) => {
+                  e.target.style.visibility = 'visible';
+                },
+              }),
+              h(
+                'p',
+                null,
+                Math.round(selected.bytes / 1024) +
+                  ' KiB · ' +
+                  (selected.media?.width ? selected.media.width + ' × ' + selected.media.height + ' · ' : '') +
+                  (selected.kind === 'image' ? '' : formatSeconds(selected.media?.durationSec || 0)),
+              ),
+              h(
+                'button',
+                {
+                  type: 'button',
+                  className: 'dv-button dv-button-quiet',
+                  disabled: deriveBusy,
+                  onClick: () => {
+                    void derive(selected);
+                  },
+                },
+                t(deriveBusy ? 'video.media.processing' : 'video.media.rebuild'),
+              ),
+              selected.kind !== 'image'
+                ? h(
+                    'button',
+                    {
+                      type: 'button',
+                      className: 'dv-button dv-button-quiet',
+                      disabled: deriveBusy,
+                      onClick: () => {
+                        void compatibilityPreview(selected);
+                      },
+                    },
+                    t('video.media.compatibility'),
+                  )
+                : null,
+              h(
+                'label',
+                { className: 'dv-media-reference' },
+                t('video.media.reference'),
+                h('input', {
+                  readOnly: true,
+                  value: '@asset:' + selected.assetId,
+                  onFocus: (e) => e.target.select(),
+                  'aria-label': t('video.media.reference'),
+                }),
+              ),
+              h(
+                'button',
+                {
+                  type: 'button',
+                  className: 'dv-button dv-button-quiet',
+                  onClick: () => {
+                    if (confirmRemove) void removeSelected();
+                    else setConfirmRemove(true);
+                  },
+                },
+                t(confirmRemove ? 'video.media.confirmRemove' : 'video.media.remove'),
+              ),
+              confirmRemove
+                ? h(
+                    'button',
+                    { type: 'button', className: 'dv-button dv-button-quiet', onClick: () => setConfirmRemove(false) },
+                    t('video.media.cancel'),
+                  )
+                : null,
+            )
+          : null,
+      );
+    }
+
     function CanvasWorkspace(props) {
       const t = props.t;
       const projectId = props.projectId;
@@ -4382,7 +4893,7 @@ window.__ModuleLoader__.load({
           h('span', { className: 'dv-time' }, formatSeconds(time) + ' / ' + formatSeconds(displayDuration)),
           previewOnly ? null : h('button', { type: 'button', className: 'dv-button dv-button-quiet', onClick: function undo() { void historyStep('undo'); }, disabled: busy !== null, title: t('video.canvas.undo') }, t('video.canvas.undo')),
           previewOnly ? null : h('button', { type: 'button', className: 'dv-button dv-button-quiet', onClick: function redo() { void historyStep('redo'); }, disabled: busy !== null, title: t('video.canvas.redo') }, t('video.canvas.redo')),
-          previewOnly ? null : h('button', { type: 'button', className: 'dv-button dv-button-quiet', onClick: function drawer() { setDrawerOpen(!drawerOpen); }, 'aria-expanded': drawerOpen ? 'true' : 'false' }, t('video.canvas.materials')),
+          h('button', { type: 'button', className: 'dv-button dv-button-quiet', onClick: function drawer() { setDrawerOpen(!drawerOpen); }, 'aria-expanded': drawerOpen ? 'true' : 'false' }, t('video.canvas.materials')),
           previewOnly ? null : h('button', { type: 'button', className: 'dv-button dv-button-quiet', onClick: function add() { void addScene(); }, disabled: busy !== null }, t('video.canvas.addScene')),
           previewOnly
             ? null
@@ -4431,6 +4942,7 @@ window.__ModuleLoader__.load({
           actionError !== null ? h('span', { className: 'dv-tool-error', role: 'alert' }, errorText(actionError, t)) : null,
           busy !== null ? h('span', { className: 'dv-tool-hint' }, t('video.canvas.busy')) : null
         ),
+        drawerOpen && previewOnly ? h(MediaLibraryPanel,{key:projectId,t:t,projectId:projectId,onClose:()=>setDrawerOpen(false)}) : null,
         drawerOpen && previewOnly === false
           ? h(
               'aside',

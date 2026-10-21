@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:dsh-video-engine-worker:v1",
   "title": "JSON Lines request and response frames; byte limits specified in README",
-  "$comment": "The response envelope carries no method field, so x-methods maps every method to its request and result definition; contract tests validate both directions against this file. Result definitions describe the worker's published result shape for Version 1 (0.4.0). Params schemas enforce structure, keys, types, ranges and path/name shape (edit ops include text/timing/layout/style); checks that depend on disk or referenced file state (inbox existence, image signature, duplicate assets, content size, revision currency) remain worker-side and can still reject a schema-valid request with E_ASSET_MISSING/E_PARAMS/E_REVISION_CONFLICT/E_LIMIT/E_COMPOSE_INVALID. The composition HTML byte ceiling is a UTF-8 byte limit enforced by the worker (JSON Schema maxLength counts characters, so an ASCII string may still be rejected with E_COMPOSE_INVALID).",
+  "$comment": "The response envelope carries no method field, so x-methods maps every method to its request and result definition; contract tests validate both directions against this file. Result definitions describe the worker's published result shape for Version 1 (0.5.0). Params schemas enforce structure, keys, types, ranges and path/name shape (edit ops include text/timing/layout/style); checks that depend on disk or referenced file state (inbox existence, image signature, duplicate assets, content size, revision currency) remain worker-side and can still reject a schema-valid request with E_ASSET_MISSING/E_PARAMS/E_REVISION_CONFLICT/E_LIMIT/E_COMPOSE_INVALID. The composition HTML byte ceiling is a UTF-8 byte limit enforced by the worker (JSON Schema maxLength counts characters, so an ASCII string may still be rejected with E_COMPOSE_INVALID).",
   "x-methods": {
     "doctor": {
       "request": "#/$defs/request_doctor",
@@ -103,6 +103,22 @@
     "preview.release": {
       "request": "#/$defs/request_preview_release",
       "result": "#/$defs/result_preview_release"
+    },
+    "asset.importMedia": {
+      "request": "#/$defs/request_asset_importMedia",
+      "result": "#/$defs/result_asset_importMedia"
+    },
+    "asset.list": {
+      "request": "#/$defs/request_asset_list",
+      "result": "#/$defs/result_asset_list"
+    },
+    "asset.remove": {
+      "request": "#/$defs/request_asset_remove",
+      "result": "#/$defs/result_asset_remove"
+    },
+    "asset.derive": {
+      "request": "#/$defs/request_asset_derive",
+      "result": "#/$defs/result_asset_derive"
     }
   },
   "oneOf": [
@@ -3243,6 +3259,18 @@
         },
         {
           "$ref": "#/$defs/request_preview_release"
+        },
+        {
+          "$ref": "#/$defs/request_asset_importMedia"
+        },
+        {
+          "$ref": "#/$defs/request_asset_list"
+        },
+        {
+          "$ref": "#/$defs/request_asset_remove"
+        },
+        {
+          "$ref": "#/$defs/request_asset_derive"
         }
       ]
     },
@@ -3392,6 +3420,424 @@
           ]
         }
       }
+    },
+    "mediaAsset": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "assetId": {
+          "type": "string",
+          "pattern": "^as_[a-f0-9]{8}$"
+        },
+        "kind": {
+          "enum": [
+            "video",
+            "image",
+            "audio"
+          ]
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "ext": {
+          "enum": [
+            "mp4",
+            "mov",
+            "m4v",
+            "webm",
+            "mp3",
+            "wav",
+            "m4a",
+            "aac",
+            "flac",
+            "png",
+            "jpg",
+            "jpeg"
+          ]
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "media": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "origin": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "assetId",
+        "kind",
+        "name",
+        "ext",
+        "sha256",
+        "bytes",
+        "media",
+        "origin",
+        "createdAt"
+      ]
+    },
+    "params_asset_importMedia": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "operationId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "sourceName": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "limits": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "maxBytes": {
+              "type": "integer",
+              "minimum": 1024,
+              "maximum": 2147483648
+            },
+            "maxProjectBytes": {
+              "type": "integer",
+              "minimum": 1024,
+              "maximum": 8589934592
+            }
+          }
+        }
+      },
+      "required": [
+        "projectId",
+        "sourceName"
+      ]
+    },
+    "request_asset_importMedia": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "id": {
+          "$ref": "#/$defs/requestId"
+        },
+        "method": {
+          "const": "asset.importMedia"
+        },
+        "params": {
+          "$ref": "#/$defs/params_asset_importMedia"
+        }
+      },
+      "required": [
+        "v",
+        "id",
+        "method",
+        "params"
+      ]
+    },
+    "result_asset_importMedia": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "indexRevision": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "asset": {
+          "$ref": "#/$defs/mediaAsset"
+        },
+        "deduped": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "projectId",
+        "indexRevision",
+        "asset",
+        "deduped"
+      ]
+    },
+    "params_asset_list": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "kind": {
+          "enum": [
+            "video",
+            "image",
+            "audio"
+          ]
+        },
+        "query": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "cursor": {
+          "type": "string",
+          "pattern": "^[0-9]{1,12}$"
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 50
+        }
+      },
+      "required": [
+        "projectId"
+      ]
+    },
+    "request_asset_list": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "id": {
+          "$ref": "#/$defs/requestId"
+        },
+        "method": {
+          "const": "asset.list"
+        },
+        "params": {
+          "$ref": "#/$defs/params_asset_list"
+        }
+      },
+      "required": [
+        "v",
+        "id",
+        "method",
+        "params"
+      ]
+    },
+    "result_asset_list": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "indexRevision": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "assets": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/mediaAsset"
+          },
+          "maxItems": 50
+        },
+        "total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "nextCursor": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "recovered": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "projectId",
+        "indexRevision",
+        "assets",
+        "total",
+        "nextCursor",
+        "recovered"
+      ]
+    },
+    "params_asset_remove": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "operationId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "assetId": {
+          "type": "string",
+          "pattern": "^as_[a-f0-9]{8}$"
+        }
+      },
+      "required": [
+        "projectId",
+        "assetId"
+      ]
+    },
+    "request_asset_remove": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "id": {
+          "$ref": "#/$defs/requestId"
+        },
+        "method": {
+          "const": "asset.remove"
+        },
+        "params": {
+          "$ref": "#/$defs/params_asset_remove"
+        }
+      },
+      "required": [
+        "v",
+        "id",
+        "method",
+        "params"
+      ]
+    },
+    "result_asset_remove": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "indexRevision": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "assetId": {
+          "type": "string",
+          "pattern": "^as_[a-f0-9]{8}$"
+        },
+        "removed": {
+          "type": "boolean"
+        },
+        "asset": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/mediaAsset"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "projectId",
+        "indexRevision",
+        "assetId",
+        "removed",
+        "asset"
+      ]
+    },
+    "params_asset_derive": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "assetId": {
+          "type": "string",
+          "pattern": "^as_[a-f0-9]{8}$"
+        },
+        "kind": {
+          "enum": [
+            "thumb",
+            "waveform",
+            "proxy"
+          ]
+        }
+      },
+      "required": [
+        "projectId",
+        "assetId",
+        "kind"
+      ]
+    },
+    "request_asset_derive": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "id": {
+          "$ref": "#/$defs/requestId"
+        },
+        "method": {
+          "const": "asset.derive"
+        },
+        "params": {
+          "$ref": "#/$defs/params_asset_derive"
+        }
+      },
+      "required": [
+        "v",
+        "id",
+        "method",
+        "params"
+      ]
+    },
+    "result_asset_derive": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "assetId": {
+          "type": "string",
+          "pattern": "^as_[a-f0-9]{8}$"
+        },
+        "kind": {
+          "enum": [
+            "thumb",
+            "waveform",
+            "proxy"
+          ]
+        },
+        "ready": {
+          "const": true
+        }
+      },
+      "required": [
+        "assetId",
+        "kind",
+        "ready"
+      ]
     }
   }
 }

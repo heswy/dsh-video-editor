@@ -2553,7 +2553,7 @@ test('P3-012: the rendered product workspace has no manual editing controls', as
     assert(ids.includes(removedId) === false, `removed manual control #${removedId} is still rendered`);
   }
   const renderedText = textOf(tree);
-  for (const key of ['video.canvas.undo', 'video.canvas.redo', 'video.canvas.materials', 'video.canvas.addScene', 'video.canvas.sceneColor', 'video.canvas.textStyle', 'video.open', 'video.update', 'video.save', 'video.frame.empty', 'video.frameTime', 'video.details', 'video.target']) {
+  for (const key of ['video.canvas.undo', 'video.canvas.redo', 'video.canvas.addScene', 'video.canvas.sceneColor', 'video.canvas.textStyle', 'video.open', 'video.update', 'video.save', 'video.frame.empty', 'video.frameTime', 'video.details', 'video.target']) {
     const label = translateFor(editor.env)(key);
     assert(label !== key, `removed dictionary key ${key} was dropped (keep old keys for compatibility)`);
     assert(renderedText.includes(label) === false, `removed manual-editing copy "${label}" is still rendered`);
@@ -2947,7 +2947,7 @@ test('P3-008 -> P3-012: the product mounts the snapshot canvas read-only; manual
   assert(typeof frame.props.src === 'string' && frame.props.src.startsWith('/api/dsh-video/preview/') && frame.props.src.includes('instance='), 'snapshot iframe src is not the bound preview route');
   assert(findNode(after, (node) => node.props && node.props['data-canvas-revision'] === 'c'.repeat(64)) !== null, 'canvas revision marker missing');
   assert(buttonByText(after, translateFor(editor.env)('video.canvas.play')) !== null, 'playback control missing');
-  assert(buttonByText(after, translateFor(editor.env)('video.canvas.materials')) === null, 'the manual materials drawer is still offered in the product UI');
+  assert(buttonByText(after, translateFor(editor.env)('video.canvas.materials')) !== null, 'M2 material library entry is missing');
   assert(buttonByText(after, translateFor(editor.env)('video.canvas.addScene')) === null, 'the manual add-Scene action is still offered');
   // P3-017 B3 intentionally surfaces a product export action; it is not the
   // hidden manual render path (that one still lives behind previewOnly=false).
@@ -3013,7 +3013,7 @@ function extractCanvasModule(loaded) {
     helpers +
     '\n' +
     canvas +
-    '\nreturn { CanvasWorkspace: CanvasWorkspace, hostRequest: hostRequest, formatSeconds: formatSeconds, errorText: errorText, hostError: hostError, operationId: operationId };\n';
+    '\nreturn { MediaLibraryPanel: MediaLibraryPanel, CanvasWorkspace: CanvasWorkspace, hostRequest: hostRequest, formatSeconds: formatSeconds, errorText: errorText, hostError: hostError, operationId: operationId };\n';
   const factory = vm.runInContext('(function (React, h) {\n' + body + '\n})', loaded.context, { filename: 'client.js#canvas-component' });
   return factory(loaded.react, loaded.react.createElement);
 }
@@ -4512,7 +4512,7 @@ test('P3-012 component: previewOnly hides every manual control and gesture surfa
     for (const forbidden of ['dv-overlay', 'dv-selection', 'dv-inline-editor', 'dv-drawer', 'dv-canvas-tools', 'dv-editor-actions']) {
       assert(classes.some((value) => value.split(/\s+/).includes(forbidden)) === false, `manual surface "${forbidden}" rendered in previewOnly`);
     }
-    for (const key of ['video.canvas.undo', 'video.canvas.redo', 'video.canvas.materials', 'video.canvas.addScene', 'video.canvas.export', 'video.canvas.sceneColor', 'video.canvas.textStyle']) {
+    for (const key of ['video.canvas.undo', 'video.canvas.redo', 'video.canvas.addScene', 'video.canvas.export', 'video.canvas.sceneColor', 'video.canvas.textStyle']) {
       assert(buttonByText(tree, translateFor(env)(key)) === null, `manual control "${key}" rendered in previewOnly`);
     }
     // No user gesture exists that could issue a write.
@@ -5057,6 +5057,35 @@ test('P3-017 B3: product export binds the clicked revision and reports stage/pro
   assert(exportButton(editor.tree()) !== null, 'the export error has no retry affordance');
 });
 //#endregion
+
+test('V1 M2: product material library loads scoped metadata and exposes import/filter/search', async()=>{
+  const hostFetch=canvasFetch({});
+  hostFetch.config.handler=request=> request.body.method==='asset.list' ? {ok:true,result:{assets:[{assetId:'as_12345678',name:'Example movie',kind:'video',bytes:100,media:{durationSec:1,width:64,height:64}}],nextCursor:null,total:1}} : undefined;
+  const loaded=loadClient({fetch:hostFetch}); const env=createFakeEnvironment();loaded.exports.apply(env.ctx);
+  const component=extractCanvasModule(loaded).MediaLibraryPanel;
+  assert(typeof component==='function','Media library component missing');
+  const mounted=loaded.react.renderInteractive(component,{t:translateFor(env),projectId:'proj-smoke',onClose:()=>{}});
+  mounted.render();await new Promise(resolve=>setTimeout(resolve,200));const tree=mounted.render();
+  assert(textOf(tree).includes('Example movie'),'Imported media metadata is missing');
+  assert(findNode(tree,n=>n.type==='input'&&n.props.type==='file')!==null,'File picker missing');
+  assert(findNode(tree,n=>n.type==='input'&&n.props.type==='search')!==null,'Search missing');
+});
+
+test('V1 M2: a thumbnail finishing during a filter change remains visible',async()=>{
+  const hostFetch=canvasFetch({});let completeDerive;
+  hostFetch.config.handler=request=>{
+    if(request.body.method==='asset.list')return {ok:true,result:{assets:[{assetId:'as_12345678',name:'Example movie',kind:'video',bytes:100,media:{durationSec:1}}],nextCursor:null,total:1}};
+    if(request.body.method==='asset.derive')return new Promise(resolve=>{completeDerive=()=>resolve({ok:true,result:{ready:true}});});
+  };
+  const loaded=loadClient({fetch:hostFetch});const env=createFakeEnvironment();loaded.exports.apply(env.ctx);
+  const component=extractCanvasModule(loaded).MediaLibraryPanel;
+  const mounted=loaded.react.renderInteractive(component,{t:translateFor(env),projectId:'proj-smoke',onClose:()=>{}});
+  mounted.render();await new Promise(resolve=>setTimeout(resolve,200));let tree=mounted.render();await new Promise(resolve=>setTimeout(resolve,10));
+  assert(typeof completeDerive==='function','Background thumbnail request missing');
+  buttonByText(tree,translateFor(env)('video.media.video')).props.onClick();mounted.render();
+  await new Promise(resolve=>setTimeout(resolve,200));mounted.render();completeDerive();await new Promise(resolve=>setTimeout(resolve,20));tree=mounted.render();
+  assert(findNode(tree,n=>n.type==='img'&&String(n.props.src).includes('derived'))!==null,'Completed thumbnail disappeared after filter change');
+});
 
 async function runTests() {
   for (const [name, fn] of tests) {

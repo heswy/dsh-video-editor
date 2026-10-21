@@ -33,6 +33,7 @@ export const CONFIG_KEYS = Object.freeze([
   'projectsRoot',
   'assetInboxRoot',
   'maxAssetBytes',
+  'maxProjectAssetBytes',
   'dataRoot',
   'legacyDataRoots',
   'browserPath',
@@ -50,7 +51,8 @@ const DEFAULT_LIMITS = Object.freeze({
   maxArtifactBytes: 64 * 1024 * 1024,
   maxResultBytes: 1024 * 1024,
   maxPreviewBytes: 8 * 1024 * 1024,
-  maxAssetBytes: 8 * 1024 * 1024,
+  maxAssetBytes: 2 * 1024 * 1024 * 1024,
+  maxProjectAssetBytes: 8 * 1024 * 1024 * 1024,
 });
 
 const NUMBER_RULES = Object.freeze({
@@ -65,7 +67,8 @@ const NUMBER_RULES = Object.freeze({
   maxArtifactBytes: { min: 1024, max: 256 * 1024 * 1024 },
   maxResultBytes: { min: 4096, max: 8 * 1024 * 1024 },
   maxPreviewBytes: { min: 1024, max: 8 * 1024 * 1024 },
-  maxAssetBytes: { min: 1024, max: 8 * 1024 * 1024 },
+  maxProjectAssetBytes: { min: 1024, max: 8 * 1024 * 1024 * 1024 },
+  maxAssetBytes: { min: 1024, max: 2 * 1024 * 1024 * 1024 },
 });
 
 const MAX_PATH = 4096;

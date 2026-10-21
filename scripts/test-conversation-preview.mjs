@@ -1316,7 +1316,7 @@ async function main() {
       'input[type="color"]', 'input[type="number"]', 'input[type="file"]', 'input[type="text"]', 'textarea',
     ];
     const forbiddenTextKeys = [
-      'video.canvas.undo', 'video.canvas.redo', 'video.canvas.materials', 'video.canvas.addScene',
+      'video.canvas.undo', 'video.canvas.redo', 'video.canvas.addScene',
       'video.canvas.export', 'video.canvas.exporting', 'video.canvas.download', 'video.canvas.sceneColor',
       'video.canvas.textStyle', 'video.canvas.apply', 'video.canvas.busy', 'video.canvas.hint',
       'video.save', 'video.update', 'video.refresh', 'video.frameTime', 'video.target', 'video.title',
@@ -1325,7 +1325,7 @@ async function main() {
     const forbiddenTexts = forbiddenTextKeys.map((key) => dictionary[key]).filter((value) => typeof value === 'string' && value.length > 0);
     const finalState = await evaluate(page, () => window.__CASE__.state());
     const audit = await evaluate(page, (argsForAudit) => window.__CASE__.domAudit(argsForAudit.selectors, argsForAudit.texts), { selectors: forbiddenSelectors, texts: forbiddenTexts });
-    checkAcceptance('B5', 'B5: rendered product panel contains no deferred manual-edit controls (undo/redo/materials/addScene/export/property forms/selection/editor)', audit.present.length === 0 && audit.copyHits.length === 0, { present: audit.present, copyHits: audit.copyHits, forbiddenTexts });
+    checkAcceptance('B5', 'B5: rendered product panel contains no deferred manual-edit controls (undo/redo/addScene/export/property forms/selection/editor)', audit.present.length === 0 && audit.copyHits.length === 0, { present: audit.present, copyHits: audit.copyHits, forbiddenTexts });
     const disallowedControls = audit.formControls.filter((control) => !(control.tag === 'input' && control.type === 'range'));
     checkAcceptance('B5', 'B5: only the read-only preview controls remain (play/pause, seek, time label)', audit.canvasBarPresent === true && audit.playButton !== null && audit.seekPresent === true && audit.timePresent === true && disallowedControls.length === 0, { canvasBar: audit.canvasBarPresent, playButton: audit.playButton, seek: audit.seekPresent, time: audit.timePresent, disallowedControls });
     // Gesture safety: real clicks/double-click/keyboard on the preview must not

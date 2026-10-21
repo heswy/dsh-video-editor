@@ -134,8 +134,8 @@ check('bundle manifest declares patch and client', () => {
   return `platform=web, inject=[${pkg.dsh.client.inject.join(', ')}]`;
 });
 
-check('package version advanced for the V1 M1 1.0.0-alpha.1 candidate (stable data root + migration + folder button + ui-state)', () => {
-  assert(pkg.version === '1.0.0-alpha.1', `expected version 1.0.0-alpha.1, found "${pkg.version}"`);
+check('package version advanced for the V1 M2 1.0.0-alpha.2 candidate (media library + streaming import + playback)', () => {
+  assert(pkg.version === '1.0.0-alpha.2', `expected version 1.0.0-alpha.2, found "${pkg.version}"`);
   return pkg.version;
 });
 
@@ -615,7 +615,7 @@ check('P2-002-B: Host modules do not import DSH-internal packages', () => {
 // default-false canvas keeps its own copy; the product preview error path is
 // asserted by the P3-012 checks and the smoke test.
 check('P3-012: the product panel renders no deferred manual-editing controls', () => {
-  assert((clientSource.match(/previewOnly \? null : h\('button'/g) || []).length >= 4, 'undo/redo/materials/add-scene buttons are not gated by previewOnly');
+  assert((clientSource.match(/previewOnly \? null : h\('button'/g) || []).length >= 3, 'undo/redo/add-scene buttons are not gated by previewOnly');
   assert(clientSource.includes('drawerOpen && previewOnly === false'), 'the manual materials drawer is not gated by previewOnly');
   assert(clientSource.includes("previewOnly ? null : h(\n          'div',\n          { className: 'dv-canvas-tools' }"), 'the manual tools row is not gated by previewOnly');
   assert(clientSource.includes("const previewOnly = props.previewOnly === true"), 'previewOnly mode flag missing');

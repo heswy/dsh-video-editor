@@ -4,6 +4,8 @@
 
 ## 事实来源与分工
 
+- **V1 当前授权（2026-10-21）**：用户明确指派本会话完成 M2，并负责后续 V1.0.0 全部开发；本会话兼任规划、实现、验证、修复与 PR。无需另找开发会话，不自动联系其它会话；仍保持单树单写入者。可从已验证、已提交的干净里程碑候选构建 staging 供评审，标注未合入 main；安装、重启、真实模型、合并和发布仍按当次授权。M1/M2 的真机验收合并到用户下一次重启窗口，其后里程碑继续按验收门推进。
+
 - **main是唯一长期主分支，origin/main同时维护代码和最新项目记忆。** 不再维护独立project-foundation或长期video-studio分支。
 - 主会话负责产品/架构/任务/规范/协调/评审/验收；用户指定开发Agent实现、验证、修复并交PR。主会话只有在用户明确指派时直接实现；不自动派发或跨会话联系，交接由用户转发。
 - 开工先git fetch origin，然后git show origin/main:docs/STATUS.md、docs/DEVELOPMENT.md及docs/handoffs/README.md；产品读PRODUCT、设计读FRONTEND-DESIGN、决策读DECISIONS有效索引。离线注明缓存main提交。

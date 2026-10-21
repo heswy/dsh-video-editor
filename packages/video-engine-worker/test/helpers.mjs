@@ -57,6 +57,9 @@ export function client(registry) {
     stderr = "";
   const pending = new Map(),
     lines = [];
+  // Decode across chunk boundaries; a CJK codepoint can straddle two writes.
+  child.stdout.setEncoding("utf8");
+  child.stderr.setEncoding("utf8");
   child.stdout.on("data", (b) => {
     buffer += b;
     let i;

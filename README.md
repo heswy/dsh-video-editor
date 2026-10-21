@@ -1,6 +1,6 @@
 # DSH Video
 
-> 当前代码已收口到 `main`：bundle `0.3.0-alpha.7` / engine `0.4.0`，含对话优先主流程、UI优化、真实 DSH 预览 CSP 修复与沙箱预览子资源公共路由修复。Git合并不代表已安装；固定候选、检查与实际未测范围读 [STATUS](docs/STATUS.md)。下文旧alpha.4路径保留作历史，不能混用版本/摘要。
+> V1 开发候选：bundle `1.0.0-alpha.2` / engine `0.5.0`，在 M1 稳定存储上新增工程素材库、流式导入、媒体 Range、缩略图/波形/兼容代理与 AI 素材查询。该分支尚未合入 main、未安装验收；main 的 0.3 稳定线与回滚锚点保留。当前状态读 [STATUS](docs/STATUS.md)。
 
 
 运行在 DeepSeek Harness 内的 AI 视频创作与编辑插件。当前目标是用户通过右侧对话生成视频，左侧自动预览/播放，再通过对话持续修改同一作品；用户手动编辑后续再加。
@@ -19,6 +19,17 @@
 - [P2-002 Host 契约调查](docs/research/P2-002-host-bridge-contract.md)
 - [P3-005-A 原生会话契约调查](docs/research/P3-005A-native-conversation-contract.md)
 
+## 本版交付（1.0.0-alpha.2 · M2 素材库与媒体管线）
+
+固定候选：`artifacts/p2-b/staging-v1.0.0-alpha.2-939419e`（同级 worktrees/artifacts 下），root=engine=`939419e10fe5e0b3b9c526d6bc580558d850c9cb`、rootDirty=false，INTEGRITY sha256 `0ead5c6bf48b340dc6712fe457ee3c46cff46ce7603d05426a76b1a7ed3903fa`。本轮未安装/重启/合并；[M2 PR #18](https://github.com/heswy/dsh-video-editor/pull/18) 依赖 [M1 PR #17](https://github.com/heswy/dsh-video-editor/pull/17)。
+
+- 素材按钮打开工程素材抽屉：视频/图片/音频，多文件选择或拖入、上传百分比与取消、筛选/搜索/分页、详情和播放/seek、确认删除、可复制的素材引用标记。
+- 认证流式上传：默认单文件 2 GiB / 工程 8 GiB（`maxAssetBytes` / `maxProjectAssetBytes` 可降低），剩余磁盘预检；临时 receipt 定时过期与实例资源清理。Worker 按完整 SHA-256 去重，ffprobe 探测；短 ID 冲突拒绝，不覆盖。
+- 媒体认证路由：GET/HEAD、Range/206/416，读取索引后检查工程/文件 realpath，媒体字节流式响应；界面与 Tool 都不能传磁盘路径。
+- 缩略图/波形/兼容播放代理为可重建工程缓存；不会改作品 revision。媒体尚不自动出现在画面里，M3 再接统一时间线。
+- `video_engine asset.list`：只读分页元数据与 Session/project 隔离。导入、删除、派生为 UI-only；在用素材按 timeline 片段或 composition 路径拒绝删除。
+- 验证与验收入口：[M2 任务卡](docs/tasks/V1-M2-media.md)、[V1 验收矩阵](docs/plans/V1.0-ACCEPTANCE.md)。固定候选及摘要构建后记入任务卡；本地浏览器/worker 结果不等于 DSH 真机通过。
+
 ## 本版交付（1.0.0-alpha.1 · M1 存储与工程生命周期，本地开发候选；稳定数据根 + 旧工程迁移 + 文件夹按钮 + 面板状态 + 容错）
 
 | 项 | 值 |
@@ -32,7 +43,7 @@
 | 面板 key | `main` keyed slot 的 `dsh-video`；另声明私有 session child，仅用于取得原生 `SessionProvider` kit |
 | 引擎依赖 | 独立 `dsh-video-engine-client` / `dsh-video-engine-worker`，仅开发 staging 快照内解析；两包维持 `0.4.0`（M1 未改引擎，升级 `0.5.0` 留到时间线里程碑）。M1 候选 root/engine 提交由 Lead 构建 staging 时固定并记录 |
 
-| 开发 staging | 当前已安装 `artifacts/p2-b/staging-alpha11-51b95dc`（0.3.0-alpha.11；回滚锚点）；**M1 候选已构建** `artifacts/p2-b/staging-v1.0.0-alpha.1-5d42b1f`（root=engine=`5d42b1f`、bundle `1.0.0-alpha.1`、client/worker `0.4.0`、INTEGRITY sha256 `55e61ebbabee4df92b44d5ba6c3429a7bea5f7c58e2c27e8f9b58c50f55f958c`，约 203 MB），**未安装**；alpha.10/alpha.9/alpha.8 staging 均保留回滚；仅开发快照，不随包分发 |
+| 开发 staging | M2 固定候选 `artifacts/p2-b/staging-v1.0.0-alpha.2-939419e`（bundle alpha.2 / engine 0.5.0，本轮未安装）；M1 `staging-v1.0.0-alpha.1-5d42b1f` 和 0.3 回滚锚点 `staging-alpha11-51b95dc` 均保留。详见 M2 任务卡 |
 
 `index.js` 是 Host half：一个 plugin-local `VideoBridge` 同时服务精确 Fetch 路由和 Tool；`host/` 保存校验、错误映射、环境清理、worker 适配、产物发布、会话映射、局部图片预览、受控项目/素材收件箱与预览快照路由。`client.js` 是手写浏览器半（`window.__ModuleLoader__.load` 格式），只 `require('react')`，通过文档相对 `fetch('api/dsh-video/request')` 调用 Host；右侧 AI 直接渲染宿主原生 `conversation.content` Factory，不自建聊天。
 
@@ -132,7 +143,7 @@
 node scripts/stage-dev.mjs   --engine-commit <reviewed-P2-003-sha>   --bundle-version <reviewed-bundle-version>   --node /absolute/real/node   --browser /absolute/chrome   [--font /absolute/font] [--out /absolute/staging-dir]   [--data-root /absolute/user-data-root]   [--legacy-data-root /absolute/previous-staging]
 ```
 
-`--bundle-version` 必须显式给出，且与所固定提交根 `package.json` 的版本（当前 **1.0.0-alpha.1**）完全一致；非法 semver 或不一致会在创建输出目录、安装依赖之前失败，脚本不会猜测或隐式接受任意版本。后续升级根版本时同步传入新版本，不删除这项校验。
+`--bundle-version` 必须显式给出，且与所固定提交根 `package.json` 的版本（当前 **1.0.0-alpha.2**）完全一致；非法 semver 或不一致会在创建输出目录、安装依赖之前失败，脚本不会猜测或隐式接受任意版本。后续升级根版本时同步传入新版本，不删除这项校验。
 
 引擎版本只接受主会话已复审的固定版本对（当前 `0.1.1/0.1.1`、`0.3.0/0.3.0`、`0.3.1/0.3.1`、`0.3.2/0.3.2`、`0.4.0/0.4.0`）；0.3.x 起使用 managed `projectsRoot`/`assetInboxRoot`。版本对只按主会话明确固定的提交维护，**绝不自动跟随 p1 分支 HEAD**。
 
@@ -140,7 +151,7 @@ node scripts/stage-dev.mjs   --engine-commit <reviewed-P2-003-sha>   --bundle-ve
 
 ```text
 <staging>/
-  bundle/                  # 1.0.0-alpha.1 M1 候选根 bundle；仅此快照内加本地依赖与 node_modules 链接
+  bundle/                  # 1.0.0-alpha.2 M2 候选根 bundle；仅此快照内加本地依赖与 node_modules 链接
   engine-client/           # 固定 engine commit 快照
   engine-worker/           # 固定 engine commit 快照 + 依赖闭包 + artifacts fixture/registry/output
   config.json              # 仅此快照的绝对路径 Host 配置（含 sessionStatePath/sessionCwd）

@@ -489,6 +489,9 @@ export class SessionService {
       } else {
         factsLines.push('Inspect the project before editing so the revision and target ids are current.');
       }
+      factsLines.push('Imported media: query video_engine asset.list (projectId, kind/query/cursor/limit); timeline placement comes in M3.');
+      const mediaCount=this.bridge?.mediaCounts?.get(projectId);
+      if(Number.isSafeInteger(mediaCount))factsLines.splice(1,0,`Imported media: ${mediaCount} assets. Use video_engine asset.list for paginated metadata.`);
       // Whole-line budget: the fixed instructions above are never truncated;
       // optional fact lines are appended in priority order while they fit.
       let text = lines.join('\n');
