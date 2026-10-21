@@ -1,3 +1,4 @@
+import { MediaLibrary, validateImportMedia, validateAssetList, validateAssetRemove } from "./assets.mjs";
 import { readFile, mkdir } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import {
@@ -35,7 +36,7 @@ import {
 const MAX_LINE = 65536,
   MAX_OUTPUT = 65536,
   MAX_REQUESTS = 10000;
-let store,
+let media, store,
   jobs,
   closing = false,
   shutdownPromise,
@@ -123,6 +124,19 @@ async function method(name, p) {
     case "project.rename":
       validateProjectRename(p);
       return store.rename(p);
+    case "asset.importMedia":
+      validateImportMedia(p); store.assertNotClosing(p.projectId);
+      return store.queue(p.projectId,()=>media.importMedia(p));
+    case "asset.list":
+      validateAssetList(p); store.assertNotClosing(p.projectId);
+      return store.queue(p.projectId,()=>media.list(p));
+    case "asset.remove":
+      validateAssetRemove(p); store.assertNotClosing(p.projectId);
+      return store.queue(p.projectId,()=>media.remove(p));
+    case "asset.derive":
+      keys(p,["projectId","assetId","kind"],["projectId","assetId","kind"]);
+      validateAssetRemove({projectId:p.projectId,assetId:p.assetId}); store.assertNotClosing(p.projectId);
+      return store.queue(p.projectId,()=>media.derive(p));
     case "asset.import":
       validateImportAsset(p);
       return store.importAsset(p);
@@ -296,6 +310,7 @@ try {
   }
   store = new Projects(config, { diagnostic });
   jobs = new Jobs(store, config);
+  media = new MediaLibrary({config:store.config,diagnostic});
   // Discards private preview copies left behind by a previous process before
   // serving the first request.
   await store.initialize();

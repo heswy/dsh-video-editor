@@ -1,5 +1,5 @@
 /**
- * Host-side asset inbox for controlled PNG/JPEG imports (P3-008, R4).
+ * Host-side streaming media inbox (V1 M2; preserves the legacy image import API).
  *
  * The UI never hands the worker or the Host an arbitrary filesystem path. It
  * uploads bytes to this authenticated exact route; the Host validates size and
@@ -15,7 +15,7 @@
  */
 
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, realpath, unlink, writeFile } from 'node:fs/promises';
+import { mkdir, realpath, unlink, open, statfs } from 'node:fs/promises';
 import { basename, extname, isAbsolute, join } from 'node:path';
 import { BridgeError } from './errors.js';
 
@@ -24,7 +24,20 @@ const RECEIPT_TTL_MS = 10 * 60 * 1000;
 const MAX_RECEIPTS = 32;
 const SAFE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,120}$/;
 const PROJECT_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
-const MIME = Object.freeze({ '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg' });
+const MIME = Object.freeze({
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.mp4': 'video/mp4',
+  '.mov': 'video/quicktime',
+  '.m4v': 'video/mp4',
+  '.webm': 'video/webm',
+  '.mp3': 'audio/mpeg',
+  '.wav': 'audio/wav',
+  '.m4a': 'audio/mp4',
+  '.aac': 'audio/aac',
+  '.flac': 'audio/flac',
+});
 const JSON_HEADERS = Object.freeze({ 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
 
 function fail(code, message, stage) {
@@ -69,16 +82,23 @@ async function cancelReader(reader) {
 }
 
 function safeSourceName(name) {
-  const base = basename(String(name || 'image.png')).replace(/\0/g, '').slice(0, 120);
-  if (SAFE_NAME.test(base) === false) fail('E_PARAMS', 'Invalid upload filename', 'asset');
+  let decoded;
+  try {
+    decoded = decodeURIComponent(String(name || 'image.png'));
+  } catch {
+    fail('E_PARAMS', 'Invalid upload filename');
+  }
+  const base = basename(decoded).slice(0, 120);
+  if (!base || /[\x00-\x1f\x7f\\/]/.test(base)) fail('E_PARAMS', 'Invalid upload filename');
   const extension = extname(base).toLowerCase();
   const mediaType = MIME[extension];
-  if (mediaType === undefined) fail('E_ASSET_UNSUPPORTED', 'Only PNG and JPEG images are supported', 'asset');
+  if (mediaType === undefined) fail('E_ASSET_UNSUPPORTED', 'Unsupported media format', 'asset');
   return { sourceName: base, extension, mediaType };
 }
 
 function sniff(bytes) {
-  if (bytes.length >= 8 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) return 'image/png';
+  if (bytes.length >= 8 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47)
+    return 'image/png';
   if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return 'image/jpeg';
   return null;
 }
@@ -88,10 +108,12 @@ export class AssetInbox {
     const settings = options || {};
     this.connection = settings.connection;
     this.root = settings.root;
-    this.maxBytes = Number.isFinite(settings.maxBytes) ? Math.floor(settings.maxBytes) : 8 * 1024 * 1024;
-    this.maxReceipts = Number.isInteger(settings.maxReceipts) && settings.maxReceipts >= 1 && settings.maxReceipts <= 256
-      ? settings.maxReceipts
-      : MAX_RECEIPTS;
+    this.maxBytes = Number.isFinite(settings.maxBytes) ? Math.floor(settings.maxBytes) : 2 * 1024 * 1024 * 1024;
+    this.minFreeBytes = settings.minFreeBytes === undefined ? 1024 * 1024 * 1024 : settings.minFreeBytes;
+    this.maxReceipts =
+      Number.isInteger(settings.maxReceipts) && settings.maxReceipts >= 1 && settings.maxReceipts <= 256
+        ? settings.maxReceipts
+        : MAX_RECEIPTS;
     this.isTrustedProject = typeof settings.isTrustedProject === 'function' ? settings.isTrustedProject : null;
     this.receipts = new Map();
     this.routes = [];
@@ -102,6 +124,10 @@ export class AssetInbox {
     this.closing = false;
     this.disposed = false;
     this.disposePromise = null;
+    this.sweepTimer = setInterval(() => {
+      this.sweep().catch(() => {});
+    }, 60000);
+    this.sweepTimer.unref?.();
   }
 
   get available() {
@@ -126,7 +152,7 @@ export class AssetInbox {
         methods: ['POST'],
         requestBody: 'streaming',
         fetch: (request) => this.handle(request),
-      })
+      }),
     );
   }
 
@@ -144,6 +170,7 @@ export class AssetInbox {
   /** Refuse new uploads and cancel bodies that are still streaming. */
   close() {
     this.closing = true;
+    clearInterval(this.sweepTimer);
     for (const reader of this.activeReaders) {
       try {
         const cancellation = reader.cancel();
@@ -166,6 +193,10 @@ export class AssetInbox {
     for (const [id, receipt] of this.receipts) {
       if (now - receipt.createdAt > RECEIPT_TTL_MS) {
         this.receipts.delete(id);
+        if (receipt.importing) {
+          this.receipts.set(id, receipt);
+          continue;
+        }
         expired.push(receipt);
       }
     }
@@ -176,43 +207,71 @@ export class AssetInbox {
     return expired.length;
   }
 
-  async readBody(request, limit) {
+  async readBody(request, limit, target) {
     const declared = Number(request.headers.get('content-length'));
-    if (Number.isFinite(declared) && declared > limit) fail('E_ASSET_LIMIT', 'Image exceeds the size limit', 'asset');
-    if (request.body === null || typeof request.body?.getReader !== 'function') fail('E_PARAMS', 'Upload body is missing', 'asset');
+    if (Number.isFinite(declared) && declared > limit) fail('E_ASSET_LIMIT', 'Media exceeds the size limit');
+    if (!request.body?.getReader) fail('E_PARAMS', 'Upload body is missing');
     const reader = request.body.getReader();
     this.activeReaders.add(reader);
-    const chunks = [];
+    const abort = () => {
+      cancelReader(reader).catch(() => {});
+    };
+    request.signal?.addEventListener('abort', abort, { once: true });
+    let file;
+    try {
+      file = await open(target, 'wx', 0o600);
+    } catch (e) {
+      this.activeReaders.delete(reader);
+      request.signal?.removeEventListener('abort', abort);
+      await cancelReader(reader);
+      throw e;
+    }
+    const hash = createHash('sha256');
     let total = 0;
+    let prefix = Buffer.alloc(0);
     try {
       for (;;) {
         this.requireAccepting();
+        if (request.signal?.aborted) fail('E_ASSET_UPLOAD', 'Upload cancelled');
         const { done, value } = await reader.read();
-        // A dispose during read() aborts the reader; the returned bytes must
-        // never be written or handed out after teardown began.
         this.requireAccepting();
+        if (request.signal?.aborted) fail('E_ASSET_UPLOAD', 'Upload cancelled');
         if (done) break;
         total += value.length;
         if (total > limit) {
           await cancelReader(reader);
-          fail('E_ASSET_LIMIT', 'Image exceeds the size limit', 'asset');
+          fail('E_ASSET_LIMIT', 'Media exceeds the size limit');
         }
-        chunks.push(Buffer.from(value));
+        const bytes = Buffer.from(value);
+        hash.update(bytes);
+        if (prefix.length < 16) prefix = Buffer.concat([prefix, bytes.subarray(0, 16 - prefix.length)]);
+        let offset = 0;
+        while (offset < bytes.length) {
+          const result = await file.write(bytes, offset, bytes.length - offset);
+          offset += result.bytesWritten;
+        }
       }
-    } catch (error) {
-      if (this.accepting === false) fail('E_ASSET_DISPOSED', 'The asset inbox is stopping', 'asset');
-      throw error;
+      return { size: total, sha256: hash.digest('hex'), prefix };
+    } catch (e) {
+      await cancelReader(reader);
+      throw e;
     } finally {
       this.activeReaders.delete(reader);
+      request.signal?.removeEventListener('abort', abort);
+      reader.releaseLock();
+      await file.close();
     }
-    return Buffer.concat(chunks);
   }
 
   /** Track one accepted upload so dispose can wait for its bounded outcome. */
   handle(request) {
     if (this.accepting === false) {
-      return Promise.resolve(errorResponse(new BridgeError('E_ASSET_DISPOSED', 'The asset inbox is stopping', { stage: 'asset' })));
+      return Promise.resolve(
+        errorResponse(new BridgeError('E_ASSET_DISPOSED', 'The asset inbox is stopping', { stage: 'asset' })),
+      );
     }
+    if (this.handlers.size + this.receipts.size >= this.maxReceipts)
+      return Promise.resolve(errorResponse(new BridgeError('E_ASSET_LIMIT', 'Too many pending uploads')));
     const task = this.handleUpload(request);
     this.handlers.add(task);
     const settle = () => this.handlers.delete(task);
@@ -229,13 +288,11 @@ export class AssetInbox {
       if (this.isTrustedProject !== null && this.isTrustedProject(projectId) !== true) {
         fail('E_PROJECT_NOT_FOUND', 'Project is not registered for this Host bridge', 'asset');
       }
-      const { sourceName, extension, mediaType: declared } = safeSourceName(request.headers.get('x-dsh-file-name') || '');
-      const bytes = await this.readBody(request, this.maxBytes);
-      this.requireAccepting();
-      if (bytes.length === 0) fail('E_PARAMS', 'Upload body is empty', 'asset');
-      const sniffed = sniff(bytes);
-      if (sniffed === null) fail('E_ASSET_UNSUPPORTED', 'The upload is not a PNG or JPEG image', 'asset');
-      if (sniffed !== declared) fail('E_ASSET_UNSUPPORTED', 'The image content does not match its extension', 'asset');
+      const {
+        sourceName,
+        extension,
+        mediaType: declared,
+      } = safeSourceName(request.headers.get('x-dsh-file-name') || '');
       await this.sweep();
       this.requireAccepting();
       if (this.receipts.size >= this.maxReceipts) {
@@ -249,39 +306,48 @@ export class AssetInbox {
         fail('E_ASSET_UPLOAD', 'The asset inbox is not available', 'asset');
       }
       this.requireAccepting();
-      const generated = `upload-${randomUUID()}-${sourceName}`;
+      const capacity = await statfs(root);
+      if (
+        capacity.bavail * capacity.bsize <
+        this.minFreeBytes + Math.max(0, Number(request.headers.get('content-length')) || 0)
+      )
+        fail('E_ASSET_LIMIT', 'Not enough free space');
+      const generated = `upload-${randomUUID()}-${SAFE_NAME.test(sourceName) && !sourceName.includes('..') ? sourceName : 'media' + extension}`;
       const target = join(root, generated);
       this.ownedFiles.add(target);
       ownedTarget = target;
-      try {
-        await writeFile(target, bytes, { mode: 0o600 });
-      } catch (_error) {
-        fail('E_ASSET_UPLOAD', 'The upload could not be stored', 'asset');
-      }
+      const uploaded = await this.readBody(request, this.maxBytes, target);
       this.requireAccepting();
+      if (!uploaded.size) fail('E_PARAMS', 'Upload body is empty');
+      const sniffed = sniff(uploaded.prefix);
+      if (declared.startsWith('image/') && sniffed !== declared)
+        fail('E_ASSET_UNSUPPORTED', 'Image signature does not match extension');
       const receipt = {
         receiptId: randomUUID(),
         projectId,
         sourceName: basename(target),
         originalName: sourceName,
         extension,
-        mediaType: sniffed,
-        size: bytes.length,
-        sha256: createHash('sha256').update(bytes).digest('hex'),
+        mediaType: declared,
+        size: uploaded.size,
+        sha256: uploaded.sha256,
         target,
         createdAt: Date.now(),
       };
       this.receipts.set(receipt.receiptId, receipt);
       ownedTarget = null;
-      return new Response(JSON.stringify({
-        receiptId: receipt.receiptId,
-        projectId: receipt.projectId,
-        fileName: receipt.originalName,
-        mediaType: receipt.mediaType,
-        size: receipt.size,
-        sha256: receipt.sha256,
-        expiresAt: new Date(receipt.createdAt + RECEIPT_TTL_MS).toISOString(),
-      }), { status: 200, headers: JSON_HEADERS });
+      return new Response(
+        JSON.stringify({
+          receiptId: receipt.receiptId,
+          projectId: receipt.projectId,
+          fileName: receipt.originalName,
+          mediaType: receipt.mediaType,
+          size: receipt.size,
+          sha256: receipt.sha256,
+          expiresAt: new Date(receipt.createdAt + RECEIPT_TTL_MS).toISOString(),
+        }),
+        { status: 200, headers: JSON_HEADERS },
+      );
     } catch (error) {
       if (ownedTarget !== null) {
         this.ownedFiles.delete(ownedTarget);
@@ -321,6 +387,7 @@ export class AssetInbox {
     if (this.disposePromise !== null) return this.disposePromise;
     this.closing = true;
     this.disposed = true;
+    clearInterval(this.sweepTimer);
     const pending = [...this.handlers];
     for (const reader of this.activeReaders) {
       try {

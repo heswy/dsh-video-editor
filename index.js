@@ -1,3 +1,4 @@
+import { createMediaRoute } from './host/media-routes.js';
 /**
  * dsh-video — Host half.
  *
@@ -53,6 +54,8 @@ export function apply(ctx, config) {
       }
       try {
         disposers.push(ctx.connection.fetch.register(createArtifactRoute(bridge)));
+        disposers.push(ctx.connection.fetch.register(createMediaRoute(bridge)));
+        disposers.push(ctx.connection.fetch.register(createMediaRoute(bridge,true)));
       } catch (error) {
         report(ctx, 'artifact-route-registration-failed', error);
       }

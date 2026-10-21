@@ -26,6 +26,7 @@ const ACTIONS = Object.freeze([
   'close',
   'project.compose',
   'project.source',
+  'asset.list',
   'scene.create',
   'scene.update',
   'scene.remove',
@@ -39,6 +40,10 @@ const ACTIONS = Object.freeze([
 const TOOL_PARAMETERS = Object.freeze({
   type: 'object',
   properties: {
+    kind: {type:'string',enum:['video','audio','image']},
+    query: {type:'string',maxLength:120},
+    cursor: {type:'string',pattern:'^[0-9]{1,12}$'},
+    limit: {type:'integer',minimum:1,maximum:50},
     action: {
       type: 'string',
       enum: ACTIONS,
@@ -159,6 +164,7 @@ const ACTION_FIELDS = Object.freeze({
   close: ['projectId'],
   'project.compose': ['projectId', 'expectedRevision', 'operationId', 'html'],
   'project.source': ['projectId'],
+  'asset.list': ['projectId','kind','query','cursor','limit'],
   'scene.create': ['projectId', 'expectedRevision', 'operationId', 'sceneId', 'afterSceneId', 'template'],
   'scene.update': ['projectId', 'expectedRevision', 'operationId', 'sceneId', 'template'],
   'scene.remove': ['projectId', 'expectedRevision', 'operationId', 'sceneId'],

@@ -305,3 +305,14 @@ JSONL v1 方法集新增 1 个 UI-only 方法（共 25 个）；既有方法的�
 - `inspect` / `open` 新增可空 `title`；`project.create.title`（若提供）同时作为初始显示标题写入 manifest。`asset.import` 重写 manifest 时保留已有 `title`。
 - Host 侧：`project.rename` 是 UI-only 方法（Tool source 返回 `E_METHOD`）；Host `project.list` 每项新增可空 `title` 供选择器显示。
 - `test/project-rename.test.mjs`（真实 worker 进程）：创建 → inspect title → rename（trim/原子写/保留 entry+assets/无 revision 变化）→ 重开与重启后标题持久 → 相同标题幂等 → 非法标题/未 open 的错误码 → Tool/Host 契约见 Host `scripts/check-host.mjs`。
+
+## V1 M2 工程媒体库
+
+| 方法 | 参数与行为 |
+|---|---|
+| `asset.importMedia` | `{projectId,sourceName,operationId?,name?,limits?}`；从受控 inbox 流式 hash/探测并导入 media，按完整 sha256 去重；短 ID 碰撞拒绝，不覆盖已有文件 |
+| `asset.list` | `{projectId,kind?,query?,cursor?,limit?}`；最多 50 项，不返回磁盘路径；含独立 indexRevision |
+| `asset.derive` | `{projectId,assetId,kind:"thumb"或"waveform"或"proxy"}`；独立异步请求，缩略图/波形 30 秒、兼容代理 110 秒超时，可重试；工程私有缓存可重建 |
+| `asset.remove` | `{projectId,assetId,operationId?}`；检查 timeline/project/composition 引用；先暂存媒体，再原子提交索引，失败恢复媒体 |
+
+媒体索引与派生缓存独立于 composition revision。所有媒体操作复用工程写入队列，关闭/退出排空；单文件 2 GiB、工程 8 GiB。损坏索引保留 `.corrupt-*` 后重建，缺失索引从 media 重建。M2 不把素材自动放入作品，时间线由 M3 接入。

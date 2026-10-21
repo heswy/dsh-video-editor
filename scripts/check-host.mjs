@@ -2295,7 +2295,7 @@ async function main() {
     assert(contribution.text({ agent: { session: { id: 'session-unbound' } } }) === '', 'unbound Agent received project context');
     const diagnose = await bridge.invoke('session.diagnose', {}, { source: 'http' });
     assert(diagnose.enabled === true && diagnose.controller === true && diagnose.store.version === 1, 'session diagnosis is incomplete');
-    assert(typeof diagnose.bundleVersion === 'string' && diagnose.bundleVersion.startsWith('0.3.'), 'diagnosis lost the bundle version');
+    assert(typeof diagnose.bundleVersion === 'string' && diagnose.bundleVersion === JSON.parse(await readFile(new URL('../package.json',import.meta.url),'utf8')).version, 'diagnosis lost the bundle version');
     assert(!JSON.stringify(diagnose).includes('message'), 'diagnosis must not include message text');
     await bridge.dispose();
     assert(bag.contextDisposers.length === 1, 'prompt context was not disposed with the bridge');
@@ -3128,10 +3128,10 @@ async function main() {
     apply(fake.ctx, workspace.config);
     // M1-01: the stable data root always provides an asset inbox, so the effect
     // registers request + artifact + streaming upload in every valid deployment.
-    assert(fake.routes.length === 3, `routes ${fake.routes.length}`);
+    assert(fake.routes.length === 5, `routes ${fake.routes.length}`);
     assert(fake.routes[0].path === '/api/dsh-video/request', 'request route path');
     assert(fake.routes[1].path === '/api/dsh-video/artifact', 'artifact route path');
-    assert(fake.routes[2].path === '/api/dsh-video/asset-upload' && fake.routes[2].requestBody === 'streaming', 'asset upload route is not the streaming route');
+    assert(fake.routes.find(r=>r.path === '/api/dsh-video/asset-upload')?.requestBody === 'streaming', 'asset upload route is not the streaming route');
     assert(fake.tools.length === 1 && fake.tools[0].name === TOOL_NAME, 'tool registration');
     assert(fake.cleanups.length === 1 && typeof fake.cleanups[0] === 'function', 'effect cleanup');
     await fake.cleanups[0]();

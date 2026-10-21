@@ -50,6 +50,7 @@ export const REQUEST_METHODS = Object.freeze([
   'project.source',
   'project.list',
   'asset.import',
+  'asset.importMedia', 'asset.list', 'asset.remove', 'asset.derive',
   'scene.create',
   'scene.update',
   'scene.remove',
@@ -86,6 +87,10 @@ const METHOD_PARAMS = Object.freeze({
   'project.compose': ['projectId', 'expectedRevision', 'operationId', 'html'],
   'project.source': ['projectId'],
   'project.list': [],
+  'asset.importMedia': ['projectId','operationId','receiptId'],
+  'asset.list': ['projectId','kind','query','cursor','limit'],
+  'asset.remove': ['projectId','assetId','operationId'],
+  'asset.derive': ['projectId','assetId','kind'],
   'asset.import': ['projectId', 'expectedRevision', 'operationId', 'receiptId'],
   'scene.create': ['projectId', 'expectedRevision', 'operationId', 'sceneId', 'afterSceneId', 'template'],
   'scene.update': ['projectId', 'expectedRevision', 'operationId', 'sceneId', 'template'],
@@ -529,6 +534,23 @@ export function validateParams(config, method, params) {
     return { patch: params.patch };
   }
   if (method === 'project.list') return {};
+  if (['asset.importMedia','asset.list','asset.remove','asset.derive'].includes(method)) {
+    const next={...params,projectId:allowedProject(config,params.projectId)};
+    if (method==='asset.list') {
+      if(params.kind!==undefined&&!['video','audio','image'].includes(params.kind)) fail('E_PARAMS','Invalid asset kind','params');
+      if(params.query!==undefined) next.query=text(params.query,'query',120);
+      if(params.cursor!==undefined&&(typeof params.cursor!=='string'||!/^\d{1,12}$/.test(params.cursor))) fail('E_PARAMS','Invalid cursor','params');
+      if(params.limit!==undefined&&(!Number.isInteger(params.limit)||params.limit<1||params.limit>50)) fail('E_PARAMS','Invalid limit','params');
+    } else if(method==='asset.importMedia') {
+      if(typeof params.receiptId!=='string'||!/^[0-9a-f-]{36}$/.test(params.receiptId)) fail('E_PARAMS','Invalid receipt','params');
+      next.operationId=operationId(params.operationId);
+    } else {
+      if(typeof params.assetId!=='string'||!/^as_[a-f0-9]{8}$/.test(params.assetId)) fail('E_PARAMS','Invalid asset id','params');
+      if(method==='asset.derive'&&!['thumb','waveform','proxy'].includes(params.kind)) fail('E_PARAMS','Invalid derived kind','params');
+      if(params.operationId!==undefined) next.operationId=operationId(params.operationId);
+    }
+    return next;
+  }
   if (method === 'asset.import') {
     if (typeof params.receiptId !== 'string' || /^[0-9a-f-]{36}$/.test(params.receiptId) === false) fail('E_PARAMS', 'Invalid upload receipt', 'params');
     return {
@@ -806,6 +828,8 @@ export class VideoBridge {
     this.jobs = new Map();
     this.inFlight = new Set();
     this.projectFactsById = new Map();
+    this.mediaImports = new Map();
+    this.mediaCounts = new Map();
     this.environment = buildWorkerEnv(process.env);
     // M1-01: stable data root state. Path math is synchronous (pure) so the
     // Session store can be constructed against <dataRoot>/session-state.json;
@@ -881,6 +905,26 @@ export class VideoBridge {
   async uploadAsset(request) {
     await this.ensurePrepared();
     return this.assets.handle(request);
+  }
+
+  async resolveMedia(params) {
+    if (this.closing || this.disposed) throw new BridgeError('E_WORKER_DISPOSED','Service is stopping');
+    await this.ensurePrepared();
+    const directory=await this.requireProjectDirectory(params.projectId);
+    let cursor; let asset;
+    do {
+      const page=await this.invoke('asset.list',{projectId:params.projectId,limit:50,...(cursor?{cursor}:{})},{source:'http'});
+      asset=page.assets.find(a=>a.assetId===params.assetId);cursor=page.nextCursor;
+    } while(!asset&&cursor);
+    if(!asset) throw new BridgeError('E_ASSET_MISSING','Asset unavailable');
+    const rel=params.kind ? join('.dsh-video','media-cache',`${asset.assetId}-${asset.sha256}-${params.kind}.${params.kind==='proxy'?(asset.kind==='audio'?'m4a':'mp4'):'png'}`) : join('media',`${asset.sha256.slice(0,8)}.${asset.ext}`);
+    if (!/^[a-f0-9]{64}$/.test(asset.sha256)||!['mp4','mov','m4v','webm','mp3','wav','m4a','aac','flac','png','jpg','jpeg'].includes(asset.ext)) throw new BridgeError('E_PATH','Invalid asset record');
+    const path=await realpath(join(directory,rel));
+    const offset=relative(directory,path);
+    if(offset.startsWith('..')||isAbsolute(offset)) throw new BridgeError('E_PATH','Media escapes project');
+    const info=await stat(path);if(!info.isFile()) throw new BridgeError('E_ASSET_MISSING','Media unavailable');
+    const mime={mp4:'video/mp4',mov:'video/quicktime',m4v:'video/mp4',webm:'video/webm',mp3:'audio/mpeg',wav:'audio/wav',m4a:'audio/mp4',aac:'audio/aac',flac:'audio/flac',png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg'};
+    return {path,size:info.size,mediaType:params.kind==='proxy'?(asset.kind==='audio'?'audio/mp4':'video/mp4'):params.kind?'image/png':mime[asset.ext]};
   }
 
   /** Trusted data-root paths after prepare; throws E_CONFIGURATION before that. */
@@ -1589,7 +1633,7 @@ export class VideoBridge {
     const config = this.requireConfig();
     const client = await this.ensureClient();
     try {
-      return await client.request(method, params, { timeoutMs: config.requestTimeoutMs });
+      return await client.request(method, params, { timeoutMs: method.startsWith('asset.') ? Math.max(config.requestTimeoutMs,120000) : config.requestTimeoutMs });
     } catch (error) {
       const publicError = toPublicError(error);
       this.log(error, `worker ${method}`);
@@ -1715,19 +1759,37 @@ export class VideoBridge {
       const updated = await this.uiState.set(normalized.patch);
       return publicResult(this.requireConfig().maxResultBytes, updated, settings.source);
     }
-    if (method === 'asset.import') {
+    if (method === 'asset.import' || method === 'asset.importMedia') {
       if (settings.source === 'tool') throw new BridgeError('E_METHOD', 'Asset import is a UI-only action', { stage: 'params' });
       const { receiptId, ...request } = normalized;
+      const importKey = normalized.projectId + "\0" + normalized.operationId;
+      if (method === 'asset.importMedia') {
+        const previous=this.mediaImports.get(importKey);
+        if(previous){
+          if(previous.receiptId!==receiptId) throw new BridgeError('E_OPERATION_REUSED','Import id already used with a different receipt');
+          return previous.promise;
+        }
+        if(this.mediaImports.size>=1024) throw new BridgeError('E_LIMIT','Import operation limit reached');
+      }
       const receipt = this.assets.take(normalized.projectId, receiptId);
-      const imported = await this.callClient('asset.import', {
-        ...request,
-        sourceName: receipt.sourceName,
-        name: receipt.originalName,
-        mediaType: receipt.mediaType,
-      });
-      await this.assets.finish(receipt);
-      return publicResult(this.requireConfig().maxResultBytes, imported, settings.source);
+      if(receipt.importing) throw new BridgeError('E_ASSET_RECEIPT','Upload is already being imported');
+      receipt.importing=true;
+      const promise=(async()=>{
+        let imported;
+        try { imported = await this.callClient(method, {
+          ...request, sourceName:receipt.sourceName, name:receipt.originalName,
+          ...(method==='asset.import'?{mediaType:receipt.mediaType}:{limits:{maxBytes:this.config.maxAssetBytes,maxProjectBytes:this.config.maxProjectAssetBytes}}),
+        }); } finally { await this.assets.finish(receipt); }
+        if(method==='asset.importMedia'){try{const page=await this.callClient('asset.list',{projectId:normalized.projectId,limit:1});this.mediaCounts.set(normalized.projectId,page.total);}catch{this.mediaCounts.delete(normalized.projectId);}}
+        return publicResult(this.requireConfig().maxResultBytes,imported,settings.source);
+      })();
+      if(method==='asset.importMedia') {
+        this.mediaImports.set(importKey,{receiptId,promise});
+        promise.catch(()=>{this.mediaImports.delete(importKey);});
+      }
+      return promise;
     }
+    if (['asset.remove','asset.derive'].includes(method) && settings.source==='tool') throw new BridgeError('E_METHOD','Media writes are UI-only',{stage:'params'});
     if (method === 'preview.snapshot') {
       if (settings.source === 'tool') throw new BridgeError('E_METHOD', 'Preview snapshot is a UI-only action', { stage: 'params' });
       const snapshot = await this.callClient('preview.snapshot', normalized);
@@ -1812,6 +1874,8 @@ export class VideoBridge {
       wait = requestedWait === true;
     }
     const result = await this.callClient(method, workerParams);
+    if(method==='asset.list' && normalized.kind===undefined && normalized.query===undefined)this.mediaCounts.set(normalized.projectId,result.total);
+    if(method==='asset.remove')this.mediaCounts.delete(normalized.projectId);
     if (method === 'frame' || method === 'render') {
       this.rememberJob(method, workerParams, result);
     } else if (method === 'inspect' || method === 'open' || method === 'project.compose') {
