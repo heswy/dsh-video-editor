@@ -296,6 +296,15 @@ try {
     await box.dispose();
     assert.deepEqual(await readdir(isolated), []);
   });
+  await test('expiry sweep keeps an in-flight receipt without revisiting it',async()=>{
+    const box=new AssetInbox({root:inbox,minFreeBytes:0});
+    let iterations=0;
+    class BoundedMap extends Map {
+      *[Symbol.iterator](){for(const entry of super[Symbol.iterator]()){if(++iterations>2)throw new Error('Receipt sweep revisited an active import');yield entry;}}
+    }
+    box.receipts=new BoundedMap([['pending',{receiptId:'pending',importing:true,createdAt:Date.now()-11*60*1000,target:join(inbox,'owned-unused.mp4')}]]);
+    try{assert.equal(await box.sweep(),0);assert.equal(box.receipts.size,1);}finally{await box.dispose();}
+  });
   console.log(JSON.stringify({ ok: true, passed }));
 } finally {
   await rm(root, { recursive: true, force: true });

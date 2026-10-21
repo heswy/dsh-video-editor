@@ -192,11 +192,8 @@ export class AssetInbox {
     const expired = [];
     for (const [id, receipt] of this.receipts) {
       if (now - receipt.createdAt > RECEIPT_TTL_MS) {
+        if (receipt.importing) continue;
         this.receipts.delete(id);
-        if (receipt.importing) {
-          this.receipts.set(id, receipt);
-          continue;
-        }
         expired.push(receipt);
       }
     }
