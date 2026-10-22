@@ -25,6 +25,18 @@
 
 ## 固定候选与证据
 
-待最终运行时代码冻结后填写。
+- 固定 runtime `bed1f8db3416eacb9cd4f858069df9229dd546c3`，root=engine、rootDirty=false；bundle `1.0.0-alpha.6` / client+worker `0.8.0`。
+- staging：同级 worktrees 下 `artifacts/p2-b/staging-v1.0.0-alpha.6-bed1f8d`；INTEGRITY SHA256 `07abdee2d82c165b80f105aa210492b8d459f8eb52bdc24d515196ce62ed90e5`。
+- 证据：`artifacts/v1/evidence/m5-alpha6-bed1f8d-20261022/verification-summary.json`，同目录保留 gates/worker/client/version/collaboration、固定 workspace、conversation-chain、conversation-preview、host-engine/canvas-chain 原始记录。开发阶段红/绿与诊断保留 `artifacts/v1/evidence/m5-dev/` 和 `/tmp/dsh-m5-*.log`，不覆盖已审候选。
+- 门禁：check 58、smoke 86、Host 71、worker 72、client 23（Node24 真 worker）、版本 10，零失败/无跳过。新增引用适配 13（含可选 source 异步注册失败降级/移除/重注册）、worker 协作 18（重启、过期区间、已删素材、重复区间合并、跨轨序号歧义、定向撤销）、Host 归属 7；30 条中文 ops 契约通过。
+- 固定候选工作区 37：M3 手势 + M4 本地旁白生成/上轨/波形/声音/增益/淡化 + M5 Tool 作用域内引用解析/并发写入、UI 冲突预演、定向撤销、已提交丢响应后原请求重试、冲突后 inspect 暂时失败、引用复制/焦点/Escape/340px。此 Tool 调用由脚本驱动，不是真实模型。
+- 同候选 22s / 660 帧有声导出成功：H264、AAC 48k 双声道、1 音源；预览 unmuted + playing，测得声音时间差约 10ms。没有重复云供应商收费调用；M4 千问 TTS/SFX 证据沿用 alpha.5 任务卡。
+- 固定候选对话链 261/261、预览 164/164、真实引擎 frame/render/cancel、canvas-chain 均通过；源只读审计 91→91、same=true。
+- macOS Chrome 155 后台 crashpad/updater 可继承 Puppeteer stderr，业务已释放但验证器进程延迟退出。验证器 `closeTestBrowser` 仅在自有 Chrome 已退出后关闭父侧 stdout/stderr 捕获流，不杀后台进程、不操作个人浏览器；运行时代码和固定 staging 未改。清理后复验记录另存 `*-clean-exit`。
 
 宿主契约只读核对：本机 DSH Desktop `0.2.1-rc.2` 随包 `dsh-client-ui-reference/lib/client.js` 的 source/candidates/onPick/codec/registerSource；读取内容 SHA256 `3d179111c51381733c7d0ec13c60ee4d9444c1dfb474ef28a0127654b8ba28a3`。同时核对随包 cordis-plugin-development 的 practices/user-actions；未修改 app.asar/profile。可选服务异步出现后的注册异常也只降级，不影响编辑器。
+
+
+## 宿主降级边界
+
+随包 input-trigger 的 `serializeReference` 在 source/codec 缺失时拒绝提交，不会自动改用 clipboardText（实际源码 1249–1252 行）。插件停用后不能修改宿主草稿；若旧 chip 因此无法发送，用户删除该 chip，再粘贴从「引用」入口复制的普通 token。适配器自身异常与无原生服务都有降级测试；停用/重启草稿的实际行为列为真机待验，不承诺透明恢复。

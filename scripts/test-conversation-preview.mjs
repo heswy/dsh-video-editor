@@ -39,6 +39,7 @@
  *                                            [--out <absolute evidence dir>]
  */
 
+import { closeTestBrowser } from './lib/browser-cleanup.mjs';
 import { createServer } from 'node:http';
 import { createRequire } from 'node:module';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -1436,7 +1437,7 @@ async function main() {
     const snapshotRecordsBeforeDispose = bridge.snapshots.records.size;
     checks.check('R2: unmount releases preview snapshots and Host preview routes (no leak after the panel closes)', previewRoutesBeforeDispose === 0 && snapshotRecordsBeforeDispose === 0, { previewRoutesBeforeDispose, snapshotRecordsBeforeDispose });
     const bridgeStateBeforeDispose = bridge.state();
-    await browser.close();
+    await closeTestBrowser(browser);
     browser = null;
     await new Promise((resolveClose) => server.close(resolveClose));
     server = null;
@@ -1471,7 +1472,7 @@ async function main() {
       }
     }
 
-    if (browser !== null) await browser.close().catch(() => {});
+    if (browser !== null) await closeTestBrowser(browser).catch(() => {});
     if (server !== null) await new Promise((resolveClose) => server.close(resolveClose)).catch(() => {});
     if (bridge !== null) {
       try {

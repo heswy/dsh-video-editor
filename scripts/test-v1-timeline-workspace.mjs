@@ -1,4 +1,5 @@
 /** Real Chrome + actual component + actual media Host/worker, temporary data only. */
+import { closeTestBrowser } from './lib/browser-cleanup.mjs';
 import assert from "node:assert/strict";
 import { mkdtemp, readFile, writeFile, rm, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -704,7 +705,7 @@ try {
   }
   throw error;
 } finally {
-  if (browser) await browser.close();
+  if (browser) await closeTestBrowser(browser);
   if (server) await new Promise((r) => server.close(r));
   if (bridge) await bridge.dispose();
   await rm(root, { recursive: true, force: true });

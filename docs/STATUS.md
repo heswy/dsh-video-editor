@@ -1,6 +1,15 @@
 # 当前项目状态
 
-## V1 当前开发（2026-10-22）
+## V1 当前开发：M5（2026-10-22）
+
+- **M5 开发完成**：[PR #21](https://github.com/heswy/dsh-video-editor/pull/21)，沿用用户既有授权选择合码。原生 @ 工程候选、引用搜索/复制降级、当前目标解析、持久回执/定向撤销、冲突保留意图与预演确认、响应丢失原请求重试已实现；任务与证据见 [M5](tasks/V1-M5-collaboration.md)。
+- 当前唯一候选：bundle `1.0.0-alpha.6` / client+worker `0.8.0`，固定 runtime `bed1f8db3416eacb9cd4f858069df9229dd546c3`（root=engine、rootDirty=false）；同级 worktrees 的 `artifacts/p2-b/staging-v1.0.0-alpha.6-bed1f8d`，INTEGRITY SHA256 `07abdee2d82c165b80f105aa210492b8d459f8eb52bdc24d515196ce62ed90e5`。后续验收记录/验证器清理不改变候选运行时代码。
+- 固定候选真实 Chrome 工作区 **37 项**通过（M3 手势 + M4 音频 + M5 引用/协作）；22s/660 帧 H264 + AAC 48k 双声道导出成功，声音预览偏移约 10ms。对话链 **261/261**、预览 **164/164**、真实引擎与画布链通过；候选源码只读审计 **91→91，无变化**。
+- 新增 source 验证：引用适配/生命周期 **13**、真实 worker 协作 **18**、真实 Host 归属 **7**、中文操作契约 **30**；check/smoke/Host **58/86/71**、worker **72**、client **23**、版本 **10** 全通过。**30 条是确定目标/ops 的契约夹具，不是模型一次成功率**。
+- 本轮未安装/重启 DSH、未发起原生模型请求、未公开发布。原生 @ chip 的实际刷新/发送/官方引用共存、真实模型 3+ 轮与 ≥95% 一次成功率及 M1–M5 用户联合验收仍待授权安装窗口。宿主 source 缺失时旧 chip 不会自动转普通文本，需删除旧 chip 后粘贴「引用」入口的 token；此真机路径待验。
+- **下一阶段是 M6 发布硬化**，不是直接发布 1.0.0：长片/内存/取消失败、升级迁移与回滚、原生全链路用户验收、发布说明与明确发布授权。旧 staging、worktree、分支和用户作品保留。
+
+## M4 交付时的历史记录（当前候选以上文为准）
 
 - **M4 开发完成**：音频导入/生成、3 音轨、波形、音量/淡化/静音/增益、视频原声、带 AAC 的混音导出；轨道 UI 已按用户要求重做为轻量剪辑台。[PR #20](https://github.com/heswy/dsh-video-editor/pull/20)，按本会话既有授权选择合码。实现与证据见 [M4 任务卡](tasks/V1-M4-audio.md)。
 - 当前唯一开发候选为 bundle `1.0.0-alpha.5` / client+worker `0.7.0`；runtime `81ffb1b104d6c781fabbe8d2f7ee668a5afe1acc`、root=engine、rootDirty=false；同级 worktrees 下 `artifacts/p2-b/staging-v1.0.0-alpha.5-81ffb1b`，INTEGRITY SHA256 `afbf1ac1d0314d8ec5fbade781cf56b1a918b4a7a1e2367daec88f0da7ce8eea`。初版 `e332611` 候选被默认音色版本号校验修复替代，保留追溯。
