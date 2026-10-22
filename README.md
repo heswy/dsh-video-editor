@@ -1,6 +1,6 @@
 # DSH Video
 
-> V1 开发候选：bundle `1.0.0-alpha.4` / engine `0.6.0`。工程素材库已接统一时间线，可剪切、拖动重排、trim、换轨、撤销/重做，并与 AI 场景混排预览、导出静音 MP4。M1/M2 已合入 main，M3 固定候选和验证读 [STATUS](docs/STATUS.md)；真实 DSH 安装/重启验收待下一窗口，0.3 回滚锚点保留。
+> V1 开发候选：bundle `1.0.0-alpha.5` / engine `0.7.0`。统一时间线支持音频导入/生成、视频原声、音量/淡化/轨道混音和带 AAC 音频导出；千问云为首个供应商，macOS 本地旁白免 key，音乐未开通可导入配乐。下方轨道采用轻量剪辑台布局。固定候选与验证读 [STATUS](docs/STATUS.md)；真实 DSH 安装/重启验收待下一窗口，回滚锚点保留。
 
 
 运行在 DeepSeek Harness 内的 AI 视频创作与编辑插件。当前目标是用户通过右侧对话生成视频，左侧自动预览/播放，再通过对话持续修改同一作品；时间线支持手动剪辑与 AI 共用操作历史；画布内对象编辑仍延期。
@@ -26,7 +26,7 @@
 - 素材按钮打开工程素材抽屉：视频/图片/音频，多文件选择或拖入、上传百分比与取消、筛选/搜索/分页、详情和播放/seek、确认删除、可复制的素材引用标记。
 - 认证流式上传：默认单文件 2 GiB / 工程 8 GiB（`maxAssetBytes` / `maxProjectAssetBytes` 可降低），剩余磁盘预检；临时 receipt 定时过期与实例资源清理。Worker 按完整 SHA-256 去重，ffprobe 探测；短 ID 冲突拒绝，不覆盖。
 - 媒体认证路由：GET/HEAD、Range/206/416，读取索引后检查工程/文件 realpath，媒体字节流式响应；界面与 Tool 都不能传磁盘路径。
-- 缩略图/波形/兼容播放代理为可重建工程缓存；不会改作品 revision。媒体尚不自动出现在画面里，M3 再接统一时间线。
+- 缩略图/波形/兼容播放代理为可重建工程缓存；不会改作品 revision。媒体可从素材库加入对应的视觉/音频轨，使用共享时间线编辑。
 - `video_engine asset.list`：只读分页元数据与 Session/project 隔离。导入、删除、派生为 UI-only；在用素材按 timeline 片段或 composition 路径拒绝删除。
 - 验证与验收入口：[M2 任务卡](docs/tasks/V1-M2-media.md)、[V1 验收矩阵](docs/plans/V1.0-ACCEPTANCE.md)。固定候选及摘要构建后记入任务卡；本地浏览器/worker 结果不等于 DSH 真机通过。
 

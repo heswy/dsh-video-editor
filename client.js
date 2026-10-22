@@ -116,7 +116,45 @@ window.__ModuleLoader__.load({
 
     //#region locale dictionaries
     const ZH = {
-'video.timeline.title': "时间线",
+
+      'video.audio.title': "生成音频",
+      'video.audio.tts': "旁白",
+      'video.audio.music': "配乐",
+      'video.audio.sfx': "音效",
+      'video.audio.provider': "供应商",
+      'video.audio.qianwen': "千问云",
+      'video.audio.local': "本地旁白 · 免费",
+      'video.audio.text': "描述声音或输入旁白文案…",
+      'video.audio.generate': "生成并加入素材",
+      'video.audio.cancel': "取消生成",
+      'video.audio.add': "加入音轨",
+      'video.audio.settings': "供应商设置",
+      'video.audio.key': "API Key（仅保存在本机）",
+      'video.audio.save': "保存密钥",
+      'video.audio.check': "测试连接",
+      'video.audio.configured': "密钥已配置",
+      'video.audio.missing': "尚未配置密钥",
+      'video.audio.billing': "云端按实际用量计费 · 每日最多 20 次 · 取消可能仍计费",
+      'video.audio.invitation': "音乐需供应商开通邀测；不可用时请导入配乐。",
+      'video.audio.volume': "音量",
+      'video.audio.fadeIn': "淡入",
+      'video.audio.fadeOut': "淡出",
+      'video.audio.gain': "轨道增益",
+      'video.audio.mute': "静音轨道",
+      'video.audio.addTrack': "添加音轨",
+      'video.audio.more': "更多编辑",
+      'video.audio.voice': "音色",
+      'video.audio.ready': "已加入素材库",
+      'video.audio.queued': "等待中",
+      'video.audio.running': "正在生成",
+      'video.audio.downloading': "正在保存",
+      'video.audio.succeeded': "生成成功",
+      'video.audio.failed': "生成失败",
+      'video.audio.cancelled': "已取消",
+      'video.audio.interrupted': "上次任务已中断",
+      'video.audio.timed_out': '生成超时',
+      'video.audio.cancelling': "正在取消",
+      'video.timeline.title': "时间线",
 'video.timeline.loading': "正在读取时间线…",
 'video.timeline.updated': "修改已保存",
 'video.timeline.saved': "已保存",
@@ -303,7 +341,45 @@ window.__ModuleLoader__.load({
     };
 
     const EN = {
-'video.timeline.title': "Timeline",
+
+      'video.audio.title': "Generate audio",
+      'video.audio.tts': "Voiceover",
+      'video.audio.music': "Music",
+      'video.audio.sfx': "Sound effect",
+      'video.audio.provider': "Provider",
+      'video.audio.qianwen': "Qianwen",
+      'video.audio.local': "Local voice · free",
+      'video.audio.text': "Describe a sound or enter narration…",
+      'video.audio.generate': "Generate to library",
+      'video.audio.cancel': "Cancel generation",
+      'video.audio.add': "Add to audio track",
+      'video.audio.settings': "Provider settings",
+      'video.audio.key': "API Key (stored only on this device)",
+      'video.audio.save': "Save key",
+      'video.audio.check': "Test connection",
+      'video.audio.configured': "Key configured",
+      'video.audio.missing': "API key not configured",
+      'video.audio.billing': "Cloud usage is billed · 20 calls/day · cancellation may still be billed",
+      'video.audio.invitation': "Music requires invitation access. Import music if unavailable.",
+      'video.audio.volume': "Volume",
+      'video.audio.fadeIn': "Fade in",
+      'video.audio.fadeOut': "Fade out",
+      'video.audio.gain': "Track gain",
+      'video.audio.mute': "Mute track",
+      'video.audio.addTrack': "Add audio track",
+      'video.audio.more': "More edits",
+      'video.audio.voice': "Voice",
+      'video.audio.ready': "Saved to library",
+      'video.audio.queued': "Queued",
+      'video.audio.running': "Generating",
+      'video.audio.downloading': "Saving",
+      'video.audio.succeeded': "Generated",
+      'video.audio.failed': "Failed",
+      'video.audio.cancelled': "Cancelled",
+      'video.audio.interrupted': "Interrupted",
+      'video.audio.timed_out': 'Timed out',
+      'video.audio.cancelling': "Cancelling",
+      'video.timeline.title': "Timeline",
 'video.timeline.loading': "Loading timeline…",
 'video.timeline.updated': "Changes saved",
 'video.timeline.saved': "Saved",
@@ -497,7 +573,23 @@ window.__ModuleLoader__.load({
     // The empty workspace is deliberately plain: one quiet sentence, no cards,
     // badges, stage framing, decorative motion or future-capability copy.
     const CSS = `
-.dv-timeline{flex-shrink:0;border-top:1px solid var(--dsw-alias-border-l1,rgba(127,127,140,.28));padding:10px 0 0;min-height:150px;max-height:340px;background:var(--dsw-alias-bg-base,#1a1a1c);font-size:11px}.dv-timeline-toolbar{display:flex;gap:4px;align-items:center;padding:0 10px 8px;flex-wrap:wrap}.dv-timeline-toolbar strong{margin-right:auto}.dv-timeline-toolbar label{display:flex;align-items:center;gap:3px}.dv-timeline-toolbar input[type=range]{width:72px}.dv-timeline-scroll{overflow:auto;max-height:200px}.dv-timeline-content{position:relative}.dv-timeline-ruler{height:24px;position:relative;cursor:crosshair;border-bottom:1px solid var(--dsw-alias-border-l1,rgba(127,127,140,.28))}.dv-timeline-ruler span{position:absolute;top:3px;border-left:1px solid var(--dsw-alias-border-l1,rgba(127,127,140,.28));padding-left:3px;color:var(--dsw-alias-label-tertiary,#86868f);font-size:10px}.dv-timeline-track{display:flex;height:48px;border-bottom:1px solid var(--dsw-alias-border-l1,rgba(127,127,140,.28))}.dv-timeline-track-name{width:100px;flex-shrink:0;padding:14px 8px;box-sizing:border-box;position:sticky;left:0;z-index:4;background:var(--dsw-alias-bg-base,#1a1a1c);overflow:hidden;white-space:nowrap}.dv-timeline-lane{position:relative;background:rgba(128,128,128,.035)}.dv-timeline-clip{position:absolute;top:5px;bottom:5px;box-sizing:border-box;border:1px solid #4c6873;background:#314a54;border-radius:4px;color:#eef5f5;cursor:grab;overflow:hidden;touch-action:none;display:flex;align-items:center}.dv-timeline-clip.is-selected{outline:2px solid #a6d5e4;outline-offset:-2px}.dv-timeline-clip-label{padding:0 10px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;pointer-events:none}.dv-timeline-edge{position:absolute;left:0;top:0;bottom:0;width:7px;background:rgba(255,255,255,.13);cursor:ew-resize;z-index:2}.dv-timeline-edge-out{left:auto;right:0}.dv-timeline-playhead{position:absolute;top:0;bottom:0;width:1px;background:#f2ae78;pointer-events:none;z-index:3}.dv-timeline-inspector{display:flex;align-items:center;gap:12px;padding:8px 10px;flex-wrap:wrap}.dv-timeline-inspector label{display:flex;gap:5px;align-items:center}.dv-timeline-inspector select{max-width:120px;color:inherit;background:var(--dsw-alias-bg-layer-1,#232327);border:1px solid var(--dsw-alias-border-l1,rgba(127,127,140,.28));border-radius:4px}.dv-timeline-notice{padding:5px 10px;color:var(--dsw-alias-label-tertiary,#86868f);min-height:16px}.dv-timeline-compact .dv-timeline-track{height:28px}.dv-timeline-compact .dv-timeline-track-name{padding-top:5px}.dv-timeline-compact .dv-timeline-clip{top:3px;bottom:3px}@media(max-width:480px){.dv-timeline-toolbar{gap:2px}.dv-timeline-inspector code{max-width:180px;overflow:hidden}.dv-timeline-toolbar .dv-button{padding:4px 6px}}
+.dv-timeline{flex-shrink:0;border-top:1px solid var(--dsw-alias-border-l1,#ffffff12);min-height:148px;max-height:310px;background:var(--dsw-alias-bg-base,#191a1d);color:var(--dsw-alias-label-secondary,#aaaeb6);font-size:11px;position:relative}
+.dv-timeline-toolbar{height:38px;display:flex;align-items:center;gap:3px;padding:0 12px;border-bottom:1px solid var(--dsw-alias-border-l1,#ffffff0b)}
+.dv-timeline-heading{font-size:11px;font-weight:500;letter-spacing:.04em;margin-right:12px;color:var(--dsw-alias-label-tertiary,#92959e)}
+.dv-timeline-tool,.dv-timeline-more summary{border:0;background:transparent;color:inherit;display:grid;place-items:center;width:28px;height:28px;padding:0;border-radius:5px;cursor:pointer;list-style:none;font-size:18px}
+.dv-timeline-tool:hover,.dv-timeline-more summary:hover{background:var(--dsw-alias-interactive-bg-hover,#ffffff0c);color:var(--dsw-alias-label-primary,#eee)}
+.dv-timeline-tool:disabled{opacity:.28;cursor:default}.dv-timeline-tool:focus-visible,.dv-track-mute:focus-visible{outline:2px solid var(--dsw-focus-ring-color,#8facbc);outline-offset:1px}
+.dv-tool-divider{width:1px;height:14px;background:var(--dsw-alias-border-l1,#ffffff14);margin:0 5px}.dv-timeline-spacer{flex:1}
+.dv-timeline-more{position:relative}.dv-timeline-more summary::-webkit-details-marker{display:none}.dv-timeline-menu{position:absolute;top:32px;left:0;min-width:154px;padding:4px;background:var(--dsw-alias-bg-layer-1,#25262a);border:1px solid var(--dsw-alias-border-l1,#ffffff16);border-radius:8px;z-index:10;box-shadow:0 8px 28px #0003}.dv-timeline-menu button{display:block;width:100%;background:none;border:0;color:inherit;font:inherit;text-align:left;padding:8px;border-radius:4px;cursor:pointer}.dv-timeline-menu button:hover{background:#8881}.dv-timeline-menu button:disabled{opacity:.3}
+.dv-snap-toggle{display:flex;align-items:center;gap:4px;font-size:10px;color:var(--dsw-alias-label-tertiary,#92959e);margin-right:8px;cursor:pointer}.dv-snap-toggle input{width:11px;height:11px;accent-color:#96afba}.dv-timeline-zoom{width:64px;height:2px;accent-color:#96afba}
+.dv-timeline-scroll{overflow:auto;max-height:174px;scrollbar-width:thin;scrollbar-color:#7774 transparent}.dv-timeline-content{position:relative}.dv-timeline-ruler{height:26px;position:relative;cursor:crosshair;background:var(--dsw-alias-bg-base,#191a1d);border-bottom:1px solid var(--dsw-alias-border-l1,#ffffff0b)}.dv-timeline-ruler span{position:absolute;top:7px;border-left:1px solid var(--dsw-alias-border-l1,#ffffff1a);padding-left:5px;color:var(--dsw-alias-label-tertiary,#777d88);font-size:9px;font-variant-numeric:tabular-nums;line-height:13px}
+.dv-timeline-track{display:flex;height:46px;border-bottom:1px solid var(--dsw-alias-border-l1,#ffffff0b)}.dv-timeline-track-name{width:100px;flex-shrink:0;display:flex;align-items:center;gap:4px;padding:0 9px;box-sizing:border-box;position:sticky;left:0;z-index:4;background:var(--dsw-alias-bg-base,#191a1d);border-right:1px solid var(--dsw-alias-border-l1,#ffffff0b);white-space:nowrap}.dv-track-label{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;font-size:10px}.dv-track-kind{display:inline-block;font-size:9px;color:var(--dsw-alias-label-tertiary,#707783);margin-right:7px}.dv-track-mute{flex-shrink:0;width:18px;height:20px;padding:0;border:0;background:transparent;color:var(--dsw-alias-label-tertiary,#777d88);font:inherit;font-size:9px;cursor:pointer;border-radius:3px}.dv-track-mute[aria-pressed=true]{color:#e8c887;background:#e8c88718}
+.dv-timeline-lane{position:relative;background:var(--dsw-alias-bg-layer-1,#ffffff02)}.dv-timeline-clip{position:absolute;top:6px;bottom:6px;box-sizing:border-box;border:1px solid #879cb62b;background:#57729538;border-radius:4px;color:var(--dsw-alias-label-primary,#d5dce6);cursor:grab;overflow:hidden;touch-action:none;display:flex;align-items:center}.dv-timeline-clip.is-audio{background:#568c7b2b;border-color:#7bb59c2b}.dv-timeline-clip.is-selected{outline:1px solid #a9c1d6;outline-offset:-1px;background:#57729565}.dv-timeline-clip.is-audio.is-selected{outline-color:#9dcdb7;background:#568c7b4a}.dv-timeline-clip-label{padding:0 9px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;pointer-events:none;font-size:10px;z-index:1}.dv-clip-waveform{position:absolute;left:0;top:8px;width:100%;height:calc(100% - 8px);opacity:.42;object-fit:fill;pointer-events:none}.is-audio .dv-timeline-clip-label{align-self:flex-start;font-size:9px;line-height:15px;text-shadow:0 1px 4px #171a1b}
+.dv-timeline-edge{position:absolute;left:0;top:0;bottom:0;width:6px;cursor:ew-resize;z-index:2;opacity:0;background:#ffffff22}.dv-timeline-clip:hover .dv-timeline-edge,.dv-timeline-clip.is-selected .dv-timeline-edge{opacity:1}.dv-timeline-edge-out{left:auto;right:0}.dv-timeline-playhead{position:absolute;top:0;bottom:0;width:1px;background:#e1ab7e;pointer-events:none;z-index:3}.dv-timeline-playhead:before{content:'';position:absolute;top:0;left:-3px;border:4px solid transparent;border-top-color:#e1ab7e}
+.dv-timeline-inspector{display:flex;align-items:center;gap:12px;min-height:34px;padding:4px 12px;flex-wrap:wrap;border-top:1px solid var(--dsw-alias-border-l1,#ffffff0b);font-size:10px}.dv-timeline-inspector label{display:flex;gap:5px;align-items:center;white-space:nowrap}.dv-inspector-name{white-space:nowrap;max-width:80px;overflow:hidden;text-overflow:ellipsis;color:var(--dsw-alias-label-tertiary,#777d88)}.dv-timeline-inspector select,.dv-timeline-inspector input{color:inherit;background:transparent;border:1px solid var(--dsw-alias-border-l1,#ffffff14);border-radius:4px;font:inherit;height:23px;padding:0 4px;box-sizing:border-box;max-width:85px}.dv-timeline-inspector input{width:43px}.dv-timeline-notice{padding:3px 12px 5px;color:var(--dsw-alias-label-tertiary,#777d88);min-height:12px;font-size:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.dv-timeline-compact .dv-timeline-track{height:30px}.dv-timeline-compact .dv-timeline-clip{top:3px;bottom:3px}
+.dv-audio-panel{width:min(340px,calc(100% - 24px));padding:18px;box-sizing:border-box;overflow:auto;max-height:calc(100% - 24px)}.dv-audio-panel textarea,.dv-audio-panel input[type=password]{box-sizing:border-box;width:100%;border:1px solid var(--dsw-alias-border-l1,#ffffff18);border-radius:8px;background:var(--dsw-alias-bg-base,#191a1d);color:inherit;font:inherit;padding:10px;resize:vertical}.dv-audio-tabs{display:flex;gap:4px;border-bottom:1px solid var(--dsw-alias-border-l1,#ffffff12);padding:8px 0;margin-bottom:14px}.dv-audio-tabs button{flex:1;background:transparent;border:0;color:inherit;font:inherit;padding:7px;border-radius:6px;cursor:pointer}.dv-audio-tabs .is-active{background:var(--dsw-alias-interactive-bg-hover,#ffffff0b);color:var(--dsw-alias-label-primary,#eee)}.dv-audio-field{display:flex;justify-content:space-between;align-items:center;margin:10px 0;font-size:11px}.dv-audio-field select{max-width:190px;background:transparent;color:inherit;border:0;font:inherit}.dv-audio-note{font-size:10px;line-height:1.7;color:var(--dsw-alias-label-tertiary,#92959e);margin:10px 0}.dv-audio-job{border-top:1px solid var(--dsw-alias-border-l1,#ffffff12);padding:12px 0;font-size:11px}.dv-audio-job p{line-height:1.7;font-size:10px;color:#d3a78e}.dv-audio-settings{font-size:11px;margin-top:12px}.dv-audio-settings summary{cursor:pointer;padding:8px 0}.dv-audio-actions{display:flex;gap:6px;margin-top:8px}
+@media(max-width:480px){.dv-timeline-toolbar{padding:0 7px}.dv-timeline-heading{display:none}.dv-timeline-inspector{gap:8px}.dv-inspector-name{display:none}.dv-timeline-zoom{width:40px}}
+
 
 .dv-root{
   --dv-dur-fast:120ms;
@@ -2133,6 +2225,7 @@ window.__ModuleLoader__.load({
       'state',
       'seek',
       'play',
+      'enableSound',
       'pause',
       'hitTest',
       'getElements',
@@ -2140,6 +2233,7 @@ window.__ModuleLoader__.load({
     ]);
     const CANVAS_EVENT_TYPES = Object.freeze([
       'ready',
+      'soundEnabled',
       'pong',
       'state',
       'seeked',
@@ -2164,6 +2258,7 @@ window.__ModuleLoader__.load({
       'destroyed',
     ]);
     const CANVAS_COMMAND_REQUIRED = Object.freeze({
+      enableSound: [],
       ping: [],
       state: [],
       seek: ['time'],
@@ -2174,6 +2269,7 @@ window.__ModuleLoader__.load({
       destroy: [],
     });
     const CANVAS_EVENT_REQUIRED = Object.freeze({
+      soundEnabled: [],
       ready: ['runtimeVersion', 'width', 'height', 'duration'],
       pong: [],
       state: ['time', 'duration', 'playing'],
@@ -3168,7 +3264,7 @@ window.__ModuleLoader__.load({
               {
                 key: asset.assetId,
                 type: 'button',
-                draggable:asset.kind!=='audio',onDragStart:e=>e.dataTransfer.setData('application/x-dsh-asset',asset.assetId),className: 'dv-media-tile',
+                draggable:true,onDragStart:e=>e.dataTransfer.setData('application/x-dsh-asset',asset.assetId),className: 'dv-media-tile',
                 'aria-pressed': selected?.assetId === asset.assetId ? 'true' : 'false',
                 onClick: () => choose(asset),
               },
@@ -3213,7 +3309,7 @@ window.__ModuleLoader__.load({
               'section',
               { className: 'dv-media-detail', key: selected.assetId },
               h('strong', null, selected.name),
-              props.onAdd&&selected.kind!=='audio'?h('button',{className:'dv-button dv-button-primary',onClick:()=>props.onAdd(selected)},t('video.timeline.add')):null,
+              props.onAdd?h('button',{className:'dv-button dv-button-primary',onClick:()=>props.onAdd(selected)},t('video.timeline.add')):null,
               selected.kind === 'image'
                 ? h('img', { className: 'dv-media-preview', src: mediaUrl(selected), alt: selected.name })
                 : h(selected.kind === 'audio' ? 'audio' : 'video', {
@@ -3303,6 +3399,30 @@ window.__ModuleLoader__.load({
       );
     }
 
+    function AudioPanel(props) {
+      const t=props.t,h=React.createElement;
+      const [settings,setSettings]=React.useState(null),[kind,setKind]=React.useState('tts'),[provider,setProvider]=React.useState('qianwen'),[text,setText]=React.useState(''),[key,setKey]=React.useState(''),[voice,setVoice]=React.useState('longanhuan_v3.1'),[job,setJob]=React.useState(null),[jobs,setJobs]=React.useState([]),[notice,setNotice]=React.useState(''),[busy,setBusy]=React.useState(false);
+      const alive=React.useRef(true);
+      React.useEffect(()=>{alive.current=true;void Promise.all([hostRequest('audio.settings',{}),hostRequest('audio.status',{projectId:props.projectId})]).then(([a,b])=>{if(alive.current){setSettings(a);setJobs(b.jobs);setJob(b.jobs.find(j=>['queued','running','downloading'].includes(j.state))||null);}}).catch(e=>{if(alive.current)setNotice(errorText(hostError(e),t));});return()=>{alive.current=false;};},[props.projectId]);
+      React.useEffect(()=>{if(!job||!['queued','running','downloading','cancelling'].includes(job.state))return;let stopped=false;const timer=setInterval(()=>{void hostRequest('audio.status',{projectId:props.projectId,jobId:job.jobId}).then(j=>{if(!stopped){setJob(j);if(j.state==='succeeded')setNotice(t('video.audio.ready'));if(j.state==='failed')void hostRequest('audio.settings',{}).then(v=>{if(!stopped)setSettings(v);});}}).catch(e=>{if(!stopped)setNotice(errorText(hostError(e),t));});},800);return()=>{stopped=true;clearInterval(timer);};},[job?.jobId,job?.state]);
+      async function perform(method,params){setBusy(true);setNotice('');try{const r=await hostRequest(method,params);if(!alive.current)return;if(method==='audio.generate'||method==='audio.cancel')setJob(r);else if(method==='audio.configure'){setSettings(r);setKey('');setNotice(t('video.audio.configured'));}else {if(r.providers)setSettings(r);setNotice(r.note||t('video.audio.configured'));}}catch(e){if(alive.current)setNotice(errorText(hostError(e),t));}finally{if(alive.current)setBusy(false);}}
+      const generating=job&&['queued','running','downloading','cancelling'].includes(job.state);
+      const jobView=j=>h('div',{className:'dv-audio-job',key:j.jobId},h('span',null,t('video.audio.'+j.kind)+' · '+t('video.audio.'+j.state)),j.error?h('p',{role:'alert'},j.error.message):null,j.asset?h('button',{className:'dv-button dv-button-quiet',onClick:()=>props.onAdd(j.asset)},t('video.audio.add')):null);
+      return h('aside',{className:'dv-drawer dv-audio-panel',role:'dialog','aria-label':t('video.audio.title'),onKeyDown:e=>{if(e.key==='Escape')props.onClose();}},
+        h('div',{className:'dv-drawer-head'},h('strong',null,t('video.audio.title')),h('button',{className:'dv-icon-button','aria-label':t('video.canvas.close'),onClick:props.onClose},'×')),
+        h('div',{className:'dv-audio-tabs'},['tts','music','sfx'].map(x=>h('button',{key:x,className:kind===x?'is-active':'','aria-pressed':kind===x,onClick:()=>{setKind(x);if(x!=='tts')setProvider('qianwen');}},t('video.audio.'+x)))),
+        h('label',{className:'dv-audio-field'},t('video.audio.provider'),h('select',{value:provider,onChange:e=>{setProvider(e.target.value);setVoice(e.target.value==='local'?'Tingting':'longanhuan_v3.1');}},h('option',{value:'qianwen'},t('video.audio.qianwen')),kind==='tts'?h('option',{value:'local'},t('video.audio.local')):null)),
+        kind==='tts'?h('label',{className:'dv-audio-field'},t('video.audio.voice'),h('select',{value:voice,onChange:e=>setVoice(e.target.value)},(provider==='local'?[['Tingting','Tingting · 普通话'],['Meijia','Meijia · 台湾'],['Sinji','Sinji · 粤语']]:[['longanhuan_v3.1','安欢 · 女声'],['xunanchuan_v3.1','南川 · 男声'],['longanlingxin_v3.1','灵心 · 女声']]).map(([v,n])=>h('option',{key:v,value:v},n)))):null,
+        h('textarea',{value:text,maxLength:2000,rows:6,placeholder:t('video.audio.text'),'aria-label':t('video.audio.text'),onChange:e=>setText(e.target.value)}),
+        kind==='music'?h('p',{className:'dv-audio-note'},t('video.audio.invitation')):null,
+        h('p',{className:'dv-audio-note'},(provider==='local'?t('video.audio.local'):t('video.audio.billing'))+' · '+text.length+'/2000'),
+        h('button',{className:'dv-button dv-button-primary',disabled:busy||generating||!text.trim()||(provider==='local'&&kind!=='tts')||(provider==='qianwen'&&kind==='music'&&settings?.providers?.find(p=>p.id==='qianwen')?.capabilities.music===false),onClick:()=>perform('audio.generate',{projectId:props.projectId,operationId:operationId(),provider,kind,text,voice:kind==='tts'?voice:undefined})},t('video.audio.generate')),
+        generating?h('button',{className:'dv-button dv-button-quiet',disabled:busy,onClick:()=>perform('audio.cancel',{projectId:props.projectId,jobId:job.jobId})},t('video.audio.cancel')):null,
+        job?jobView(job):null,h('div',{className:'dv-audio-note',role:'status'},notice),
+        h('details',{className:'dv-audio-settings'},h('summary',null,t('video.audio.settings')),h('p',null,t('video.audio.'+(settings?.configured?'configured':'missing'))),h('input',{type:'password',autoComplete:'off',value:key,placeholder:t('video.audio.key'),'aria-label':t('video.audio.key'),onChange:e=>setKey(e.target.value)}),h('div',{className:'dv-audio-actions'},h('button',{className:'dv-button dv-button-quiet',disabled:busy,onClick:()=>perform('audio.configure',{apiKey:key})},t('video.audio.save')),h('button',{className:'dv-button dv-button-quiet',disabled:busy,onClick:()=>perform('audio.check',{})},t('video.audio.check')))),
+        jobs.filter(j=>j.jobId!==job?.jobId).slice(0,5).map(jobView));
+    }
+
     function TimelinePanel(props) {
       const h = React.createElement,
         t = props.t;
@@ -3312,8 +3432,11 @@ window.__ModuleLoader__.load({
         [notice, setNotice] = React.useState(""),
         [zoom, setZoom] = React.useState(36),
         [compact, setCompact] = React.useState(false),
+        [waveVersion,setWaveVersion]=React.useState(0),
+        [levelDrafts,setLevelDrafts]=React.useState({}),
         [snap, setSnap] = React.useState(true),
         [drag, setDrag] = React.useState(null);
+      const waves=React.useRef(new Set());
       const alive = React.useRef(true),
         current = React.useRef(null),
         viewport = React.useRef(null),laneRefs=React.useRef(new Map()),gestureMoved=React.useRef(false);
@@ -3387,6 +3510,7 @@ window.__ModuleLoader__.load({
           );
           await load();
           await props.onReload();
+          return result;
         } catch (e) {
           if (alive.current) {
             setNotice(errorText(hostError(e), t));
@@ -3403,9 +3527,10 @@ window.__ModuleLoader__.load({
         if (props.assetToAdd && data && !busy) {
           const a = props.assetToAdd;
           props.onAssetConsumed();
-          const tr = data.tracks.find((x) => x.kind === "video" && !x.locked);
+          const tr = data.tracks.find((x) => x.kind === (a.kind === 'audio' ? 'audio' : 'video') && !x.locked);
           if (!tr) {
-            setNotice(t("video.timeline.needTrack"));
+            if(a.kind==='audio'&&data.tracks.filter(x=>x.kind==='audio').length<3){void (async()=>{const result=await write([{op:'track.add',kind:'audio',name:t('video.audio.tts')}]);if(result)props.onQueueAsset?.(a);})();}
+            else setNotice(t("video.timeline.needTrack"));
             return;
           }
           const start = Math.max(
@@ -3424,6 +3549,8 @@ window.__ModuleLoader__.load({
           ]);
         }
       }, [props.assetToAdd, data, busy]);
+      React.useEffect(()=>{setLevelDrafts({});},[data?.revision]);
+      React.useEffect(()=>{for(const a of data?.assets??[]){if(a.kind!=='audio'||waves.current.has(a.assetId))continue;waves.current.add(a.assetId);void hostRequest('asset.derive',{projectId:props.projectId,assetId:a.assetId,kind:'waveform'}).then(()=>{if(alive.current)setWaveVersion(v=>v+1);}).catch(()=>{waves.current.delete(a.assetId);});}},[data?.revision]);
       if (!data)
         return h(
           "section",
@@ -3516,6 +3643,7 @@ window.__ModuleLoader__.load({
             ];
         void write(ops);
       }
+      function tool(label,path,onClick,disabled){return h('button',{className:'dv-timeline-tool',title:label,'aria-label':label,onClick,disabled},h('svg',{viewBox:'0 0 24 24',width:16,height:16,fill:'none',stroke:'currentColor',strokeWidth:1.5,strokeLinecap:'round',strokeLinejoin:'round','aria-hidden':true},h('path',{d:path})),h('span',{className:'dv-sr-only'},label));}
       return h(
         "section",
         {
@@ -3542,114 +3670,22 @@ window.__ModuleLoader__.load({
         h(
           "div",
           { className: "dv-timeline-toolbar" },
-          h("strong", null, t("video.timeline.title")),
-          h(
-            "button",
-            {
-              className: "dv-button dv-button-quiet",
-              disabled: busy || !data.undoHint.canUndo,
-              onClick: () => write(null, "timeline.undo"),
-            },
-            t("video.canvas.undo"),
-          ),
-          h(
-            "button",
-            {
-              className: "dv-button dv-button-quiet",
-              disabled: busy || !data.undoHint.canRedo,
-              onClick: () => write(null, "timeline.redo"),
-            },
-            t("video.canvas.redo"),
-          ),
-          h(
-            "button",
-            {
-              className: "dv-button dv-button-quiet",
-              disabled: busy || !chosen,
-              onClick: cut,
-            },
-            t("video.timeline.split"),
-          ),
-          h(
-            "button",
-            {
-              className: "dv-button dv-button-quiet",
-              disabled: busy || !chosen,
-              onClick: () =>
-                chosen &&
-                write([
-                  { op: "clip.delete", clipId: chosen.clipId, ripple: false },
-                ]),
-            },
-            t("video.timeline.delete"),
-          ),
-          h(
-            "button",
-            {
-              className: "dv-button dv-button-quiet",
-              disabled: busy || !chosen,
-              onClick: () =>
-                chosen &&
-                write([
-                  { op: "clip.duplicate", clipId: chosen.clipId, mode: "ripple" },
-                ]),
-            },
-            t("video.timeline.duplicate"),
-          ),
-          h(
-            "button",
-            {
-              className: "dv-button dv-button-quiet",
-              disabled: busy || !chosen,
-              onClick: () => moveOrder(-1),
-            },
-            "←",
-          ),
-          h(
-            "button",
-            {
-              className: "dv-button dv-button-quiet",
-              disabled: busy || !chosen,
-              onClick: () => moveOrder(1),
-            },
-            "→",
-          ),
-          h(
-            "button",
-            {
-              className: "dv-button dv-button-quiet",
-              disabled: busy,
-              onClick: () => write([{ op: "track.add", kind: "video" }]),
-            },
-            t("video.timeline.addTrack"),
-          ),
-          h(
-            "label",
-            null,
-            h("input", {
-              type: "checkbox",
-              checked: snap,
-              onChange: (e) => setSnap(e.target.checked),
-            }),
-            t("video.timeline.snap"),
-          ),
-          h("input", {
-            type: "range",
-            min: 8,
-            max: 100,
-            value: zoom,
-            "aria-label": t("video.timeline.zoom"),
-            onChange: (e) => setZoom(Number(e.target.value)),
-          }),
-          h(
-            "button",
-            {
-              className: "dv-button dv-button-quiet",
-              "aria-pressed": compact,
-              onClick: () => setCompact(!compact),
-            },
-            t("video.timeline.compact"),
-          ),
+          h('span',{className:'dv-timeline-heading'},t('video.timeline.title')),
+          tool(t('video.canvas.undo'),'M9 5 4 10l5 5M4 10h9a6 6 0 0 1 0 12',()=>write(null,'timeline.undo'),busy||!data.undoHint.canUndo),
+          tool(t('video.canvas.redo'),'m15 5 5 5-5 5m5-5h-9a6 6 0 0 0 0 12',()=>write(null,'timeline.redo'),busy||!data.undoHint.canRedo),
+          h('span',{className:'dv-tool-divider'}),
+          tool(t('video.timeline.split'),'M9 9 20 3M9 15l11 6M12 12l-3-3M12 12l-3 3M6 6a3 3 0 1 0 0 6 3 3 0 0 0 0-6M6 12a3 3 0 1 0 0 6 3 3 0 0 0 0-6',cut,busy||!chosen),
+          tool(t('video.timeline.delete'),'M4 6h16M9 6V3h6v3M7 6l1 15h8l1-15',()=>chosen&&write([{op:'clip.delete',clipId:chosen.clipId,ripple:false}]),busy||!chosen),
+          h('details',{className:'dv-timeline-more'},h('summary',{'aria-label':t('video.audio.more'),title:t('video.audio.more')},'···'),h('div',{className:'dv-timeline-menu'},
+            h('button',{disabled:busy||!chosen,onClick:()=>chosen&&write([{op:'clip.duplicate',clipId:chosen.clipId,mode:'ripple'}])},t('video.timeline.duplicate')),
+            h('button',{disabled:busy||!chosen,onClick:()=>moveOrder(-1)},'←'),
+            h('button',{disabled:busy||!chosen,onClick:()=>moveOrder(1)},'→'),
+            h('button',{disabled:busy,onClick:()=>write([{op:'track.add',kind:'video'}])},t('video.timeline.addTrack')),
+            h('button',{disabled:busy,onClick:()=>write([{op:'track.add',kind:'audio'}])},t('video.audio.addTrack')),
+            h('button',{'aria-pressed':compact,onClick:()=>setCompact(!compact)},t('video.timeline.compact')))),
+          h('span',{className:'dv-timeline-spacer'}),
+          h('label',{className:'dv-snap-toggle',title:t('video.timeline.snap')},h('input',{type:'checkbox',checked:snap,onChange:e=>setSnap(e.target.checked)}),h('span',null,t('video.timeline.snap'))),
+          h('input',{type:'range',className:'dv-timeline-zoom',min:8,max:100,value:zoom,'aria-label':t('video.timeline.zoom'),onChange:e=>setZoom(Number(e.target.value))}),
         ),
         h(
           "div",
@@ -3683,12 +3719,11 @@ window.__ModuleLoader__.load({
               ),
             ),
             data.tracks
-              .filter((tr) => tr.kind === "video")
               .map((tr) =>
                 h(
                   "div",
                   { key: tr.trackId, className: "dv-timeline-track" },
-                  h("span", { className: "dv-timeline-track-name" }, tr.name),
+                  h("div", { className: "dv-timeline-track-name" }, h('span',{className:'dv-track-label'},h('span',{className:'dv-track-kind'},tr.kind==='audio'?'A':'V'),tr.name),h('button',{className:'dv-track-mute','aria-label':t('video.audio.mute')+' '+tr.name,'aria-pressed':Boolean(tr.muted),disabled:busy,onClick:()=>write([{op:'track.update',trackId:tr.trackId,patch:{muted:!tr.muted}}])},'M')),
                   h(
                     "div",
                     {
@@ -3735,7 +3770,7 @@ window.__ModuleLoader__.load({
                         {
                           key: c.clipId,
                           className:
-                            "dv-timeline-clip" +
+                            "dv-timeline-clip" + (tr.kind==='audio'?' is-audio':'') +
                             (selected === c.clipId ? " is-selected" : ""),
                           "data-clip-id": c.clipId,
                           tabIndex: 0,
@@ -3761,6 +3796,7 @@ window.__ModuleLoader__.load({
                                 : undefined,
                           },
                         },
+                        tr.kind==='audio'?h('img',{className:'dv-clip-waveform',style:{width:((data.assets.find(a=>a.assetId===c.assetId)?.durationFrames??c.durationFrames)/(data.assets.find(a=>a.assetId===c.assetId)?.fps??30))/(c.durationFrames/30*(c.speed||1))*100+'%',left:-((c.sourceInFrame??0)/(data.assets.find(a=>a.assetId===c.assetId)?.fps??30))/(c.durationFrames/30*(c.speed||1))*100+'%'},src:'api/dsh-video/derived?projectId='+encodeURIComponent(props.projectId)+'&assetId='+encodeURIComponent(c.assetId)+'&kind=waveform#v='+waveVersion,alt:'',draggable:false,onError:e=>{e.target.style.visibility='hidden';}}):null,
                         h("span", {
                           className: "dv-timeline-edge",
                           role: "slider",
@@ -3825,7 +3861,7 @@ window.__ModuleLoader__.load({
           ? h(
               "div",
               { className: "dv-timeline-inspector" },
-              h("code", null, "@clip:" + chosen.clipId),
+              h("span", {className:'dv-inspector-name',title:chosen.clipId}, chosen.label || t('video.timeline.title')),
               h("span", null, (chosen.durationFrames / 30).toFixed(2) + "s"),
               h(
                 "label",
@@ -3847,7 +3883,7 @@ window.__ModuleLoader__.load({
                       ]),
                   },
                   data.tracks
-                    .filter((x) => x.kind === "video")
+                    .filter((x) => x.kind === data.tracks.find(tr=>tr.trackId===chosen.trackId)?.kind)
                     .map((tr) =>
                       h("option", { key: tr.trackId, value: tr.trackId }, tr.name),
                     ),
@@ -3877,6 +3913,9 @@ window.__ModuleLoader__.load({
                   ),
                 ),
               ),
+              chosen.kind==='media'?h(React.Fragment,null,
+                ...[['video.audio.volume','volumeDb',-60,12,1],['video.audio.fadeIn','fadeInFrames',0,chosen.durationFrames/30,0.1],['video.audio.fadeOut','fadeOutFrames',0,chosen.durationFrames/30,0.1]].map(([label,key,min,max,step])=>h('label',{key},t(label),h('input',{type:'text',inputMode:'decimal',key:chosen.clipId+':'+key+':'+data.revision,value:levelDrafts[key]??(key==='volumeDb'?(chosen[key]??0):(chosen[key]??0)/30),onChange:e=>setLevelDrafts({...levelDrafts,[key]:e.target.value}),min,max,step,'aria-label':t(label),disabled:busy,onBlur:e=>{const value=Number(e.target.value);if(e.target.value===''||!Number.isFinite(value))return;if((key==='volumeDb'?value:Math.round(value*30))===(chosen[key]??0))return;void write([key==='volumeDb'?{op:'clip.volume',clipId:chosen.clipId,volumeDb:value}:{op:'clip.fade',clipId:chosen.clipId,inFrames:key==='fadeInFrames'?Math.round(value*30):chosen.fadeInFrames??0,outFrames:key==='fadeOutFrames'?Math.round(value*30):chosen.fadeOutFrames??0}]);}}),key==='volumeDb'?'dB':'s')),
+                h('label',null,t('video.audio.gain'),h('input',{type:'text',inputMode:'decimal',key:chosen.trackId+':'+data.revision,value:levelDrafts.gain??data.tracks.find(tr=>tr.trackId===chosen.trackId)?.gainDb??0,onChange:e=>setLevelDrafts({...levelDrafts,gain:e.target.value}),min:-60,max:12,step:1,'aria-label':t('video.audio.gain'),disabled:busy,onBlur:e=>{const gainDb=Number(e.target.value);if(e.target.value!==''&&Number.isFinite(gainDb)&&gainDb!==(data.tracks.find(tr=>tr.trackId===chosen.trackId)?.gainDb??0))void write([{op:'track.update',trackId:chosen.trackId,patch:{gainDb}}]);}}),'dB')):null,
             )
           : null,
         h(
@@ -3935,6 +3974,7 @@ window.__ModuleLoader__.load({
       const [actionError, setActionError] = React.useState(null);
       const [stageSize, setStageSize] = React.useState({ width: 0, height: 0 });
       const [assetToAdd,setAssetToAdd]=React.useState(null);
+      const [audioOpen,setAudioOpen]=React.useState(false);
       const [drawerOpen, setDrawerOpen] = React.useState(false);
       const [uploadBusy, setUploadBusy] = React.useState(false);
       const [sceneChoice, setSceneChoice] = React.useState(scenes[0] ? scenes[0].sceneId : null);
@@ -3960,6 +4000,7 @@ window.__ModuleLoader__.load({
       const editorRef = React.useRef(null);
       const timeRef = React.useRef(0);
       const playingRef = React.useRef(false);
+      const soundEnabledRef = React.useRef(false);
       const selectedRef = React.useRef(null);
       const readyRef = React.useRef(false);
       const snapshotToken = React.useRef(0);
@@ -4354,6 +4395,7 @@ window.__ModuleLoader__.load({
         // The preloaded runtime is already ready: carry the playback position (and
         // on the manual path the selection) over before the slot roles swap.
         void postSlotCommand(hiddenIndex, 'seek', { time: restoreTime });
+        if (soundEnabledRef.current) void postSlotCommand(hiddenIndex,'enableSound');
         if (playingRef.current === true) void postSlotCommand(hiddenIndex, 'play');
         if (restore !== null && restore !== undefined && typeof restore.stableId === 'string') {
           const element = elements.find(function same(item) {
@@ -4566,6 +4608,8 @@ window.__ModuleLoader__.load({
           if (Number.isFinite(payload.time)) setTime(payload.time);
           if (typeof payload.playing === 'boolean') setPlaying(payload.playing);
           readyRef.current = true;
+        } else if(outcome.type==='soundEnabled'){
+          soundEnabledRef.current=true;
         } else if (outcome.type === 'playing') {
           setPlaying(true);
         } else if (outcome.type === 'paused') {
@@ -5297,6 +5341,7 @@ window.__ModuleLoader__.load({
           },
           'aria-hidden': visible ? 'false' : 'true',
           sandbox: 'allow-scripts',
+          allow: 'autoplay *',
           referrerPolicy: 'no-referrer',
           onLoad: function runtimeLoaded() {
             setTimeout(function recoverState() {
@@ -5523,6 +5568,7 @@ window.__ModuleLoader__.load({
           h('span', { className: 'dv-time' }, formatSeconds(time) + ' / ' + formatSeconds(displayDuration)),
           previewOnly ? null : h('button', { type: 'button', className: 'dv-button dv-button-quiet', onClick: function undo() { void historyStep('undo'); }, disabled: busy !== null, title: t('video.canvas.undo') }, t('video.canvas.undo')),
           previewOnly ? null : h('button', { type: 'button', className: 'dv-button dv-button-quiet', onClick: function redo() { void historyStep('redo'); }, disabled: busy !== null, title: t('video.canvas.redo') }, t('video.canvas.redo')),
+          previewOnly ? h('button',{type:'button',className:'dv-button dv-button-quiet',onClick:()=>{setAudioOpen(!audioOpen);setDrawerOpen(false);}},t('video.audio.title')):null,
           h('button', { type: 'button', className: 'dv-button dv-button-quiet', onClick: function drawer() { setDrawerOpen(!drawerOpen); }, 'aria-expanded': drawerOpen ? 'true' : 'false' }, t('video.canvas.materials')),
           previewOnly ? null : h('button', { type: 'button', className: 'dv-button dv-button-quiet', onClick: function add() { void addScene(); }, disabled: busy !== null }, t('video.canvas.addScene')),
           previewOnly
@@ -5572,7 +5618,8 @@ window.__ModuleLoader__.load({
           actionError !== null ? h('span', { className: 'dv-tool-error', role: 'alert' }, errorText(actionError, t)) : null,
           busy !== null ? h('span', { className: 'dv-tool-hint' }, t('video.canvas.busy')) : null
         ),
-        previewOnly && props.timelineEnabled!==false ? h(TimelinePanel,{key:projectId,t,projectId,revision:inspected.revision,time,onSeek:seekTo,onReload,assetToAdd,onAssetConsumed:()=>setAssetToAdd(null)}) : null,
+        previewOnly && props.timelineEnabled!==false ? h(TimelinePanel,{key:projectId,t,projectId,revision:inspected.revision,time,onSeek:seekTo,onReload,assetToAdd,onAssetConsumed:()=>setAssetToAdd(null),onQueueAsset:setAssetToAdd}) : null,
+        audioOpen && previewOnly ? h(AudioPanel,{key:projectId,t,projectId,onClose:()=>setAudioOpen(false),onAdd:a=>{setAssetToAdd(a);setAudioOpen(false);}}):null,
         drawerOpen && previewOnly ? h(MediaLibraryPanel,{key:projectId,t:t,projectId:projectId,onClose:()=>setDrawerOpen(false),onAdd:asset=>{setAssetToAdd(asset);setDrawerOpen(false);}}) : null,
         drawerOpen && previewOnly === false
           ? h(

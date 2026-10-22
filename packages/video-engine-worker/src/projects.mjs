@@ -1027,6 +1027,7 @@ export class Projects {
           revision,
           entry: p.manifest.entry,
           files: p.entries,
+          timeline: p.timeline,
         };
       } catch {
         await rm(destination, { recursive: true, force: true });

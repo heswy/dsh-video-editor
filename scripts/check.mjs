@@ -113,7 +113,7 @@ check('host half exports a Cordis plugin body and declares required services', (
   assert(/export\s+function\s+apply\s*\(/.test(hostSource), 'index.js must export function apply()');
   assert(/export\s+const\s+inject\s*=\s*\[\s*'connection'\s*,\s*'tools'\s*,\s*'subprocess'\s*\]/.test(hostSource), 'index.js must declare connection/tools/subprocess injection');
   assert(/@deepseek-ai\//.test(hostSource) === false, 'index.js must not import @deepseek-ai/* (profile path packages cannot resolve them)');
-  for (const module of ['host/bridge.js', 'host/routes.js', 'host/tool.js', 'host/config.js', 'host/env.js', 'host/errors.js', 'host/engine.js', 'host/limits.js', 'host/sessions.js', 'host/session-state.js', 'host/data-root.js', 'host/ui-state.js']) {
+  for (const module of ['host/bridge.js', 'host/audio.js', 'host/routes.js', 'host/tool.js', 'host/config.js', 'host/env.js', 'host/errors.js', 'host/engine.js', 'host/limits.js', 'host/sessions.js', 'host/session-state.js', 'host/data-root.js', 'host/ui-state.js']) {
     assert(exists(module), `missing Host module ${module}`);
   }
   return 'apply(), inject, nine Host modules';
@@ -134,8 +134,8 @@ check('bundle manifest declares patch and client', () => {
   return `platform=web, inject=[${pkg.dsh.client.inject.join(', ')}]`;
 });
 
-check('package version advanced for the V1 M3 1.0.0-alpha.4 candidate (timeline + media/scene preview + export)', () => {
-  assert(pkg.version === '1.0.0-alpha.4', `expected version 1.0.0-alpha.4, found "${pkg.version}"`);
+check('package version advanced for the V1 M4 1.0.0-alpha.5 candidate (audio + providers + refined timeline)', () => {
+  assert(pkg.version === '1.0.0-alpha.5', `expected version 1.0.0-alpha.5, found "${pkg.version}"`);
   return pkg.version;
 });
 
@@ -174,7 +174,7 @@ check('entrypoints and exports resolve to shipped files', () => {
 
 check('package files list covers every shipped artifact', () => {
   assert(Array.isArray(pkg.files) && pkg.files.length > 0, 'package.json needs a files list for a reproducible install');
-  const required = ['index.js', 'client.js', 'cordis.patch.yml', 'icon.svg', 'locale/en.json', 'locale/zh.json', 'README.md', 'host/bridge.js', 'host/routes.js', 'host/tool.js', 'host/config.js', 'host/env.js', 'host/errors.js', 'host/engine.js', 'host/limits.js', 'host/sessions.js', 'host/session-state.js', 'host/preview.js', 'host/snapshot.js', 'host/asset-inbox.js', 'host/canvas-runtime.js', 'host/data-root.js', 'host/ui-state.js'];
+  const required = ['index.js', 'client.js', 'cordis.patch.yml', 'icon.svg', 'locale/en.json', 'locale/zh.json', 'README.md', 'host/bridge.js', 'host/audio.js', 'host/routes.js', 'host/tool.js', 'host/config.js', 'host/env.js', 'host/errors.js', 'host/engine.js', 'host/limits.js', 'host/sessions.js', 'host/session-state.js', 'host/preview.js', 'host/snapshot.js', 'host/asset-inbox.js', 'host/canvas-runtime.js', 'host/data-root.js', 'host/ui-state.js'];
   for (const artifact of required) {
     const covered = pkg.files.some((pattern) => listMatchingFiles(pattern).includes(artifact));
     assert(covered, `files list does not cover required artifact "${artifact}"`);

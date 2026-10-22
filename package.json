@@ -1,6 +1,6 @@
 {
   "name": "dsh-video",
-  "version": "1.0.0-alpha.4",
+  "version": "1.0.0-alpha.5",
   "private": true,
   "description": "Native sidebar entry, a controlled Host bridge, frame-time preview and a restrained video workspace for DeepSeek Harness.",
   "type": "module",

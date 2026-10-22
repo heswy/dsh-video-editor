@@ -9,6 +9,9 @@
  * re-verifying the worker's succeeded artifact record.
  */
 
+import { AudioService } from './audio.js';
+import { homedir } from 'node:os';
+import { copyFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
 import { mkdir, realpath, readFile, rename, stat, unlink, writeFile } from 'node:fs/promises';
@@ -28,6 +31,7 @@ import { UiStateStore } from './ui-state.js';
 import { dataRootLayout, ensureDataRoot, legacyRootsFromConfig, loadManagedProjects, migrateLegacyRoots, quarantineCorruptFile, readWorkerRegistry, repairProjectsRegistry, resolveDataRoot, scanProjectsRoot, writeProjectsBackup } from './data-root.js';
 
 export const REQUEST_METHODS = Object.freeze([
+'audio.providers','audio.settings','audio.configure','audio.check','audio.generate','audio.status','audio.cancel',
 'timeline.inspect',
 'timeline.apply',
 'timeline.resolve',
@@ -74,6 +78,14 @@ export const REQUEST_METHODS = Object.freeze([
 ]);
 
 const METHOD_PARAMS = Object.freeze({
+'audio.providers': ['projectId'],
+'audio.settings': [],
+'audio.configure': ['apiKey'],
+'audio.check': [],
+'audio.generate': ['projectId', 'operationId', 'provider', 'kind', 'text', 'voice', 'rate'],
+'audio.status': ['projectId', 'jobId'],
+'audio.cancel': ['projectId', 'jobId'],
+
 'timeline.inspect': ['projectId', 'view', 'trackId', 'offset', 'limit'],
 'timeline.apply': ['projectId', 'expectedRevision', 'operationId', 'ops', 'dryRun'],
 'timeline.resolve': ['projectId', 'revision', 'refs'],
@@ -442,6 +454,14 @@ export function validateParams(config, method, params) {
     if(['timeline.apply','timeline.undo','timeline.redo','scene.compose'].includes(method)){next.expectedRevision=revision(params.expectedRevision);next.operationId=operationId(params.operationId);}
     if(method==='timeline.apply'&&(!Array.isArray(params.ops)||!params.ops.length||params.ops.length>32))fail('E_PARAMS','Provide 1–32 operations','params');
     if(params.dryRun!==undefined&&typeof params.dryRun!=='boolean')fail('E_PARAMS','dryRun must be boolean','params');
+    return next;
+  }
+  if(method.startsWith('audio.')) {
+    const next={...params};
+    if(['audio.providers','audio.generate','audio.status','audio.cancel'].includes(method))next.projectId=allowedProject(config,params.projectId);
+    if(method==='audio.generate')next.operationId=operationId(params.operationId);
+    if(params.jobId!==undefined&&(typeof params.jobId!=='string'||!/^audio_[a-f0-9-]{36}$/.test(params.jobId)))fail('E_PARAMS','Invalid audio job id');
+    if(method==='audio.cancel'&&!params.jobId)fail('E_PARAMS','Provide audio job id');
     return next;
   }
   if (method === 'doctor') return {};
@@ -849,6 +869,7 @@ export class VideoBridge {
     this.disposed = false;
     this.disposePromise = null;
     this.jobs = new Map();
+    this.audio = null;
     this.inFlight = new Set();
     this.projectFactsById = new Map();
     this.mediaImports = new Map();
@@ -1732,6 +1753,24 @@ export class VideoBridge {
     if (normalized.projectId !== undefined && this.isQuarantinedProject(normalized.projectId)) {
       throw new BridgeError('E_PROJECT_UNAVAILABLE', 'The project directory is currently unavailable', { stage: 'project' });
     }
+    if(method.startsWith('audio.')) {
+      if(['audio.configure','audio.settings','audio.check'].includes(method)&&settings.source==='tool')throw new BridgeError('E_METHOD','Audio credentials are UI-only');
+      if(settings.source==='tool')await this.assertToolScope(method,normalized,settings.agentSessionId);
+      if(!this.audio){const paths=this.requireDataRootPaths();this.audio=new AudioService({root:join(paths.root,'audio'),legacySecrets:join(homedir(),'.dsh/dsh-video/secrets.env'),importAudio:async(projectId,file,request)=>{
+        const sourceName='generated-'+randomBytes(12).toString('hex')+file.slice(file.lastIndexOf('.'));
+        const target=join(paths.assetInboxRoot,sourceName);await copyFile(file,target);
+        try {return await this.callClient('asset.importMedia',{projectId,sourceName,name:(request.kind==='tts'?'旁白':request.kind==='music'?'配乐':'音效')+' · '+request.text.slice(0,32),limits:{maxBytes:this.config.maxAssetBytes,maxProjectBytes:this.config.maxProjectAssetBytes}});}finally{await unlink(target).catch(()=>{});}
+      }});}
+      let result;
+      if(method==='audio.configure')result=await this.audio.configure(normalized);
+      else if(method==='audio.settings')result=await this.audio.settings();
+      else if(method==='audio.providers'){const s=await this.audio.settings();result={providers:s.providers,limits:s.limits,billing:s.billing};}
+      else if(method==='audio.check')result=await this.audio.check();
+      else if(method==='audio.generate')result=await this.audio.generate(normalized);
+      else if(method==='audio.cancel')result=await this.audio.cancel(normalized.projectId,normalized.jobId);
+      else result=await this.audio.status(normalized.projectId,normalized.jobId);
+      return publicResult(config.maxResultBytes,result,settings.source);
+    }
     if (method === 'project.list') {
       if (settings.source === 'tool') throw new BridgeError('E_METHOD', 'Project listing is a UI-only action', { stage: 'params' });
       return this.projectList();
@@ -2207,6 +2246,7 @@ export class VideoBridge {
     const startTask = this.starting;
     this.disposePromise = (async () => {
       await mediaDrain;
+      if(this.audio)await this.audio.dispose();
       if (startTask !== null) {
         try {
           await startTask;
