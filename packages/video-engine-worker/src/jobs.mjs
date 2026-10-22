@@ -367,8 +367,8 @@ export class Jobs {
               ...mixArgs,
               "-filter_complex",
               mix.filter.replace(
-                "loudnorm=I=-16:TP=-1.5:LRA=11",
-                "loudnorm=I=-16:TP=-1.5:LRA=50:print_format=json",
+                `loudnorm=I=${mix.targetLufs}:TP=-1.5:LRA=11`,
+                `loudnorm=I=${mix.targetLufs}:TP=-1.5:LRA=50:print_format=json`,
               ),
               "-map",
               "[aout]",
@@ -398,9 +398,9 @@ export class Jobs {
             fail("E_AUDIO_MIX", "Audio loudness measurement missing", "audio");
           const levels = JSON.parse(report);
           if (Number.isFinite(Number(levels.input_i))) {
-            const norm = `loudnorm=I=-16:TP=-1.5:LRA=50:measured_I=${levels.input_i}:measured_TP=${levels.input_tp}:measured_LRA=${levels.input_lra}:measured_thresh=${levels.input_thresh}:offset=${levels.target_offset}:linear=true`;
+            const norm = `loudnorm=I=${mix.targetLufs}:TP=-1.5:LRA=50:measured_I=${levels.input_i}:measured_TP=${levels.input_tp}:measured_LRA=${levels.input_lra}:measured_thresh=${levels.input_thresh}:offset=${levels.target_offset}:linear=true`;
             mix.filter = mix.filter.replace(
-              "loudnorm=I=-16:TP=-1.5:LRA=11",
+              `loudnorm=I=${mix.targetLufs}:TP=-1.5:LRA=11`,
               norm,
             );
           }
@@ -495,7 +495,7 @@ export class Jobs {
             codec: "aac",
             sampleRate: 48000,
             channels: 2,
-            targetLufs: -16,
+            targetLufs: meta.timeline.settings.loudnessTargetLufs ?? -16,
             sources: mix.sources.length,
           };
           await rename(mixed, produced);

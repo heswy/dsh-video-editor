@@ -3928,7 +3928,7 @@ window.__ModuleLoader__.load({
         finally{if(alive.current)setBusy(false);}
       }
       React.useEffect(() => {
-        if (props.assetToAdd && data && !busy) {
+        if (props.assetToAdd && data && !busy && !recovery) {
           const a = props.assetToAdd;
           props.onAssetConsumed();
           const tr = data.tracks.find((x) => x.kind === (a.kind === 'audio' ? 'audio' : 'video') && !x.locked);
@@ -3952,7 +3952,7 @@ window.__ModuleLoader__.load({
             },
           ]);
         }
-      }, [props.assetToAdd, data, busy]);
+      }, [props.assetToAdd, data, busy, recovery]);
       React.useEffect(()=>{setLevelDrafts({});},[data?.revision]);
       React.useEffect(()=>{for(const a of data?.assets??[]){if(a.kind!=='audio'||waves.current.has(a.assetId))continue;waves.current.add(a.assetId);void hostRequest('asset.derive',{projectId:props.projectId,assetId:a.assetId,kind:'waveform'}).then(()=>{if(alive.current)setWaveVersion(v=>v+1);}).catch(()=>{waves.current.delete(a.assetId);});}},[data?.revision]);
       if (!data)
