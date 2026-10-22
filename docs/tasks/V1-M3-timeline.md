@@ -29,4 +29,15 @@
 
 旧 composition 预览保留测试通过 `timelineEnabled:false` 明确测试 legacy 路径；M3 新界面另走真实 Host/Chrome 测试，不以 legacy fixture 宣称时间线 UI 验证。
 
-最终计数、固定候选和证据摘要在交付时填写；真实 DSH 激活/用户素材与真实模型语义操作仍待下一次安装和重启窗口，不与组件/引擎测试混称。
+交付记录（2026-10-22）：[PR #19](https://github.com/heswy/dsh-video-editor/pull/19)，本会话按用户授权选择合回 main。固定运行时代码 `0d5ccffcae3d137e2c623698245c803723227094`，bundle `1.0.0-alpha.4` / client+worker `0.6.0`，root=engine、rootDirty=false。
+
+- 固定候选：同级 worktrees 下 `artifacts/p2-b/staging-v1.0.0-alpha.4-0d5ccff`；INTEGRITY SHA256 `1699378f796eff94415041642ab111886a74ad7774fe7bbc569d32eb1dd9865d`。旧 `ac45e71` alpha.4 已被该候选替代，保留追溯；alpha.11 回滚候选不动。
+- 原始证据：同级 worktrees 下 `artifacts/v1/evidence/m3-alpha4-0d5ccff-20261021/verification-summary.json` 及各日志/截图/输出。证据目录日期为运行起始日。
+- 基础门禁 check 58/58、smoke 86/86、Host 71/71、stage-version 10/10、storage 21/21、media 15 场景与 Range routes 通过；固定 staging 源码摘要复核通过。
+- worker 67/67、client 重跑 23/23；真实 JSONL 内核 11 场景。浏览器 TimelinePanel 20 项、完整 CanvasWorkspace 20 项（真实 pointer 重排/换轨/trim、撤销重做、按钮与拖放完整源时长）；媒体同步误差 0.019103 秒，小于 2 帧。
+- 固定 staging 完整工作区导出 22 秒 / 660 帧 / H.264 / 6050931 字节；真实引擎 frame/render/cancel、canvas-chain、conversation-chain 261/261、conversation-preview 164/164，源文件只读审计 88→88、same=true。
+- Node24 源码视觉验证：迁移前后 3 个采样画面逐字节相同（SSIM=1），切分重排源时间与回滚一致；转场采样红/紫/蓝，120 帧，取消重试/兼容代理/外部同大小篡改拒绝通过。105 clips / 107 files 分页、100 public / 50 inspect、AI Tool/UI 共享历史及跨工程拒绝通过。
+- 固定 staging 1 GiB 流式导入、Range、引用删除保护和重启通过；snapshot RSS worker +32768 B / Host +131072 B，上传 +56934400 B。这是有效 1 秒媒体加稀疏填充的吞吐验证，不代表长复杂片解码压力测试。
+- 首轮 client 并发测试有两个 200ms fake-worker 握手超时；未改代码/未放宽预算，重跑 23/23。migration/transition 首轮误用系统 Node22，失败/超时日志保留；与固定候选一致的 Node24 重跑通过。
+
+真实 DSH 激活、用户素材与真实模型语义操作仍待下一次安装和重启窗口，不与组件/引擎测试混称。M3 预览/导出静音；crossfade 使用下一片段入点静帧叠化，AI 场景转场不开放。下载沿用默认 64 MiB、可配置上限 256 MiB，真实长片导出仍需实机观察。

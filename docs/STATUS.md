@@ -1,10 +1,10 @@
 # 当前项目状态
 
-## V1 当前开发（2026-10-21）
+## V1 当前开发（2026-10-22）
 
 - 当前主会话负责 M3 及后续 V1 开发。用户本轮授权自行判断合码；M1 [#17](https://github.com/heswy/dsh-video-editor/pull/17)、M2 [#18](https://github.com/heswy/dsh-video-editor/pull/18) 已合入 main，开发基线 `00223dd`。
-- **M3 时间线与视频轨**：完整 alpha.4 候选，包含时间线内核/原子操作/共享撤销、AI 场景、素材上轨、剪切/拖动/重排/trim、媒体+场景预览和静音导出；任务与验证见 [M3 任务卡](tasks/V1-M3-timeline.md)。不以 alpha.3 内核阶段作为终点。
-- 版本为 bundle `1.0.0-alpha.4` / client+worker `0.6.0`。固定候选与最终证据见下方交付记录（构建时填写）。
+- **M3 时间线与视频轨**：开发完成，交付 alpha.4，包含时间线内核/原子操作/共享撤销、AI 场景、素材上轨、剪切/拖动/重排/trim、媒体+场景预览和静音导出；任务与验证见 [M3 任务卡](tasks/V1-M3-timeline.md)。不以 alpha.3 内核阶段作为终点。
+- 版本为 bundle `1.0.0-alpha.4` / client+worker `0.6.0`。固定运行时代码 `0d5ccff`；候选 `artifacts/p2-b/staging-v1.0.0-alpha.4-0d5ccff`，INTEGRITY `1699378f796eff94415041642ab111886a74ad7774fe7bbc569d32eb1dd9865d`。按授权选择合码 [PR #19](https://github.com/heswy/dsh-video-editor/pull/19)；详细证据及限制见 M3 任务卡。
 - 本轮没有安装插件、重启 DSH、请求真实模型或公开发布。M1/M2/M3 的真实 DSH 与用户素材联合验收仍待下次安装/重启窗口；这些待验项不冒充组件/真实引擎验证通过。
 - M4 音频轨/音频生成尚未开发；M3 静音是明确阶段边界。M5 原生 @ 候选和复杂语义协作按计划继续。
 - 0.3 alpha.11、M1 alpha.1、M2 alpha.2 固定候选、旧 staging 与用户工程全部保留。旧 0.3“手动编辑延期”不再限制已获用户授权的 M3 时间线。
