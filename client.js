@@ -3893,7 +3893,7 @@ window.__ModuleLoader__.load({
       const waves=React.useRef(new Set());
       const alive = React.useRef(true),
         current = React.useRef(null),
-        viewport = React.useRef(null),laneRefs=React.useRef(new Map()),gestureMoved=React.useRef(false);
+        viewport = React.useRef(null),timelineRef=React.useRef(null),laneRefs=React.useRef(new Map()),gestureMoved=React.useRef(false);
       React.useEffect(() => {
         alive.current = true;
         return () => {
@@ -4035,12 +4035,8 @@ window.__ModuleLoader__.load({
         }
       }, [props.assetToAdd, data, busy, recovery]);
       React.useEffect(()=>{setLevelDrafts({});setDrag(null);},[data?.revision]);
-      React.useEffect(()=>{
-        if(!drag)return;
-        const cancel=e=>{if(e?.type==='keydown'&&e.key!=='Escape')return;if(e?.type==='keydown'){e.preventDefault();e.stopPropagation();}gestureMoved.current=true;setDrag(null);};
-        window.addEventListener('keydown',cancel,true);window.addEventListener('blur',cancel);
-        return ()=>{window.removeEventListener('keydown',cancel,true);window.removeEventListener('blur',cancel);};
-      },[Boolean(drag)]);
+      // Keep Escape within this timeline even when selecting a clip inserts toolbar controls.
+      React.useEffect(()=>{if(drag)timelineRef.current?.focus({preventScroll:true});},[drag]);
       React.useEffect(()=>{for(const a of data?.assets??[]){if(a.kind!=='audio'||waves.current.has(a.assetId))continue;waves.current.add(a.assetId);void hostRequest('asset.derive',{projectId:props.projectId,assetId:a.assetId,kind:'waveform'}).then(()=>{if(alive.current)setWaveVersion(v=>v+1);}).catch(()=>{waves.current.delete(a.assetId);});}},[data?.revision]);
       React.useEffect(()=>{
         const el=viewport.current;if(!el)return;
@@ -4154,6 +4150,8 @@ window.__ModuleLoader__.load({
         "section",
         {
           className: "dv-timeline" + (compact ? " dv-timeline-compact" : ""),
+          ref:timelineRef,
+          onBlur:e=>{if(drag&&!e.currentTarget.contains(e.relatedTarget)){gestureMoved.current=true;setDrag(null);}},
           "aria-label": t("video.timeline.title"),"aria-busy":busy?"true":"false",
           tabIndex: 0,
           onKeyDown: (e) => {
