@@ -29,4 +29,17 @@
 - 源码 Chrome 完整工作区：M3 手势/媒体库回归 + 音频生成、上轨、数值编辑、静音/撤销、波形、真实播放同步、revision 换片声音保持、340px 窄窗。
 - 安全/失败：0600、密钥结果脱敏、任务归属、幂等重放、取消、超时、重启中断不重计费、未开通能力缓存、下载 URL fence；导入与工程写入边界沿用 M2/M3。
 
-固定候选、最终计数与 PR 在交付时补齐。真实 DSH 激活/用户音频与复杂原生对话、非 macOS 平台仍待实机窗口；本轮不安装或重启。
+## 固定候选与交付记录
+
+[PR #20](https://github.com/heswy/dsh-video-editor/pull/20)，选择合回 main。固定 runtime `81ffb1b104d6c781fabbe8d2f7ee668a5afe1acc`，root=engine、rootDirty=false；bundle alpha.5 / engine 0.7.0。候选为同级 worktrees 下 `artifacts/p2-b/staging-v1.0.0-alpha.5-81ffb1b`；INTEGRITY SHA256 `afbf1ac1d0314d8ec5fbade781cf56b1a918b4a7a1e2367daec88f0da7ce8eea`。初版 e332611 修复默认音色 ID 中小数点校验后替代，旧候选保留。
+
+最终证据目录为同级 worktrees 下 `artifacts/v1/evidence/m4-alpha5-81ffb1b-20261022/`，`verification-summary.json` 汇总原始日志、截图、产物与边界。
+
+- check 58/58、smoke 86/86、Host 71/71、worker 72/72、client 23/23、stage-version 10/10；新 provider 安全/失败/恢复测试和真实 Host 归属测试通过。音色小数点有 red→green 回归。
+- 固定候选 Chrome 工作区 28 项：千问 TTS 真实生成、受管素材、音轨精调/静音/撤销、波形、实际播放与 seek、revision 换片自动保持声音、340px 窄窗、22s/660 帧 H.264 + AAC48k/stereo 导出。音频预览漂移 0.022s（小于 2 帧）。图片 `workspace-cloud/timeline-detail.png` 为真实组件截图。
+- 固定候选独立测试片 21s/630 帧，视频原声+BGM 两源混音；实际黑白闪帧与 1kHz 脉冲在 0/5/10/20 秒的最大偏移 0.021313s（小于 1 帧）。响度 -16.01 LUFS，true peak -8.58 dBTP；`render/loudness.json` 的 input_i 是对最终文件的复测，output_i 为测量命令假设再次归一化的结果，不作最终响度。
+- 固定候选 1 GiB 稀疏填充有效 1 秒媒体：流式上传、Range、重启、引用删除保护通过；snapshot worker RSS +49152 B、Host +65536 B，上传 +80216064 B。此为吞吐/快照内存验证，不代表长复杂素材解码实机压力测试。
+- 固定候选真实引擎 frame/render/cancel、canvas-chain 通过；对话 261/261、预览 164/164，固定源码只读审计 same=true、91→91。
+- 收尾发现并修复：默认供应商音色带版本小数点；音频 Tool 早返回必须先校验可信 Agent/project；短片段淡化必须约束到新长度；单遍响度对稀疏脉冲偏差过大改为双遍。浏览器脚本在缩放 iframe 内点击须映射坐标，数值更改须全选原值；保留诊断日志。旧 JSONL 并发测试改为断言恰好一个成功与一个冲突，不假设哪个并发请求先获锁。
+
+真实 DSH 激活/用户音频与复杂原生对话、非 macOS 平台仍待实机窗口；本轮不安装或重启。

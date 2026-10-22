@@ -1,6 +1,11 @@
 # 当前交接入口
 
-## 当前入口：V1 M3
+## 当前入口：V1 M4
+
+2026-10-22 当前会话完成 M4，用户明确要求音频供应商以千问云试点、允许导入，并精简轨道 UI。交付 alpha.5 / engine 0.7.0，runtime `81ffb1b`，固定候选 `artifacts/p2-b/staging-v1.0.0-alpha.5-81ffb1b`，INTEGRITY `afbf1ac1d0314d8ec5fbade781cf56b1a918b4a7a1e2367daec88f0da7ce8eea`；[PR #20](https://github.com/heswy/dsh-video-editor/pull/20) 按既有权限选择合码。千问 TTS/SFX、本地旁白、导入配乐、音轨预览混音与 AAC 导出已验证；音乐 403 未开通时禁用并以导入兜底。详见 [M4 任务卡](../tasks/V1-M4-audio.md) 和 [STATUS](../STATUS.md)。未安装/重启 DSH；最后确认安装为 alpha.11，本轮未替换。下一安装窗口联合验收 M1–M4；不要自动派发或跨会话联系。后续 V1 开发仍由当前会话负责。
+
+## M3 历史入口
+
 
 2026-10-21 用户要求当前会话一次完成 M3，并授权判断合码。M1 #17/M2 #18 已合入 main；M3 从 `00223dd` 独立开发，2026-10-22 开发交付 alpha.4（engine 0.6.0，固定 runtime `0d5ccff`，PR #19 按授权选择合码），详见 [STATUS](../STATUS.md) 与 [M3 任务卡](../tasks/V1-M3-timeline.md)。本轮未安装/重启/真实模型/发布；下一次授权窗口联合验收 M1–M3。后续开发仍由当前会话负责；不要自动派发或联系其它会话。下方旧状态保留追溯，当前判断以上述入口为准。
 

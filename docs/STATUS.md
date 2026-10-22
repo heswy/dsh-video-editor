@@ -2,6 +2,15 @@
 
 ## V1 当前开发（2026-10-22）
 
+- **M4 开发完成**：音频导入/生成、3 音轨、波形、音量/淡化/静音/增益、视频原声、带 AAC 的混音导出；轨道 UI 已按用户要求重做为轻量剪辑台。[PR #20](https://github.com/heswy/dsh-video-editor/pull/20)，按本会话既有授权选择合码。实现与证据见 [M4 任务卡](tasks/V1-M4-audio.md)。
+- 当前唯一开发候选为 bundle `1.0.0-alpha.5` / client+worker `0.7.0`；runtime `81ffb1b104d6c781fabbe8d2f7ee668a5afe1acc`、root=engine、rootDirty=false；同级 worktrees 下 `artifacts/p2-b/staging-v1.0.0-alpha.5-81ffb1b`，INTEGRITY SHA256 `afbf1ac1d0314d8ec5fbade781cf56b1a918b4a7a1e2367daec88f0da7ce8eea`。初版 `e332611` 候选被默认音色版本号校验修复替代，保留追溯。
+- 千问云旁白与音效真实生成通过；当前 key 音乐未开通（403），禁用重复生成并允许导入 BGM。本地 macOS say 旁白可用。凭据仅本机 0600 配置，不入仓库/模型/worker/staging；取消/超时可能仍计费，不自动重试。
+- 固定候选真实 Chrome 音频工作区 **28 项**通过，含千问云生成→入库→上轨→精调→声音保持→22s/660 帧带音频导出；独立 21s/630 帧测试片 A/V 四点偏移 ≤1 帧，-16.01 LUFS，AAC 48k 双声道。1 GiB 流式/RSS/Range/引用删除保护与重启通过；其它回归与边界详见任务卡。
+- 本轮按用户提供供应商凭据的要求做了必要短音频 API 验证；**未安装插件、重启 DSH、发起原生对话模型或公开发布**。本会话最后确认的已安装版本为 alpha.11，本轮未替换；M1–M4 的 DSH/用户素材联合验收在下一授权安装窗口执行。
+- M5 原生 @ 与复杂协作尚未开发；本轮不扩到 M5。旧候选、worktree、分支和用户作品保留。
+
+## M3 交付时的历史记录（当前候选以上文为准）
+
 - 当前主会话负责 M3 及后续 V1 开发。用户本轮授权自行判断合码；M1 [#17](https://github.com/heswy/dsh-video-editor/pull/17)、M2 [#18](https://github.com/heswy/dsh-video-editor/pull/18) 已合入 main，开发基线 `00223dd`。
 - **M3 时间线与视频轨**：开发完成，交付 alpha.4，包含时间线内核/原子操作/共享撤销、AI 场景、素材上轨、剪切/拖动/重排/trim、媒体+场景预览和静音导出；任务与验证见 [M3 任务卡](tasks/V1-M3-timeline.md)。不以 alpha.3 内核阶段作为终点。
 - 版本为 bundle `1.0.0-alpha.4` / client+worker `0.6.0`。固定运行时代码 `0d5ccff`；候选 `artifacts/p2-b/staging-v1.0.0-alpha.4-0d5ccff`，INTEGRITY `1699378f796eff94415041642ab111886a74ad7774fe7bbc569d32eb1dd9865d`。按授权选择合码 [PR #19](https://github.com/heswy/dsh-video-editor/pull/19)；详细证据及限制见 M3 任务卡。
