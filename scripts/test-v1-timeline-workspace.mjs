@@ -428,7 +428,15 @@ try {
   const dest = await (await page.$$(".dv-timeline-lane"))[1].boundingBox();
   await page.mouse.move(from.x + 15, from.y + from.height / 2);
   await page.mouse.down();
+  const beforeLift=await bridge.invoke('timeline.inspect',{projectId});
   await page.mouse.move(from.x + 15, dest.y + dest.height / 2, { steps: 8 });
+  const lifted=await page.$eval('[data-clip-id="'+movingId+'"]',el=>({y:el.getBoundingClientRect().y,lifted:el.classList.contains('is-dragging')}));
+  assert(lifted.y>from.y+20 && lifted.lifted,'clip must visibly follow vertical pointer movement before release');
+  assert.equal(await page.$eval('.dv-timeline-lane.is-drop-target',e=>e.dataset.trackId),beforeLift.tracks[1].trackId);
+  assert.equal(await page.$$('.dv-drag-origin').then(x=>x.length),1);
+  assert.equal(await page.$$('.dv-drop-preview').then(x=>x.length),1);
+  assert.equal((await bridge.invoke('timeline.inspect',{projectId})).revision,beforeLift.revision,'drag preview must not write project data');checks++;
+  await page.screenshot({path:join(out,'cross-track-held.png')});
   await page.mouse.up();
   await page.waitForFunction(
     (id) =>
@@ -445,6 +453,13 @@ try {
         (x) => x.textContent === "撤销",
       ).disabled === false,
   );
+  const landed=await bridge.invoke('timeline.inspect',{projectId});
+  const overlapSource=await (await page.$('.dv-timeline-lane [data-clip-id]:not([data-clip-id="'+movingId+'"])')).boundingBox();
+  const occupied=await (await page.$('[data-clip-id="'+movingId+'"]')).boundingBox();
+  await page.mouse.move(overlapSource.x+15,overlapSource.y+overlapSource.height/2);await page.mouse.down();
+  await page.mouse.move(occupied.x+15,occupied.y+occupied.height/2,{steps:6});
+  assert.equal(await page.$('.dv-timeline-lane.is-drop-invalid').then(Boolean),true,'overlapping cross-track destination is visibly rejected');
+  await page.mouse.up();assert.equal((await bridge.invoke('timeline.inspect',{projectId})).revision,landed.revision);checks++;
   await clickText("撤销");
   await page.waitForFunction(
     (id) =>
@@ -455,6 +470,19 @@ try {
     movingId,
   );
   checks++;
+  const cancelledRevision=(await bridge.invoke('timeline.inspect',{projectId})).revision;
+  const cancelFrom=await (await page.$('[data-clip-id="'+movingId+'"]')).boundingBox();
+  await page.mouse.move(cancelFrom.x+15,cancelFrom.y+cancelFrom.height/2);await page.mouse.down();
+  await page.mouse.move(cancelFrom.x+15,dest.y+dest.height/2,{steps:5});
+  await page.keyboard.press('Escape');await page.mouse.up();
+  assert.equal(await page.$('.is-dragging'),null);assert.equal(await page.$('.dv-drop-preview'),null);
+  assert.equal((await bridge.invoke('timeline.inspect',{projectId})).revision,cancelledRevision,'Escape must cancel without a write');checks++;
+  // Out-of-lane release must cancel rather than silently moving the source clip.
+  const outsideFrom=await (await page.$('[data-clip-id="'+movingId+'"]')).boundingBox();
+  await page.mouse.move(outsideFrom.x+15,outsideFrom.y+outsideFrom.height/2);await page.mouse.down();
+  await page.mouse.move(outsideFrom.x+60,from.y-50,{steps:5});
+  assert.equal(await page.$('.is-dragging.is-invalid').then(Boolean),true);
+  await page.mouse.up();assert.equal((await bridge.invoke('timeline.inspect',{projectId})).revision,cancelledRevision);checks++;
   await page.screenshot({ path: join(out, "timeline.png") });
   await page.waitForSelector(".dv-canvas-shell[data-canvas-phase=ready]");
   checks++;

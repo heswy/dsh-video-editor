@@ -290,6 +290,7 @@ window.__ModuleLoader__.load({
       'video.canvas.timeline': '时间轴',
       'video.canvas.undo': '撤销',
       'video.canvas.redo': '重做',
+      'video.timeline.dropInvalid': '不能放到这里',
       'video.timeline.properties': '片段设置',
       'video.timeline.fit': '适应时间线',
       'video.timeline.history': '最近修改',
@@ -540,6 +541,7 @@ window.__ModuleLoader__.load({
       'video.canvas.timeline': 'Timeline',
       'video.canvas.undo': 'Undo',
       'video.canvas.redo': 'Redo',
+      'video.timeline.dropInvalid': 'Cannot place here',
       'video.timeline.properties': 'Clip settings',
       'video.timeline.fit': 'Fit timeline',
       'video.timeline.history': 'Recent change',
@@ -1588,6 +1590,17 @@ window.__ModuleLoader__.load({
 
 .dv-reference-toggle{align-self:flex-start;margin:0 12px 4px}.dv-reference-panel{display:flex;flex-direction:column;gap:4px;margin:0 12px 8px;padding:10px;border:1px solid var(--dsw-alias-border-l1, rgba(127,127,140,.28));border-radius:8px;min-height:0;overflow:auto;max-height:42vh;font-size:12px}.dv-reference-head,.dv-reference-range,.dv-reference-pages{display:flex;align-items:center;gap:6px}.dv-reference-head{justify-content:space-between}.dv-reference-panel>*{flex-shrink:0}.dv-reference-panel input{font:inherit;color:inherit;background:var(--dsw-alias-bg-base, #1c1c20);border:1px solid var(--dsw-alias-border-l1, rgba(127,127,140,.28));border-radius:4px;padding:5px;min-width:0;max-width:100%}.dv-reference-panel input[type=search]{width:100%}.dv-reference-help{opacity:.7;margin:6px 0}.dv-reference-items{display:grid;gap:2px;max-height:180px;overflow:auto;flex:1 1 auto;min-height:48px}.dv-reference-item{border:0;border-radius:4px;background:transparent;color:inherit;text-align:left;padding:6px;cursor:pointer;min-width:0}.dv-reference-item:hover,.dv-reference-item[aria-pressed=true]{background:var(--dsw-alias-interactive-bg-hover, rgba(127,127,140,.14))}.dv-reference-item span,.dv-reference-item small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.dv-reference-item small{opacity:.6}.dv-reference-range{margin-top:6px}.dv-reference-range input{width:62px}.dv-reference-token{display:block;margin-top:8px}.dv-reference-token input{display:block;width:100%;font-family:monospace}.dv-change-receipt{display:flex;align-items:center;gap:8px;font-size:11px;padding:4px 8px;min-width:0}.dv-change-receipt span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}.dv-change-recovery{padding:6px 8px;font-size:12px}.dv-change-recovery button{margin:3px}.dv-clip-reference{width:100px;min-width:50px!important;font-size:10px!important}
 
+/* Lifted clips follow the pointer; lane footprints preview the committed, snapped position. */
+.dv-root .dv-timeline-clip.is-dragging{z-index:20;cursor:grabbing;opacity:.92;pointer-events:auto;box-shadow:0 10px 24px #0005,0 2px 6px #0003;outline:1.5px solid var(--dsw-alias-brand-primary,#82c8cf);transform-origin:center;will-change:transform}
+.dv-root .dv-timeline-clip.is-dragging.is-invalid{cursor:not-allowed;outline-color:var(--dsw-alias-state-error-primary,#dd777d)}
+.dv-root .dv-timeline-lane.is-drop-target{background:color-mix(in srgb,var(--dsw-alias-brand-primary,#82c8cf) 9%,transparent);box-shadow:inset 0 1px color-mix(in srgb,var(--dsw-alias-brand-primary,#82c8cf) 35%,transparent),inset 0 -1px color-mix(in srgb,var(--dsw-alias-brand-primary,#82c8cf) 35%,transparent)}
+.dv-root .dv-timeline-lane.is-drop-invalid{background:color-mix(in srgb,var(--dsw-alias-state-error-primary,#dd777d) 7%,transparent)}
+.dv-drag-origin,.dv-drop-preview{position:absolute;top:7px;bottom:7px;box-sizing:border-box;border-radius:5px;pointer-events:none}
+.dv-drag-origin{border:1px dashed var(--dsw-alias-border-l1,#ffffff26);background:var(--dsw-alias-interactive-bg-hover,#ffffff06)}
+.dv-drop-preview{z-index:1;border:1px dashed var(--dsw-alias-brand-primary,#82c8cf);background:color-mix(in srgb,var(--dsw-alias-brand-primary,#82c8cf) 12%,transparent);color:var(--dsw-alias-label-primary,#eee)}
+.dv-drop-preview.is-invalid{border-color:var(--dsw-alias-state-error-primary,#dd777d);color:var(--dsw-alias-state-error-primary,#dd777d)}
+.dv-drop-preview span{position:absolute;bottom:calc(100% + 5px);left:0;padding:3px 6px;border-radius:4px;background:var(--dsw-alias-bg-layer-1,#25262a);box-shadow:0 2px 8px #0002;font-size:10px;white-space:nowrap}
+.dv-timeline-compact .dv-drag-origin,.dv-timeline-compact .dv-drop-preview{top:4px;bottom:4px}
 /* Resource shelf, transport, and editing tools have separate visual roles. */
 
 .dv-root .dv-canvas-shell[data-preview-only="true"]{padding:0;gap:0;overflow:hidden;container-type:inline-size;container-name:video-canvas}
@@ -3880,7 +3893,7 @@ window.__ModuleLoader__.load({
       const waves=React.useRef(new Set());
       const alive = React.useRef(true),
         current = React.useRef(null),
-        viewport = React.useRef(null),laneRefs=React.useRef(new Map()),gestureMoved=React.useRef(false);
+        viewport = React.useRef(null),timelineRef=React.useRef(null),laneRefs=React.useRef(new Map()),gestureMoved=React.useRef(false);
       React.useEffect(() => {
         alive.current = true;
         return () => {
@@ -4021,7 +4034,9 @@ window.__ModuleLoader__.load({
           ]);
         }
       }, [props.assetToAdd, data, busy, recovery]);
-      React.useEffect(()=>{setLevelDrafts({});},[data?.revision]);
+      React.useEffect(()=>{setLevelDrafts({});setDrag(null);},[data?.revision]);
+      // Keep Escape within this timeline even when selecting a clip inserts toolbar controls.
+      React.useEffect(()=>{if(drag)timelineRef.current?.focus({preventScroll:true});},[drag]);
       React.useEffect(()=>{for(const a of data?.assets??[]){if(a.kind!=='audio'||waves.current.has(a.assetId))continue;waves.current.add(a.assetId);void hostRequest('asset.derive',{projectId:props.projectId,assetId:a.assetId,kind:'waveform'}).then(()=>{if(alive.current)setWaveVersion(v=>v+1);}).catch(()=>{waves.current.delete(a.assetId);});}},[data?.revision]);
       React.useEffect(()=>{
         const el=viewport.current;if(!el)return;
@@ -4075,39 +4090,47 @@ window.__ModuleLoader__.load({
         [ids[i], ids[j]] = [ids[j], ids[i]];
         void write([{ op: "clip.reorder", trackId: tr.trackId, clipIds: ids }]);
       }
+      // Preview belongs to the gesture only. No timeline writes until release.
+      function dragPosition(e, gesture) {
+        const c=clips.find(x=>x.clipId===gesture.clipId);
+        if(!c)return {...gesture,valid:false};
+        const delta=Math.round(((e.clientX-gesture.x)/zoom)*30),
+          dy=e.clientY-gesture.y,
+          lifted=gesture.lifted||Math.hypot(e.clientX-gesture.x,dy)>=4,
+          source=data.tracks.find(x=>x.trackId===c.trackId),
+          lane=[...laneRefs.current.values()].find(el=>{const r=el.getBoundingClientRect();return e.clientY>=r.top&&e.clientY<=r.bottom&&e.clientX>=r.left&&e.clientX<=r.right;}),
+          target=data.tracks.find(x=>x.trackId===lane?.dataset.trackId),
+          startFrame=nearest(c.startFrame+delta,c.clipId),
+          valid=Boolean(target&&!source.locked&&!target.locked&&target.kind===source.kind&&
+            (target===source||!target.clips.some(x=>x.clipId!==c.clipId&&startFrame<x.startFrame+x.durationFrames&&startFrame+c.durationFrames>x.startFrame)));
+        return {...gesture,delta,dy,dx:e.clientX-gesture.x,lifted,trackId:target?.trackId,startFrame,valid};
+      }
       function pointerDown(e, c, edge) {
-        if (busy) return;
+        if (busy || data.tracks.find(tr=>tr.clips.some(x=>x.clipId===c.clipId))?.locked) return;
         e.preventDefault();
         e.stopPropagation();
         setSelected(c.clipId);
+        e.currentTarget.focus();
         e.currentTarget.setPointerCapture(e.pointerId);
-        gestureMoved.current=false;setDrag({ clipId: c.clipId, x: e.clientX,y:e.clientY, edge, delta: 0 });
+        gestureMoved.current=false;
+        setDrag({clipId:c.clipId,x:e.clientX,y:e.clientY,edge,delta:0,dx:0,dy:0,lifted:false});
       }
       function pointerMove(e) {
         if (!drag) return;
-        setDrag({ ...drag, delta: Math.round(((e.clientX - drag.x) / zoom) * 30) });
+        setDrag(dragPosition(e,drag));
       }
       function pointerUp(e, c) {
         if (!drag) return;
-        if(Math.hypot(e.clientX-drag.x,e.clientY-drag.y)<4){setDrag(null);return;}
-        gestureMoved.current=true;
-        const delta = drag.delta,
-          edge = drag.edge;
-        const lane=[...laneRefs.current.values()].find(el=>{if(!el)return false;const r=el.getBoundingClientRect();return e.clientY>=r.top&&e.clientY<=r.bottom;});
-        const trackId =
-          lane?.dataset.trackId ||
-          data.tracks.find((tr) => tr.clips.some((x) => x.clipId === c.clipId))
-            ?.trackId;
+        const final=dragPosition(e,drag);
         setDrag(null);
-        if (
-          !delta &&
-          trackId ===
-            data.tracks.find((tr) => tr.clips.some((x) => x.clipId === c.clipId))
-              ?.trackId
-        )
-          return;
+        if(!final.lifted)return;
+        gestureMoved.current=true;
+        const delta=final.delta,edge=final.edge,trackId=final.trackId;
+        // Resize handles keep their original track; moving clips require a valid landing lane.
+        if(!edge&&!final.valid)return;
         const fromTrack=data.tracks.find(tr=>tr.clips.some(x=>x.clipId===c.clipId));
-        const startFrame=nearest(c.startFrame+delta,c.clipId);
+        if(!edge&&!delta&&trackId===fromTrack?.trackId)return;
+        const startFrame=final.startFrame;
         if(!edge&&trackId===fromTrack?.trackId){const hit=fromTrack.clips.find(x=>x.clipId!==c.clipId&&startFrame<x.startFrame+x.durationFrames&&startFrame+c.durationFrames>x.startFrame);if(hit){const order=fromTrack.clips.filter(x=>x.clipId!==c.clipId).map(x=>x.clipId);let at=order.indexOf(hit.clipId);if(startFrame>=hit.startFrame+hit.durationFrames/2)at++;order.splice(at,0,c.clipId);void write([{op:'clip.reorder',trackId,clipIds:order}]);return;}}
         const ops = edge
           ? [{ op: "clip.trim", clipId: c.clipId, edge, deltaFrames: delta }]
@@ -4127,9 +4150,12 @@ window.__ModuleLoader__.load({
         "section",
         {
           className: "dv-timeline" + (compact ? " dv-timeline-compact" : ""),
+          ref:timelineRef,
+          onBlur:e=>{if(drag&&!e.currentTarget.contains(e.relatedTarget)){gestureMoved.current=true;setDrag(null);}},
           "aria-label": t("video.timeline.title"),"aria-busy":busy?"true":"false",
           tabIndex: 0,
           onKeyDown: (e) => {
+            if(drag){if(e.key==='Escape'){e.preventDefault();e.stopPropagation();gestureMoved.current=true;setDrag(null);}return;}
             if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT")
               return;
             if (e.key === "Delete" || e.key === "Backspace") {
@@ -4273,7 +4299,7 @@ window.__ModuleLoader__.load({
                   h(
                     "div",
                     {
-                      className: "dv-timeline-lane",ref:el=>{if(el)laneRefs.current.set(tr.trackId,el);else laneRefs.current.delete(tr.trackId);},
+                      className: "dv-timeline-lane"+(drag?.lifted&&!drag.edge&&drag.trackId===tr.trackId?(drag.valid?" is-drop-target":" is-drop-invalid"):""),ref:el=>{if(el)laneRefs.current.set(tr.trackId,el);else laneRefs.current.delete(tr.trackId);},
                       "data-track-id": tr.trackId,
                       style: { width },
                       onDragOver: (e) => e.preventDefault(),
@@ -4310,6 +4336,8 @@ window.__ModuleLoader__.load({
                           ]);
                       },
                     },
+                    drag?.lifted&&!drag.edge&&tr.clips.some(c=>c.clipId===drag.clipId)?h('div',{className:'dv-drag-origin','aria-hidden':true,style:{left:clips.find(c=>c.clipId===drag.clipId).startFrame/30*zoom,width:Math.max(8,clips.find(c=>c.clipId===drag.clipId).durationFrames/30*zoom)}}):null,
+                    drag?.lifted&&!drag.edge&&drag.trackId===tr.trackId?h('div',{className:'dv-drop-preview'+(drag.valid?'':' is-invalid'),'aria-hidden':true,style:{left:drag.startFrame/30*zoom,width:Math.max(8,clips.find(c=>c.clipId===drag.clipId).durationFrames/30*zoom)}},h('span',null,drag.valid?tr.name+' · '+formatSeconds(drag.startFrame/30):t('video.timeline.dropInvalid'))):null,
                     tr.clips.map((c) =>
                       h(
                         "div",
@@ -4317,7 +4345,8 @@ window.__ModuleLoader__.load({
                           key: c.clipId,
                           className:
                             "dv-timeline-clip" + (tr.kind==='audio'?' is-audio':'') +
-                            (selected === c.clipId ? " is-selected" : ""),
+                            (selected === c.clipId ? " is-selected" : "") +
+                            (drag?.clipId===c.clipId&&drag.lifted&&!drag.edge?" is-dragging"+(!drag.valid?" is-invalid":""):""),
                           "data-clip-id": c.clipId,
                           tabIndex: 0,
                           role: "button",
@@ -4332,13 +4361,14 @@ window.__ModuleLoader__.load({
                           onPointerDown: (e) => pointerDown(e, c, null),
                           onPointerMove: pointerMove,
                           onPointerUp: (e) => pointerUp(e, c),
-                          onPointerCancel: () => setDrag(null),
+                          onPointerCancel: () => {gestureMoved.current=true;setDrag(null);},
+                          onLostPointerCapture: () => setDrag(null),
                           style: {
                             left: ((c.startFrame+(drag?.clipId===c.clipId&&drag.edge==="in"?drag.delta:0)) / 30) * zoom,
                             width: Math.max(8, ((c.durationFrames+(drag?.clipId===c.clipId&&drag.edge?(drag.edge==="in"?-drag.delta:drag.delta):0)) / 30) * zoom),
                             transform:
-                              drag?.clipId === c.clipId && !drag.edge
-                                ? "translateX(" + (drag.delta / 30) * zoom + "px)"
+                              drag?.clipId === c.clipId && drag.lifted && !drag.edge
+                                ? "translate3d("+drag.dx+"px,"+(drag.dy-4)+"px,0) scale(1.015)"
                                 : undefined,
                           },
                         },

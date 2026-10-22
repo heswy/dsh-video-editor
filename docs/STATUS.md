@@ -1,5 +1,11 @@
 # 当前项目状态
 
+## 最新：alpha.10 跨轨拖动反馈（2026-10-22）
+
+用户反馈上下拖动只在松手后换轨，缺少“拎起来”的感觉。现已增加片段跟手 X/Y 位移、提升阴影/描边、原位虚线占位、目标轨道高亮和吸附落点；无效跨轨重叠/不兼容轨道拒绝，Escape/失焦/指针取消清理预演，松手才写入。source 与固定候选 Chrome 工作区各 **45** 项、门禁 58/86/71、版本 10 通过，详见 [拖动修复](tasks/V1-timeline-drag-feedback.md)。
+
+固定 runtime `ad9a6b288d30c89a72a7993e64ba0089f200ec91`，bundle **1.0.0-alpha.10** / engine **0.8.2**，root=engine、clean；`artifacts/p2-b/staging-v1.0.0-alpha.10-drag-feedback`，INTEGRITY `c865050dcbdf2a5fce0100a5f401e1fca4685d4fbfbbcd8a5122b0792d5977bb`。官方管理器安装 applied、warnings=[]，保留 alpha.9 回滚。**当前宿主仍缓存旧 Client，需重开一次 DSH 才生效**；原生控制服务捕获失败，真实浏览器重载后也确认新拖动 CSS 尚未加载，不冒充新 native 交互已验收。未公开发布。
+
 ## 最新：alpha.9 时间线精简（2026-10-22）
 
 用户实测反馈“整体体验还是不错的”，继续要求整理轨道信息和素材入口。当前候选 bundle **1.0.0-alpha.9** / engine **0.8.2**，runtime `9d25518dd9727a5c2b517976cf81de86195607e4`，root=engine、rootDirty=false；固定目录 `artifacts/p2-b/staging-v1.0.0-alpha.9-9d25518`，INTEGRITY SHA256 `a1410a98b3de8695a78fb19d13cd713e8418707aaf7da31cc1d96d0f7b9abc37`。包含 alpha.8 实机恢复修复：声明文件/重命名、重复时间线、空工程占位、模型操作说明与场景根/依赖校验、Session 注入。此次新增资源栏、纯播放条、默认适应宽度、按需片段设置和修改历史；[任务与证据](tasks/V1-timeline-ui-refinement.md)。
