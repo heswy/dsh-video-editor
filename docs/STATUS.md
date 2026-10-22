@@ -1,5 +1,15 @@
 # 当前项目状态
 
+## 最新：alpha.9 时间线精简（2026-10-22）
+
+用户实测反馈“整体体验还是不错的”，继续要求整理轨道信息和素材入口。当前候选 bundle **1.0.0-alpha.9** / engine **0.8.2**，runtime `9d25518dd9727a5c2b517976cf81de86195607e4`，root=engine、rootDirty=false；固定目录 `artifacts/p2-b/staging-v1.0.0-alpha.9-9d25518`，INTEGRITY SHA256 `a1410a98b3de8695a78fb19d13cd713e8418707aaf7da31cc1d96d0f7b9abc37`。包含 alpha.8 实机恢复修复：声明文件/重命名、重复时间线、空工程占位、模型操作说明与场景根/依赖校验、Session 注入。此次新增资源栏、纯播放条、默认适应宽度、按需片段设置和修改历史；[任务与证据](tasks/V1-timeline-ui-refinement.md)。
+
+source 门禁 58/86/71、版本 10，source 与固定候选 Chrome 工作区各 **41** 项通过，含 340px 宽度、声音调整、冲突排队及 22s/660 帧音频导出。固定候选 Host 引擎通过；第一次与 DSH 启动并发导致真实数据根保护探针报变更，停止并发 UI 操作后完整重跑 exit 0。浏览器测试不冒充真实模型成功率。
+
+已按用户授权通过官方 Plugin Manager 安装 alpha.9（applied、warnings=[]），此前窗口仍为旧 Client，随后通过应用菜单退出重开核对。alpha.8/alpha.7 与 alpha.11 保留；没有公开发布 V1.0.0。
+
+磁盘清理按本次明确授权完成：42 个未安装历史 staging 去重归档，4518 个文件 SHA256 校验；去掉可重装旧依赖，释放 **4.12 GiB**。归档及恢复说明在 `artifacts/cleanup-20261022/`；旧文档中的展开 staging 路径应先从归档恢复，不再假定仍在线。用户作品、源码/分支与原始证据保留。
+
 ## 当前：M1–M5 CR 与验收候选（2026-10-22）
 
 - 本轮完成代码审查与验收前回归，[PR #22](https://github.com/heswy/dsh-video-editor/pull/22) 按既有授权自行判断合码。修复 5 类问题：中断迁移误注册/混写目录、50 次历史上限后撤销回执错误及 no-op 重做提示、工程响度未用于导出、隐藏视频轨的预览/导出声音差异、冲突期间素材上轨请求丢失。复现与修复见 [CR 报告](tasks/V1-CR-regression.md)。

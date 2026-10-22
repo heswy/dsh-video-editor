@@ -1,5 +1,9 @@
 # 当前交接入口
 
+## 最新入口：alpha.9 剪辑区精简
+
+2026-10-22 用户实测体验可用，要求继续简化轨道与素材入口；已实现资源栏、独立播放条、轨道适应宽度、按需片段参数/历史。固定 runtime `9d25518`，bundle 1.0.0-alpha.9 / engine 0.8.2；source 与固定候选 Chrome 各 41 项及 Host 通过，官方管理器已安装，重启刷新 Client。事实与限制见 [STATUS](../STATUS.md) 和 [任务记录](../tasks/V1-timeline-ui-refinement.md)。本轮另清理 4.12 GiB，历史 staging 归档恢复入口为同级 artifacts/cleanup-20261022，不再使用历史展开路径。当前/回滚与用户工程保留，未公开发布。
+
 ## 当前入口：M1–M5 CR 与用户验收
 
 2026-10-22 当前会话完成验收前 CR，修复迁移、撤销回执、响度、隐藏轨声音和冲突素材排队 5 类问题。候选 alpha.7 / engine 0.8.1，runtime `bfc34d13bb3398236d5ec0535049edc4e25358e3`，固定包 `artifacts/p2-b/staging-v1.0.0-alpha.7-bfc34d1`，INTEGRITY `4cce9e034194646c3c75e785b25e56d2a845d47af4055abe5ea40d2e5013dfe8`。固定候选 Chrome 工作区 38、对话 261、预览 164 和真实 Host/画布/1 GiB 媒体通过，见 [CR 报告与验收顺序](../tasks/V1-CR-regression.md)。本轮不自动安装、重启、调用原生模型或发布；下一步使用此唯一候选进行用户真机验收，旧候选/作品保留。
