@@ -1,5 +1,9 @@
 # 当前交接入口
 
+## 最新入口：alpha.10 跨轨拖动反馈
+
+2026-10-22 增加片段拎起跟手、源占位和目标落点反馈；source/固定候选各 45 项交互回归通过，已通过官方管理器安装 alpha.10，runtime `ad9a6b2`。当前窗口仍缓存旧 Client，原生控制因捕获失败无法代重启，用户重开 DSH 后需实际验收手感。alpha.9 回滚保留，未发布，见 [任务记录](../tasks/V1-timeline-drag-feedback.md) 与 [STATUS](../STATUS.md)。
+
 ## 最新入口：alpha.9 剪辑区精简
 
 2026-10-22 用户实测体验可用，要求继续简化轨道与素材入口；已实现资源栏、独立播放条、轨道适应宽度、按需片段参数/历史。固定 runtime `9d25518`，bundle 1.0.0-alpha.9 / engine 0.8.2；source 与固定候选 Chrome 各 41 项及 Host 通过，官方管理器已安装，重启刷新 Client。事实与限制见 [STATUS](../STATUS.md) 和 [任务记录](../tasks/V1-timeline-ui-refinement.md)。本轮另清理 4.12 GiB，历史 staging 归档恢复入口为同级 artifacts/cleanup-20261022，不再使用历史展开路径。当前/回滚与用户工程保留，未公开发布。
