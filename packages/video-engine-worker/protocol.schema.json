@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:dsh-video-engine-worker:v1",
   "title": "JSON Lines request and response frames; byte limits specified in README",
-  "$comment": "The response envelope carries no method field, so x-methods maps every method to its request and result definition; contract tests validate both directions against this file. Result definitions describe the worker's published result shape for Version 1 (0.6.0). Params schemas enforce structure, keys, types, ranges and path/name shape (edit ops include text/timing/layout/style); checks that depend on disk or referenced file state (inbox existence, image signature, duplicate assets, content size, revision currency) remain worker-side and can still reject a schema-valid request with E_ASSET_MISSING/E_PARAMS/E_REVISION_CONFLICT/E_LIMIT/E_COMPOSE_INVALID. The composition HTML byte ceiling is a UTF-8 byte limit enforced by the worker (JSON Schema maxLength counts characters, so an ASCII string may still be rejected with E_COMPOSE_INVALID).",
+  "$comment": "The response envelope carries no method field, so x-methods maps every method to its request and result definition; contract tests validate both directions against this file. Result definitions describe the worker's published result shape for Version 1 (0.8.0). Params schemas enforce structure, keys, types, ranges and path/name shape (edit ops include text/timing/layout/style); checks that depend on disk or referenced file state (inbox existence, image signature, duplicate assets, content size, revision currency) remain worker-side and can still reject a schema-valid request with E_ASSET_MISSING/E_PARAMS/E_REVISION_CONFLICT/E_LIMIT/E_COMPOSE_INVALID. The composition HTML byte ceiling is a UTF-8 byte limit enforced by the worker (JSON Schema maxLength counts characters, so an ASCII string may still be rejected with E_COMPOSE_INVALID).",
   "x-methods": {
     "doctor": {
       "request": "#/$defs/request_doctor",
@@ -151,6 +151,10 @@
     "preview.files": {
       "request": "#/$defs/request_preview_files",
       "result": "#/$defs/result_preview_files"
+    },
+    "timeline.references": {
+      "request": "#/$defs/request_timeline_references",
+      "result": "#/$defs/result_timeline_references"
     }
   },
   "oneOf": [
@@ -183,6 +187,9 @@
     },
     {
       "$ref": "#/$defs/request_preview_files"
+    },
+    {
+      "$ref": "#/$defs/request_timeline_references"
     }
   ],
   "$defs": {
@@ -4118,6 +4125,14 @@
         },
         "operationId": {
           "type": "string"
+        },
+        "expectedHistoryCursor": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "expectedOperationId": {
+          "type": "string",
+          "maxLength": 128
         }
       },
       "required": [
@@ -4178,6 +4193,14 @@
         },
         "operationId": {
           "type": "string"
+        },
+        "expectedHistoryCursor": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "expectedOperationId": {
+          "type": "string",
+          "maxLength": 128
         }
       },
       "required": [
@@ -4427,6 +4450,72 @@
       "required": [
         "snapshotId",
         "files"
+      ],
+      "additionalProperties": true
+    },
+    "params_timeline_references": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string"
+        },
+        "query": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3000
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        }
+      },
+      "required": [
+        "projectId"
+      ],
+      "additionalProperties": false
+    },
+    "request_timeline_references": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "id": {
+          "$ref": "#/$defs/requestId"
+        },
+        "method": {
+          "const": "timeline.references"
+        },
+        "params": {
+          "$ref": "#/$defs/params_timeline_references"
+        }
+      },
+      "required": [
+        "v",
+        "id",
+        "method",
+        "params"
+      ]
+    },
+    "result_timeline_references": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string"
+        },
+        "revision": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "projectId",
+        "revision"
       ],
       "additionalProperties": true
     }

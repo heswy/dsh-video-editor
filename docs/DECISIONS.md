@@ -99,3 +99,5 @@ accepted。依据用户“继续完成 M3，一次性完成…质量第一…有
 
 
 2026-10-22 D038 / accepted：用户指派本会话完成 M4，千问云为首个音频供应商，保留用户导入音频；轨道 UI 对齐成熟剪辑软件、轻盈简洁。供应商运行在 Host，密钥为本机 0600 配置，不进入 worker/模型/仓库；持久幂等任务避免重启重复计费，取消与超时保留不确定性。千问 TTS/SFX + macOS say 可用，音乐邀测未开通则明确禁用并允许导入。时间线为唯一真相，预览 Web Audio 与导出确定性 ffmpeg 混音共享帧/源时间/速度/音量/淡化，双遍响度归一化到 -16 LUFS。先完成 alpha.5 开发与固定候选验证，未安装、重启 DSH 或公开发布。
+
+2026-10-22 D039 / accepted：用户指派当前会话完成 M5。原生 @ 使用可选 inputTriggers source，候选从绑定 Session 的真实工程读取；与官方 file/session source 共存。序列化为行内代码 dshvideo:v1 token，统一经 timeline.resolve 解析；稳定对象 ID 跨位置变化保留，区间 revision 过期即重选，序号跨轨歧义不猜测。变更回执和历史游标从持久时间线 journal 派生，定向撤销校验 revision/cursor/operation ID；冲突保留意图，经用户预演/确认再应用，响应丢失仅重试原幂等请求。不以契约场景通过代替真实模型成功率；原生 DSH/模型联合验收与 M6 发布硬化继续分层记录。

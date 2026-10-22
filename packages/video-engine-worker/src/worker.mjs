@@ -1,5 +1,10 @@
 import { Timelines } from "./timeline.mjs";
-import { MediaLibrary, validateImportMedia, validateAssetList, validateAssetRemove } from "./assets.mjs";
+import {
+  MediaLibrary,
+  validateImportMedia,
+  validateAssetList,
+  validateAssetRemove,
+} from "./assets.mjs";
 import { readFile, mkdir } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import {
@@ -25,7 +30,12 @@ import {
   MAX_PREVIEW_TTL_MS,
   validSnapshotId,
 } from "./previews.mjs";
-import { Jobs, normalizeFrameTimes, FRAME_TIMEOUT_MS, MAX_RENDER_TIMEOUT_MS } from "./jobs.mjs";
+import {
+  Jobs,
+  normalizeFrameTimes,
+  FRAME_TIMEOUT_MS,
+  MAX_RENDER_TIMEOUT_MS,
+} from "./jobs.mjs";
 import {
   fail,
   keys,
@@ -37,7 +47,8 @@ import {
 const MAX_LINE = 65536,
   MAX_OUTPUT = 65536,
   MAX_REQUESTS = 10000;
-let media, store,
+let media,
+  store,
   jobs,
   closing = false,
   shutdownPromise,
@@ -127,29 +138,86 @@ async function method(name, p) {
       return store.rename(p);
     case "timeline.inspect":
     case "timeline.apply":
+    case "timeline.references":
     case "timeline.resolve":
     case "timeline.undo":
     case "timeline.redo":
     case "scene.compose":
     case "scene.inspect": {
-      const fields={"timeline.inspect":["view","trackId","offset","limit"],"timeline.apply":["expectedRevision","operationId","ops","dryRun"],"timeline.resolve":["revision","refs"],"timeline.undo":["expectedRevision","operationId"],"timeline.redo":["expectedRevision","operationId"],"scene.compose":["expectedRevision","operationId","clipId","trackId","startFrame","html","mode","label"],"scene.inspect":["clipId"]};
-      keys(p,["projectId",...fields[name]],["projectId"]);string(p.projectId);store.assertNotClosing(p.projectId);
-      const timelines=store.timelines??(store.timelines=new Timelines(store,media));
-      return store.queue(p.projectId,()=> name==="timeline.inspect"?timelines.inspect(p):name==="timeline.resolve"?timelines.resolve(p):name.startsWith("scene.")?timelines.scene(p):timelines.apply(p,name==="timeline.undo"?"undo":name==="timeline.redo"?"redo":undefined));
+      const fields = {
+        "timeline.references": ["query", "offset", "limit"],
+        "timeline.inspect": ["view", "trackId", "offset", "limit"],
+        "timeline.apply": ["expectedRevision", "operationId", "ops", "dryRun"],
+        "timeline.resolve": ["revision", "refs"],
+        "timeline.undo": [
+          "expectedRevision",
+          "operationId",
+          "expectedHistoryCursor",
+          "expectedOperationId",
+        ],
+        "timeline.redo": [
+          "expectedRevision",
+          "operationId",
+          "expectedHistoryCursor",
+          "expectedOperationId",
+        ],
+        "scene.compose": [
+          "expectedRevision",
+          "operationId",
+          "clipId",
+          "trackId",
+          "startFrame",
+          "html",
+          "mode",
+          "label",
+        ],
+        "scene.inspect": ["clipId"],
+      };
+      keys(p, ["projectId", ...fields[name]], ["projectId"]);
+      string(p.projectId);
+      store.assertNotClosing(p.projectId);
+      const timelines =
+        store.timelines ?? (store.timelines = new Timelines(store, media));
+      return store.queue(p.projectId, () =>
+        name === "timeline.inspect"
+          ? timelines.inspect(p)
+          : name === "timeline.references"
+            ? timelines.references(p)
+            : name === "timeline.resolve"
+              ? timelines.resolve(p)
+              : name.startsWith("scene.")
+                ? timelines.scene(p)
+                : timelines.apply(
+                    p,
+                    name === "timeline.undo"
+                      ? "undo"
+                      : name === "timeline.redo"
+                        ? "redo"
+                        : undefined,
+                  ),
+      );
     }
     case "asset.importMedia":
-      validateImportMedia(p); store.assertNotClosing(p.projectId);
-      return store.queue(p.projectId,()=>media.importMedia(p));
+      validateImportMedia(p);
+      store.assertNotClosing(p.projectId);
+      return store.queue(p.projectId, () => media.importMedia(p));
     case "asset.list":
-      validateAssetList(p); store.assertNotClosing(p.projectId);
-      return store.queue(p.projectId,()=>media.list(p));
+      validateAssetList(p);
+      store.assertNotClosing(p.projectId);
+      return store.queue(p.projectId, () => media.list(p));
     case "asset.remove":
-      validateAssetRemove(p); store.assertNotClosing(p.projectId);
-      return store.queue(p.projectId,()=>media.remove(p));
+      validateAssetRemove(p);
+      store.assertNotClosing(p.projectId);
+      return store.queue(p.projectId, () => media.remove(p));
     case "asset.derive":
-      keys(p,["projectId","assetId","kind"],["projectId","assetId","kind"]);
-      validateAssetRemove({projectId:p.projectId,assetId:p.assetId}); store.assertNotClosing(p.projectId);
-      return store.queue(p.projectId,()=>media.derive(p));
+      keys(
+        p,
+        ["projectId", "assetId", "kind"],
+        ["projectId", "assetId", "kind"],
+      );
+      validateAssetRemove({ projectId: p.projectId, assetId: p.assetId });
+      store.assertNotClosing(p.projectId);
+      return store.queue(p.projectId, () => media.derive(p));
     case "asset.import":
       validateImportAsset(p);
       return store.importAsset(p);
@@ -170,15 +238,18 @@ async function method(name, p) {
       return store.revise(p);
     case "history":
       validateHistory(p);
-      if(await store.timelines.load(p.projectId))fail("E_TIMELINE_MODE","Use timeline.inspect for timeline history");
+      if (await store.timelines.load(p.projectId))
+        fail("E_TIMELINE_MODE", "Use timeline.inspect for timeline history");
       return store.history(p);
     case "undo":
       validateHistoryStep(p);
-      if(await store.timelines.load(p.projectId))fail("E_TIMELINE_MODE","Use timeline.undo for this project");
+      if (await store.timelines.load(p.projectId))
+        fail("E_TIMELINE_MODE", "Use timeline.undo for this project");
       return store.undo(p);
     case "redo":
       validateHistoryStep(p);
-      if(await store.timelines.load(p.projectId))fail("E_TIMELINE_MODE","Use timeline.redo for this project");
+      if (await store.timelines.load(p.projectId))
+        fail("E_TIMELINE_MODE", "Use timeline.redo for this project");
       return store.redo(p);
     case "frame":
     case "render":
@@ -196,8 +267,7 @@ async function method(name, p) {
         if (p.time !== undefined && p.times !== undefined)
           fail("E_PARAMS", "Provide exactly one of time or times");
         if (p.time !== undefined) number(p.time, 0, 3599.999);
-        else if (p.times !== undefined)
-          p.times = normalizeFrameTimes(p.times);
+        else if (p.times !== undefined) p.times = normalizeFrameTimes(p.times);
         else fail("E_PARAMS", "Provide exactly one of time or times");
       } else if (p.time !== undefined)
         fail("E_PARAMS", "Render has no time parameter");
@@ -227,9 +297,24 @@ async function method(name, p) {
       }
       return store.previewSnapshot(p);
     case "preview.files": {
-      keys(p,["snapshotId","offset"],["snapshotId","offset"]);if(!validSnapshotId(p.snapshotId)||!Number.isSafeInteger(p.offset)||p.offset<0)fail("E_PARAMS","Invalid snapshot page");
-      const snapshot=store.previews.entries.get(p.snapshotId);if(!snapshot)fail("E_SNAPSHOT_NOT_FOUND","Snapshot expired");
-      return {snapshotId:p.snapshotId,projectId:snapshot.projectId,revision:snapshot.revision,files:snapshot.files.slice(p.offset,p.offset+100),fileCount:snapshot.files.length,nextOffset:p.offset+100<snapshot.files.length?p.offset+100:null};
+      keys(p, ["snapshotId", "offset"], ["snapshotId", "offset"]);
+      if (
+        !validSnapshotId(p.snapshotId) ||
+        !Number.isSafeInteger(p.offset) ||
+        p.offset < 0
+      )
+        fail("E_PARAMS", "Invalid snapshot page");
+      const snapshot = store.previews.entries.get(p.snapshotId);
+      if (!snapshot) fail("E_SNAPSHOT_NOT_FOUND", "Snapshot expired");
+      return {
+        snapshotId: p.snapshotId,
+        projectId: snapshot.projectId,
+        revision: snapshot.revision,
+        files: snapshot.files.slice(p.offset, p.offset + 100),
+        fileCount: snapshot.files.length,
+        nextOffset:
+          p.offset + 100 < snapshot.files.length ? p.offset + 100 : null,
+      };
     }
     case "preview.release":
       keys(p, ["snapshotId"], ["snapshotId"]);
@@ -296,13 +381,20 @@ try {
   if (Object.hasOwn(config, "projectsRoot")) {
     keys(
       config,
-      ["projectsRoot", "registryPath", "outputRoot", "assetInboxRoot", "browserPath"],
+      [
+        "projectsRoot",
+        "registryPath",
+        "outputRoot",
+        "assetInboxRoot",
+        "browserPath",
+      ],
       ["projectsRoot", "registryPath", "outputRoot"],
     );
     string(config.projectsRoot, 4096);
     string(config.registryPath, 4096);
     string(config.outputRoot, 4096);
-    if (config.assetInboxRoot !== undefined) string(config.assetInboxRoot, 4096);
+    if (config.assetInboxRoot !== undefined)
+      string(config.assetInboxRoot, 4096);
     config.projectsRoot = resolve(config.projectsRoot);
     config.registryPath = resolve(config.registryPath);
     config.outputRoot = resolve(config.outputRoot);
@@ -331,8 +423,8 @@ try {
   }
   store = new Projects(config, { diagnostic });
   jobs = new Jobs(store, config);
-  media = new MediaLibrary({config:store.config,diagnostic});
-  store.timelines = new Timelines(store,media);
+  media = new MediaLibrary({ config: store.config, diagnostic });
+  store.timelines = new Timelines(store, media);
   // Discards private preview copies left behind by a previous process before
   // serving the first request.
   await store.initialize();

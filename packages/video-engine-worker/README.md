@@ -321,6 +321,7 @@ JSONL v1 方法集新增 1 个 UI-only 方法（共 25 个）；既有方法的�
 
 | `timeline.inspect` | Timeline truth, integer frames, expectedRevision for writes |
 | `timeline.apply` | Timeline truth, integer frames, expectedRevision for writes |
+| `timeline.references` | Current project clip/scene/asset/range tokens; query, offset/limit |
 | `timeline.resolve` | Timeline truth, integer frames, expectedRevision for writes |
 | `timeline.undo` | Timeline truth, integer frames, expectedRevision for writes |
 | `timeline.redo` | Timeline truth, integer frames, expectedRevision for writes |
@@ -328,3 +329,5 @@ JSONL v1 方法集新增 1 个 UI-only 方法（共 25 个）；既有方法的�
 | `scene.inspect` | Timeline truth, integer frames, expectedRevision for writes |
 
 `preview.files` paginates the private snapshot manifest in 100-file pages; Host assembles it before registering exact routes.
+
+M5 reference tokens are `dshvideo:v1/PROJECT/KIND/ID/REVISION`. Resolve tokens with `refs:[{kind:"token",token:"..."}]` before applying edits. Range tokens expire when revision changes. Clip/scene/asset IDs survive moves; missing and foreign references never match a substitute. Ordinals are per track; multiple tracks matching the ordinal return ambiguous. `timeline.inspect` includes the durable `lastChange` and `historyCursor`; targeted undo/redo accepts `expectedHistoryCursor` and `expectedOperationId`. `timeline.apply(dryRun:true)` returns a summary without writing or consuming the operation ID.
