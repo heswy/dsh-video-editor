@@ -16,7 +16,23 @@
 
 ## 验证记录
 
-证据目录：同级 worktrees `artifacts/v1/evidence/cr-20261022`。全部测试使用临时工程/HOME/dataRoot；不写用户作品、凭据、旧 staging。音频供应商测试使用本地/假供应商，不重复付费请求。固定候选与最终结果在下方补齐。
+证据目录：同级 worktrees `artifacts/v1/evidence/cr-20261022`。全部测试使用临时工程/HOME/dataRoot；不写用户作品、凭据、旧 staging。音频供应商测试使用本地/假供应商，不重复付费请求。
+
+- 候选 bundle `1.0.0-alpha.7` / engine `0.8.1`；干净 runtime/root/engine `bfc34d13bb3398236d5ec0535049edc4e25358e3`。后续报告提交不改变运行时代码。
+- 固定目录：`/Users/orange/Orange Field/Matterhorn/dsh-video-editor-worktrees/artifacts/p2-b/staging-v1.0.0-alpha.7-bfc34d1`。INTEGRITY SHA256 `4cce9e034194646c3c75e785b25e56d2a845d47af4055abe5ea40d2e5013dfe8`。
+- source：check/smoke/Host **58/86/71**，worker **74**、client **23**、版本 **10**；storage **21**、media **15**、协作 adapter/worker/Host/中文契约 **13/18/7/30**。新增 `npm run test:cr` 验证 52 次编辑、定向撤销/no-op/redo、删除未使用素材、真实复制失败/重试/目标目录保护。
+- 真实转场渲染 120 帧：红→紫→蓝采样通过，取消重试/proxy 通过；混合场景渲染 600 帧通过。105 片段分页、107 内部文件及公开/inspect 上限通过。
+- 固定候选：真实 Chrome 工作区 **38 项**（宽/340px 窄窗口、手势、音频生成/上轨/增益/淡化/静音、冲突预演/重试/素材排队、引用与导出），22s/660 帧 H264 + AAC 48k 双声道。默认混音重新测量 **-16.02 LUFS**。
+- 固定候选真实 Host→worker、画布链、对话链 **261/261**、预览链 **164/164**、1 GiB 流式导入/硬链接快照/Range/引用删除保护/重启通过；候选源码只读审计 **91→91、same=true**。
+- source 自定义 -20 导出：21s/630 帧，**-20.01 LUFS**，四点 A/V 最大偏差 **21.4ms < 1 帧**；候选包同项复测 **-20.01 LUFS**，630 帧、最大偏差 21.4ms，见 `audio-staged.log`。汇总 `verification-summary.json`。
+- worker 真渲染取消、超时、stdin EOF、shutdown/SIGTERM 的自有进程清理用例通过。没有全局终止用户浏览器/进程。
+
+## 安装与回滚卡
+
+唯一新候选通过 DSH **Plugin Manager 的 link 安装流程**指向上述固定目录内 `bundle`，并使用同目录 `config.json`。这是本机开发候选，依赖相邻 engine 目录，不能只拷贝 bundle 当便携发布包。安装后必须核实 bundle alpha.7、Host 与实际 Client 的候选一致性，再按下方清单验收；出现旧 Client 时遵循 DEVELOPMENT 的重启授权规则，不修改候选文件。
+
+本轮只准备候选，没有执行安装。回滚仍通过 Plugin Manager link 回上一固定包 `staging-v1.0.0-alpha.6-bed1f8d/bundle` 及其 config；历史 alpha.11 `staging-alpha11-51b95dc/bundle` 也保留。不要删除稳定数据根、用户作品或旧 staging。此版本无 timeline schema 升级；对已有未注册迁移目标仅报错并保留，需检查后人工恢复，绝不自动覆盖。
+
 
 ## 用户验收顺序
 
