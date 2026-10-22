@@ -116,3 +116,47 @@ test('splitting and shortening audio keeps fades valid on the surviving ends', (
   ]).timeline;
   assert.equal(t.tracks[0].clips[1].fadeOutFrames, 20);
 });
+test('project loudness target is honored and validated', () => {
+  const t = base();
+  t.settings.loudnessTargetLufs = -20;
+  t.tracks[0].clips = [
+    {
+      clipId: 'cl_audio',
+      kind: 'media',
+      assetId: 'as_12345678',
+      startFrame: 0,
+      durationFrames: 120,
+      sourceInFrame: 0,
+    },
+  ];
+  assert.match(audioMixPlan(t, '/tmp').filter, /loudnorm=I=-20:/);
+  for (const value of ['-20', null, -71, -4, Infinity])
+    assert.throws(() =>
+      applyOperations(t, [
+        { op: 'timeline.settings', loudnessTargetLufs: value },
+      ]),
+    );
+});
+test('hiding a video lane hides pictures while preserving independently muted sound', () => {
+  const t = base();
+  t.assets[0].kind = 'video';
+  t.assets[0].hasAudio = true;
+  t.tracks[0].kind = 'video';
+  t.tracks[0].hidden = true;
+  t.tracks[0].clips = [
+    {
+      clipId: 'cl_hidden',
+      kind: 'media',
+      assetId: 'as_12345678',
+      startFrame: 0,
+      durationFrames: 120,
+      sourceInFrame: 0,
+      speed: 1,
+    },
+  ];
+  assert.match(generateComposition(t), /<audio id="cl_hidden"/);
+  assert.equal(audioMixPlan(t, '/tmp').sources.length, 1);
+  t.tracks[0].muted = true;
+  assert.match(generateComposition(t), /data-volume="0"/);
+  assert.equal(audioMixPlan(t, '/tmp').sources.length, 0);
+});

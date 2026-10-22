@@ -1,6 +1,6 @@
 {
   "name": "dsh-video",
-  "version": "1.0.0-alpha.6",
+  "version": "1.0.0-alpha.7",
   "private": true,
   "description": "Native sidebar entry, a controlled Host bridge, frame-time preview and a restrained video workspace for DeepSeek Harness.",
   "type": "module",
@@ -25,6 +25,7 @@
   "scripts": {
     "check": "node scripts/check.mjs && node scripts/smoke-client.mjs && node scripts/check-host.mjs",
     "stage:dev": "node scripts/stage-dev.mjs",
+    "test:cr": "node scripts/test-v1-cr-regression.mjs",
     "test:collaboration": "node scripts/test-v1-reference-client.mjs && node scripts/test-v1-collaboration.mjs && node scripts/test-v1-collaboration-host.mjs && node scripts/test-v1-edit-scenarios.mjs"
   },
   "dsh": {

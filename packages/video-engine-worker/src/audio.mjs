@@ -1,6 +1,7 @@
 import { resolve } from 'node:path';
 /** A deterministic mix from the immutable timeline snapshot. Time is project frames. */
 export function audioMixPlan(t, root) {
+  const targetLufs = t?.settings.loudnessTargetLufs ?? -16;
   const sources = [],
     chains = [];
   for (const tr of t?.tracks ?? []) {
@@ -46,10 +47,11 @@ export function audioMixPlan(t, root) {
   }
   if (sources.length)
     chains.push(
-      `${sources.map((_, i) => `[a${i}]`).join('')}amix=inputs=${sources.length}:normalize=0:dropout_transition=0,apad,atrim=duration=${t.settings.durationFrames / 30},loudnorm=I=-16:TP=-1.5:LRA=11,aresample=48000[aout]`,
+      `${sources.map((_, i) => `[a${i}]`).join('')}amix=inputs=${sources.length}:normalize=0:dropout_transition=0,apad,atrim=duration=${t.settings.durationFrames / 30},loudnorm=I=${targetLufs}:TP=-1.5:LRA=11,aresample=48000[aout]`,
     );
   return {
     sources,
+    targetLufs,
     filter: chains.join(';'),
     duration: t?.settings.durationFrames / 30,
   };

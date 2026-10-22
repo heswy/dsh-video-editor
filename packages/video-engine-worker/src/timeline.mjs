@@ -67,6 +67,17 @@ export function validateTimeline(t) {
   if (!t || typeof t !== "object" || !t.settings)
     fail("E_TIMELINE_INVALID", "Timeline settings are missing", "timeline");
   const s = t.settings;
+  if (
+    s.loudnessTargetLufs !== undefined &&
+    (!Number.isFinite(s.loudnessTargetLufs) ||
+      s.loudnessTargetLufs < -70 ||
+      s.loudnessTargetLufs > -5)
+  )
+    fail(
+      "E_TIMELINE_INVALID",
+      "Loudness target must be between -70 and -5 LUFS",
+      "timeline",
+    );
   int(s.width, 320, 3840);
   int(s.height, 180, 2160);
   int(s.durationFrames, 1);
@@ -560,13 +571,18 @@ export function generateComposition(t) {
   let body = "",
     animations = "";
   for (const [z, tr] of t.tracks.entries()) {
-    if (tr.hidden && tr.kind !== "audio") continue;
     for (const c of tr.clips) {
       let tag,
         attrs = "";
       const a = t.assets.find((a) => a.assetId === c.assetId);
+      if (
+        tr.hidden &&
+        tr.kind !== "audio" &&
+        !(c.kind === "media" && a?.hasAudio)
+      )
+        continue;
       if (c.kind === "media") {
-        tag = a.kind === "audio" ? "audio" : "video";
+        tag = a.kind === "audio" || tr.hidden ? "audio" : "video";
         const gain =
           tr.muted || c.muted
             ? 0
@@ -580,7 +596,7 @@ export function generateComposition(t) {
         attrs = `data-composition-src="scene-${c.clipId}.html" data-composition-id="${c.clipId}" data-media-start="${(c.sourceInFrame ?? 0) / 30}" data-scene-offset="${(c.sourceInFrame ?? 0) / 30}"`;
       }
       const prev = tr.clips[tr.clips.indexOf(c) - 1];
-      if (prev?.outTransition) {
+      if (prev?.outTransition && !tr.hidden) {
         const fade = prev.outTransition.durationFrames / 30,
           at = c.startFrame / 30 - fade,
           ref = c.kind === "image" ? a.path : `transition-${c.clipId}.png`;
@@ -916,9 +932,9 @@ export class Timelines {
         durationAfter: next.settings.durationFrames,
       },
       undoHint: {
-        historyCursor: j.cursor + (step ? 0 : changed ? 1 : 0),
+        historyCursor: step || !changed ? j.cursor : Math.min(50, j.cursor + 1),
         canUndo: step ? j.cursor > 0 : changed || j.cursor > 0,
-        canRedo: step ? j.cursor < j.history.length : false,
+        canRedo: step || !changed ? j.cursor < j.history.length : false,
       },
     };
     if (p.dryRun) return result;

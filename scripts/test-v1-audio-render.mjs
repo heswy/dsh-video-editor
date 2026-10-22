@@ -8,6 +8,7 @@ import {
 import { mkdir, writeFile, copyFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
+const targetLufs=Number(process.env.DSH_TEST_LOUDNESS ?? -16);
 const stageArg=process.argv.indexOf('--staging');const staged=stageArg>=0?await loadStagedHost(resolve(process.argv[stageArg+1])):null;const runtime=staged?{node:staged.config.workerNode,workerEntry:staged.evidence.resolved.workerEntry}:undefined;
 const f = await fixture(),
   out = resolve(process.argv[2] || '/tmp/m4-audio-render');
@@ -74,7 +75,7 @@ try {
     operationId: 'audio_setup',
     ops: [
       { op: 'clip.delete', clipId: t.tracks[0].clips[0].clipId },
-      { op: 'timeline.settings', width: 320, height: 180, durationFrames: 630 },
+      { op: 'timeline.settings', width: 320, height: 180, durationFrames: 630, loudnessTargetLufs: targetLufs },
       {
         op: 'clip.insert',
         assetId: v.assetId,
@@ -170,7 +171,7 @@ try {
     JSON.stringify(loudness, null, 2),
   );
   assert.ok(
-    Math.abs(Number(loudness.input_i) + 16) <= 1,
+    Math.abs(Number(loudness.input_i) - targetLufs) <= 1,
     JSON.stringify(loudness),
   );
   const gray = execFileSync('ffmpeg', [

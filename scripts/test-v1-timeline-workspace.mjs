@@ -644,6 +644,15 @@ try {
     await clickText('重试原请求');await page.waitForFunction(()=>!document.querySelector('.dv-change-recovery')&&document.querySelector('.dv-timeline').getAttribute('aria-busy')==='false');
     const retried=await bridge.invoke('timeline.inspect',{projectId});assert.equal(retried.revision,committed.revision);assert.equal(retried.historyCursor,committed.historyCursor);
     const attempts=await page.evaluate(()=>window.__attempts);assert.deepEqual(attempts[0],attempts[1]);checks++;
+    // A new asset selected during conflict recovery must remain queued.
+    const queuedBefore=await bridge.invoke('timeline.inspect',{projectId});
+    await bridge.invoke('timeline.apply',{projectId,expectedRevision:queuedBefore.revision,operationId:'queue-conflict',ops:[{op:'clip.set',clipId:cid,patch:{label:'保留排队素材'}}]});
+    await page.click('.dv-timeline-clip');await (await page.$('.dv-timeline-edge-out')).focus();await page.keyboard.press('ArrowLeft');
+    await page.waitForSelector('.dv-change-recovery[data-recovery=conflict]');
+    await page.click('.dv-canvas-bar button:last-child');await page.waitForSelector('.dv-media-tile');await page.click('.dv-media-tile');await clickText('加入时间线');
+    assert.equal((await bridge.invoke('timeline.inspect',{projectId})).totalClips,queuedBefore.totalClips);
+    await page.click('.dv-change-recovery button:last-child');
+    await count(queuedBefore.totalClips+1);checks++;
     const referencePage=await browser.newPage();referencePage.on('pageerror',e=>errors.push(e.message));await referencePage.setViewport({width:360,height:600});await referencePage.goto('http://127.0.0.1:'+server.address().port+'/references');await referencePage.evaluate(()=>document.getElementById('mount').style.width='100%');await referencePage.waitForSelector('.dv-reference-item');
     await (await referencePage.$('.dv-reference-item')).focus();await referencePage.keyboard.press('Enter');await referencePage.waitForSelector('.dv-reference-token input');
     assert((await referencePage.$eval('.dv-reference-token input',e=>e.value)).startsWith('`dshvideo:v1/'));checks++;

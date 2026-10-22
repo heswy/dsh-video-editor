@@ -30,7 +30,7 @@
  * contract tests can drive it against a temporary HOME/dataRoot.
  */
 
-import { chmod, cp, mkdir, readdir, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { chmod, cp, lstat, mkdtemp, mkdir, readdir, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path';
 import { BridgeError, configurationError } from './errors.js';
@@ -603,24 +603,27 @@ export async function migrateLegacyRoots({ paths, legacyRoots, logger }) {
         result.errors.push(legacyProjectError(id, 'E_PROJECT_ESCAPES', 'project escapes the legacy data root'));
         continue;
       }
+      // Never merge a copy into an existing unregistered directory. A failed
+      // legacy copy may already have left one here; preserve it for recovery.
+      let staging;
       try {
-        await cp(sourceReal, target, { recursive: true, force: false, errorOnExist: true, preserveTimestamps: true });
+        try {
+          await lstat(target);
+          result.errors.push(legacyProjectError(id, 'E_PROJECT_TARGET_EXISTS', 'unregistered target exists; preserved for recovery'));
+          continue;
+        } catch (error) {
+          if (error.code !== 'ENOENT') throw error;
+        }
+        staging = await mkdtemp(join(paths.cacheRoot, 'migration-'));
+        const complete = join(staging, 'project');
+        await cp(sourceReal, complete, { recursive: true, force: false, errorOnExist: true, preserveTimestamps: true });
+        await rename(complete, target);
         projectEntries.set(id, target);
         result.copied.push(id);
       } catch (error) {
-        if (error && (error.code === 'EEXIST' || error.code === 'ERR_FS_CP_EEXIST')) {
-          projectEntries.set(id, target);
-          result.skipped.push(id);
-        } else {
-          result.errors.push(legacyProjectError(id, 'E_PROJECT_COPY', error && error.message));
-          try {
-            if ((await stat(join(target, '.dsh-video'))).isDirectory() === true) {
-              /* a partially usable copy stays for inspection; never auto-deleted */
-            }
-          } catch (_ignored) {
-            /* nothing to inspect */
-          }
-        }
+        result.errors.push(legacyProjectError(id, 'E_PROJECT_COPY', error && error.message));
+      } finally {
+        if (staging) await rm(staging, { recursive: true, force: true });
       }
     }
     if (discovered.sessionStatePath !== null) {

@@ -1,6 +1,10 @@
 # 当前交接入口
 
-## 当前入口：V1 M5
+## 当前入口：M1–M5 CR 与用户验收
+
+2026-10-22 当前会话完成验收前 CR，修复迁移、撤销回执、响度、隐藏轨声音和冲突素材排队 5 类问题。候选 alpha.7 / engine 0.8.1，runtime `bfc34d13bb3398236d5ec0535049edc4e25358e3`，固定包 `artifacts/p2-b/staging-v1.0.0-alpha.7-bfc34d1`，INTEGRITY `4cce9e034194646c3c75e785b25e56d2a845d47af4055abe5ea40d2e5013dfe8`。固定候选 Chrome 工作区 38、对话 261、预览 164 和真实 Host/画布/1 GiB 媒体通过，见 [CR 报告与验收顺序](../tasks/V1-CR-regression.md)。本轮不自动安装、重启、调用原生模型或发布；下一步使用此唯一候选进行用户真机验收，旧候选/作品保留。
+
+## V1 M5 历史入口
 
 2026-10-22 当前会话按用户指派完成 M5 开发，沿用既有合码权限选择 [PR #21](https://github.com/heswy/dsh-video-editor/pull/21)。候选 alpha.6 / engine 0.8.0，runtime `bed1f8d`，固定包 `artifacts/p2-b/staging-v1.0.0-alpha.6-bed1f8d`，INTEGRITY `07abdee2d82c165b80f105aa210492b8d459f8eb52bdc24d515196ce62ed90e5`。原生 @ 适配与真实工程候选/复制 token、resolve、变更回执、定向撤销、冲突预演和幂等恢复已实现；固定包工作区 37、对话 261、预览 164 全过，详见 [任务卡](../tasks/V1-M5-collaboration.md) 与 [STATUS](../STATUS.md)。未安装/重启/真实模型/发布，M1–M5 原生联合验收待下一授权窗口；30 条中文操作契约不能冒充模型成功率。下一阶段 M6 发布硬化仍需开发与验收，不把 M5 当 1.0.0 发布。后续仍由本会话负责，不自动派发或跨会话联系。
 
