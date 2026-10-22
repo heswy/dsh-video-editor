@@ -1124,7 +1124,7 @@ test('module registers one browser module with the dsh-video id and factory', ()
   assert(typeof loaded.registration.factory === 'function', 'factory missing');
   assert(typeof loaded.exports.apply === 'function', 'plugin body lacks apply()');
   assert(
-    JSON.stringify(loaded.exports.inject) === JSON.stringify(['slots', 'layout', 'locale']),
+    JSON.stringify(loaded.exports.inject) === JSON.stringify(['slots', 'layout', 'locale', 'sessions']),
     `unexpected inject list: ${JSON.stringify(loaded.exports.inject)}`
   );
 });

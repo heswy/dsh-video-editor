@@ -6030,9 +6030,9 @@ window.__ModuleLoader__.load({
           actionError !== null ? h('span', { className: 'dv-tool-error', role: 'alert' }, errorText(actionError, t)) : null,
           busy !== null ? h('span', { className: 'dv-tool-hint' }, t('video.canvas.busy')) : null
         ),
-        previewOnly && props.timelineEnabled!==false ? h(TimelinePanel,{key:projectId,t,projectId,revision:inspected.revision,time,onSeek:seekTo,onReload,assetToAdd,onAssetConsumed:()=>setAssetToAdd(null),onQueueAsset:setAssetToAdd}) : null,
-        audioOpen && previewOnly ? h(AudioPanel,{key:projectId,t,projectId,onClose:()=>setAudioOpen(false),onAdd:a=>{setAssetToAdd(a);setAudioOpen(false);}}):null,
-        drawerOpen && previewOnly ? h(MediaLibraryPanel,{key:projectId,t:t,projectId:projectId,onClose:()=>setDrawerOpen(false),onAdd:asset=>{setAssetToAdd(asset);setDrawerOpen(false);}}) : null,
+        previewOnly && props.timelineEnabled!==false ? h(TimelinePanel,{key:"timeline:"+projectId,t,projectId,revision:inspected.revision,time,onSeek:seekTo,onReload,assetToAdd,onAssetConsumed:()=>setAssetToAdd(null),onQueueAsset:setAssetToAdd}) : null,
+        audioOpen && previewOnly ? h(AudioPanel,{key:"audio:"+projectId,t,projectId,onClose:()=>setAudioOpen(false),onAdd:a=>{setAssetToAdd(a);setAudioOpen(false);}}):null,
+        drawerOpen && previewOnly ? h(MediaLibraryPanel,{key:"media:"+projectId,t:t,projectId:projectId,onClose:()=>setDrawerOpen(false),onAdd:asset=>{setAssetToAdd(asset);setDrawerOpen(false);}}) : null,
         drawerOpen && previewOnly === false
           ? h(
               'aside',
@@ -6744,7 +6744,7 @@ window.__ModuleLoader__.load({
         setError(null);
         try {
           const created = await hostRequest('project.create', {
-            templateId: 'product-launch-v1',
+            templateId: 'blank-v1',
             title: t('video.project.untitled'),
           });
           if (!aliveRef.current || token !== bootToken.current) return;
@@ -6769,7 +6769,7 @@ window.__ModuleLoader__.load({
         setBoot('loading');
         try {
           const created = await hostRequest('project.create', {
-            templateId: 'product-launch-v1',
+            templateId: 'blank-v1',
             title: t('video.project.untitled'),
           });
           if (!aliveRef.current || token !== bootToken.current) return;
@@ -7955,7 +7955,7 @@ window.__ModuleLoader__.load({
 
 
     //#region plugin
-    const inject = ['slots', 'layout', 'locale'];
+    const inject = ['slots', 'layout', 'locale', 'sessions'];
 
     function apply(ctx) {
       reportIssue = makeReporter(ctx);

@@ -134,8 +134,8 @@ check('bundle manifest declares patch and client', () => {
   return `platform=web, inject=[${pkg.dsh.client.inject.join(', ')}]`;
 });
 
-check('package version advanced for the V1 CR 1.0.0-alpha.7 candidate (references + collaborative edits)', () => {
-  assert(pkg.version === '1.0.0-alpha.7', `expected version 1.0.0-alpha.7, found "${pkg.version}"`);
+check('package version advanced for the V1 live recovery 1.0.0-alpha.8 candidate (live editor recovery)', () => {
+  assert(pkg.version === '1.0.0-alpha.8', `expected version 1.0.0-alpha.8, found "${pkg.version}"`);
   return pkg.version;
 });
 

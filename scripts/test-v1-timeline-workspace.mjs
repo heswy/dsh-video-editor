@@ -561,6 +561,7 @@ try {
   if(process.env.M4_AUDIO==='1') {
     await page.setViewport({width:900,height:760});
     await page.evaluate(()=>document.getElementById('mount').style.width='100%');
+    assert.equal(await page.$$('.dv-timeline').then(x=>x.length),1);
     await clickText('生成音频');
     await page.waitForSelector('.dv-audio-panel');
     await page.select('.dv-audio-field select',process.env.M4_CLOUD==='1'?'qianwen':'local');
@@ -572,6 +573,7 @@ try {
     const beforeAudio=await bridge.invoke('timeline.inspect',{projectId});
     await clickText('加入音轨');
     await count(beforeAudio.totalClips+1);
+    assert.equal(await page.$$('.dv-timeline').then(x=>x.length),1);checks++;
     await page.waitForFunction(()=>document.querySelector('.dv-timeline').getAttribute('aria-busy')==='false');
     let audioTimeline=await bridge.invoke('timeline.inspect',{projectId});
     const audioTrack=audioTimeline.tracks.find(x=>x.kind==='audio'),audioClip=audioTrack.clips[0];

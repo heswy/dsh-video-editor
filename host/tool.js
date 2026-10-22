@@ -60,7 +60,7 @@ const TOOL_PARAMETERS = Object.freeze({
     action: {
       type: 'string',
       enum: ACTIONS,
-      description: 'The video operation to perform on the configured controlled project.',
+      description: 'Timeline: first timeline.inspect(projectId). scene.compose requires projectId, expectedRevision, operationId, html and clipId OR trackId/startFrame. timeline.apply requires projectId, expectedRevision, operationId, ops. frame/render require projectId+revision; status/cancel take jobId only.',
     },
     projectId: {
       type: 'string',
@@ -80,7 +80,7 @@ const TOOL_PARAMETERS = Object.freeze({
     },
     operationId: {
       type: 'string',
-      description: 'Caller-generated idempotency key for one edit.',
+      description: 'REQUIRED for every write including scene.compose and timeline.undo/redo. Caller-generated unique idempotency key; repeat the same key only for the identical original request.',
     },
     ops: {type:'array',minItems:1,maxItems:32,items:{type:'object',additionalProperties:true},description:'Typed timeline operations. First timeline.inspect, then apply ops with op, stable clipId/trackId and integer frames @30fps. Legacy edit uses type/target.'},
     time: { type: 'number', description: 'Frame time in seconds (legacy single-frame form).' },
@@ -106,7 +106,7 @@ const TOOL_PARAMETERS = Object.freeze({
     html: {
       type: 'string',
       description:
-        'Complete HTML composition document for project.compose (1..48 KiB UTF-8): one #main element with data-composition-id and numeric data-width/data-height/data-duration, window.__timelines.main, and no external URLs. The whole document replaces the previous version atomically.',
+        'Complete HTML for scene.compose or project.compose (1..48 KiB UTF-8 and <=60 KiB JSON-escaped). Both REQUIRE expectedRevision and operationId. One #main element with data-hf-root, with data-composition-id and numeric data-width/data-height/data-duration, window.__timelines.main, and no external URLs. The whole document replaces the previous version atomically.',
     },
     template: {
       type: 'object',
@@ -165,7 +165,7 @@ const ACTION_FIELDS = Object.freeze({
   redo: ['projectId', 'expectedRevision', 'operationId'],
 });
 
-function formatError(error) {
+function formatError(error, action) {
   const publicError = toPublicError(error).error;
   const flags = [
     publicError.code,
@@ -173,7 +173,8 @@ function formatError(error) {
     publicError.uncertain === true ? 'uncertain=true' : null,
     publicError.jobUnknown === true ? 'jobUnknown=true' : null,
   ].filter((part) => typeof part === 'string' && part.length > 0);
-  return `${publicError.message} [${flags.join(', ')}]`.slice(0, 600);
+  const hint = publicError.code === 'E_PARAMS' && ACTION_FIELDS[action] ? ` ${action} fields: ${ACTION_FIELDS[action].join(', ')}. Writes require expectedRevision and operationId; frame/render require revision; status/cancel require jobId only.` : '';
+  return `${publicError.message} [${flags.join(', ')}]${hint}`.slice(0, 800);
 }
 
 function projectParams(action, args) {
@@ -227,7 +228,7 @@ export function createVideoTool(bridge) {
         params = projectParams(action, args || {});
         agentSessionId = agentSessionIdFromToolExec(exec);
       } catch (error) {
-        throw new Error(formatError(error));
+        throw new Error(formatError(error, action));
       }
       try {
         const result = await bridge.invoke(action, params, { source: 'tool', agentSessionId });
@@ -237,7 +238,7 @@ export function createVideoTool(bridge) {
         boundedToolValue(value);
         return value;
       } catch (error) {
-        throw new Error(formatError(error));
+        throw new Error(formatError(error, action));
       }
     },
   };

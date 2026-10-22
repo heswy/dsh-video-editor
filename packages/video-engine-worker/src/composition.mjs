@@ -11,6 +11,7 @@
 // inside the supported ranges. `comp.dispose()` always runs.
 import { buildDocument, openComposition } from "@hyperframes/sdk";
 import { fail } from "./errors.mjs";
+import { parseHTML } from "linkedom";
 import { capabilities } from "./scenes.mjs";
 
 // `project.source` must keep one Tool result under the 64 KiB budget, so two
@@ -77,21 +78,21 @@ function brief(value, max = 80) {
 function declaredAssetsText(assets) {
   if (!assets.length) return "none declared";
   const shown = assets.slice(0, 4).map((name) => brief(name, 40));
-  const suffix = assets.length > shown.length ? `, … (${assets.length} total)` : "";
+  const suffix =
+    assets.length > shown.length ? `, … (${assets.length} total)` : "";
   return shown.join(", ") + suffix;
 }
 
 function assertDocumentShape(html) {
   const starts = html.replace(/^\uFEFF/, "").trimStart();
-  if (
-    !/^<!doctype\s+html[\s>]/i.test(starts) &&
-    !/^<html[\s>]/i.test(starts)
-  )
+  if (!/^<!doctype\s+html[\s>]/i.test(starts) && !/^<html[\s>]/i.test(starts))
     invalid(
       "Composition must be a complete HTML document: after optional whitespace it must start with <!doctype html> (or <html).",
     );
   if (!/<\/html\s*>/i.test(html))
-    invalid("Composition must be a complete HTML document: a closing </html> tag is required.");
+    invalid(
+      "Composition must be a complete HTML document: a closing </html> tag is required.",
+    );
 }
 
 function assertNoFetchSurfaces(html) {
@@ -168,14 +169,42 @@ function assertMain(html) {
       `Composition must contain exactly one element with id="main"; found ${mains.length}.`,
     );
   const attributes = mains[0].attributes ?? {};
+  // The upstream SDK prioritizes [data-hf-root], then #stage, then the
+  // composition root. Explain ambiguity before its null metadata looks like
+  // a size limit. Authors can retain #stage by marking the true #main root.
+  const dom = parseHTML(html).document;
+  const explicit = dom.querySelector("[data-hf-root]");
+  const stage = dom.getElementById("stage");
+  if (
+    (explicit && explicit.id !== "main") ||
+    (!explicit && stage && stage.id !== "main")
+  )
+    invalid(
+      'The SDK selects nested id="stage" (or another data-hf-root) instead of #main. Add data-hf-root to #main and remove it from other elements, or rename the nested stage id. This is root selection, not an HTML size limit.',
+    );
   const compositionId = attributes["data-composition-id"];
   if (typeof compositionId !== "string" || compositionId.trim() === "")
     invalid(
       '#main must carry a non-empty data-composition-id attribute (for example data-composition-id="main").',
     );
-  numericAttribute(attributes, "data-width", MIN_COMPOSITION_WIDTH, MAX_COMPOSITION_WIDTH);
-  numericAttribute(attributes, "data-height", MIN_COMPOSITION_HEIGHT, MAX_COMPOSITION_HEIGHT);
-  numericAttribute(attributes, "data-duration", MIN_COMPOSITION_DURATION, MAX_COMPOSITION_DURATION);
+  numericAttribute(
+    attributes,
+    "data-width",
+    MIN_COMPOSITION_WIDTH,
+    MAX_COMPOSITION_WIDTH,
+  );
+  numericAttribute(
+    attributes,
+    "data-height",
+    MIN_COMPOSITION_HEIGHT,
+    MAX_COMPOSITION_HEIGHT,
+  );
+  numericAttribute(
+    attributes,
+    "data-duration",
+    MIN_COMPOSITION_DURATION,
+    MAX_COMPOSITION_DURATION,
+  );
 }
 
 // The timeline assignment only counts inside an inline <script> body. Text in
@@ -306,8 +335,7 @@ export async function validateComposition({ html, assets = [] }) {
     invalid(
       `Composition is ${bytes} UTF-8 bytes; the contract allows 1..${MAX_COMPOSITION_BYTES} bytes (48 KiB).`,
     );
-  if (html.includes("\0"))
-    invalid("Composition must not contain NUL bytes.");
+  if (html.includes("\0")) invalid("Composition must not contain NUL bytes.");
   // The document travels as one JSON string on the JSONL wire; a raw-valid but
   // dense document would otherwise overflow one 64 KiB line/response.
   const escapedBytes = Buffer.byteLength(JSON.stringify(html), "utf8");

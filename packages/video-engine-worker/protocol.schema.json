@@ -1388,7 +1388,7 @@
         "templateId": {
           "type": "string",
           "enum": [
-            "product-launch-v1"
+            "product-launch-v1", "blank-v1"
           ]
         },
         "title": {
@@ -1965,7 +1965,7 @@
           "maxLength": 128
         },
         "templateId": {
-          "const": "product-launch-v1"
+          "enum": ["product-launch-v1", "blank-v1"]
         },
         "revision": {
           "type": "string",

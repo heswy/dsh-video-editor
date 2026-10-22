@@ -657,6 +657,35 @@ export class Timelines {
     this.store.assertActive(projectId);
     return this.store.handles.get(projectId);
   }
+  async createEmpty(projectId, { width, height }) {
+    const legacy = await this.store.readLegacy(projectId);
+    const timeline = {
+      schema: "dsh-video/timeline@1",
+      projectId,
+      settings: {
+        width,
+        height,
+        fps: 30,
+        sampleRate: 48000,
+        background: "#000000",
+        durationFrames: 150,
+      },
+      assets: [],
+      legacyAssets: legacy.entries.filter(
+        (x) => x.path !== legacy.manifest.entry,
+      ),
+      tracks: [
+        { trackId: "tr_v1", kind: "video", name: "视频轨 1", clips: [] },
+      ],
+    };
+    validateTimeline(timeline);
+    await atomic(resolve(this.dir(projectId), "timeline.json"), {
+      timeline,
+      history: [],
+      cursor: 0,
+      operations: [],
+    });
+  }
   async load(projectId, { create = false } = {}) {
     const dir = this.dir(projectId),
       path = resolve(dir, "timeline.json");
@@ -1172,13 +1201,13 @@ export class Timelines {
         ),
       };
     }
+    const legacy = await this.store.readLegacy(p.projectId, {
+      ignoreEntry: true,
+      assetNames: j.timeline.legacyAssets?.map((x) => x.path),
+    });
     await validateComposition({
       html: p.html,
-      assets: [
-        "assets/gsap.min.js",
-        "assets/MotionPathPlugin.min.js",
-        "assets/Heiti.ttc",
-      ],
+      assets: legacy.entries.map((x) => x.path),
     });
     const doc = buildDocument(p.html),
       scene = {
@@ -1284,7 +1313,10 @@ export class Timelines {
     const dir = this.dir(projectId),
       t = j.timeline,
       renderTimeline = structuredClone(t),
-      legacy = await this.store.readLegacy(projectId, { ignoreEntry: true }),
+      legacy = await this.store.readLegacy(projectId, {
+        ignoreEntry: true,
+        assetNames: t.legacyAssets?.map((x) => x.path),
+      }),
       files = new Map(
         [...legacy.files].filter(([name]) => name !== legacy.manifest.entry),
       );
