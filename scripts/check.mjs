@@ -134,8 +134,8 @@ check('bundle manifest declares patch and client', () => {
   return `platform=web, inject=[${pkg.dsh.client.inject.join(', ')}]`;
 });
 
-check('package version advanced for the V1 timeline UI 1.0.0-alpha.9 candidate (resource shelf and quiet timeline)', () => {
-  assert(pkg.version === '1.0.0-alpha.9', `expected version 1.0.0-alpha.9, found "${pkg.version}"`);
+check('package version advanced for the V1 drag feedback 1.0.0-alpha.10 candidate (lifted cross-track clips)', () => {
+  assert(pkg.version === '1.0.0-alpha.10', `expected version 1.0.0-alpha.10, found "${pkg.version}"`);
   return pkg.version;
 });
 
