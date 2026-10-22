@@ -31,7 +31,7 @@
 
 唯一新候选通过 DSH **Plugin Manager 的 link 安装流程**指向上述固定目录内 `bundle`，并使用同目录 `config.json`。这是本机开发候选，依赖相邻 engine 目录，不能只拷贝 bundle 当便携发布包。安装后必须核实 bundle alpha.7、Host 与实际 Client 的候选一致性，再按下方清单验收；出现旧 Client 时遵循 DEVELOPMENT 的重启授权规则，不修改候选文件。
 
-本轮只准备候选，没有执行安装。回滚仍通过 Plugin Manager link 回上一固定包 `staging-v1.0.0-alpha.6-bed1f8d/bundle` 及其 config；历史 alpha.11 `staging-alpha11-51b95dc/bundle` 也保留。不要删除稳定数据根、用户作品或旧 staging。此版本无 timeline schema 升级；对已有未注册迁移目标仅报错并保留，需检查后人工恢复，绝不自动覆盖。
+CR 轮只准备候选。用户随后明确授权安装，2026-10-22 已通过运行中 Host 的官方 Plugin Manager Service 完成 alpha.1 → alpha.7 link 替换，返回 applied、warnings=[]、enabled=true，组件 active；新连接插件详情页显示 alpha.7 与 1 运行中。未重启/真实模型；现有 Desktop 窗口的 Client 刷新仍需验收。实际安装前 alpha.1 `staging-v1.0.0-alpha.1-5d42b1f/bundle` 已保留，是本次精确回滚入口；安装证据 `artifacts/v1/evidence/install-alpha7-20261022`。回滚仍通过 Plugin Manager link 回上一固定包 `staging-v1.0.0-alpha.6-bed1f8d/bundle` 及其 config；历史 alpha.11 `staging-alpha11-51b95dc/bundle` 也保留。不要删除稳定数据根、用户作品或旧 staging。此版本无 timeline schema 升级；对已有未注册迁移目标仅报错并保留，需检查后人工恢复，绝不自动覆盖。
 
 
 ## 用户验收顺序
