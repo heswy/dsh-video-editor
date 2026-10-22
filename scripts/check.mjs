@@ -134,8 +134,8 @@ check('bundle manifest declares patch and client', () => {
   return `platform=web, inject=[${pkg.dsh.client.inject.join(', ')}]`;
 });
 
-check('package version advanced for the V1 M4 1.0.0-alpha.5 candidate (audio + providers + refined timeline)', () => {
-  assert(pkg.version === '1.0.0-alpha.5', `expected version 1.0.0-alpha.5, found "${pkg.version}"`);
+check('package version advanced for the V1 M5 1.0.0-alpha.6 candidate (references + collaborative edits)', () => {
+  assert(pkg.version === '1.0.0-alpha.6', `expected version 1.0.0-alpha.6, found "${pkg.version}"`);
   return pkg.version;
 });
 

@@ -1,4 +1,5 @@
 /** Real Chrome + actual component + actual media Host/worker, temporary data only. */
+import { closeTestBrowser } from './lib/browser-cleanup.mjs';
 import assert from "node:assert/strict";
 import { mkdtemp, readFile, writeFile, rm, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -86,8 +87,8 @@ try {
           engineLoader: async () => ({
             WorkerClient,
             workerEntry: config.workerEntry,
-            clientVersion: "0.7.0",
-            workerVersion: "0.7.0",
+            clientVersion: "0.8.0",
+            workerVersion: "0.8.0",
           }),
         }),
   });
@@ -184,6 +185,8 @@ try {
     { source: "http" },
   );
   const js = `const Module=(function(require){${body}\nreturn {CanvasWorkspace,ZH};})(()=>ReactLite.React);const h=ReactLite.createElement;function App(){const [project,setProject]=ReactLite.React.useState(${JSON.stringify(inspected)});window.seek=value=>{const input=document.querySelector('.dv-seek');input.value=value;input.dispatchEvent(new Event('input',{bubbles:true}));};return h(Module.CanvasWorkspace,{projectId:${JSON.stringify(projectId)},t:k=>Module.ZH[k]||k,inspected:project,previewOnly:true,onReload:async()=>{const response=await fetch('/api/dsh-video/request',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({method:'inspect',params:{projectId:${JSON.stringify(projectId)}}})});const value=await response.json();setProject(value.result);},onError:()=>{}});}const root=ReactLite.createRoot(document.getElementById('mount'));root.render(h(App));`;
+  const referenceJs=`const Module=(function(require){${body}\nreturn {ReferencePanel,ZH};})(()=>ReactLite.React);const h=ReactLite.createElement;function App(){const [open,setOpen]=ReactLite.React.useState(true);return h('div',null,open?h(Module.ReferencePanel,{projectId:${JSON.stringify(projectId)},t:k=>Module.ZH[k]||k,onClose:()=>setOpen(false)}):null);}ReactLite.createRoot(document.getElementById('mount')).render(h(App));`;
+
 
   const routes = [
     requestRoute(bridge),
@@ -193,18 +196,18 @@ try {
   server = createServer(async (req, res) => {
     try {
       const url = new URL(req.url, "http://127.0.0.1");
-      if (url.pathname === "/") {
+      if (url.pathname === "/" || url.pathname === "/references") {
         res.setHeader("content-type", "text/html");
         res.end(
           '<!doctype html><html lang="zh-CN"><meta charset="utf-8"><style>body{margin:0;background:#19191b;color:#eee;font:14px -apple-system,sans-serif}#mount{position:relative;width:800px;height:700px}' +
             css +
-            '</style><div class="dv-root" id="mount"></div><script src="/lite.js"></script><script src="/page.js"></script></html>',
+            '</style><div class="dv-root" id="mount"></div><script src="/lite.js"></script><script src="'+(url.pathname==='/references'?'/reference-page.js':'/page.js')+'"></script></html>',
         );
         return;
       }
-      if (url.pathname === "/lite.js" || url.pathname === "/page.js") {
+      if (url.pathname === "/lite.js" || url.pathname === "/page.js" || url.pathname === "/reference-page.js") {
         res.setHeader("content-type", "text/javascript");
-        res.end(url.pathname === "/lite.js" ? lite : js);
+        res.end(url.pathname === "/lite.js" ? lite : url.pathname === "/reference-page.js" ? referenceJs : js);
         return;
       }
       if (url.pathname === "/favicon.ico") {
@@ -611,6 +614,44 @@ try {
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
     await page.screenshot({path:join(out,'audio-narrow.png')});checks++;
   }
+  if(process.env.M5_COLLAB==='1'){
+    await page.setViewport({width:900,height:760});
+    await page.waitForFunction(()=>document.querySelector('.dv-timeline').getAttribute('aria-busy')==='false');
+    await page.click('.dv-timeline-clip');
+    await page.waitForSelector('.dv-clip-reference');
+    const text=await page.$eval('.dv-clip-reference',e=>e.value);assert(text.startsWith('`dshvideo:v1/'));checks++;
+    const before=await bridge.invoke('timeline.inspect',{projectId});
+    const cid=await page.$eval('.dv-timeline-clip',e=>e.dataset.clipId);
+    bridge.sessions.projectForSession=async id=>id==='m5-fixture'?projectId:null;
+    const targets=await bridge.invoke('timeline.references',{projectId},{source:'tool',agentSessionId:'m5-fixture'});
+    const token=targets.items.find(x=>x.kind==='clip'&&x.clipId===cid).token;
+    await bridge.invoke('timeline.resolve',{projectId,revision:before.revision,refs:[{kind:'token',token}]},{source:'tool',agentSessionId:'m5-fixture'});
+    await bridge.invoke('timeline.apply',{projectId,expectedRevision:before.revision,operationId:'ai-concurrent',ops:[{op:'clip.set',clipId:cid,patch:{label:'AI 保留的片段'}}]},{source:'tool',agentSessionId:'m5-fixture'});
+    await page.evaluate(()=>{const original=window.fetch;let drop=true;window.fetch=async(url,init)=>{const request=init?.body?JSON.parse(init.body):{};if(drop&&request.method==='timeline.inspect'){drop=false;return new Response(JSON.stringify({ok:false,error:{code:'E_NETWORK',message:'temporary inspect failure'}}),{headers:{'content-type':'application/json'}});}return original(url,init);};});
+    const edge=await page.$('.dv-timeline-edge-out');await edge.focus();await page.keyboard.press('ArrowLeft');
+    await page.waitForSelector('.dv-change-recovery[data-recovery=conflict]');
+    assert.equal((await bridge.invoke('timeline.inspect',{projectId})).lastChange.operationId,'ai-concurrent');checks++;
+    await clickText('预演此修改');await page.waitForSelector('.dv-change-recovery[data-recovery=preview]');
+    assert.equal((await bridge.invoke('timeline.inspect',{projectId})).lastChange.operationId,'ai-concurrent');checks++;
+    await clickText('确认应用');await page.waitForFunction(()=>!document.querySelector('.dv-change-recovery')&&document.querySelector('.dv-timeline').getAttribute('aria-busy')==='false');
+    let current=await bridge.invoke('timeline.inspect',{projectId});assert.equal(current.tracks.flatMap(x=>x.clips).find(x=>x.clipId===cid).label,'AI 保留的片段');checks++;
+    await clickText('撤销这次修改');await page.waitForFunction(()=>document.querySelector('.dv-timeline').getAttribute('aria-busy')==='false');
+    current=await bridge.invoke('timeline.inspect',{projectId});assert.equal(current.tracks.flatMap(x=>x.clips).find(x=>x.clipId===cid).label,'AI 保留的片段');checks++;
+    await page.evaluate(()=>{const original=window.fetch;let drop=true;window.__attempts=[];window.fetch=async function(url,init){const request=init?.body?JSON.parse(init.body):{};if(request.method==='timeline.apply'){window.__attempts.push(request);const response=await original(url,init);if(drop){drop=false;await response.text();throw new TypeError('simulated lost response');}return response;}return original(url,init);};});
+    await page.click('.dv-timeline-clip');const uncertain=await page.$('.dv-timeline-edge-out');await uncertain.focus();await page.keyboard.press('ArrowLeft');
+    await page.waitForSelector('.dv-change-recovery[data-recovery=retry]');
+    const committed=await bridge.invoke('timeline.inspect',{projectId});
+    await clickText('重试原请求');await page.waitForFunction(()=>!document.querySelector('.dv-change-recovery')&&document.querySelector('.dv-timeline').getAttribute('aria-busy')==='false');
+    const retried=await bridge.invoke('timeline.inspect',{projectId});assert.equal(retried.revision,committed.revision);assert.equal(retried.historyCursor,committed.historyCursor);
+    const attempts=await page.evaluate(()=>window.__attempts);assert.deepEqual(attempts[0],attempts[1]);checks++;
+    const referencePage=await browser.newPage();referencePage.on('pageerror',e=>errors.push(e.message));await referencePage.setViewport({width:360,height:600});await referencePage.goto('http://127.0.0.1:'+server.address().port+'/references');await referencePage.evaluate(()=>document.getElementById('mount').style.width='100%');await referencePage.waitForSelector('.dv-reference-item');
+    await (await referencePage.$('.dv-reference-item')).focus();await referencePage.keyboard.press('Enter');await referencePage.waitForSelector('.dv-reference-token input');
+    assert((await referencePage.$eval('.dv-reference-token input',e=>e.value)).startsWith('`dshvideo:v1/'));checks++;
+    await (await referencePage.$('.dv-reference-panel')).screenshot({path:join(out,'references.png')});
+    await referencePage.setViewport({width:340,height:760});await referencePage.evaluate(()=>document.getElementById('mount').style.width='100%');assert.equal(await referencePage.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);checks++;
+    await referencePage.screenshot({path:join(out,'collaboration-narrow.png')});
+    await referencePage.keyboard.press('Escape');await referencePage.waitForFunction(()=>!document.querySelector('.dv-reference-panel'));checks++;
+  }
   if (process.env.M3_RENDER === "1") {
     const timeline = await bridge.invoke("timeline.inspect", { projectId });
     const job = await bridge.invoke("render", {
@@ -640,6 +681,7 @@ try {
   );
   console.log(JSON.stringify({ ok: true, checks, out }));
 } catch (error) {
+  console.error(error.stack||error);
   if (browser) {
     const page = (await browser.pages()).at(-1);
     await page.screenshot({ path: join(out, "failure.png") });
@@ -663,7 +705,7 @@ try {
   }
   throw error;
 } finally {
-  if (browser) await browser.close();
+  if (browser) await closeTestBrowser(browser);
   if (server) await new Promise((r) => server.close(r));
   if (bridge) await bridge.dispose();
   await rm(root, { recursive: true, force: true });

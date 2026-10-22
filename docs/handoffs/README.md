@@ -1,6 +1,10 @@
 # 当前交接入口
 
-## 当前入口：V1 M4
+## 当前入口：V1 M5
+
+2026-10-22 当前会话按用户指派完成 M5 开发，沿用既有合码权限选择 [PR #21](https://github.com/heswy/dsh-video-editor/pull/21)。候选 alpha.6 / engine 0.8.0，runtime `bed1f8d`，固定包 `artifacts/p2-b/staging-v1.0.0-alpha.6-bed1f8d`，INTEGRITY `07abdee2d82c165b80f105aa210492b8d459f8eb52bdc24d515196ce62ed90e5`。原生 @ 适配与真实工程候选/复制 token、resolve、变更回执、定向撤销、冲突预演和幂等恢复已实现；固定包工作区 37、对话 261、预览 164 全过，详见 [任务卡](../tasks/V1-M5-collaboration.md) 与 [STATUS](../STATUS.md)。未安装/重启/真实模型/发布，M1–M5 原生联合验收待下一授权窗口；30 条中文操作契约不能冒充模型成功率。下一阶段 M6 发布硬化仍需开发与验收，不把 M5 当 1.0.0 发布。后续仍由本会话负责，不自动派发或跨会话联系。
+
+## M4 历史入口
 
 2026-10-22 当前会话完成 M4，用户明确要求音频供应商以千问云试点、允许导入，并精简轨道 UI。交付 alpha.5 / engine 0.7.0，runtime `81ffb1b`，固定候选 `artifacts/p2-b/staging-v1.0.0-alpha.5-81ffb1b`，INTEGRITY `afbf1ac1d0314d8ec5fbade781cf56b1a918b4a7a1e2367daec88f0da7ce8eea`；[PR #20](https://github.com/heswy/dsh-video-editor/pull/20) 按既有权限选择合码。千问 TTS/SFX、本地旁白、导入配乐、音轨预览混音与 AAC 导出已验证；音乐 403 未开通时禁用并以导入兜底。详见 [M4 任务卡](../tasks/V1-M4-audio.md) 和 [STATUS](../STATUS.md)。未安装/重启 DSH；最后确认安装为 alpha.11，本轮未替换。下一安装窗口联合验收 M1–M4；不要自动派发或跨会话联系。后续 V1 开发仍由当前会话负责。
 

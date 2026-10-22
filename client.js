@@ -116,6 +116,27 @@ window.__ModuleLoader__.load({
 
     //#region locale dictionaries
     const ZH = {
+      'video.reference.refresh': '刷新引用',
+      'video.change.uncertain': '结果未确认，重试原请求以确认状态。',
+      'video.change.retry': '重试原请求',
+      'video.change.conflict': '作品已更新。请查看当前内容，再预演此修改。',
+      'video.change.dismiss': '放弃修改',
+      'video.change.apply': '确认应用',
+      'video.change.preview': '预演此修改',
+      'video.change.undo': '撤销这次修改',
+      'video.reference.previous': '上一页',
+      'video.reference.to': '区间终点（秒）',
+      'video.reference.from': '区间起点（秒）',
+      'video.reference.range': '区间',
+      'video.reference.asset': '素材',
+      'video.reference.scene': '场景',
+      'video.reference.clip': '片段',
+      'video.reference.empty': '没有匹配的引用',
+      'video.reference.rangeInvalid': '请输入作品时长内的有效区间',
+      'video.reference.failed': '引用不可用，请重新选择',
+      'video.reference.search': '搜索片段或素材',
+      'video.reference.help': '输入 @ 选择引用；或选中下方 token，复制到对话并说明修改。',
+      'video.reference.title': '引用',
 
       'video.audio.title': "生成音频",
       'video.audio.tts': "旁白",
@@ -341,6 +362,27 @@ window.__ModuleLoader__.load({
     };
 
     const EN = {
+      'video.reference.refresh': 'Refresh references',
+      'video.change.uncertain': 'The result is unconfirmed. Retry the original request to confirm it.',
+      'video.change.retry': 'Retry original request',
+      'video.change.conflict': 'The project changed. Review the current content, then preview this edit.',
+      'video.change.dismiss': 'Discard edit',
+      'video.change.apply': 'Apply edit',
+      'video.change.preview': 'Preview this edit',
+      'video.change.undo': 'Undo this change',
+      'video.reference.previous': 'Previous',
+      'video.reference.to': 'Range end (seconds)',
+      'video.reference.from': 'Range start (seconds)',
+      'video.reference.range': 'Range',
+      'video.reference.asset': 'Asset',
+      'video.reference.scene': 'Scene',
+      'video.reference.clip': 'Clip',
+      'video.reference.empty': 'No matching references',
+      'video.reference.rangeInvalid': 'Enter a valid range within the project.',
+      'video.reference.failed': 'Reference unavailable. Please reselect.',
+      'video.reference.search': 'Search clips or assets',
+      'video.reference.help': 'Type @ to select, or copy a token into the chat with your instruction.',
+      'video.reference.title': 'References',
 
       'video.audio.title': "Generate audio",
       'video.audio.tts': "Voiceover",
@@ -1535,6 +1577,8 @@ window.__ModuleLoader__.load({
   .dv-stage{padding:10px;}
   .dv-controls{padding:8px 10px 10px;}
 }
+
+.dv-reference-toggle{align-self:flex-start;margin:0 12px 4px}.dv-reference-panel{display:flex;flex-direction:column;gap:4px;margin:0 12px 8px;padding:10px;border:1px solid var(--dsw-alias-border-l1, rgba(127,127,140,.28));border-radius:8px;min-height:0;overflow:auto;max-height:42vh;font-size:12px}.dv-reference-head,.dv-reference-range,.dv-reference-pages{display:flex;align-items:center;gap:6px}.dv-reference-head{justify-content:space-between}.dv-reference-panel>*{flex-shrink:0}.dv-reference-panel input{font:inherit;color:inherit;background:var(--dsw-alias-bg-base, #1c1c20);border:1px solid var(--dsw-alias-border-l1, rgba(127,127,140,.28));border-radius:4px;padding:5px;min-width:0;max-width:100%}.dv-reference-panel input[type=search]{width:100%}.dv-reference-help{opacity:.7;margin:6px 0}.dv-reference-items{display:grid;gap:2px;max-height:180px;overflow:auto;flex:1 1 auto;min-height:48px}.dv-reference-item{border:0;border-radius:4px;background:transparent;color:inherit;text-align:left;padding:6px;cursor:pointer;min-width:0}.dv-reference-item:hover,.dv-reference-item[aria-pressed=true]{background:var(--dsw-alias-interactive-bg-hover, rgba(127,127,140,.14))}.dv-reference-item span,.dv-reference-item small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.dv-reference-item small{opacity:.6}.dv-reference-range{margin-top:6px}.dv-reference-range input{width:62px}.dv-reference-token{display:block;margin-top:8px}.dv-reference-token input{display:block;width:100%;font-family:monospace}.dv-change-receipt{display:flex;align-items:center;gap:8px;font-size:11px;padding:4px 8px;min-width:0}.dv-change-receipt span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}.dv-change-recovery{padding:6px 8px;font-size:12px}.dv-change-recovery button{margin:3px}.dv-clip-reference{width:100px;min-width:50px!important;font-size:10px!important}
 `;
     //#endregion
 
@@ -2007,11 +2051,123 @@ window.__ModuleLoader__.load({
       return { code: 'E_NETWORK', message: 'Request failed', uncertain: false, jobUnknown: false };
     }
 
-    async function hostRequest(method, params) {
+    const REFERENCE_TOKEN =
+      /^dshvideo:v1\/[A-Za-z0-9][A-Za-z0-9._-]{0,127}\/(clip|scene|asset|range)\/[A-Za-z0-9_.-]{1,128}\/[a-f0-9]{64}$/;
+    function referenceToken(projectId, kind, id, revision) {
+      const token =
+        'dshvideo:v1/' + projectId + '/' + kind + '/' + id + '/' + revision;
+      return REFERENCE_TOKEN.test(token) ? token : null;
+    }
+    function referenceText(token) {
+      return (
+        '`' +
+        (typeof token === 'string' && REFERENCE_TOKEN.test(token)
+          ? token
+          : 'dshvideo:invalid') +
+        '`'
+      );
+    }
+    function createReferenceSource(request) {
+      return {
+        trigger: '@',
+        name: 'dsh-video',
+        showGroupTitle: false,
+        order: 50,
+        async candidates(session, req = {}) {
+          if (
+            req.quoted ||
+            req.drilled ||
+            req.signal?.aborted ||
+            !session?.sessionId
+          )
+            return [];
+          try {
+            const result = await request(
+              'reference.list',
+              {
+                sessionId: session.sessionId,
+                query: typeof req.query === 'string' ? req.query.slice(0, 120) : '',
+                limit: 50,
+              },
+              req.signal,
+            );
+            if (req.signal?.aborted) return [];
+            return (result.items || [])
+              .filter((x) => REFERENCE_TOKEN.test(x.token))
+              .slice(0, 50)
+              .map((x) => ({
+                name: x.label,
+                label: x.label,
+                description: x.detail,
+                icon: x.kind === 'scene' ? 'folder' : 'file',
+                section: {
+                  clip: '片段',
+                  scene: '场景',
+                  asset: '素材',
+                  range: '区间',
+                }[x.kind],
+                value: JSON.stringify({
+                  token: x.token,
+                  label: String(x.label)
+                    .replace(/[\u0000-\u001f\u007f]/g, ' ')
+                    .slice(0, 80),
+                  kind: x.kind,
+                }),
+              }));
+          } catch (_error) {
+            return [];
+          }
+        },
+        onPick({ candidate } = {}) {
+          try {
+            const item = JSON.parse(candidate?.value);
+            if (!REFERENCE_TOKEN.test(item.token)) return;
+            return {
+              insert: {
+                source: 'dsh-video',
+                ref: item.token,
+                label: item.label,
+                appearance: item.kind === 'scene' ? 'folder' : 'file',
+                clipboardText: referenceText(item.token),
+              },
+            };
+          } catch (_error) {
+            return;
+          }
+        },
+        codec: {
+          serialize: (token) => Promise.resolve(referenceText(token)),
+          clipboardText: referenceText,
+        },
+      };
+    }
+
+    function installReferenceSource(ctx) {
+      const register = (scope) => {
+        try {
+        const service =
+          typeof scope.get === 'function' ? scope.get('inputTriggers') : null;
+        if (service && typeof service.registerSource === 'function')
+          return scope.effect(
+            () => service.registerSource(createReferenceSource(hostRequest)),
+            'dsh-video: reference source',
+          );
+        }catch(_error){/* Optional API drift keeps copyable references available. */}
+      };
+      try {
+        if (typeof ctx.inject === 'function')
+          return ctx.inject(['inputTriggers'], register);
+        return register(ctx);
+      } catch (_error) {
+        /* Copyable tokens remain available. */
+      }
+    }
+    async function hostRequest(method, params, signal) {
       if (typeof fetch !== 'function') throw { code: 'E_NETWORK', message: 'fetch is unavailable' };
       let response;
       try {
         response = await fetch(REQUEST_ROUTE, {
+          signal,
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           credentials: 'same-origin',
@@ -2950,6 +3106,8 @@ window.__ModuleLoader__.load({
     }
 
     function MediaLibraryPanel(props) {
+      const [referenceRevision,setReferenceRevision]=React.useState('');
+      React.useEffect(()=>{let stop=false;void hostRequest('timeline.inspect',{projectId:props.projectId,limit:1}).then(r=>{if(!stop)setReferenceRevision(r.revision);}).catch(()=>{});return()=>{stop=true;};},[props.projectId]);
       const t = props.t,
         projectId = props.projectId;
       const [assets, setAssets] = React.useState([]),
@@ -3370,7 +3528,7 @@ window.__ModuleLoader__.load({
                 t('video.media.reference'),
                 h('input', {
                   readOnly: true,
-                  value: '@asset:' + selected.assetId,
+                  value: referenceText(referenceToken(props.projectId,'asset',selected.assetId,referenceRevision)),
                   onFocus: (e) => e.target.select(),
                   'aria-label': t('video.media.reference'),
                 }),
@@ -3399,6 +3557,220 @@ window.__ModuleLoader__.load({
       );
     }
 
+    function ReferencePanel(props) {
+      const h = React.createElement,
+        t = props.t;
+      const [query, setQuery] = React.useState(''),
+        [data, setData] = React.useState(null),
+        [selected, setSelected] = React.useState(null),
+        [notice, setNotice] = React.useState(''),
+        [offset, setOffset] = React.useState(0);
+      const [from, setFrom] = React.useState('0'),
+        [to, setTo] = React.useState('5');
+      const [refreshTick,setRefreshTick]=React.useState(0);
+      const tokenInput=React.useRef(null);
+      React.useEffect(()=>{if(selected&&tokenInput.current){tokenInput.current.focus();tokenInput.current.select();}},[selected]);
+      React.useEffect(() => {
+        let stopped = false;
+        setData(null);
+        setSelected(null);
+        const timer = setTimeout(() => {
+          void hostRequest('timeline.references', {
+            projectId: props.projectId,
+            query,
+            offset,
+            limit: 24,
+          })
+            .then((r) => {
+              if (!stopped) {
+                setData(r);
+                setNotice('');
+              }
+            })
+            .catch(() => {
+              if (!stopped) setNotice(t('video.reference.failed'));
+            });
+        }, 100);
+        return () => {
+          stopped = true;
+          clearTimeout(timer);
+        };
+      }, [props.projectId, props.revision, query, offset, refreshTick]);
+      async function select(item) {
+        setNotice('');
+        try {
+          const r = await hostRequest('timeline.resolve', {
+            projectId: props.projectId,
+            refs: [{ kind: 'token', token: item.token }],
+          });
+          const match = r.matches[0];
+          if (match.status !== 'resolved') {
+            setSelected(null);
+            setNotice(match.message || t('video.reference.failed'));
+            return;
+          }
+          setSelected(item);
+        } catch (_error) {
+          setNotice(t('video.reference.failed'));
+        }
+      }
+      function range() {
+        const a = Math.round(Number(from) * 30),
+          b = Math.round(Number(to) * 30);
+        if (
+          !data ||
+          !Number.isInteger(a) ||
+          !Number.isInteger(b) ||
+          a < 0 ||
+          b <= a ||
+          b > data.durationFrames
+        ) {
+          setNotice(t('video.reference.rangeInvalid'));
+          return;
+        }
+        void select({
+          kind: 'range',
+          label: t('video.reference.range'),
+          token: referenceToken(
+            props.projectId,
+            'range',
+            a + '-' + b,
+            data.revision,
+          ),
+        });
+      }
+      return h(
+        'section',
+        {
+          className: 'dv-reference-panel',
+          'aria-label': t('video.reference.title'),
+          onKeyDown: (e) => {
+            if (e.key === 'Escape') props.onClose();
+          },
+        },
+        h(
+          'div',
+          { className: 'dv-reference-head' },
+          h('strong', null, t('video.reference.title')),
+          h('button',{className:'dv-icon-button','aria-label':t('video.reference.refresh'),title:t('video.reference.refresh'),onClick:()=>{setOffset(0);setRefreshTick(v=>v+1);}},'↻'),
+          h(
+            'button',
+            {
+              className: 'dv-icon-button',
+              'aria-label': t('video.canvas.close'),
+              onClick: props.onClose,
+            },
+            '×',
+          ),
+        ),
+        h('input', {
+          type: 'search',
+          value: query,
+          maxLength: 120,
+          'aria-label': t('video.reference.search'),
+          placeholder: t('video.reference.search'),
+          onChange: (e) => {
+            setQuery(e.target.value);
+            setOffset(0);
+          },
+        }),
+        h('p', { className: 'dv-reference-help' }, t('video.reference.help')),
+        selected
+          ? h(
+              'label',
+              { className: 'dv-reference-token' },
+              selected.label,
+              h('input', {
+                readOnly: true,
+                value: referenceText(selected.token),
+                ref: tokenInput,
+                'aria-label': t('video.media.reference'),
+                onFocus: (e) => e.target.select(),
+              }),
+            )
+          : null,
+        h(
+          'div',
+          { className: 'dv-reference-items' },
+          data?.items.map((item) =>
+            h(
+              'button',
+              {
+                key: item.token,
+                className: 'dv-reference-item',
+                'aria-pressed': selected?.token === item.token,
+                onClick: () => select(item),
+              },
+              h(
+                'span',
+                null,
+                t('video.reference.' + item.kind) + ' · ' + item.label,
+              ),
+              h('small', null, item.detail),
+            ),
+          ),
+        ),
+        data && !data.items.length
+          ? h('p', null, t('video.reference.empty'))
+          : null,
+        h(
+          'div',
+          { className: 'dv-reference-pages' },
+          offset > 0
+            ? h(
+                'button',
+                {
+                  className: 'dv-button dv-button-quiet',
+                  onClick: () => setOffset(Math.max(0, offset - 24)),
+                },
+                t('video.reference.previous'),
+              )
+            : null,
+          data?.nextOffset !== null && data?.nextOffset !== undefined
+            ? h(
+                'button',
+                {
+                  className: 'dv-button dv-button-quiet',
+                  onClick: () => setOffset(data.nextOffset),
+                },
+                t('video.media.more'),
+              )
+            : null,
+        ),
+        h(
+          'div',
+          { className: 'dv-reference-range' },
+          h('input', {
+            'aria-label': t('video.reference.from'),
+            type: 'number',
+            min: 0,
+            step: 0.1,
+            value: from,
+            onChange: (e) => setFrom(e.target.value),
+          }),
+          h('span', null, '–'),
+          h('input', {
+            'aria-label': t('video.reference.to'),
+            type: 'number',
+            min: 0,
+            step: 0.1,
+            value: to,
+            onChange: (e) => setTo(e.target.value),
+          }),
+          h('span', null, 's'),
+          h(
+            'button',
+            {
+              className: 'dv-button dv-button-quiet',
+              disabled: !data,
+              onClick: range,
+            },
+            t('video.reference.range'),
+          ),
+        ),
+        h('p', { role: 'status' }, notice),
+      );
+    }
     function AudioPanel(props) {
       const t=props.t,h=React.createElement;
       const [settings,setSettings]=React.useState(null),[kind,setKind]=React.useState('tts'),[provider,setProvider]=React.useState('qianwen'),[text,setText]=React.useState(''),[key,setKey]=React.useState(''),[voice,setVoice]=React.useState('longanhuan_v3.1'),[job,setJob]=React.useState(null),[jobs,setJobs]=React.useState([]),[notice,setNotice]=React.useState(''),[busy,setBusy]=React.useState(false);
@@ -3436,6 +3808,7 @@ window.__ModuleLoader__.load({
         [levelDrafts,setLevelDrafts]=React.useState({}),
         [snap, setSnap] = React.useState(true),
         [drag, setDrag] = React.useState(null);
+      const [recovery,setRecovery]=React.useState(null);
       const waves=React.useRef(new Set());
       const alive = React.useRef(true),
         current = React.useRef(null),
@@ -3493,35 +3866,66 @@ window.__ModuleLoader__.load({
         if (current.current && props.revision !== current.current.revision)
           void load().catch((e) => setNotice(errorText(hostError(e), t)));
       }, [props.revision]);
-      async function write(ops, action) {
-        if (busy || !current.current) return;
+      async function sendAttempt(attempt) {
+        if (busy) return;
         setBusy(true);
-        setNotice("");
+        setNotice('');
         try {
-          const result = await hostRequest(action || "timeline.apply", {
-            projectId: props.projectId,
-            expectedRevision: current.current.revision,
-            operationId: operationId(),
-            ...(ops ? { ops } : {}),
-          });
+          const result = await hostRequest(attempt.method, attempt.params);
           if (!alive.current) return;
-          setNotice(
-            result.changeSummary?.summary || t("video.timeline.saved"),
-          );
+          setRecovery(null);
+          setNotice(result.changeSummary?.summary || t('video.timeline.saved'));
           await load();
           await props.onReload();
           return result;
         } catch (e) {
           if (alive.current) {
-            setNotice(errorText(hostError(e), t));
-            if (hostError(e).code === "E_REVISION_CONFLICT") {
-              await load();
-              await props.onReload();
-            }
+            const error = hostError(e);
+            setNotice(errorText(error, t));
+            if (error.code === 'E_REVISION_CONFLICT') {
+              setRecovery({ ...attempt, status: 'conflict', preview: null });
+              try {await load();await props.onReload();}catch(refreshError){setNotice(errorText(hostError(refreshError),t));}
+            } else if (
+              error.uncertain ||
+              error.code === 'E_NETWORK' ||
+              error.code === 'E_FETCH'
+            )
+              setRecovery({ ...attempt, status: 'retry', preview: null });
           }
         } finally {
           if (alive.current) setBusy(false);
         }
+      }
+      async function write(ops, action) {
+        if (busy || !current.current || recovery) return;
+        return sendAttempt({
+          method: action || 'timeline.apply',
+          params: {
+            projectId: props.projectId,
+            expectedRevision: current.current.revision,
+            operationId: operationId(),
+            ...(action
+              ? {
+                  expectedHistoryCursor: current.current.historyCursor,
+                  ...(current.current.lastChange?.operationId
+                    ? { expectedOperationId: current.current.lastChange.operationId }
+                    : {}),
+                }
+              : {}),
+            ...(ops ? { ops } : {}),
+          },
+        });
+      }
+      async function previewRecovery() {
+        if(busy||!recovery?.params.ops)return;
+        setBusy(true);
+        try {
+          const fresh=await load();
+          const attempt={method:recovery.method,params:{...recovery.params,expectedRevision:fresh.revision,operationId:operationId()}};
+          const preview=await hostRequest(attempt.method,{...attempt.params,dryRun:true});
+          if(alive.current)setRecovery({...attempt,status:'preview',preview});
+        }catch(e){if(alive.current){setNotice(errorText(hostError(e),t));setRecovery({...recovery,status:'conflict',preview:null});}}
+        finally{if(alive.current)setBusy(false);}
       }
       React.useEffect(() => {
         if (props.assetToAdd && data && !busy) {
@@ -3863,6 +4267,7 @@ window.__ModuleLoader__.load({
               { className: "dv-timeline-inspector" },
               h("span", {className:'dv-inspector-name',title:chosen.clipId}, chosen.label || t('video.timeline.title')),
               h("span", null, (chosen.durationFrames / 30).toFixed(2) + "s"),
+              h('input',{className:'dv-clip-reference',readOnly:true,value:referenceText(referenceToken(props.projectId,'clip',chosen.clipId,data.revision)),'aria-label':t('video.media.reference'),title:t('video.reference.help'),onFocus:e=>e.target.select()}),
               h(
                 "label",
                 null,
@@ -3918,6 +4323,13 @@ window.__ModuleLoader__.load({
                 h('label',null,t('video.audio.gain'),h('input',{type:'text',inputMode:'decimal',key:chosen.trackId+':'+data.revision,value:levelDrafts.gain??data.tracks.find(tr=>tr.trackId===chosen.trackId)?.gainDb??0,onChange:e=>setLevelDrafts({...levelDrafts,gain:e.target.value}),min:-60,max:12,step:1,'aria-label':t('video.audio.gain'),disabled:busy,onBlur:e=>{const gainDb=Number(e.target.value);if(e.target.value!==''&&Number.isFinite(gainDb)&&gainDb!==(data.tracks.find(tr=>tr.trackId===chosen.trackId)?.gainDb??0))void write([{op:'track.update',trackId:chosen.trackId,patch:{gainDb}}]);}}),'dB')):null,
             )
           : null,
+        data.lastChange?.written?h('div',{className:'dv-change-receipt',role:'status','data-operation-id':data.lastChange.operationId},
+          h('span',{title:data.lastChange.changeSummary?.summary},data.lastChange.changeSummary?.summary),
+          data.undoHint?.canUndo&&data.lastChange.revision===data.revision&&data.lastChange.undoHint?.historyCursor===data.historyCursor&&data.lastChange.changeSummary?.opCount>0?h('button',{className:'dv-button dv-button-quiet',disabled:busy||!!recovery,onClick:()=>write(null,'timeline.undo')},t('video.change.undo')):null):null,
+        recovery?h('div',{className:'dv-change-recovery',role:'alert','data-recovery':recovery.status},
+          h('p',null,recovery.status==='preview'?recovery.preview.changeSummary.summary:t(recovery.status==='retry'?'video.change.uncertain':'video.change.conflict')),
+          recovery.status==='retry'?h('button',{className:'dv-button dv-button-quiet',disabled:busy,onClick:()=>sendAttempt(recovery)},t('video.change.retry')):recovery.status==='preview'?h('button',{className:'dv-button dv-button-primary',disabled:busy,onClick:()=>sendAttempt(recovery)},t('video.change.apply')):recovery.params.ops?h('button',{className:'dv-button dv-button-quiet',disabled:busy,onClick:previewRecovery},t('video.change.preview')):null,
+          h('button',{className:'dv-button dv-button-quiet',disabled:busy,onClick:()=>setRecovery(null)},t('video.change.dismiss'))):null,
         h(
           "div",
           { className: "dv-timeline-notice", role: "status" },
@@ -5713,6 +6125,7 @@ window.__ModuleLoader__.load({
       const [activeSessionId, setActiveSessionId] = React.useState(typeof remembered.activeSessionId === 'string' ? remembered.activeSessionId : null);
       const [sessionBusy, setSessionBusy] = React.useState(null);
       const [historyOpen, setHistoryOpen] = React.useState(false);
+      const [referencesOpen,setReferencesOpen]=React.useState(false);
       const [hostConversationOpen, setHostConversationOpen] = React.useState(false);
       const [retryTick, setRetryTick] = React.useState(0);
       const [sessionDiagnostic, setSessionDiagnostic] = React.useState(null);
@@ -7115,6 +7528,8 @@ window.__ModuleLoader__.load({
               )
             )
           ),
+          h('button',{className:'dv-reference-toggle dv-button dv-button-quiet',disabled:!projectId,'aria-expanded':referencesOpen,onClick:()=>setReferencesOpen(!referencesOpen)},t('video.reference.title')),
+          referencesOpen?h(ReferencePanel,{key:projectId,projectId,revision:project?.revision,t,onClose:()=>setReferencesOpen(false)}):null,
           historyOpen ? historyMenu() : null,
           h('div', { className: 'dv-ai-body' }, body),
           previewOverlay()
@@ -7557,6 +7972,7 @@ window.__ModuleLoader__.load({
         clientSessions = null;
         reportOnce('sessions-service-unavailable', error);
       }
+      installReferenceSource(ctx);
       const clientLayout = ctx.layout !== undefined && ctx.layout !== null ? ctx.layout : null;
 
       ctx.effect(

@@ -523,6 +523,7 @@ function buildSample(method, state) {
       };
     case "project.source":
       return { projectId };
+    case "timeline.references":return {projectId,query:"",limit:50};
     case "asset.importMedia": return {projectId,sourceName:"logo.png",operationId:"probe-media"};
     case "asset.list": return {projectId};
     case "asset.derive": return {projectId,assetId:"as_00000000",kind:"thumb"};

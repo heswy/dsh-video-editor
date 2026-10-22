@@ -31,6 +31,7 @@ import { UiStateStore } from './ui-state.js';
 import { dataRootLayout, ensureDataRoot, legacyRootsFromConfig, loadManagedProjects, migrateLegacyRoots, quarantineCorruptFile, readWorkerRegistry, repairProjectsRegistry, resolveDataRoot, scanProjectsRoot, writeProjectsBackup } from './data-root.js';
 
 export const REQUEST_METHODS = Object.freeze([
+'reference.list', 'timeline.references',
 'audio.providers','audio.settings','audio.configure','audio.check','audio.generate','audio.status','audio.cancel',
 'timeline.inspect',
 'timeline.apply',
@@ -78,6 +79,8 @@ export const REQUEST_METHODS = Object.freeze([
 ]);
 
 const METHOD_PARAMS = Object.freeze({
+'reference.list':['sessionId','query','offset','limit'],
+'timeline.references':['projectId','query','offset','limit'],
 'audio.providers': ['projectId'],
 'audio.settings': [],
 'audio.configure': ['apiKey'],
@@ -89,8 +92,8 @@ const METHOD_PARAMS = Object.freeze({
 'timeline.inspect': ['projectId', 'view', 'trackId', 'offset', 'limit'],
 'timeline.apply': ['projectId', 'expectedRevision', 'operationId', 'ops', 'dryRun'],
 'timeline.resolve': ['projectId', 'revision', 'refs'],
-'timeline.undo': ['projectId', 'expectedRevision', 'operationId'],
-'timeline.redo': ['projectId', 'expectedRevision', 'operationId'],
+'timeline.undo': ['projectId', 'expectedRevision', 'operationId', 'expectedHistoryCursor', 'expectedOperationId'],
+'timeline.redo': ['projectId', 'expectedRevision', 'operationId', 'expectedHistoryCursor', 'expectedOperationId'],
 'scene.compose': ['projectId', 'expectedRevision', 'operationId', 'clipId', 'trackId', 'startFrame', 'html', 'mode', 'label'],
 'scene.inspect': ['projectId', 'clipId'],
 
@@ -449,10 +452,17 @@ export function validateParams(config, method, params) {
     if (allowed.includes(key) === false) fail('E_PARAMS', `Unexpected "${key}" parameter`, 'params');
   }
 
-  if (['timeline.inspect','timeline.apply','timeline.resolve','timeline.undo','timeline.redo','scene.compose','scene.inspect'].includes(method)) {
+  if(method==='reference.list'){
+    if(typeof params.sessionId!=='string'||!SESSION_ID_PATTERN.test(params.sessionId))fail('E_PARAMS','Invalid Session id');
+    if(params.query!==undefined&&(typeof params.query!=='string'||params.query.length>120))fail('E_PARAMS','Invalid reference query');
+    return {...params};
+  }
+  if (['timeline.references','timeline.inspect','timeline.apply','timeline.resolve','timeline.undo','timeline.redo','scene.compose','scene.inspect'].includes(method)) {
     const next={...params,projectId:allowedProject(config,params.projectId)};
     if(['timeline.apply','timeline.undo','timeline.redo','scene.compose'].includes(method)){next.expectedRevision=revision(params.expectedRevision);next.operationId=operationId(params.operationId);}
     if(method==='timeline.apply'&&(!Array.isArray(params.ops)||!params.ops.length||params.ops.length>32))fail('E_PARAMS','Provide 1–32 operations','params');
+    if(params.expectedOperationId!==undefined)operationId(params.expectedOperationId);
+    if(params.expectedHistoryCursor!==undefined&&(!Number.isInteger(params.expectedHistoryCursor)||params.expectedHistoryCursor<0))fail('E_PARAMS','Invalid history cursor');
     if(params.dryRun!==undefined&&typeof params.dryRun!=='boolean')fail('E_PARAMS','dryRun must be boolean','params');
     return next;
   }
@@ -1752,6 +1762,17 @@ export class VideoBridge {
     const normalized = this.validate(method, params);
     if (normalized.projectId !== undefined && this.isQuarantinedProject(normalized.projectId)) {
       throw new BridgeError('E_PROJECT_UNAVAILABLE', 'The project directory is currently unavailable', { stage: 'project' });
+    }
+    if(method==='reference.list'){
+      if(settings.source==='tool')throw new BridgeError('E_METHOD','Reference menu is UI-only');
+      const projectId=await this.sessions.projectForSession(normalized.sessionId);
+      if(!projectId)throw new BridgeError('E_SESSION_NOT_BOUND','请先打开作品的创作会话');
+      if(!config.projectIds.has(projectId)||this.isQuarantinedProject(projectId))throw new BridgeError('E_PROJECT_SCOPE','作品不可用，请重新选择');
+      const {sessionId,...query}=normalized;
+      await this.callClient('open',{projectId});
+      const result=await this.callClient('timeline.references',{projectId,...query});
+      this.rememberFacts({...result,timeline:true});
+      return publicResult(config.maxResultBytes,result,settings.source);
     }
     if(method.startsWith('audio.')) {
       if(['audio.configure','audio.settings','audio.check'].includes(method)&&settings.source==='tool')throw new BridgeError('E_METHOD','Audio credentials are UI-only');

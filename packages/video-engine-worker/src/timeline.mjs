@@ -89,8 +89,10 @@ export function validateTimeline(t) {
       !Array.isArray(tr.clips)
     )
       fail("E_TIMELINE_INVALID", "Invalid track", "timeline");
-    if(tr.gainDb!==undefined)num(tr.gainDb,-60,12);
-    for(const flag of ['muted','hidden','locked'])if(tr[flag]!==undefined&&typeof tr[flag]!=='boolean')fail('E_TIMELINE_INVALID','Invalid track flag');
+    if (tr.gainDb !== undefined) num(tr.gainDb, -60, 12);
+    for (const flag of ["muted", "hidden", "locked"])
+      if (tr[flag] !== undefined && typeof tr[flag] !== "boolean")
+        fail("E_TIMELINE_INVALID", "Invalid track flag");
     ids.add(tr.trackId);
     if (tr.clips.length > 200)
       fail("E_LIMIT", "Track clip capacity exceeded", "timeline");
@@ -122,7 +124,11 @@ export function validateTimeline(t) {
         if (!a)
           fail("E_ASSET_NOT_FOUND", "Referenced asset is missing", "timeline");
         if ((tr.kind === "audio") !== (a.kind === "audio"))
-          fail("E_TRACK_KIND", "Audio assets require an audio track", "timeline");
+          fail(
+            "E_TRACK_KIND",
+            "Audio assets require an audio track",
+            "timeline",
+          );
         if ((c.kind === "image") !== (a.kind === "image"))
           fail("E_ASSET_KIND", "Clip and asset kinds differ", "timeline");
         if (c.kind !== "image") {
@@ -213,6 +219,31 @@ export function applyOperations(input, ops) {
     if (!o || typeof o.op !== "string")
       fail("E_PARAMS", `Invalid operation ${i}`, "timeline");
     string(o.op, 48);
+    const targetLabel = t.tracks
+      .flatMap((tr) => tr.clips)
+      .find((c) => c.clipId === o.clipId)?.label;
+    const detail =
+      o.op === "clip.volume"
+        ? `${o.volumeDb} dB`
+        : o.op === "clip.fade"
+          ? `${o.inFrames / 30}s → ${o.outFrames / 30}s`
+          : o.op === "clip.speed"
+            ? `${o.speed}×`
+            : o.op === "clip.move"
+              ? `${o.startFrame / 30}s`
+              : o.op === "clip.trim"
+                ? `${o.edge}: ${o.deltaFrames / 30}s`
+                : o.op === "clip.set"
+                  ? (o.patch?.label ??
+                    (o.patch?.muted === true
+                      ? "静音"
+                      : o.patch?.muted === false
+                        ? "取消静音"
+                        : ""))
+                  : o.op === "timeline.settings" &&
+                      o.durationFrames !== undefined
+                    ? `${o.durationFrames / 30}s`
+                    : "";
     let affected = [],
       created = [];
     try {
@@ -223,7 +254,11 @@ export function applyOperations(input, ops) {
         const tr = {
           trackId: id("tr_"),
           kind: o.kind,
-          name: o.name ? text(o.name) : o.kind === "audio" ? "音频轨" : "视频轨",
+          name: o.name
+            ? text(o.name)
+            : o.kind === "audio"
+              ? "音频轨"
+              : "视频轨",
           clips: [],
         };
         let at = o.afterTrackId
@@ -344,9 +379,15 @@ export function applyOperations(input, ops) {
                 ((o.atFrame - c.startFrame) * (c.speed ?? 1) * fps) / 30,
               );
             c.durationFrames = o.atFrame - c.startFrame;
-            if(c.fadeInFrames!==undefined)c.fadeInFrames=Math.min(c.fadeInFrames,c.durationFrames);
-            if(right.fadeOutFrames!==undefined)right.fadeOutFrames=Math.min(right.fadeOutFrames,right.durationFrames);
-            c.fadeOutFrames=0;right.fadeInFrames=0;
+            if (c.fadeInFrames !== undefined)
+              c.fadeInFrames = Math.min(c.fadeInFrames, c.durationFrames);
+            if (right.fadeOutFrames !== undefined)
+              right.fadeOutFrames = Math.min(
+                right.fadeOutFrames,
+                right.durationFrames,
+              );
+            c.fadeOutFrames = 0;
+            right.fadeInFrames = 0;
             delete c.outTransition;
             tr.clips.push(right);
             created = [right.clipId];
@@ -374,8 +415,10 @@ export function applyOperations(input, ops) {
                 );
             } else if (o.edge === "out") c.durationFrames += o.deltaFrames;
             else fail("E_PARAMS", "Trim edge must be in or out");
-            if(c.fadeInFrames!==undefined)c.fadeInFrames=Math.min(c.fadeInFrames,c.durationFrames);
-            if(c.fadeOutFrames!==undefined)c.fadeOutFrames=Math.min(c.fadeOutFrames,c.durationFrames);
+            if (c.fadeInFrames !== undefined)
+              c.fadeInFrames = Math.min(c.fadeInFrames, c.durationFrames);
+            if (c.fadeOutFrames !== undefined)
+              c.fadeOutFrames = Math.min(c.fadeOutFrames, c.durationFrames);
             if (o.ripple)
               shift(tr, oldEnd, c.startFrame + c.durationFrames - oldEnd, c);
             break;
@@ -432,8 +475,10 @@ export function applyOperations(input, ops) {
               Math.round((c.durationFrames * c.speed) / o.speed),
             );
             c.speed = o.speed;
-            if(c.fadeInFrames!==undefined)c.fadeInFrames=Math.min(c.fadeInFrames,c.durationFrames);
-            if(c.fadeOutFrames!==undefined)c.fadeOutFrames=Math.min(c.fadeOutFrames,c.durationFrames);
+            if (c.fadeInFrames !== undefined)
+              c.fadeInFrames = Math.min(c.fadeInFrames, c.durationFrames);
+            if (c.fadeOutFrames !== undefined)
+              c.fadeOutFrames = Math.min(c.fadeOutFrames, c.durationFrames);
             if (o.ripple) shift(tr, oldEnd, c.durationFrames - oldDur, c);
             break;
           case "clip.volume":
@@ -500,7 +545,7 @@ export function applyOperations(input, ops) {
         op: o.op,
         affectedClipIds: affected,
         createdIds: created,
-        summary: `${{ "clip.split": "切分片段", "clip.trim": "调整片段边缘", "clip.delete": "删除片段", "clip.move": "移动片段", "clip.reorder": "重排片段", "clip.insert": "加入素材", "clip.duplicate": "复制片段", "clip.speed": "调整速度", "clip.replace": "替换素材", "clip.set": "更新片段", "clip.volume": "调整音量", "clip.fade": "调整淡入淡出", "clip.transition": "调整转场", "track.add": "添加轨道", "track.update": "更新轨道", "track.remove": "删除轨道", "timeline.settings": "调整作品设置", "scene.insert": "加入 AI 场景", "scene.replace": "更新 AI 场景" }[o.op]}（${affected.length || created.length || 1} 个对象）`,
+        summary: `${{ "clip.split": "切分片段", "clip.trim": "调整片段边缘", "clip.delete": "删除片段", "clip.move": "移动片段", "clip.reorder": "重排片段", "clip.insert": "加入素材", "clip.duplicate": "复制片段", "clip.speed": "调整速度", "clip.replace": "替换素材", "clip.set": "更新片段", "clip.volume": "调整音量", "clip.fade": "调整淡入淡出", "clip.transition": "调整转场", "track.add": "添加轨道", "track.update": "更新轨道", "track.remove": "删除轨道", "timeline.settings": "调整作品设置", "scene.insert": "加入 AI 场景", "scene.replace": "更新 AI 场景" }[o.op]}（${affected.length || created.length || 1} 个对象）${targetLabel ? ` · ${targetLabel}` : ""}${detail ? ` · ${detail}` : ""}`,
       });
     } catch (e) {
       e.message = `Operation ${i} (${o.op}): ${e.message}`;
@@ -522,8 +567,11 @@ export function generateComposition(t) {
       const a = t.assets.find((a) => a.assetId === c.assetId);
       if (c.kind === "media") {
         tag = a.kind === "audio" ? "audio" : "video";
-        const gain = tr.muted || c.muted ? 0 : 10 ** (((tr.gainDb ?? 0) + (c.volumeDb ?? 0)) / 20);
-        attrs = `src="${esc(a.path)}" crossorigin="anonymous" playsinline preload="auto" data-media-start="${c.sourceInFrame / a.fps}" data-playback-rate="${c.speed}" data-volume="${gain}" data-has-audio="${a.kind === "audio" || a.hasAudio === true}" data-fade-in="${(c.fadeInFrames??0)/30}" data-fade-out="${(c.fadeOutFrames??0)/30}"`;
+        const gain =
+          tr.muted || c.muted
+            ? 0
+            : 10 ** (((tr.gainDb ?? 0) + (c.volumeDb ?? 0)) / 20);
+        attrs = `src="${esc(a.path)}" crossorigin="anonymous" playsinline preload="auto" data-media-start="${c.sourceInFrame / a.fps}" data-playback-rate="${c.speed}" data-volume="${gain}" data-has-audio="${a.kind === "audio" || a.hasAudio === true}" data-fade-in="${(c.fadeInFrames ?? 0) / 30}" data-fade-out="${(c.fadeOutFrames ?? 0) / 30}"`;
       } else if (c.kind === "image") {
         tag = "img";
         attrs = `src="${esc(a.path)}"`;
@@ -736,10 +784,25 @@ export class Timelines {
       })),
       totalClips: all.length,
       nextOffset: offset + limit < all.length ? offset + limit : null,
+      historyCursor: j.cursor,
+      lastChange: j.operations.length
+        ? (() => {
+            const r = j.operations.at(-1).result;
+            return {
+              operationId: j.operations.at(-1).operationId,
+              revision: r.revision,
+              beforeRevision: r.beforeRevision,
+              written: r.written,
+              changeSummary: r.changeSummary,
+              undoHint: r.undoHint,
+              step: r.step,
+            };
+          })()
+        : null,
       undoHint: { canUndo: j.cursor > 0, canRedo: j.cursor < j.history.length },
     };
   }
-  async syncAssets(t) {
+  async syncAssets(t, { prune = false } = {}) {
     const dir = this.dir(t.projectId);
     let index;
     try {
@@ -750,9 +813,17 @@ export class Timelines {
       if (e.code !== "ENOENT") throw e;
       return;
     }
+    if (prune)
+      t.assets = t.assets.filter((a) =>
+        index.assets.some((current) => current.assetId === a.assetId),
+      );
     for (const a of index.assets) {
-      const existing=t.assets.find(x=>x.assetId===a.assetId);
-      if(existing){if(existing.hasAudio===undefined)existing.hasAudio=a.kind==='audio'||a.media?.hasAudio===true;continue;}
+      const existing = t.assets.find((x) => x.assetId === a.assetId);
+      if (existing) {
+        if (existing.hasAudio === undefined)
+          existing.hasAudio = a.kind === "audio" || a.media?.hasAudio === true;
+        continue;
+      }
       const fps = a.media?.fps || 30;
       t.assets.push({
         assetId: a.assetId,
@@ -785,6 +856,16 @@ export class Timelines {
     if (p.dryRun !== undefined && typeof p.dryRun !== "boolean")
       fail("E_PARAMS", "dryRun must be boolean");
     const before = timelineRevision(j.timeline);
+    if (p.expectedOperationId !== undefined) {
+      string(p.expectedOperationId, 128);
+      if (p.expectedOperationId !== j.operations.at(-1)?.operationId)
+        fail("E_REVISION_CONFLICT", "修改回执已过期，请查看当前修改");
+    }
+    if (
+      p.expectedHistoryCursor !== undefined &&
+      p.expectedHistoryCursor !== j.cursor
+    )
+      fail("E_REVISION_CONFLICT", "编辑历史已更新，请重新查看修改");
     if (before !== p.expectedRevision)
       fail("E_REVISION_CONFLICT", "作品已更新，请刷新时间线后重试", "timeline");
     if (j.operations.length >= 2048)
@@ -810,6 +891,10 @@ export class Timelines {
       changed = before !== after;
     const result = {
       projectId: p.projectId,
+      operationId: p.operationId,
+      beforeRevision: before,
+      step: step ?? "apply",
+      dryRun: p.dryRun === true,
       revision: p.dryRun ? before : after,
       written: !p.dryRun && changed,
       timeline: true,
@@ -856,47 +941,199 @@ export class Timelines {
     await atomic(resolve(dir, "timeline.json"), j);
     return result;
   }
-  async resolve(p) {
+  async references(p) {
     const j = await this.load(p.projectId, { create: true }),
-      t = j.timeline;
-    if (p.revision && p.revision !== timelineRevision(t))
-      fail("E_REVISION_CONFLICT", "References need a current revision");
-    if (!Array.isArray(p.refs) || p.refs.length > 32)
-      fail("E_PARAMS", "Provide at most 32 references");
-    const clips = t.tracks.flatMap((tr) =>
-      tr.clips.map((c) => ({ ...c, trackId: tr.trackId })),
+      t = structuredClone(j.timeline);
+    await this.syncAssets(t, { prune: true });
+    const revision = timelineRevision(j.timeline),
+      items = [];
+    const token = (kind, id) =>
+      `dshvideo:v1/${p.projectId}/${kind}/${id}/${revision}`;
+    for (const tr of t.tracks)
+      for (const c of tr.clips) {
+        const label = c.label || c.clipId,
+          detail = `${(c.startFrame / 30).toFixed(2)}–${((c.startFrame + c.durationFrames) / 30).toFixed(2)}s · ${tr.name || tr.trackId}`;
+        items.push({
+          kind: "clip",
+          clipId: c.clipId,
+          label,
+          detail,
+          token: token("clip", c.clipId),
+        });
+        if (c.kind === "composition")
+          items.push({
+            kind: "scene",
+            clipId: c.clipId,
+            label,
+            detail,
+            token: token("scene", c.clipId),
+          });
+        const rangeToken = token(
+          "range",
+          `${c.startFrame}-${c.startFrame + c.durationFrames}`,
+        );
+        if (!items.some((item) => item.token === rangeToken))
+          items.push({
+            kind: "range",
+            label: `${(c.startFrame / 30).toFixed(2)}–${((c.startFrame + c.durationFrames) / 30).toFixed(2)}s`,
+            detail: "全部轨道",
+            token: rangeToken,
+          });
+      }
+    for (const a of t.assets)
+      items.push({
+        kind: "asset",
+        assetId: a.assetId,
+        label: a.name || a.assetId,
+        detail: a.kind,
+        token: token("asset", a.assetId),
+      });
+    if (typeof (p.query ?? "") !== "string" || (p.query ?? "").length > 120)
+      fail("E_PARAMS", "Invalid reference query");
+    const query = (p.query ?? "").trim().toLowerCase(),
+      limit = int(p.limit ?? 50, 1, 100),
+      offset = int(p.offset ?? 0, 0, 3000);
+    const filtered = items.filter(
+      (x) =>
+        !query ||
+        `${x.label} ${x.detail} ${x.clipId || x.assetId || ""}`
+          .toLowerCase()
+          .includes(query),
     );
     return {
       projectId: p.projectId,
-      revision: timelineRevision(t),
-      matches: p.refs.map((ref, i) => {
+      revision,
+      durationFrames: t.settings.durationFrames,
+      items: filtered.slice(offset, offset + limit),
+      nextOffset: offset + limit < filtered.length ? offset + limit : null,
+      total: filtered.length,
+    };
+  }
+  async resolve(p) {
+    const j = await this.load(p.projectId, { create: true }),
+      t = structuredClone(j.timeline);
+    await this.syncAssets(t, { prune: true });
+    const revision = timelineRevision(j.timeline);
+    if (p.revision && p.revision !== revision)
+      fail("E_REVISION_CONFLICT", "作品已更新，请重新选择引用");
+    if (!Array.isArray(p.refs) || !p.refs.length || p.refs.length > 32)
+      fail("E_PARAMS", "Provide 1–32 references");
+    const clips = t.tracks
+      .flatMap((tr) => tr.clips.map((c) => ({ ...c, trackId: tr.trackId })))
+      .sort(
+        (a, b) =>
+          a.startFrame - b.startFrame || a.trackId.localeCompare(b.trackId),
+      );
+    return {
+      projectId: p.projectId,
+      revision,
+      matches: p.refs.map((input, i) => {
+        if (!input || typeof input !== "object" || Array.isArray(input))
+          fail("E_PARAMS", "Invalid reference");
+        let ref = input;
+        const empty = (status) => ({
+          ref: i,
+          status,
+          clipIds: [],
+          assetIds: [],
+          message: {
+            missing: "引用已失效，请重新选择",
+            foreign: "引用属于其它作品，请重新选择",
+            invalid: "引用格式无效，请重新选择",
+            stale: "区间已更新，请重新选择",
+          }[status],
+        });
+        if (ref.kind === "token") {
+          const parsed =
+            /^`?(@?dshvideo:v1)\/([A-Za-z0-9][A-Za-z0-9._-]{0,127})\/(clip|scene|asset|range)\/([A-Za-z0-9_.-]{1,128})\/([a-f0-9]{64})`?$/.exec(
+              typeof ref.token === "string" ? ref.token : "",
+            );
+          if (!parsed) return empty("invalid");
+          if (parsed[2] !== p.projectId) return empty("foreign");
+          ref = {
+            kind: parsed[3],
+            ...(parsed[3] === "asset"
+              ? { assetId: parsed[4] }
+              : { clipId: parsed[4] }),
+          };
+          if (ref.kind === "range") {
+            if (parsed[5] !== revision) return empty("stale");
+            const range = /^(\d+)-(\d+)$/.exec(parsed[4]);
+            if (!range) return empty("invalid");
+            ref = {
+              kind: "range",
+              fromFrame: Number(range[1]),
+              toFrame: Number(range[2]),
+            };
+          }
+        }
+        if (ref.kind === "asset") {
+          const a = t.assets.find((a) => a.assetId === ref.assetId);
+          return {
+            ref: i,
+            status: a ? "resolved" : "missing",
+            clipIds: [],
+            assetIds: a ? [a.assetId] : [],
+            ...(a ? { kind: a.kind } : {}),
+            message: a ? undefined : "引用已失效，请重新选择",
+          };
+        }
         let matches = clips.filter(
           (c) => !ref.trackId || c.trackId === ref.trackId,
         );
-        if (ref.kind === "index")
-          matches = matches.slice(int(ref.index, 1, 500) - 1, ref.index);
-        else if (ref.kind === "clip")
-          matches = matches.filter((c) => c.clipId === ref.clipId);
+        if (ref.kind === "index") {
+          int(ref.index, 1, 500);
+          matches = t.tracks
+            .filter((tr) => !ref.trackId || tr.trackId === ref.trackId)
+            .flatMap((tr) => {
+              const c = [...tr.clips].sort(
+                (a, b) => a.startFrame - b.startFrame,
+              )[ref.index - 1];
+              return c ? [{ ...c, trackId: tr.trackId }] : [];
+            });
+        } else if (ref.kind === "clip" || ref.kind === "scene")
+          matches = matches.filter(
+            (c) =>
+              c.clipId === ref.clipId &&
+              (ref.kind !== "scene" || c.kind === "composition"),
+          );
         else if (ref.kind === "label")
           matches = matches.filter((c) => c.label === ref.label);
         else if (ref.kind === "range") {
           int(ref.fromFrame);
-          int(ref.toFrame, ref.fromFrame + 1);
+          int(ref.toFrame, ref.fromFrame + 1, t.settings.durationFrames);
           matches = matches.filter(
             (c) =>
               c.startFrame < ref.toFrame &&
               c.startFrame + c.durationFrames > ref.fromFrame,
           );
         } else fail("E_PARAMS", "Unknown reference kind");
+        const status = !matches.length
+          ? "missing"
+          : (ref.kind === "label" || ref.kind === "index") && matches.length > 1
+            ? "ambiguous"
+            : "resolved";
         return {
           ref: i,
+          status,
           clipIds: matches.map((c) => c.clipId),
-          status:
-            matches.length === 0
-              ? "missing"
-              : ref.kind === "label" && matches.length > 1
-                ? "ambiguous"
-                : "resolved",
+          assetIds: [],
+          candidates: matches.map((c) => ({
+            clipId: c.clipId,
+            label: c.label || c.clipId,
+            trackId: c.trackId,
+            startFrame: c.startFrame,
+            durationFrames: c.durationFrames,
+          })),
+          ...(ref.kind === "range"
+            ? { fromFrame: ref.fromFrame, toFrame: ref.toFrame }
+            : {}),
+          message:
+            status === "missing"
+              ? "引用已失效，请重新选择"
+              : status === "ambiguous"
+                ? "有多个匹配片段，请选择轨道或目标"
+                : undefined,
         };
       }),
     };
@@ -1111,9 +1348,14 @@ export class Timelines {
         fail("E_ASSET_MISSING", "Media changed or is unavailable");
       if ((await this.proxyHash(path)) !== a.sha256)
         fail("E_ASSET_CHANGED", "素材文件已被外部修改，请重新导入", "timeline");
-      if(a.hasAudio===undefined){
-        const source=await this.media.resolveFile({projectId,assetId:a.assetId});
-        renderTimeline.assets.find(x=>x.assetId===a.assetId).hasAudio=source.asset.kind==='audio'||source.asset.media?.hasAudio===true;
+      if (a.hasAudio === undefined) {
+        const source = await this.media.resolveFile({
+          projectId,
+          assetId: a.assetId,
+        });
+        renderTimeline.assets.find((x) => x.assetId === a.assetId).hasAudio =
+          source.asset.kind === "audio" ||
+          source.asset.media?.hasAudio === true;
       }
       if (this.needsProxy(a)) {
         const proxy = await this.proxy(projectId, a),
