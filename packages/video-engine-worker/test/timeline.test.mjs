@@ -236,3 +236,13 @@ test("automatic duration follows ripple while explicit duration retains a tail",
   );
   assert.equal(t.settings.durationFrames, 600);
 });
+
+test('upper timeline tracks cover lower tracks, including crossfade overlays', () => {
+  const t=base();
+  t.tracks=[{trackId:'tr_top',kind:'video',clips:[{clipId:'cl_top',kind:'image',assetId:'as_22222222',startFrame:0,durationFrames:60,outTransition:{durationFrames:15}},{clipId:'cl_top_next',kind:'image',assetId:'as_22222222',startFrame:60,durationFrames:60}]},{trackId:'tr_bottom',kind:'video',clips:[{clipId:'cl_bottom',kind:'media',assetId:'as_12345678',startFrame:0,durationFrames:120,sourceInFrame:0,speed:1}]}];
+  const html=generateComposition(t);
+  const layer=id=>Number(html.match(new RegExp('<[^>]*id="'+id+'"[^>]*z-index:(\\d+)'))?.[1]);
+  assert(layer('cl_top')>layer('cl_bottom'),'upper visual track must win');
+  assert.equal(layer('transition-cl_top_next'),layer('cl_top'));
+  assert.match(html,/id="cl_top"[^>]*data-track-index="0"/,'track identity must not change with visual layering');
+});
