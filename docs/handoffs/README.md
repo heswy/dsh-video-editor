@@ -1,5 +1,9 @@
 # 当前交接入口
 
+## 最新入口：alpha.11 轨道叠放修复
+
+2026-10-22 按用户要求改为上轨覆盖下轨，预览/导出共用修正层级；source/固定候选红蓝像素测试通过，官方管理器安装 alpha.11 / engine 0.8.3，真实 DSH 新预览确认上轨层级更高。固定 runtime `0381bf0`，详情见 [任务](../tasks/V1-upper-track-priority.md) 与 [STATUS](../STATUS.md)。alpha.10 回滚保留，用户工程未重写，未公开发布。
+
 ## 最新入口：alpha.10 跨轨拖动反馈
 
 2026-10-22 增加片段拎起跟手、源占位和目标落点反馈；source/固定候选各 45 项交互回归通过，已通过官方管理器安装 alpha.10，runtime `ad9a6b2`。当前窗口仍缓存旧 Client，原生控制因捕获失败无法代重启，用户重开 DSH 后需实际验收手感。alpha.9 回滚保留，未发布，见 [任务记录](../tasks/V1-timeline-drag-feedback.md) 与 [STATUS](../STATUS.md)。

@@ -571,6 +571,8 @@ export function generateComposition(t) {
   let body = "",
     animations = "";
   for (const [z, tr] of t.tracks.entries()) {
+    // The first (uppermost) UI track is the foreground. Preserve track indices.
+    const layer = t.tracks.length - z;
     for (const c of tr.clips) {
       let tag,
         attrs = "";
@@ -600,12 +602,12 @@ export function generateComposition(t) {
         const fade = prev.outTransition.durationFrames / 30,
           at = c.startFrame / 30 - fade,
           ref = c.kind === "image" ? a.path : `transition-${c.clipId}.png`;
-        body += `<img id="transition-${c.clipId}" data-start="${at}" data-duration="${fade}" src="${esc(ref)}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain;z-index:${z};opacity:0">`;
+        body += `<img id="transition-${c.clipId}" data-start="${at}" data-duration="${fade}" src="${esc(ref)}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain;z-index:${layer};opacity:0">`;
         animations += `main.fromTo('#transition-${c.clipId}',{opacity:0},{opacity:1,duration:${fade},ease:'none'},${at});`;
       }
       const start = c.startFrame / 30,
         duration = c.durationFrames / 30;
-      body += `<${tag} id="${c.clipId}" data-hf-id="${c.clipId}" data-start="${start}" data-duration="${duration}" data-track-index="${z}" ${attrs} style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain;z-index:${z}">${tag === "div" ? "" : ""}</${tag}>`;
+      body += `<${tag} id="${c.clipId}" data-hf-id="${c.clipId}" data-start="${start}" data-duration="${duration}" data-track-index="${z}" ${attrs} style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain;z-index:${layer}">${tag === "div" ? "" : ""}</${tag}>`;
     }
   }
   // A real GSAP timeline is registered even for a static film. A custom sync
