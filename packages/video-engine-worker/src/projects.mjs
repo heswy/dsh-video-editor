@@ -300,7 +300,8 @@ export class Projects {
           title,
           changed: false,
         };
-      const next = { ...current.manifest, title };
+      const physicalManifest = JSON.parse(await readFile(resolve(current.dir, "project.json"), "utf8"));
+      const next = { ...physicalManifest, assets: current.timeline ? physicalManifest.assets.filter(name => current.timeline.legacyAssets.some(a => a.path === name)) : physicalManifest.assets, title };
       await atomicWrite(
         resolve(current.dir, "project.json"),
         JSON.stringify(next, null, 2) + "\n",
@@ -359,7 +360,7 @@ export class Projects {
     if(this.timelines){const result=await this.timelines.read(id);if(result)return result;}
     return this.readLegacy(id);
   }
-  async readLegacy(id, {ignoreEntry=false}={}) {
+  async readLegacy(id, {ignoreEntry=false, assetNames}={}) {
     const dir = this.handles.get(id);
     if (!dir) fail("E_PROJECT_NOT_OPEN", "Open project first", "project");
     let manifest;
@@ -395,7 +396,7 @@ export class Projects {
       fail("E_PROJECT", "Invalid declared asset list", "project");
     const names = [
       ...(ignoreEntry?[]:[localName(manifest.entry)]),
-      ...manifest.assets.map(localName),
+      ...(assetNames ?? manifest.assets).map(localName),
     ].sort();
     if (new Set(names).size !== names.length || names.includes("project.json"))
       fail("E_PROJECT", "Duplicate or reserved path", "project");
@@ -1167,7 +1168,11 @@ export class Projects {
         // create() later removes would make the next worker start fail with
         // E_CONFIGURATION while reloading the managed registry.
         this.config.projects[projectId] = dir;
-        const opened = await this.open(projectId);
+        let opened = await this.open(projectId);
+        if (p.templateId === "blank-v1") {
+          await this.timelines.createEmpty(projectId, {width, height});
+          opened = await this.inspect(projectId);
+        }
         await ensureHistory(dir, {
           revision: opened.revision,
           html: await readFile(resolve(dir, "index.html"), "utf8"),
@@ -1175,7 +1180,7 @@ export class Projects {
         await addProjectToRegistry(this.config, projectId, dir);
         return {
           projectId,
-          templateId: TEMPLATE_ID,
+          templateId: p.templateId,
           revision: opened.revision,
           width: opened.width,
           height: opened.height,
@@ -1782,7 +1787,7 @@ export function validateCreateProject(p) {
     ["templateId", "title", "width", "height", "fps", "assets"],
     ["templateId"],
   );
-  validTemplateId(p.templateId);
+  if (p.templateId !== "blank-v1") validTemplateId(p.templateId);
   if (p.title !== undefined) string(p.title, 120);
   if (p.width !== undefined) {
     number(p.width, 320, 3840);

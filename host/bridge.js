@@ -555,8 +555,8 @@ export function validateParams(config, method, params) {
     return { projectId: allowedProject(config, params.projectId), sessionId };
   }
   if (method === 'project.create') {
-    if (params.templateId !== TEMPLATE_ID) fail('E_PARAMS', 'Unsupported project template', 'params');
-    const next = { templateId: TEMPLATE_ID };
+    if (![TEMPLATE_ID, 'blank-v1'].includes(params.templateId)) fail('E_PARAMS', 'Unsupported project template', 'params');
+    const next = { templateId: params.templateId };
     if (params.title !== undefined) {
       if (typeof params.title !== 'string' || params.title.length < 1 || params.title.length > 120) fail('E_PARAMS', 'Invalid project title', 'params');
       next.title = params.title;
