@@ -482,6 +482,12 @@ async function inspectCurrentRevision(c, projectId) {
 function buildSample(method, state) {
   const projectId = state.projectId;
   switch (method) {
+    case "timeline.inspect":return {projectId};
+    case "timeline.apply":return {projectId,expectedRevision:state.revision,operationId:'schema-timeline',ops:[{op:'timeline.settings',background:'#000000'}]};
+    case "timeline.resolve":return {projectId,refs:[{kind:'index',index:1}]};
+    case "timeline.undo":case "timeline.redo":return {projectId,expectedRevision:state.revision,operationId:'schema-step'};
+    case "scene.compose":return {projectId,expectedRevision:state.revision,operationId:'schema-compose',html:COMPOSITION_HTML};
+    case "scene.inspect":return {projectId,clipId:'cl_00000000'};
     case "doctor":
     case "shutdown":
       return {};
@@ -577,6 +583,7 @@ function buildSample(method, state) {
       };
     case "preview.snapshot":
       return { projectId, revision: state.revision, ttlMs: 60000 };
+    case "preview.files":return {snapshotId:"a".repeat(32),offset:0};
     case "preview.release":
       return { snapshotId: "a".repeat(32) };
     default:

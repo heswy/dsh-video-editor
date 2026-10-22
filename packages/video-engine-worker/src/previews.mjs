@@ -20,7 +20,7 @@ export const DEFAULT_PREVIEW_TTL_MS = 10 * 60 * 1000;
 export const MAX_PREVIEW_TTL_MS = 30 * 60 * 1000;
 // Previews copy exactly what read() already accepted: entry + declared assets
 // (manifest upper bound 64 assets). The byte ceiling mirrors the project limit.
-export const MAX_PREVIEW_FILES = 65;
+export const MAX_PREVIEW_FILES = 1024;
 export const MAX_PREVIEW_BYTES = 128 * 1024 * 1024;
 const SNAPSHOT_ID = /^[a-f0-9]{32}$/;
 

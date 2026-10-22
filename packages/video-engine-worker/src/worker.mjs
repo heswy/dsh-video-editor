@@ -1,3 +1,4 @@
+import { Timelines } from "./timeline.mjs";
 import { MediaLibrary, validateImportMedia, validateAssetList, validateAssetRemove } from "./assets.mjs";
 import { readFile, mkdir } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
@@ -124,6 +125,18 @@ async function method(name, p) {
     case "project.rename":
       validateProjectRename(p);
       return store.rename(p);
+    case "timeline.inspect":
+    case "timeline.apply":
+    case "timeline.resolve":
+    case "timeline.undo":
+    case "timeline.redo":
+    case "scene.compose":
+    case "scene.inspect": {
+      const fields={"timeline.inspect":["view","trackId","offset","limit"],"timeline.apply":["expectedRevision","operationId","ops","dryRun"],"timeline.resolve":["revision","refs"],"timeline.undo":["expectedRevision","operationId"],"timeline.redo":["expectedRevision","operationId"],"scene.compose":["expectedRevision","operationId","clipId","trackId","startFrame","html","mode","label"],"scene.inspect":["clipId"]};
+      keys(p,["projectId",...fields[name]],["projectId"]);string(p.projectId);store.assertNotClosing(p.projectId);
+      const timelines=store.timelines??(store.timelines=new Timelines(store,media));
+      return store.queue(p.projectId,()=> name==="timeline.inspect"?timelines.inspect(p):name==="timeline.resolve"?timelines.resolve(p):name.startsWith("scene.")?timelines.scene(p):timelines.apply(p,name==="timeline.undo"?"undo":name==="timeline.redo"?"redo":undefined));
+    }
     case "asset.importMedia":
       validateImportMedia(p); store.assertNotClosing(p.projectId);
       return store.queue(p.projectId,()=>media.importMedia(p));
@@ -157,12 +170,15 @@ async function method(name, p) {
       return store.revise(p);
     case "history":
       validateHistory(p);
+      if(await store.timelines.load(p.projectId))fail("E_TIMELINE_MODE","Use timeline.inspect for timeline history");
       return store.history(p);
     case "undo":
       validateHistoryStep(p);
+      if(await store.timelines.load(p.projectId))fail("E_TIMELINE_MODE","Use timeline.undo for this project");
       return store.undo(p);
     case "redo":
       validateHistoryStep(p);
+      if(await store.timelines.load(p.projectId))fail("E_TIMELINE_MODE","Use timeline.redo for this project");
       return store.redo(p);
     case "frame":
     case "render":
@@ -210,6 +226,11 @@ async function method(name, p) {
           fail("E_PARAMS", "ttlMs must be an integer");
       }
       return store.previewSnapshot(p);
+    case "preview.files": {
+      keys(p,["snapshotId","offset"],["snapshotId","offset"]);if(!validSnapshotId(p.snapshotId)||!Number.isSafeInteger(p.offset)||p.offset<0)fail("E_PARAMS","Invalid snapshot page");
+      const snapshot=store.previews.entries.get(p.snapshotId);if(!snapshot)fail("E_SNAPSHOT_NOT_FOUND","Snapshot expired");
+      return {snapshotId:p.snapshotId,projectId:snapshot.projectId,revision:snapshot.revision,files:snapshot.files.slice(p.offset,p.offset+100),fileCount:snapshot.files.length,nextOffset:p.offset+100<snapshot.files.length?p.offset+100:null};
+    }
     case "preview.release":
       keys(p, ["snapshotId"], ["snapshotId"]);
       string(p.snapshotId, 64);
@@ -311,6 +332,7 @@ try {
   store = new Projects(config, { diagnostic });
   jobs = new Jobs(store, config);
   media = new MediaLibrary({config:store.config,diagnostic});
+  store.timelines = new Timelines(store,media);
   // Discards private preview copies left behind by a previous process before
   // serving the first request.
   await store.initialize();

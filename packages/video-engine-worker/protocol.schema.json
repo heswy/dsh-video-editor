@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:dsh-video-engine-worker:v1",
   "title": "JSON Lines request and response frames; byte limits specified in README",
-  "$comment": "The response envelope carries no method field, so x-methods maps every method to its request and result definition; contract tests validate both directions against this file. Result definitions describe the worker's published result shape for Version 1 (0.5.0). Params schemas enforce structure, keys, types, ranges and path/name shape (edit ops include text/timing/layout/style); checks that depend on disk or referenced file state (inbox existence, image signature, duplicate assets, content size, revision currency) remain worker-side and can still reject a schema-valid request with E_ASSET_MISSING/E_PARAMS/E_REVISION_CONFLICT/E_LIMIT/E_COMPOSE_INVALID. The composition HTML byte ceiling is a UTF-8 byte limit enforced by the worker (JSON Schema maxLength counts characters, so an ASCII string may still be rejected with E_COMPOSE_INVALID).",
+  "$comment": "The response envelope carries no method field, so x-methods maps every method to its request and result definition; contract tests validate both directions against this file. Result definitions describe the worker's published result shape for Version 1 (0.6.0). Params schemas enforce structure, keys, types, ranges and path/name shape (edit ops include text/timing/layout/style); checks that depend on disk or referenced file state (inbox existence, image signature, duplicate assets, content size, revision currency) remain worker-side and can still reject a schema-valid request with E_ASSET_MISSING/E_PARAMS/E_REVISION_CONFLICT/E_LIMIT/E_COMPOSE_INVALID. The composition HTML byte ceiling is a UTF-8 byte limit enforced by the worker (JSON Schema maxLength counts characters, so an ASCII string may still be rejected with E_COMPOSE_INVALID).",
   "x-methods": {
     "doctor": {
       "request": "#/$defs/request_doctor",
@@ -119,6 +119,38 @@
     "asset.derive": {
       "request": "#/$defs/request_asset_derive",
       "result": "#/$defs/result_asset_derive"
+    },
+    "timeline.inspect": {
+      "request": "#/$defs/request_timeline_inspect",
+      "result": "#/$defs/result_timeline_inspect"
+    },
+    "timeline.apply": {
+      "request": "#/$defs/request_timeline_apply",
+      "result": "#/$defs/result_timeline_apply"
+    },
+    "timeline.resolve": {
+      "request": "#/$defs/request_timeline_resolve",
+      "result": "#/$defs/result_timeline_resolve"
+    },
+    "timeline.undo": {
+      "request": "#/$defs/request_timeline_undo",
+      "result": "#/$defs/result_timeline_undo"
+    },
+    "timeline.redo": {
+      "request": "#/$defs/request_timeline_redo",
+      "result": "#/$defs/result_timeline_redo"
+    },
+    "scene.compose": {
+      "request": "#/$defs/request_scene_compose",
+      "result": "#/$defs/result_scene_compose"
+    },
+    "scene.inspect": {
+      "request": "#/$defs/request_scene_inspect",
+      "result": "#/$defs/result_scene_inspect"
+    },
+    "preview.files": {
+      "request": "#/$defs/request_preview_files",
+      "result": "#/$defs/result_preview_files"
     }
   },
   "oneOf": [
@@ -127,6 +159,30 @@
     },
     {
       "$ref": "#/$defs/response"
+    },
+    {
+      "$ref": "#/$defs/request_timeline_inspect"
+    },
+    {
+      "$ref": "#/$defs/request_timeline_apply"
+    },
+    {
+      "$ref": "#/$defs/request_timeline_resolve"
+    },
+    {
+      "$ref": "#/$defs/request_timeline_undo"
+    },
+    {
+      "$ref": "#/$defs/request_timeline_redo"
+    },
+    {
+      "$ref": "#/$defs/request_scene_compose"
+    },
+    {
+      "$ref": "#/$defs/request_scene_inspect"
+    },
+    {
+      "$ref": "#/$defs/request_preview_files"
     }
   ],
   "$defs": {
@@ -148,6 +204,9 @@
         "sha256": {
           "type": "string",
           "pattern": "^[a-f0-9]{64}$"
+        },
+        "media": {
+          "type": "boolean"
         }
       },
       "required": [
@@ -1273,7 +1332,7 @@
         "timeoutMs": {
           "type": "number",
           "minimum": 100,
-          "maximum": 900000
+          "maximum": 21600000
         }
       },
       "required": [
@@ -2526,7 +2585,7 @@
         "files": {
           "type": "array",
           "minItems": 1,
-          "maxItems": 65,
+          "maxItems": 100,
           "items": {
             "$ref": "#/$defs/fileEntry"
           }
@@ -2538,6 +2597,15 @@
         },
         "maxBytes": {
           "const": 134217728
+        },
+        "fileCount": {
+          "type": "integer"
+        },
+        "nextOffset": {
+          "type": [
+            "integer",
+            "null"
+          ]
         }
       },
       "required": [
@@ -3838,6 +3906,529 @@
         "kind",
         "ready"
       ]
+    },
+    "params_timeline_inspect": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string"
+        },
+        "view": {
+          "type": "string"
+        },
+        "trackId": {
+          "type": "string"
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "projectId"
+      ],
+      "additionalProperties": false
+    },
+    "request_timeline_inspect": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "id": {
+          "$ref": "#/$defs/requestId"
+        },
+        "method": {
+          "const": "timeline.inspect"
+        },
+        "params": {
+          "$ref": "#/$defs/params_timeline_inspect"
+        }
+      },
+      "required": [
+        "v",
+        "id",
+        "method",
+        "params"
+      ]
+    },
+    "result_timeline_inspect": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string"
+        },
+        "revision": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "projectId",
+        "revision"
+      ],
+      "additionalProperties": true
+    },
+    "params_timeline_apply": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string"
+        },
+        "expectedRevision": {
+          "type": "string"
+        },
+        "operationId": {
+          "type": "string"
+        },
+        "ops": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "type": "object"
+          }
+        },
+        "dryRun": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "projectId",
+        "expectedRevision",
+        "operationId",
+        "ops"
+      ],
+      "additionalProperties": false
+    },
+    "request_timeline_apply": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "id": {
+          "$ref": "#/$defs/requestId"
+        },
+        "method": {
+          "const": "timeline.apply"
+        },
+        "params": {
+          "$ref": "#/$defs/params_timeline_apply"
+        }
+      },
+      "required": [
+        "v",
+        "id",
+        "method",
+        "params"
+      ]
+    },
+    "result_timeline_apply": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string"
+        },
+        "revision": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "projectId",
+        "revision"
+      ],
+      "additionalProperties": true
+    },
+    "params_timeline_resolve": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string"
+        },
+        "revision": {
+          "type": "string"
+        },
+        "refs": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "type": "object"
+          }
+        }
+      },
+      "required": [
+        "projectId",
+        "refs"
+      ],
+      "additionalProperties": false
+    },
+    "request_timeline_resolve": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "id": {
+          "$ref": "#/$defs/requestId"
+        },
+        "method": {
+          "const": "timeline.resolve"
+        },
+        "params": {
+          "$ref": "#/$defs/params_timeline_resolve"
+        }
+      },
+      "required": [
+        "v",
+        "id",
+        "method",
+        "params"
+      ]
+    },
+    "result_timeline_resolve": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string"
+        },
+        "revision": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "projectId",
+        "revision"
+      ],
+      "additionalProperties": true
+    },
+    "params_timeline_undo": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string"
+        },
+        "expectedRevision": {
+          "type": "string"
+        },
+        "operationId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "projectId",
+        "expectedRevision",
+        "operationId"
+      ],
+      "additionalProperties": false
+    },
+    "request_timeline_undo": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "id": {
+          "$ref": "#/$defs/requestId"
+        },
+        "method": {
+          "const": "timeline.undo"
+        },
+        "params": {
+          "$ref": "#/$defs/params_timeline_undo"
+        }
+      },
+      "required": [
+        "v",
+        "id",
+        "method",
+        "params"
+      ]
+    },
+    "result_timeline_undo": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string"
+        },
+        "revision": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "projectId",
+        "revision"
+      ],
+      "additionalProperties": true
+    },
+    "params_timeline_redo": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string"
+        },
+        "expectedRevision": {
+          "type": "string"
+        },
+        "operationId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "projectId",
+        "expectedRevision",
+        "operationId"
+      ],
+      "additionalProperties": false
+    },
+    "request_timeline_redo": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "id": {
+          "$ref": "#/$defs/requestId"
+        },
+        "method": {
+          "const": "timeline.redo"
+        },
+        "params": {
+          "$ref": "#/$defs/params_timeline_redo"
+        }
+      },
+      "required": [
+        "v",
+        "id",
+        "method",
+        "params"
+      ]
+    },
+    "result_timeline_redo": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string"
+        },
+        "revision": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "projectId",
+        "revision"
+      ],
+      "additionalProperties": true
+    },
+    "params_scene_compose": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string"
+        },
+        "expectedRevision": {
+          "type": "string"
+        },
+        "operationId": {
+          "type": "string"
+        },
+        "clipId": {
+          "type": "string"
+        },
+        "trackId": {
+          "type": "string"
+        },
+        "startFrame": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "html": {
+          "type": "string"
+        },
+        "mode": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "projectId",
+        "expectedRevision",
+        "operationId"
+      ],
+      "additionalProperties": false
+    },
+    "request_scene_compose": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "id": {
+          "$ref": "#/$defs/requestId"
+        },
+        "method": {
+          "const": "scene.compose"
+        },
+        "params": {
+          "$ref": "#/$defs/params_scene_compose"
+        }
+      },
+      "required": [
+        "v",
+        "id",
+        "method",
+        "params"
+      ]
+    },
+    "result_scene_compose": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string"
+        },
+        "revision": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "projectId",
+        "revision"
+      ],
+      "additionalProperties": true
+    },
+    "params_scene_inspect": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string"
+        },
+        "clipId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "projectId",
+        "clipId"
+      ],
+      "additionalProperties": false
+    },
+    "request_scene_inspect": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "id": {
+          "$ref": "#/$defs/requestId"
+        },
+        "method": {
+          "const": "scene.inspect"
+        },
+        "params": {
+          "$ref": "#/$defs/params_scene_inspect"
+        }
+      },
+      "required": [
+        "v",
+        "id",
+        "method",
+        "params"
+      ]
+    },
+    "result_scene_inspect": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string"
+        },
+        "revision": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "projectId",
+        "revision"
+      ],
+      "additionalProperties": true
+    },
+    "params_preview_files": {
+      "type": "object",
+      "properties": {
+        "snapshotId": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{32}$"
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "snapshotId",
+        "offset"
+      ],
+      "additionalProperties": false
+    },
+    "request_preview_files": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "id": {
+          "$ref": "#/$defs/requestId"
+        },
+        "method": {
+          "const": "preview.files"
+        },
+        "params": {
+          "$ref": "#/$defs/params_preview_files"
+        }
+      },
+      "required": [
+        "v",
+        "id",
+        "method",
+        "params"
+      ]
+    },
+    "result_preview_files": {
+      "type": "object",
+      "properties": {
+        "snapshotId": {
+          "type": "string"
+        },
+        "files": {
+          "type": "array",
+          "maxItems": 100
+        },
+        "fileCount": {
+          "type": "integer"
+        },
+        "nextOffset": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "snapshotId",
+        "files"
+      ],
+      "additionalProperties": true
     }
   }
 }

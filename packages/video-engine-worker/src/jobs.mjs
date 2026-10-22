@@ -17,7 +17,7 @@ export const MAX_FRAME_TIMES = 4;
  * that is also its default. Both bounds are mirrored by the Host validator.
  */
 export const FRAME_TIMEOUT_MS = 120000;
-export const MAX_RENDER_TIMEOUT_MS = 900000;
+export const MAX_RENDER_TIMEOUT_MS = 21600000;
 const FRAME_TILE_MAX_WIDTH = 480;
 const CONTACT_SHEET_TIMEOUT_MS = 30000;
 
@@ -313,7 +313,7 @@ export class Jobs {
         signal: job.controller.signal,
         timeoutMs:
           p.timeoutMs ??
-          (job.kind === "render" ? MAX_RENDER_TIMEOUT_MS : FRAME_TIMEOUT_MS),
+          (job.kind === "render" ? Math.min(MAX_RENDER_TIMEOUT_MS,Math.max(300000,60000+140*Math.round(doc.compositionDuration*30))) : FRAME_TIMEOUT_MS),
         onOutput: (s) => {
           const m = s.match(/Streaming frame (\d+)\/(\d+)/);
           if (m) {

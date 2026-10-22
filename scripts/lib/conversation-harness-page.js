@@ -650,7 +650,8 @@
       SessionProvider: FakeSessionProvider,
       renderFactorySlot: fakeRenderFactorySlot,
     };
-    root.render(createElement(MODULE.VideoWorkspace, props));
+    // Legacy composition retention suite. M3 timeline gestures/media have their own real Host/Chrome suite.
+    root.render(createElement(MODULE.VideoWorkspace, {...props,timelineEnabled:false}));
     return true;
   }
 

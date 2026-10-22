@@ -1,3 +1,4 @@
+import { linkMedia } from "./timeline.mjs";
 import {
   realpath,
   readFile,
@@ -355,6 +356,10 @@ export class Projects {
     }
   }
   async read(id) {
+    if(this.timelines){const result=await this.timelines.read(id);if(result)return result;}
+    return this.readLegacy(id);
+  }
+  async readLegacy(id, {ignoreEntry=false}={}) {
     const dir = this.handles.get(id);
     if (!dir) fail("E_PROJECT_NOT_OPEN", "Open project first", "project");
     let manifest;
@@ -389,7 +394,7 @@ export class Projects {
     if (!Array.isArray(manifest.assets) || manifest.assets.length > 64)
       fail("E_PROJECT", "Invalid declared asset list", "project");
     const names = [
-      localName(manifest.entry),
+      ...(ignoreEntry?[]:[localName(manifest.entry)]),
       ...manifest.assets.map(localName),
     ].sort();
     if (new Set(names).size !== names.length || names.includes("project.json"))
@@ -432,6 +437,7 @@ export class Projects {
   async inspect(id) {
     this.assertActive(id);
     const p = await this.read(id);
+    if(p.timeline)return {projectId:id,revision:p.revision,title:p.title,width:p.timeline.settings.width,height:p.timeline.settings.height,duration:p.timeline.settings.durationFrames/30,elements:[],scenes:[],files:p.entries.slice(0,50),...(p.entries.length>50?{fileCount:p.entries.length,filesTruncated:true}:{}),timeline:true};
     const comp = await openComposition(
       p.files.get(p.manifest.entry).toString(),
     );
@@ -505,6 +511,7 @@ export class Projects {
     }
   }
   async edit(id, p) {
+    if(await this.timelines?.load(id))fail("E_TIMELINE_MODE","Use timeline.apply or scene.compose for this project","timeline");
     this.assertActive(id);
     return this.queue(id, async () => {
       const signature = sha(
@@ -731,6 +738,7 @@ export class Projects {
   // project: `compose` replaces it atomically (creation and every later edit),
   // `source` reads it back byte-exactly for the next modification.
   async compose(id, p) {
+    if(await this.timelines?.load(id))fail("E_TIMELINE_MODE","Use timeline.apply or scene.compose for this project","timeline");
     this.assertActive(id);
     return this.queue(id, async () => {
       const signature = sha(
@@ -916,6 +924,7 @@ export class Projects {
     });
   }
   async source(id) {
+    if(await this.timelines?.load(id))fail("E_TIMELINE_MODE","Use timeline.inspect and scene.inspect for this project","timeline");
     this.assertActive(id);
     return this.queue(id, async () => {
       const current = await this.read(id);
@@ -1012,6 +1021,7 @@ export class Projects {
           await mkdir(dirname(path), { recursive: true });
           await writeFile(path, b);
         }
+        await linkMedia(p.mediaRefs,destination);
         return {
           projectId: id,
           revision,
@@ -1047,6 +1057,9 @@ export class Projects {
         entries: current.entries,
         ttlMs: p.ttlMs ?? DEFAULT_PREVIEW_TTL_MS,
       });
+      if(current.mediaRefs?.length){await linkMedia(current.mediaRefs,this.previews.entries.get(snapshot.snapshotId).dir);
+        for(const ref of current.mediaRefs){const {source,...entry}=ref;snapshot.files.push(entry);}
+      }
       const after = await this.read(p.projectId);
       if (after.revision !== current.revision) {
         await this.previews.discard(snapshot.snapshotId);
@@ -1056,7 +1069,7 @@ export class Projects {
           "preview",
         );
       }
-      return snapshot;
+      return snapshot.files.length>100?{...snapshot,files:snapshot.files.slice(0,100),fileCount:snapshot.files.length,nextOffset:100}:snapshot;
     });
   }
   previewRelease(p) {
@@ -1185,6 +1198,7 @@ export class Projects {
     });
   }
   async importAsset(p) {
+    if(await this.timelines?.load(p.projectId))fail("E_TIMELINE_MODE","Use timeline.apply or scene.compose for this project","timeline");
     this.assertActive(p.projectId);
     return this.queue(p.projectId, async () => {
       const signature = sha(JSON.stringify(p));
@@ -1233,6 +1247,7 @@ export class Projects {
     });
   }
   async sceneOperation(p, kind, mutate) {
+    if(await this.timelines?.load(p.projectId))fail("E_TIMELINE_MODE","Use scene.compose or timeline.apply for this project","timeline");
     this.assertActive(p.projectId);
     return this.queue(p.projectId, async () => {
       const signature = sha(JSON.stringify(p));
@@ -1429,6 +1444,7 @@ export class Projects {
     return { adopted, kept: [], added, removed };
   }
   async revise(p) {
+    if(await this.timelines?.load(p.projectId))fail("E_TIMELINE_MODE","Use timeline.apply or scene.compose for this project","timeline");
     this.assertActive(p.projectId);
     return this.queue(p.projectId, async () => {
       const signature = sha(JSON.stringify(p));

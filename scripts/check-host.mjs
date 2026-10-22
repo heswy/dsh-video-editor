@@ -927,7 +927,7 @@ async function main() {
     );
     // Everything outside the render bound is rejected before the worker is asked.
     const requestsBefore = client.requests.length;
-    for (const invalid of [900001, 99, 0, -1, '100', null]) {
+    for (const invalid of [21600001, 99, 0, -1, '100', null]) {
       const error = await rejects(() => bridge.invoke('render', { projectId: PROJECT, revision: REVISION, timeoutMs: invalid }));
       assert(error.code === 'E_PARAMS', `render accepted timeoutMs=${JSON.stringify(invalid)}: ${error.code}`);
     }
