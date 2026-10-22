@@ -1,5 +1,11 @@
 # 当前项目状态
 
+## 最新：alpha.11 上轨覆盖下轨（2026-10-22）
+
+修正多视频轨叠放方向：上方视频轨优先显示，转场叠层沿用同轨优先级，轨道 ID/顺序/工程内容不改。bundle **1.0.0-alpha.11** / engine **0.8.3**，固定 runtime `0381bf0`、root=engine、clean；`artifacts/p2-b/staging-v1.0.0-alpha.11-upper-track`，INTEGRITY `35c4c78577fcee6ded26f21180ea804bee350b47d99766c5cef65363dc448041`。source 与固定候选实际帧/MP4 像素验证：上轨红色优先，隐藏后下轨蓝色可见；58/86/71、worker 79、client 22（1 项可选跳过）、版本 10 通过。见 [叠放修复](tasks/V1-upper-track-priority.md)。
+
+已通过官方管理器安装 alpha.11（applied、warnings=[]）；真实 DSH 浏览器重新进入工程并等待预览 ready，实际 DOM 确认上轨 index 0/z-index 2，下轨 index 1/z-index 1，新引擎已生效。此为引擎修复，不依赖新 Client；保留 alpha.10 回滚，未公开发布。
+
 ## 最新：alpha.10 跨轨拖动反馈（2026-10-22）
 
 用户反馈上下拖动只在松手后换轨，缺少“拎起来”的感觉。现已增加片段跟手 X/Y 位移、提升阴影/描边、原位虚线占位、目标轨道高亮和吸附落点；无效跨轨重叠/不兼容轨道拒绝，Escape/失焦/指针取消清理预演，松手才写入。source 与固定候选 Chrome 工作区各 **45** 项、门禁 58/86/71、版本 10 通过，详见 [拖动修复](tasks/V1-timeline-drag-feedback.md)。
