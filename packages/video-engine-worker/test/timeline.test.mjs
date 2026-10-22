@@ -199,11 +199,11 @@ test("crossfade only accepts adjacent bounded clips", () => {
     { code: "E_TRANSITION_INVALID" },
   );
 });
-test("serializer deterministic, muted audio omitted, safe local src and z order", () => {
+test("serializer deterministic, authored gain, safe local src and z order", () => {
   const b = base();
   assert.equal(generateComposition(b), generateComposition(structuredClone(b)));
   const html = generateComposition(b);
-  assert.ok(html.includes('data-volume="0"'));
+  assert.ok(html.includes('data-volume="1"'));
   assert.ok(html.includes("window.__timelines={main}"));
   assert.ok(html.includes("media/12345678.mp4"));
   assert.equal(/<audio/.test(html), false);

@@ -446,6 +446,10 @@ function applyProperty(dom, name, value, previousValue, tagName) {
     dom.innerHTML = html;
     return;
   }
+  if (name === 'defaultValue') {
+    dom.defaultValue = value === null || value === undefined ? '' : String(value);
+    return;
+  }
   if (name === 'value') {
     if (tagName === 'textarea' || tagName === 'input' || tagName === 'select') {
       const text = value === null || value === undefined ? '' : String(value);

@@ -4,6 +4,7 @@ import { execFileSync } from "node:child_process";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomUUID, createHash } from "node:crypto";
+import { audioMixPlan } from "./audio.mjs";
 import { runOwned } from "./process.mjs";
 import { fail, number } from "./errors.mjs";
 const packageRoot = fileURLToPath(new URL("../", import.meta.url));
@@ -37,7 +38,11 @@ export function frameTimeLabel(time) {
  * normalized; normalizing again here keeps a direct JSONL caller deterministic.
  */
 export function normalizeFrameTimes(value) {
-  if (!Array.isArray(value) || value.length < 1 || value.length > MAX_FRAME_TIMES)
+  if (
+    !Array.isArray(value) ||
+    value.length < 1 ||
+    value.length > MAX_FRAME_TIMES
+  )
     fail("E_PARAMS", `times must list 1-${MAX_FRAME_TIMES} frame times`);
   const seen = new Set();
   const times = [];
@@ -231,14 +236,16 @@ export class Jobs {
       const doc = buildDocument(
         (await readFile(resolve(snapshot, meta.entry))).toString(),
       );
-      if (!(
-        doc.width > 0 &&
-        doc.width <= 3840 &&
-        doc.height > 0 &&
-        doc.height <= 2160 &&
-        doc.compositionDuration > 0 &&
-        doc.compositionDuration <= 3600
-      ))
+      if (
+        !(
+          doc.width > 0 &&
+          doc.width <= 3840 &&
+          doc.height > 0 &&
+          doc.height <= 2160 &&
+          doc.compositionDuration > 0 &&
+          doc.compositionDuration <= 3600
+        )
+      )
         fail(
           "E_PROJECT",
           "Unsupported composition dimensions/duration",
@@ -313,7 +320,15 @@ export class Jobs {
         signal: job.controller.signal,
         timeoutMs:
           p.timeoutMs ??
-          (job.kind === "render" ? Math.min(MAX_RENDER_TIMEOUT_MS,Math.max(300000,60000+140*Math.round(doc.compositionDuration*30))) : FRAME_TIMEOUT_MS),
+          (job.kind === "render"
+            ? Math.min(
+                MAX_RENDER_TIMEOUT_MS,
+                Math.max(
+                  300000,
+                  60000 + 140 * Math.round(doc.compositionDuration * 30),
+                ),
+              )
+            : FRAME_TIMEOUT_MS),
         onOutput: (s) => {
           const m = s.match(/Streaming frame (\d+)\/(\d+)/);
           if (m) {
@@ -334,6 +349,158 @@ export class Jobs {
       }
       if (result.status !== "complete")
         fail("E_RENDER", "Upstream engine failed", "engine");
+      if (job.kind === "render" && meta.timeline) {
+        const mix = audioMixPlan(meta.timeline, snapshot);
+        if (mix.sources.length) {
+          job.stage = "audio";
+          const mixed = resolve(job.temp, "mixed.mp4");
+          const mixArgs = [
+            "-i",
+            produced,
+            ...mix.sources.flatMap((p) => ["-i", p]),
+          ];
+          const measure = await runOwned(
+            [
+              "ffmpeg",
+              "-hide_banner",
+              "-nostats",
+              ...mixArgs,
+              "-filter_complex",
+              mix.filter.replace(
+                "loudnorm=I=-16:TP=-1.5:LRA=11",
+                "loudnorm=I=-16:TP=-1.5:LRA=50:print_format=json",
+              ),
+              "-map",
+              "[aout]",
+              "-f",
+              "null",
+              "-",
+            ],
+            {
+              temp: job.temp,
+              cwd: packageRoot,
+              env: this.env(job.temp, job.kind),
+              signal: job.controller.signal,
+              timeoutMs: Math.min(
+                MAX_RENDER_TIMEOUT_MS,
+                Math.max(120000, mix.duration * 2000),
+              ),
+            },
+          );
+          if (measure.status === "cancelled") {
+            final = "cancelled";
+            return;
+          }
+          if (measure.status !== "complete")
+            fail("E_AUDIO_MIX", "Audio loudness measurement failed", "audio");
+          const report = measure.output.match(/\{\s*"input_i"[\s\S]*?\}/)?.[0];
+          if (!report)
+            fail("E_AUDIO_MIX", "Audio loudness measurement missing", "audio");
+          const levels = JSON.parse(report);
+          if (Number.isFinite(Number(levels.input_i))) {
+            const norm = `loudnorm=I=-16:TP=-1.5:LRA=50:measured_I=${levels.input_i}:measured_TP=${levels.input_tp}:measured_LRA=${levels.input_lra}:measured_thresh=${levels.input_thresh}:offset=${levels.target_offset}:linear=true`;
+            mix.filter = mix.filter.replace(
+              "loudnorm=I=-16:TP=-1.5:LRA=11",
+              norm,
+            );
+          }
+          const run = await runOwned(
+            [
+              "ffmpeg",
+              "-v",
+              "error",
+              "-y",
+              "-i",
+              produced,
+              ...mix.sources.flatMap((p) => ["-i", p]),
+              "-filter_complex",
+              mix.filter,
+              "-map",
+              "0:v:0",
+              "-map",
+              "[aout]",
+              "-c:v",
+              "copy",
+              "-c:a",
+              "aac",
+              "-ar",
+              "48000",
+              "-ac",
+              "2",
+              "-b:a",
+              "192k",
+              "-t",
+              String(mix.duration),
+              "-movflags",
+              "+faststart",
+              mixed,
+            ],
+            {
+              temp: job.temp,
+              cwd: packageRoot,
+              env: this.env(job.temp, job.kind),
+              signal: job.controller.signal,
+              timeoutMs: Math.min(
+                MAX_RENDER_TIMEOUT_MS,
+                Math.max(120000, mix.duration * 2000),
+              ),
+            },
+          );
+          job.ownedPids.push(...(run.ownedPids || []));
+          if (run.status === "cancelled") {
+            final = "cancelled";
+            return;
+          }
+          if (run.status !== "complete") {
+            job.audioFailures = [
+              {
+                code: "E_AUDIO_MIX",
+                message: "音频混音失败，未发布静音替代品",
+              },
+            ];
+            fail("E_AUDIO_MIX", "Audio mixing failed", "audio");
+          }
+          const probe = await runOwned(
+            [
+              "ffprobe",
+              "-v",
+              "error",
+              "-select_streams",
+              "a:0",
+              "-show_entries",
+              "stream=codec_name,sample_rate,channels",
+              "-of",
+              "json",
+              mixed,
+            ],
+            {
+              temp: job.temp,
+              cwd: packageRoot,
+              env: this.env(job.temp, job.kind),
+              signal: job.controller.signal,
+              timeoutMs: 15000,
+            },
+          );
+          const stream =
+            probe.status === "complete"
+              ? JSON.parse(probe.output).streams?.[0]
+              : null;
+          if (
+            stream?.codec_name !== "aac" ||
+            Number(stream.sample_rate) !== 48000 ||
+            stream.channels !== 2
+          )
+            fail("E_AUDIO_MIX", "Audio stream validation failed", "audio");
+          job.audio = {
+            codec: "aac",
+            sampleRate: 48000,
+            channels: 2,
+            targetLufs: -16,
+            sources: mix.sources.length,
+          };
+          await rename(mixed, produced);
+        }
+      }
       job.stage = "validate";
       let bytes;
       let metadata;
@@ -402,11 +569,7 @@ export class Jobs {
           if (!validPng(frameBytes, doc.width, doc.height))
             fail("E_METADATA", "PNG validation failed", "validate");
         }
-        const layout = contactSheetLayout(
-          doc.width,
-          doc.height,
-          frames.length,
-        );
+        const layout = contactSheetLayout(doc.width, doc.height, frames.length);
         const sheet = resolve(job.temp, "contact-sheet.png");
         job.stage = "sheet";
         const sheetRun = await runOwned(
@@ -473,6 +636,13 @@ export class Jobs {
       };
       final = "succeeded";
     } catch (e) {
+      if (job.stage === "audio")
+        job.audioFailures ??= [
+          {
+            code: "E_AUDIO_MIX",
+            message: "音频混音或校验失败，未发布静音替代品",
+          },
+        ];
       job.error = {
         code: e.code?.startsWith("E_") ? e.code : "E_RENDER",
         message: "Job failed without publishing an artifact",

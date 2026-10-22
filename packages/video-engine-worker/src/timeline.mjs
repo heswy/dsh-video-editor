@@ -75,7 +75,7 @@ export function validateTimeline(t) {
   if (
     t.assets.length > 256 ||
     t.tracks.filter((x) => x.kind === "video").length > 6 ||
-    t.tracks.filter((x) => x.kind === "audio").length > 8
+    t.tracks.filter((x) => x.kind === "audio").length > 3
   )
     fail("E_LIMIT", "Timeline capacity exceeded", "timeline");
   const ids = new Set(),
@@ -89,6 +89,8 @@ export function validateTimeline(t) {
       !Array.isArray(tr.clips)
     )
       fail("E_TIMELINE_INVALID", "Invalid track", "timeline");
+    if(tr.gainDb!==undefined)num(tr.gainDb,-60,12);
+    for(const flag of ['muted','hidden','locked'])if(tr[flag]!==undefined&&typeof tr[flag]!=='boolean')fail('E_TIMELINE_INVALID','Invalid track flag');
     ids.add(tr.trackId);
     if (tr.clips.length > 200)
       fail("E_LIMIT", "Track clip capacity exceeded", "timeline");
@@ -119,8 +121,8 @@ export function validateTimeline(t) {
         const a = assets.get(c.assetId);
         if (!a)
           fail("E_ASSET_NOT_FOUND", "Referenced asset is missing", "timeline");
-        if (tr.kind === "audio" || a.kind === "audio")
-          fail("E_TRACK_KIND", "Audio editing is available in M4", "timeline");
+        if ((tr.kind === "audio") !== (a.kind === "audio"))
+          fail("E_TRACK_KIND", "Audio assets require an audio track", "timeline");
         if ((c.kind === "image") !== (a.kind === "image"))
           fail("E_ASSET_KIND", "Clip and asset kinds differ", "timeline");
         if (c.kind !== "image") {
@@ -221,7 +223,7 @@ export function applyOperations(input, ops) {
         const tr = {
           trackId: id("tr_"),
           kind: o.kind,
-          name: o.name ? text(o.name) : "视频轨",
+          name: o.name ? text(o.name) : o.kind === "audio" ? "音频轨" : "视频轨",
           clips: [],
         };
         let at = o.afterTrackId
@@ -342,6 +344,9 @@ export function applyOperations(input, ops) {
                 ((o.atFrame - c.startFrame) * (c.speed ?? 1) * fps) / 30,
               );
             c.durationFrames = o.atFrame - c.startFrame;
+            if(c.fadeInFrames!==undefined)c.fadeInFrames=Math.min(c.fadeInFrames,c.durationFrames);
+            if(right.fadeOutFrames!==undefined)right.fadeOutFrames=Math.min(right.fadeOutFrames,right.durationFrames);
+            c.fadeOutFrames=0;right.fadeInFrames=0;
             delete c.outTransition;
             tr.clips.push(right);
             created = [right.clipId];
@@ -369,6 +374,8 @@ export function applyOperations(input, ops) {
                 );
             } else if (o.edge === "out") c.durationFrames += o.deltaFrames;
             else fail("E_PARAMS", "Trim edge must be in or out");
+            if(c.fadeInFrames!==undefined)c.fadeInFrames=Math.min(c.fadeInFrames,c.durationFrames);
+            if(c.fadeOutFrames!==undefined)c.fadeOutFrames=Math.min(c.fadeOutFrames,c.durationFrames);
             if (o.ripple)
               shift(tr, oldEnd, c.startFrame + c.durationFrames - oldEnd, c);
             break;
@@ -425,6 +432,8 @@ export function applyOperations(input, ops) {
               Math.round((c.durationFrames * c.speed) / o.speed),
             );
             c.speed = o.speed;
+            if(c.fadeInFrames!==undefined)c.fadeInFrames=Math.min(c.fadeInFrames,c.durationFrames);
+            if(c.fadeOutFrames!==undefined)c.fadeOutFrames=Math.min(c.fadeOutFrames,c.durationFrames);
             if (o.ripple) shift(tr, oldEnd, c.durationFrames - oldDur, c);
             break;
           case "clip.volume":
@@ -506,14 +515,15 @@ export function generateComposition(t) {
   let body = "",
     animations = "";
   for (const [z, tr] of t.tracks.entries()) {
-    if (tr.hidden || tr.kind === "audio") continue;
+    if (tr.hidden && tr.kind !== "audio") continue;
     for (const c of tr.clips) {
       let tag,
         attrs = "";
       const a = t.assets.find((a) => a.assetId === c.assetId);
       if (c.kind === "media") {
-        tag = "video";
-        attrs = `src="${esc(a.path)}" muted playsinline preload="auto" data-media-start="${c.sourceInFrame / a.fps}" data-playback-rate="${c.speed}" data-volume="0"`;
+        tag = a.kind === "audio" ? "audio" : "video";
+        const gain = tr.muted || c.muted ? 0 : 10 ** (((tr.gainDb ?? 0) + (c.volumeDb ?? 0)) / 20);
+        attrs = `src="${esc(a.path)}" crossorigin="anonymous" playsinline preload="auto" data-media-start="${c.sourceInFrame / a.fps}" data-playback-rate="${c.speed}" data-volume="${gain}" data-has-audio="${a.kind === "audio" || a.hasAudio === true}" data-fade-in="${(c.fadeInFrames??0)/30}" data-fade-out="${(c.fadeOutFrames??0)/30}"`;
       } else if (c.kind === "image") {
         tag = "img";
         attrs = `src="${esc(a.path)}"`;
@@ -741,7 +751,8 @@ export class Timelines {
       return;
     }
     for (const a of index.assets) {
-      if (t.assets.some((x) => x.assetId === a.assetId)) continue;
+      const existing=t.assets.find(x=>x.assetId===a.assetId);
+      if(existing){if(existing.hasAudio===undefined)existing.hasAudio=a.kind==='audio'||a.media?.hasAudio===true;continue;}
       const fps = a.media?.fps || 30;
       t.assets.push({
         assetId: a.assetId,
@@ -752,6 +763,7 @@ export class Timelines {
         bytes: a.bytes,
         fps,
         durationFrames: Math.round((a.media?.durationSec ?? 0) * fps),
+        hasAudio: a.kind === "audio" || a.media?.hasAudio === true,
         videoCodec: a.media?.videoCodec,
         width: a.media?.width,
         height: a.media?.height,
@@ -1099,6 +1111,10 @@ export class Timelines {
         fail("E_ASSET_MISSING", "Media changed or is unavailable");
       if ((await this.proxyHash(path)) !== a.sha256)
         fail("E_ASSET_CHANGED", "素材文件已被外部修改，请重新导入", "timeline");
+      if(a.hasAudio===undefined){
+        const source=await this.media.resolveFile({projectId,assetId:a.assetId});
+        renderTimeline.assets.find(x=>x.assetId===a.assetId).hasAudio=source.asset.kind==='audio'||source.asset.media?.hasAudio===true;
+      }
       if (this.needsProxy(a)) {
         const proxy = await this.proxy(projectId, a),
           digest = await this.proxyHash(proxy.path),
@@ -1179,7 +1195,7 @@ export class Timelines {
       },
       revision: timelineRevision(t),
       mediaRefs: refs,
-      timeline: t,
+      timeline: renderTimeline,
     };
   }
 }

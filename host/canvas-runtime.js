@@ -237,19 +237,48 @@ export const CANVAS_RUNTIME_SOURCE = String.raw`// P3-008 fixed preview runtime,
     }
   }
 
+  let soundEnabled=false, audioContext=null, soundButton=null;
+  const audioNodes=new Map();
+  function enableSoundButton(){
+    if(soundButton||![...main.querySelectorAll('audio,video[data-has-audio="true"]')].some(el=>Number(el.dataset.volume??1)>0))return;
+    soundButton=document.createElement('button');soundButton.textContent='开启声音';soundButton.type='button';
+    soundButton.setAttribute('aria-label','开启预览声音');
+    Object.assign(soundButton.style,{position:'absolute',bottom:'24px',left:'50%',transform:'translateX(-50%)',zIndex:'2147483647',padding:'12px 24px',border:'1px solid #ffffff44',borderRadius:'24px',background:'#18191de8',color:'#fff',fontSize:'20px',cursor:'pointer'});
+    soundButton.addEventListener('click',()=>{void enableSound();});
+    document.body.appendChild(soundButton);
+  }
+  async function enableSound(replyTo=null){
+    enableSoundButton();
+    try{
+      if(soundButton)soundButton.dataset.audioState='activating';
+      audioContext??=new AudioContext();
+      let timer;try{await Promise.race([audioContext.resume(),new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('autoplay')),3000);})]);}finally{clearTimeout(timer);}
+      for(const el of main.querySelectorAll('audio[data-start],video[data-start]')){
+        if(!audioNodes.has(el)){const source=audioContext.createMediaElementSource(el),gain=audioContext.createGain();source.connect(gain).connect(audioContext.destination);audioNodes.set(el,gain);}
+      }
+      soundEnabled=true;
+      if(soundButton){soundButton.dataset.audioState='enabled';soundButton.style.display='none';}
+      renderAt(compositionTime);send('soundEnabled',{},replyTo);
+    }catch{if(soundButton){soundButton.textContent='点击开启声音';soundButton.dataset.audioState='blocked';soundButton.style.display='';}}
+  }
   function renderAt(time) {
     // GSAP state: clamp to the timeline's own duration; the composition may
     // have a static tail after the last tween.
     const animationTime = Math.min(time, timeline.duration());
     timeline.time(animationTime);
     applyTimeWindows(time);
-    for(const el of main.querySelectorAll('video[data-start]')){
+    enableSoundButton();
+    for(const el of main.querySelectorAll('video[data-start],audio[data-start]')){
       const start=Number(el.dataset.start),duration=Number(el.dataset.duration),rate=Number(el.dataset.playbackRate||1);
       const active=time>=start&&time<start+duration;
       const target=Number(el.dataset.mediaStart||0)+Math.max(0,time-start)*rate;
-      el.muted=true;el.playbackRate=rate;
+      el.muted=!soundEnabled;el.playbackRate=rate;
+      const local=Math.max(0,time-start),fadeIn=Number(el.dataset.fadeIn||0),fadeOut=Number(el.dataset.fadeOut||0);
+      const envelope=Math.min(1,fadeIn?local/fadeIn:1,fadeOut?Math.max(0,duration-local)/fadeOut:1);
+      const volume=Number(el.dataset.volume??1)*envelope;
+      const node=audioNodes.get(el);if(node){el.volume=1;node.gain.setValueAtTime(active?volume:0,audioContext.currentTime);}else el.volume=Math.max(0,Math.min(1,volume));
       if(active&&Math.abs(el.currentTime-target)>1/30){try{el.currentTime=target;}catch{}}
-      if(active&&playing&&el.paused)el.play().catch(()=>diagnostic('media-play-failed'));
+      if(active&&playing&&el.paused)el.play().catch(()=>{diagnostic('media-play-failed');if(soundButton){soundButton.style.display='';soundButton.textContent='点击开启声音';}});
       else if((!active||!playing)&&!el.paused)el.pause();
     }
     for(const el of main.querySelectorAll('[data-composition-src]')){
@@ -331,6 +360,7 @@ export const CANVAS_RUNTIME_SOURCE = String.raw`// P3-008 fixed preview runtime,
     "state",
     "seek",
     "play",
+    "enableSound",
     "pause",
     "hitTest",
     "getElements",
@@ -375,6 +405,9 @@ export const CANVAS_RUNTIME_SOURCE = String.raw`// P3-008 fixed preview runtime,
         send("seeked", { time: compositionTime }, replyTo);
         return;
       }
+      case "enableSound":
+        void enableSound(replyTo);
+        return;
       case "play":
         startClock();
         send("playing", { time: compositionTime }, replyTo);
@@ -382,6 +415,7 @@ export const CANVAS_RUNTIME_SOURCE = String.raw`// P3-008 fixed preview runtime,
       case "pause":
         playing = false;
         stopClock();
+        renderAt(compositionTime);
         send("paused", { time: compositionTime }, replyTo);
         return;
       case "hitTest": {
@@ -404,6 +438,8 @@ export const CANVAS_RUNTIME_SOURCE = String.raw`// P3-008 fixed preview runtime,
   function teardown() {
     if (destroyed) return;
     destroyed = true;
+    for(const el of main?.querySelectorAll("audio,video")??[])el.pause();
+    soundButton?.remove();audioContext?.close().catch(()=>{});
     playing = false;
     stopClock();
     try {
@@ -460,7 +496,7 @@ export const CANVAS_RUNTIME_SOURCE = String.raw`// P3-008 fixed preview runtime,
     }
     timeline.pause();
     if(!await loadScenes()){send("error",{code:"E_SCENE_PREVIEW",message:"场景预览加载失败，请重试"});return;}
-    for(const video of main.querySelectorAll('video[data-start]')){video.addEventListener('loadedmetadata',()=>renderAt(compositionTime));video.addEventListener('error',()=>send("error",{code:"E_MEDIA_PREVIEW",message:"素材无法播放，请生成兼容副本后重试"}));}
+    for(const video of main.querySelectorAll('video[data-start],audio[data-start]')){video.addEventListener('loadedmetadata',()=>renderAt(compositionTime));video.addEventListener('error',()=>send("error",{code:"E_MEDIA_PREVIEW",message:"素材无法播放，请生成兼容副本后重试"}));}
     renderAt(0);
     window.addEventListener("message", onMessage);
     send("ready", {

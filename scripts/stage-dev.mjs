@@ -45,6 +45,7 @@ const RUNTIME_PATHS = [
   'locale/en.json',
   'locale/zh.json',
   'host/bridge.js',
+  'host/audio.js',
   'host/data-root.js',
   'host/ui-state.js',
   'host/config.js',
@@ -77,9 +78,10 @@ const REVIEWED_ENGINE_PAIRS = Object.freeze([
   { client: '0.4.0', worker: '0.4.0' },
   { client: '0.5.0', worker: '0.5.0' },
   { client: '0.6.0', worker: '0.6.0' },
+  { client: '0.7.0', worker: '0.7.0' },
 ]);
 /** Managed-project registries exist from engine 0.3.0; stricter than the pair list on purpose. */
-const MANAGED_ENGINE_VERSIONS = Object.freeze(['0.3.0', '0.3.1', '0.3.2', '0.4.0', '0.5.0', '0.6.0']);
+const MANAGED_ENGINE_VERSIONS = Object.freeze(['0.3.0', '0.3.1', '0.3.2', '0.4.0', '0.5.0', '0.6.0', '0.7.0']);
 
 const ENGINE_CLIENT = 'packages/video-engine-client';
 const ENGINE_WORKER = 'packages/video-engine-worker';

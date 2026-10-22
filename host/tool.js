@@ -15,6 +15,7 @@ import { agentSessionIdFromToolExec } from './sessions.js';
 export const TOOL_NAME = 'video_engine';
 
 const ACTIONS = Object.freeze([
+'audio.providers','audio.generate','audio.status','audio.cancel',
 'timeline.inspect',
 'timeline.apply',
 'timeline.resolve',
@@ -49,7 +50,8 @@ const TOOL_PARAMETERS = Object.freeze({
   type: 'object',
   properties: {
     dryRun: {type:'boolean'}, view:{type:'string',enum:['summary','full']}, trackId:{type:'string'}, clipId:{type:'string'}, startFrame:{type:'integer',minimum:0}, offset:{type:'integer',minimum:0}, mode:{type:'string',enum:['reject','ripple','overwrite']}, label:{type:'string',maxLength:120}, refs:{type:'array',maxItems:32,items:{type:'object',additionalProperties:true}},
-    kind: {type:'string',enum:['video','audio','image']},
+    kind: {type:'string',enum:['video','audio','image','tts','music','sfx']},
+    provider:{type:'string',enum:['qianwen','local']},text:{type:'string',maxLength:2000},voice:{type:'string',maxLength:80},rate:{type:'number',minimum:0.5,maximum:2},
     query: {type:'string',maxLength:120},
     cursor: {type:'string',pattern:'^[0-9]{1,12}$'},
     limit: {type:'integer',minimum:1,maximum:50},
@@ -126,6 +128,10 @@ const TOOL_PARAMETERS = Object.freeze({
 });
 
 const ACTION_FIELDS = Object.freeze({
+'audio.providers':['projectId'],
+'audio.generate':['projectId','operationId','provider','kind','text','voice','rate'],
+'audio.status':['projectId','jobId'],
+'audio.cancel':['projectId','jobId'],
 'timeline.inspect': ['projectId', 'view', 'trackId', 'offset', 'limit'],
 'timeline.apply': ['projectId', 'expectedRevision', 'operationId', 'ops', 'dryRun'],
 'timeline.resolve': ['projectId', 'revision', 'refs'],
@@ -202,7 +208,7 @@ export function createVideoTool(bridge) {
   return {
     name: TOOL_NAME,
     description:
-      'Open, inspect, edit, publish a complete HTML composition, frame, render, observe, cancel, close, and operate on Scenes/history of a controlled video project configured by the Host. For timeline projects, first timeline.inspect; resolve ordinal or label references with timeline.resolve, then timeline.apply with expectedRevision, unique operationId and ops. Split retains the left clip ID and returns lineage. Use scene.inspect/scene.compose for one AI scene. Use timeline.undo/redo for shared UI/AI history. Never replace a migrated timeline with project.compose. Legacy projects can still use inspect/project.source/project.compose; the left preview follows the published revision automatically. When a visual self-check is genuinely needed, call frame once with wait:true and up to 3 times (one call returns a single contact-sheet image), then read that image at most once; do not render locally or use shell/file probing tools to find frames. A succeeded wait:true frame result also carries frameImage, a workspace-relative PNG path you can pass directly to read_image (read it once). Accepts only configured project ids; never accepts paths or URLs. Never write project files with shell or file tools; report typed errors honestly instead of claiming success.',
+      'Open, inspect, edit, publish a complete HTML composition, frame, render, observe, cancel, close, and operate on Scenes/history of a controlled video project configured by the Host. Audio: audio.providers discovers capability/entitlement without credentials. audio.generate(kind tts/music/sfx, text, provider qianwen/local, unique operationId) is billable for cloud; only generate when the user asks. Poll audio.status; cancelled/interrupted/uncertain tasks never auto-retry. Success returns assetId: insert with timeline.apply into an audio track. Never request or reveal API keys. For timeline projects, first timeline.inspect; resolve ordinal or label references with timeline.resolve, then timeline.apply with expectedRevision, unique operationId and ops. Split retains the left clip ID and returns lineage. Use scene.inspect/scene.compose for one AI scene. Use timeline.undo/redo for shared UI/AI history. Never replace a migrated timeline with project.compose. Legacy projects can still use inspect/project.source/project.compose; the left preview follows the published revision automatically. When a visual self-check is genuinely needed, call frame once with wait:true and up to 3 times (one call returns a single contact-sheet image), then read that image at most once; do not render locally or use shell/file probing tools to find frames. A succeeded wait:true frame result also carries frameImage, a workspace-relative PNG path you can pass directly to read_image (read it once). Accepts only configured project ids; never accepts paths or URLs. Never write project files with shell or file tools; report typed errors honestly instead of claiming success.',
     parameters: TOOL_PARAMETERS,
     output: {
       schema: { type: 'object', additionalProperties: true },

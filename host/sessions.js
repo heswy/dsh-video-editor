@@ -499,7 +499,7 @@ export class SessionService {
       } else {
         factsLines.push('Inspect the project before editing so the revision and target ids are current.');
       }
-      factsLines.push('Imported media: query video_engine asset.list (projectId, kind/query/cursor/limit); place video/image assets with timeline.apply clip.insert. Audio editing comes in M4.');
+      factsLines.push('Imported media: query video_engine asset.list (projectId, kind/query/cursor/limit); place video/image/audio with timeline.apply clip.insert. audio.providers discovers generation capabilities; cloud audio.generate is billable and only on user request; poll audio.status, never auto-retry uncertain jobs.');
       const mediaCount=this.bridge?.mediaCounts?.get(projectId);
       if(Number.isSafeInteger(mediaCount))factsLines.splice(1,0,`Imported media: ${mediaCount} assets. Use video_engine asset.list for paginated metadata.`);
       // Whole-line budget: the fixed instructions above are never truncated;

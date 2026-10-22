@@ -86,8 +86,8 @@ try {
           engineLoader: async () => ({
             WorkerClient,
             workerEntry: config.workerEntry,
-            clientVersion: "0.6.0",
-            workerVersion: "0.6.0",
+            clientVersion: "0.7.0",
+            workerVersion: "0.7.0",
           }),
         }),
   });
@@ -261,6 +261,7 @@ try {
   });
   const page = await browser.newPage();
   page.on("pageerror", (e) => errors.push(e.message));
+  if(process.env.M4_AUDIO==='1')page.on('console',msg=>{if(/AudioContext|autoplay|Permissions/.test(msg.text()))console.log('[audio-console]',msg.text());});
   await page.setViewport({ width: 900, height: 760 });
   await page.goto("http://127.0.0.1:" + server.address().port);
   await page.waitForSelector(".dv-canvas-shell[data-canvas-phase=ready]");
@@ -554,6 +555,62 @@ try {
       2,
     ),
   );
+  if(process.env.M4_AUDIO==='1') {
+    await page.setViewport({width:900,height:760});
+    await page.evaluate(()=>document.getElementById('mount').style.width='100%');
+    await clickText('生成音频');
+    await page.waitForSelector('.dv-audio-panel');
+    await page.select('.dv-audio-field select',process.env.M4_CLOUD==='1'?'qianwen':'local');
+    await page.type('.dv-audio-panel textarea','这是一段本地旁白，用于验证音频轨道。');
+    await clickText('生成并加入素材');
+    await page.waitForFunction(()=>document.querySelector('.dv-audio-job')?.textContent.includes('生成成功'),{timeout:60000});
+    checks++;
+    await page.screenshot({path:join(out,'audio-generation.png')});
+    const beforeAudio=await bridge.invoke('timeline.inspect',{projectId});
+    await clickText('加入音轨');
+    await count(beforeAudio.totalClips+1);
+    await page.waitForFunction(()=>document.querySelector('.dv-timeline').getAttribute('aria-busy')==='false');
+    let audioTimeline=await bridge.invoke('timeline.inspect',{projectId});
+    const audioTrack=audioTimeline.tracks.find(x=>x.kind==='audio'),audioClip=audioTrack.clips[0];
+    assert.ok(audioClip.durationFrames>30);checks++;
+    await page.click('[data-clip-id="'+audioClip.clipId+'"]');
+    for(const [label,value]of [['音量','-6'],['淡入','0.3'],['淡出','0.4'],['轨道增益','-3']]) {
+      const input=await page.$('.dv-timeline-inspector input[aria-label="'+label+'"]');
+      await input.click();await input.evaluate(e=>e.select());await input.press('Backspace');await input.type(value);await input.press('Tab');
+      await page.waitForFunction(()=>document.querySelector('.dv-timeline').getAttribute('aria-busy')==='false');
+    }
+    audioTimeline=await bridge.invoke('timeline.inspect',{projectId});
+    const edited=audioTimeline.tracks.find(x=>x.kind==='audio');
+    assert.equal(edited.clips[0].volumeDb,-6);assert.equal(edited.clips[0].fadeInFrames,9);assert.equal(edited.clips[0].fadeOutFrames,12);assert.equal(edited.gainDb,-3);checks++;
+    await page.click('.dv-track-mute[aria-label$="'+audioTrack.name+'"]');
+    await page.waitForFunction(()=>document.querySelector('.dv-timeline').getAttribute('aria-busy')==='false');
+    assert.equal((await bridge.invoke('timeline.inspect',{projectId})).tracks.find(x=>x.kind==='audio').muted,true);
+    await clickText('撤销');await page.waitForFunction(()=>document.querySelector('.dv-timeline').getAttribute('aria-busy')==='false');checks++;
+    await page.waitForFunction(()=>document.querySelector('.dv-canvas-shell').dataset.previewPending==='false');
+    const audibleFrame=await (await page.$('.dv-stage-frame[aria-hidden="false"]')).contentFrame();
+    await audibleFrame.waitForSelector('button[aria-label="开启预览声音"]');
+    const soundRect=await audibleFrame.$eval('button[aria-label="开启预览声音"]',e=>{const r=e.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};});
+    const soundFrame=await page.$eval('.dv-stage-frame[aria-hidden="false"]',e=>{const r=e.getBoundingClientRect();return {x:r.x,y:r.y,scale:r.width/parseFloat(e.style.width)};});
+    await page.mouse.click(soundFrame.x+soundRect.x*soundFrame.scale,soundFrame.y+soundRect.y*soundFrame.scale);
+    await audibleFrame.waitForFunction(()=>document.querySelector('button[aria-label="开启预览声音"]')?.dataset.audioState==='enabled',{timeout:5000}).catch(async e=>{console.log('sound-button',await audibleFrame.$eval('button[aria-label="开启预览声音"]',e=>({text:e.textContent,state:e.dataset.audioState})));throw e;});
+    await page.evaluate(()=>window.seek(.5));await page.click('.dv-play');
+    await page.waitForFunction(()=>Number(document.querySelector('.dv-seek').value)>.8);
+    const audioTime=await page.$eval('.dv-seek',e=>Number(e.value));
+    const audioState=await audibleFrame.evaluate(time=>{const a=document.querySelector('audio');return {exists:!!a,muted:a?.muted,paused:a?.paused,delta:Math.abs(a.currentTime-time),volume:a?.dataset.volume,rate:a?.playbackRate};},audioTime);
+    assert.equal(audioState.muted,false,JSON.stringify(audioState));assert.equal(audioState.paused,false);assert.ok(audioState.delta<=2/30,JSON.stringify(audioState));await page.click('.dv-play');checks++;
+    await writeFile(join(out,'audio-preview.json'),JSON.stringify(audioState,null,2));
+    const oldPreview=await page.$eval('.dv-canvas-shell',e=>e.dataset.canvasRevision);
+    const input=await page.$('.dv-timeline-inspector input[aria-label="音量"]');await input.click();await input.evaluate(e=>e.select());await input.press('Backspace');await input.type('-8');await input.press('Tab');
+    await page.waitForFunction(old=>document.querySelector('.dv-canvas-shell').dataset.canvasRevision!==old&&document.querySelector('.dv-canvas-shell').dataset.previewPending==='false',{},oldPreview);
+    const nextFrame=await (await page.$('.dv-stage-frame[aria-hidden="false"]')).contentFrame();
+    await nextFrame.waitForFunction(()=>document.querySelector('audio')?.muted===false,{timeout:5000});checks++;
+    await page.waitForFunction(()=>[...document.querySelectorAll('.dv-clip-waveform')].some(x=>x.naturalWidth>0));checks++;
+    await page.screenshot({path:join(out,'audio-timeline.png')});
+    await (await page.$('.dv-timeline')).screenshot({path:join(out,'timeline-detail.png')});
+    await page.setViewport({width:340,height:760});
+    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+    await page.screenshot({path:join(out,'audio-narrow.png')});checks++;
+  }
   if (process.env.M3_RENDER === "1") {
     const timeline = await bridge.invoke("timeline.inspect", { projectId });
     const job = await bridge.invoke("render", {

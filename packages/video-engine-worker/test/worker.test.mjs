@@ -30,16 +30,18 @@ test("JSONL validation, real SDK, concurrent revision conflict and idempotency",
       c.call("edit", edit),
       c.call("edit", { ...edit, operationId: "op2" }),
     ]);
-    assert.equal(a.ok, true);
-    assert.equal(b.error.code, "E_REVISION_CONFLICT");
+    assert.equal([a,b].filter(r=>r.ok).length,1,JSON.stringify([a,b]));
+    const winner=a.ok?a:b, loser=a.ok?b:a;
+    const accepted={...edit,operationId:a.ok?'op1':'op2'};
+    assert.equal(loser.error.code, "E_REVISION_CONFLICT");
     assert.deepEqual(
-      await c.call("edit", edit).then((r) => r.result),
-      a.result,
+      await c.call("edit", accepted).then((r) => r.result),
+      winner.result,
     );
     assert.equal(
       (
         await c.call("edit", {
-          ...edit,
+          ...accepted,
           ops: [{ type: "text", target: "hf-title", text: "different" }],
         })
       ).error.code,
@@ -58,13 +60,13 @@ test("JSONL validation, real SDK, concurrent revision conflict and idempotency",
     );
     const assetRev = (await c.call("inspect", { projectId: "demo" })).result
       .revision;
-    assert.notEqual(assetRev, a.result.revision);
+    assert.notEqual(assetRev, winner.result.revision);
     assert.equal(
       (
         await c.call("edit", {
           ...edit,
           operationId: "op3",
-          expectedRevision: a.result.revision,
+          expectedRevision: winner.result.revision,
         })
       ).error.code,
       "E_REVISION_CONFLICT",
