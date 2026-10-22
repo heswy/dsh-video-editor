@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {loadStagedHost} from './lib/staged-host.mjs';
 import {
   fixture,
   client,
@@ -7,6 +8,7 @@ import {
 import { mkdir, writeFile, copyFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
+const stageArg=process.argv.indexOf('--staging');const staged=stageArg>=0?await loadStagedHost(resolve(process.argv[stageArg+1])):null;const runtime=staged?{node:staged.config.workerNode,workerEntry:staged.evidence.resolved.workerEntry}:undefined;
 const f = await fixture(),
   out = resolve(process.argv[2] || '/tmp/m4-audio-render');
 await mkdir(out, { recursive: true });
@@ -61,7 +63,7 @@ try {
     'pcm_s16le',
     join(inbox, 'bgm.wav'),
   ]);
-  c = client(f.registry);
+  c = client(f.registry,runtime);
   await call('open');
   let t = await call('timeline.inspect');
   const v = (await call('asset.importMedia', { sourceName: 'markers.mp4' }))
@@ -201,7 +203,7 @@ try {
     assert.ok(offset.errorSeconds <= 1 / 30, JSON.stringify(offset));
   }
   await c.stop();
-  c = client(f.registry);
+  c = client(f.registry,runtime);
   await call('open');
   assert.equal((await call('timeline.inspect')).revision, r.revision);
   await writeFile(

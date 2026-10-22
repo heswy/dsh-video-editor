@@ -46,10 +46,10 @@ export async function fixture() {
     cleanup: () => rm(dir, { recursive: true, force: true }),
   };
 }
-export function client(registry) {
+export function client(registry, options = {}) {
   const child = spawn(
-    process.execPath,
-    [resolve(base, "src/worker.mjs"), "--registry", registry],
+    options.node || process.execPath,
+    [options.workerEntry || resolve(base, "src/worker.mjs"), "--registry", registry],
     { stdio: ["pipe", "pipe", "pipe"] },
   );
   let sequence = 0,

@@ -483,7 +483,7 @@ export class AudioService {
         throw error('E_PARAMS', '语速范围为 0.5–2');
       if (
         voice !== undefined &&
-        (typeof voice !== 'string' || !/^[a-zA-Z0-9_-]{1,80}$/.test(voice))
+        (typeof voice !== 'string' || !/^[a-zA-Z0-9_.-]{1,80}$/.test(voice))
       )
         throw error('E_PARAMS', '音色格式不正确');
       const hash = digest(request),

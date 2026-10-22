@@ -56,6 +56,7 @@ try {
     provider: 'fake',
     kind: 'tts',
     text: '你好',
+    voice: 'longanhuan_v3.1',
   };
   let j = await s.generate(req);
   assert.equal((await s.generate(req)).jobId, j.jobId);
