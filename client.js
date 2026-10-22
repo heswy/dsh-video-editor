@@ -290,6 +290,10 @@ window.__ModuleLoader__.load({
       'video.canvas.timeline': '时间轴',
       'video.canvas.undo': '撤销',
       'video.canvas.redo': '重做',
+      'video.timeline.properties': '片段设置',
+      'video.timeline.fit': '适应时间线',
+      'video.timeline.history': '最近修改',
+      'video.canvas.resources': '工程资源',
       'video.canvas.materials': '素材',
       'video.media.compatibility': '生成兼容预览',
       'video.media.import': '导入素材 · 或拖入文件',
@@ -536,6 +540,10 @@ window.__ModuleLoader__.load({
       'video.canvas.timeline': 'Timeline',
       'video.canvas.undo': 'Undo',
       'video.canvas.redo': 'Redo',
+      'video.timeline.properties': 'Clip settings',
+      'video.timeline.fit': 'Fit timeline',
+      'video.timeline.history': 'Recent change',
+      'video.canvas.resources': 'Project resources',
       'video.canvas.materials': 'Assets',
       'video.media.compatibility': 'Build compatible preview',
       'video.media.import': 'Import media · or drop files',
@@ -1579,6 +1587,62 @@ window.__ModuleLoader__.load({
 }
 
 .dv-reference-toggle{align-self:flex-start;margin:0 12px 4px}.dv-reference-panel{display:flex;flex-direction:column;gap:4px;margin:0 12px 8px;padding:10px;border:1px solid var(--dsw-alias-border-l1, rgba(127,127,140,.28));border-radius:8px;min-height:0;overflow:auto;max-height:42vh;font-size:12px}.dv-reference-head,.dv-reference-range,.dv-reference-pages{display:flex;align-items:center;gap:6px}.dv-reference-head{justify-content:space-between}.dv-reference-panel>*{flex-shrink:0}.dv-reference-panel input{font:inherit;color:inherit;background:var(--dsw-alias-bg-base, #1c1c20);border:1px solid var(--dsw-alias-border-l1, rgba(127,127,140,.28));border-radius:4px;padding:5px;min-width:0;max-width:100%}.dv-reference-panel input[type=search]{width:100%}.dv-reference-help{opacity:.7;margin:6px 0}.dv-reference-items{display:grid;gap:2px;max-height:180px;overflow:auto;flex:1 1 auto;min-height:48px}.dv-reference-item{border:0;border-radius:4px;background:transparent;color:inherit;text-align:left;padding:6px;cursor:pointer;min-width:0}.dv-reference-item:hover,.dv-reference-item[aria-pressed=true]{background:var(--dsw-alias-interactive-bg-hover, rgba(127,127,140,.14))}.dv-reference-item span,.dv-reference-item small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.dv-reference-item small{opacity:.6}.dv-reference-range{margin-top:6px}.dv-reference-range input{width:62px}.dv-reference-token{display:block;margin-top:8px}.dv-reference-token input{display:block;width:100%;font-family:monospace}.dv-change-receipt{display:flex;align-items:center;gap:8px;font-size:11px;padding:4px 8px;min-width:0}.dv-change-receipt span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}.dv-change-recovery{padding:6px 8px;font-size:12px}.dv-change-recovery button{margin:3px}.dv-clip-reference{width:100px;min-width:50px!important;font-size:10px!important}
+
+/* Resource shelf, transport, and editing tools have separate visual roles. */
+
+.dv-root .dv-canvas-shell[data-preview-only="true"]{padding:0;gap:0;overflow:hidden;container-type:inline-size;container-name:video-canvas}
+.dv-resource-bar{display:flex;align-items:center;gap:4px;min-height:44px;padding:0 16px;flex-shrink:0;border-bottom:1px solid var(--dsw-alias-border-l1,#ffffff10)}
+.dv-resource-tab{display:flex;align-items:center;gap:7px;padding:7px 10px;border:0;border-radius:5px;background:transparent;color:var(--dsw-alias-label-secondary,#aaaeb6);font:inherit;font-size:12px;cursor:pointer}
+.dv-resource-tab:hover,.dv-resource-tab[aria-expanded=true]{background:var(--dsw-alias-interactive-bg-hover,#ffffff0c);color:var(--dsw-alias-label-primary,#eee)}
+.dv-resource-tab:focus-visible,.dv-clip-settings summary:focus-visible,.dv-timeline-history summary:focus-visible{outline:2px solid var(--dsw-focus-ring-color,#8facbc);outline-offset:1px}
+.dv-root .dv-canvas-shell[data-preview-only="true"] .dv-canvas-wrap{margin:20px 24px 8px;min-height:60px}
+.dv-root .dv-canvas-shell[data-preview-only="true"] .dv-canvas-bar{align-self:stretch;width:auto;min-height:40px;padding:4px 18px;gap:12px;border:0;border-radius:0;background:transparent;box-shadow:none;backdrop-filter:none;flex-shrink:0}
+.dv-root .dv-canvas-shell[data-preview-only="true"] .dv-play{width:28px;min-height:28px;border-radius:4px}
+.dv-root .dv-canvas-shell[data-preview-only="true"] .dv-time{font-size:10px;font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-secondary,#aaaeb6)}
+.dv-root .dv-timeline{min-height:158px;max-height:300px;background:var(--dsw-alias-bg-base,#191a1d)}
+.dv-root .dv-timeline-toolbar{height:40px;gap:3px;padding:0 10px}
+.dv-root .dv-timeline-heading{font-size:10px;letter-spacing:0;margin-right:8px}
+.dv-root .dv-timeline-scroll{min-height:116px;max-height:208px}
+.dv-root .dv-timeline-ruler{height:28px}
+.dv-root .dv-timeline-ruler span{top:8px;font-size:9px;border:0;padding:0;line-height:12px}
+.dv-root .dv-timeline-track{height:54px;border-bottom-color:var(--dsw-alias-border-l1,#ffffff08)}
+.dv-root .dv-timeline-track-name{padding:0 10px;gap:6px;background:var(--dsw-alias-bg-base,#191a1d);border-right-color:var(--dsw-alias-border-l1,#ffffff08)}
+.dv-root .dv-track-kind{margin-right:5px;font-variant-numeric:tabular-nums}
+.dv-root .dv-track-mute{font-size:9px;opacity:.55}
+.dv-root .dv-timeline-track:hover .dv-track-mute,.dv-root .dv-track-mute:focus-visible,.dv-root .dv-track-mute[aria-pressed=true]{opacity:1}
+.dv-root .dv-timeline-lane{background:var(--dsw-alias-bg-layer-1,#ffffff02)}
+.dv-root .dv-timeline-clip{top:7px;bottom:7px;background:color-mix(in srgb,#7199ba 25%,var(--dsw-alias-bg-base,#191a1d));border-color:#8caec333;border-radius:5px;box-shadow:inset 0 1px #ffffff08}
+.dv-root .dv-timeline-clip.is-audio{background:color-mix(in srgb,#6a9c87 24%,var(--dsw-alias-bg-base,#191a1d));border-color:#8abc9b33}
+.dv-root .dv-timeline-clip.is-selected{outline:1.5px solid #9ac6db;outline-offset:-1.5px;background:color-mix(in srgb,#7199ba 38%,var(--dsw-alias-bg-base,#191a1d))}
+.dv-root .dv-timeline-clip.is-audio.is-selected{outline-color:#9acbb8;background:color-mix(in srgb,#6a9c87 38%,var(--dsw-alias-bg-base,#191a1d))}
+.dv-root .dv-timeline-clip-label{font-size:11px;padding:0 10px}
+.dv-root .dv-timeline-playhead{background:var(--dsw-alias-label-primary,#eee)}
+.dv-root .dv-timeline-playhead:before{border-top-color:var(--dsw-alias-label-primary,#eee)}
+.dv-root .dv-snap-toggle{margin:0 5px;position:relative;color:var(--dsw-alias-label-secondary,#aaaeb6)}
+.dv-root .dv-snap-toggle input{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:pointer}
+.dv-root .dv-snap-toggle:has(input:checked){color:var(--dsw-alias-brand-primary,#82c8cf)}
+.dv-root .dv-snap-toggle:has(input:focus-visible){outline:2px solid var(--dsw-focus-ring-color,#8facbc);outline-offset:4px}
+.dv-clip-settings,.dv-timeline-history{position:static;flex-shrink:0}
+.dv-clip-settings summary,.dv-timeline-history summary{display:flex;align-items:center;justify-content:center;gap:5px;min-height:28px;padding:0 6px;font-size:10px;border-radius:4px;list-style:none;cursor:pointer}
+.dv-clip-settings summary::-webkit-details-marker,.dv-timeline-history summary::-webkit-details-marker{display:none}
+.dv-clip-settings[open] summary,.dv-timeline-history[open] summary,.dv-clip-settings summary:hover,.dv-timeline-history summary:hover{background:var(--dsw-alias-interactive-bg-hover,#ffffff0c)}
+.dv-root .dv-timeline-inspector{position:absolute;right:10px;bottom:calc(100% - 2px);width:260px;max-width:calc(100cqw - 24px);z-index:15;box-sizing:border-box;display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:14px;border:1px solid var(--dsw-alias-border-l1,#ffffff18);border-radius:8px;background:var(--dsw-alias-bg-layer-1,#25262a);box-shadow:0 8px 30px #0003;font-size:11px}
+.dv-root .dv-timeline-inspector label{justify-content:space-between;gap:5px;min-width:0}
+.dv-root .dv-timeline-inspector .dv-clip-reference{grid-column:1/-1;width:100%;max-width:none;padding:5px 6px;height:28px}
+.dv-root .dv-timeline-inspector .dv-inspector-name{display:block;max-width:160px;font-size:11px;color:var(--dsw-alias-label-primary,#eee)}
+.dv-root .dv-timeline-history .dv-change-receipt{position:absolute;left:10px;bottom:calc(100% - 2px);z-index:15;width:250px;max-width:calc(100cqw - 24px);padding:10px 12px;box-sizing:border-box;border:1px solid var(--dsw-alias-border-l1,#ffffff18);border-radius:8px;background:var(--dsw-alias-bg-layer-1,#25262a);box-shadow:0 8px 30px #0003}
+.dv-root .dv-timeline-history .dv-change-receipt span{white-space:normal}
+.dv-root .dv-timeline-notice{padding:5px 12px;font-size:10px}
+.dv-root .dv-timeline-compact .dv-timeline-track{height:34px}
+.dv-root .dv-timeline-compact .dv-timeline-clip{top:4px;bottom:4px}
+.dv-root .dv-drawer.dv-media-library{top:48px;left:10px;max-height:calc(100% - 60px);width:min(336px,calc(100% - 20px));padding:16px;gap:12px;border-radius:8px;box-shadow:0 12px 40px #0003}
+.dv-root .dv-media-filters .dv-button{min-height:26px;font-size:11px;padding:0 9px;border:0}
+.dv-root .dv-media-tile{padding:5px;border-color:transparent;border-radius:6px;gap:6px}
+.dv-root .dv-media-tile:hover{background:var(--dsw-alias-interactive-bg-hover,#ffffff0c)}
+.dv-root .dv-media-name{font-size:11px}
+.dv-root .dv-media-tile small{font-size:10px}
+@container video-canvas (max-width:480px){.dv-root .dv-timeline-heading{display:none}.dv-root .dv-timeline-zoom{width:40px}.dv-root .dv-clip-settings summary span{display:none}.dv-root .dv-resource-bar{padding:0 8px}.dv-root .dv-canvas-shell[data-preview-only="true"] .dv-canvas-wrap{margin:12px 12px 4px}.dv-root .dv-timeline-toolbar{padding:0 6px;gap:1px}.dv-root .dv-tool-divider{margin:0 3px}}
+
 `;
     //#endregion
 
@@ -1981,6 +2045,8 @@ window.__ModuleLoader__.load({
       return h('svg', { width: 18, height: 18, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.6, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': 'true', focusable: 'false' },
         name === 'play' ? h('path', { d: 'M9 5.5v13l10-6.5z', fill: 'currentColor', stroke: 'none' }) :
         name === 'pause' ? h('path', { d: 'M9 5.5v13M15 5.5v13', strokeWidth: 2.5 }) :
+        name === 'media' ? h('path',{d:'M3 7h7l2 2h9v11H3zM3 7V4h7l2 3M8 13l3 3 3-4 4 5'}) :
+        name === 'audio' ? h('path',{d:'M9 18V5l11-2v13M9 8l11-2M9 18c0 2-6 3-6 0s6-3 6 0m11-2c0 2-6 3-6 0s6-3 6 0'}) :
         name === 'new' ? h('path', { d: 'M12 5v14M5 12h14' }) :
         h('rect', { x: 4, y: 6, width: 16, height: 12, rx: 3 })
       );
@@ -3802,7 +3868,9 @@ window.__ModuleLoader__.load({
         [selected, setSelected] = React.useState(null),
         [busy, setBusy] = React.useState(false),
         [notice, setNotice] = React.useState(""),
-        [zoom, setZoom] = React.useState(36),
+        [manualZoom, setZoom] = React.useState(36),
+        [fit, setFit] = React.useState(true),
+        [viewWidth,setViewWidth]=React.useState(620),
         [compact, setCompact] = React.useState(false),
         [waveVersion,setWaveVersion]=React.useState(0),
         [levelDrafts,setLevelDrafts]=React.useState({}),
@@ -3955,6 +4023,11 @@ window.__ModuleLoader__.load({
       }, [props.assetToAdd, data, busy, recovery]);
       React.useEffect(()=>{setLevelDrafts({});},[data?.revision]);
       React.useEffect(()=>{for(const a of data?.assets??[]){if(a.kind!=='audio'||waves.current.has(a.assetId))continue;waves.current.add(a.assetId);void hostRequest('asset.derive',{projectId:props.projectId,assetId:a.assetId,kind:'waveform'}).then(()=>{if(alive.current)setWaveVersion(v=>v+1);}).catch(()=>{waves.current.delete(a.assetId);});}},[data?.revision]);
+      React.useEffect(()=>{
+        const el=viewport.current;if(!el)return;
+        const observer=new ResizeObserver(()=>setViewWidth(el.clientWidth));
+        setViewWidth(el.clientWidth);observer.observe(el);return ()=>observer.disconnect();
+      },[Boolean(data)]);
       if (!data)
         return h(
           "section",
@@ -3967,7 +4040,9 @@ window.__ModuleLoader__.load({
         chosen = clips.find((c) => c.clipId === selected),
         frame = Math.round(props.time * 30),
         duration = data.settings.durationFrames,
-        width = Math.max(520, (duration / 30) * zoom + 60);
+        zoom = fit ? Math.max(.05,(viewWidth-100-24)/Math.max(1,duration/30)) : manualZoom,
+        width = Math.max(viewWidth-100, (duration / 30) * zoom + 24),
+        tickStep = [1,2,5,10,15,30,60,120,300,600,1800,3600].find(x=>x*zoom>=48) || Math.ceil(48/zoom/3600)*3600;
       function nearest(raw, except) {
         let value = Math.max(0, Math.round(raw));
         if (!snap) return value;
@@ -4087,9 +4162,76 @@ window.__ModuleLoader__.load({
             h('button',{disabled:busy,onClick:()=>write([{op:'track.add',kind:'video'}])},t('video.timeline.addTrack')),
             h('button',{disabled:busy,onClick:()=>write([{op:'track.add',kind:'audio'}])},t('video.audio.addTrack')),
             h('button',{'aria-pressed':compact,onClick:()=>setCompact(!compact)},t('video.timeline.compact')))),
+          data.lastChange?.written?h('details',{className:'dv-timeline-history'},h('summary',{'aria-label':t('video.timeline.history'),title:t('video.timeline.history')},h('svg',{viewBox:'0 0 24 24',width:15,height:15,fill:'none',stroke:'currentColor',strokeWidth:1.5,'aria-hidden':true},h('path',{d:'M3 11a9 9 0 1 1 2 7M3 4v7h7m2-4v6l4 2'}))),h('div',{className:'dv-change-receipt',role:'status','data-operation-id':data.lastChange.operationId},
+          h('span',{title:data.lastChange.changeSummary?.summary},data.lastChange.changeSummary?.summary),
+          data.undoHint?.canUndo&&data.lastChange.revision===data.revision&&data.lastChange.undoHint?.historyCursor===data.historyCursor&&data.lastChange.changeSummary?.opCount>0?h('button',{className:'dv-button dv-button-quiet',disabled:busy||!!recovery,onClick:()=>write(null,'timeline.undo')},t('video.change.undo')):null)):null,
           h('span',{className:'dv-timeline-spacer'}),
-          h('label',{className:'dv-snap-toggle',title:t('video.timeline.snap')},h('input',{type:'checkbox',checked:snap,onChange:e=>setSnap(e.target.checked)}),h('span',null,t('video.timeline.snap'))),
-          h('input',{type:'range',className:'dv-timeline-zoom',min:8,max:100,value:zoom,'aria-label':t('video.timeline.zoom'),onChange:e=>setZoom(Number(e.target.value))}),
+          chosen ? h('details',{className:'dv-clip-settings',key:selected,onKeyDown:e=>{if(e.key==='Escape'){e.currentTarget.open=false;e.currentTarget.firstElementChild.focus();}}},
+            h('summary',{title:t('video.timeline.properties')},h('svg',{viewBox:'0 0 24 24',width:16,height:16,fill:'none',stroke:'currentColor',strokeWidth:1.5,'aria-hidden':true},h('path',{d:'M4 7h16M4 17h16M8 4v6m8 4v6'})),h('span',null,t('video.timeline.properties'))),h(
+              "div",
+              { className: "dv-timeline-inspector" },
+              h("span", {className:'dv-inspector-name',title:chosen.clipId}, chosen.label || t('video.timeline.title')),
+              h("span", null, (chosen.durationFrames / 30).toFixed(2) + "s"),
+              h('input',{className:'dv-clip-reference',readOnly:true,value:referenceText(referenceToken(props.projectId,'clip',chosen.clipId,data.revision)),'aria-label':t('video.media.reference'),title:t('video.reference.help'),onFocus:e=>e.target.select()}),
+              h(
+                "label",
+                null,
+                t("video.timeline.track"),
+                h(
+                  "select",
+                  {
+                    value: chosen.trackId,
+                    disabled: busy,
+                    onChange: (e) =>
+                      write([
+                        {
+                          op: "clip.move",
+                          clipId: chosen.clipId,
+                          trackId: e.target.value,
+                          startFrame: chosen.startFrame,
+                        },
+                      ]),
+                  },
+                  data.tracks
+                    .filter((x) => x.kind === data.tracks.find(tr=>tr.trackId===chosen.trackId)?.kind)
+                    .map((tr) =>
+                      h("option", { key: tr.trackId, value: tr.trackId }, tr.name),
+                    ),
+                ),
+              ),
+              h(
+                "label",
+                null,
+                t("video.timeline.speed"),
+                h(
+                  "select",
+                  {
+                    value: chosen.speed || 1,
+                    disabled: busy || chosen.kind !== "media",
+                    onChange: (e) =>
+                      write([
+                        {
+                          op: "clip.speed",
+                          clipId: chosen.clipId,
+                          speed: Number(e.target.value),
+                          ripple: true,
+                        },
+                      ]),
+                  },
+                  [0.25, 0.5, 1, 1.5, 2, 4].map((x) =>
+                    h("option", { key: x, value: x }, x + "×"),
+                  ),
+                ),
+              ),
+              chosen.kind==='media'?h(React.Fragment,null,
+                ...[['video.audio.volume','volumeDb',-60,12,1],['video.audio.fadeIn','fadeInFrames',0,chosen.durationFrames/30,0.1],['video.audio.fadeOut','fadeOutFrames',0,chosen.durationFrames/30,0.1]].map(([label,key,min,max,step])=>h('label',{key},t(label),h('input',{type:'text',inputMode:'decimal',key:chosen.clipId+':'+key+':'+data.revision,value:levelDrafts[key]??(key==='volumeDb'?(chosen[key]??0):(chosen[key]??0)/30),onChange:e=>setLevelDrafts({...levelDrafts,[key]:e.target.value}),min,max,step,'aria-label':t(label),disabled:busy,onBlur:e=>{const value=Number(e.target.value);if(e.target.value===''||!Number.isFinite(value))return;if((key==='volumeDb'?value:Math.round(value*30))===(chosen[key]??0))return;void write([key==='volumeDb'?{op:'clip.volume',clipId:chosen.clipId,volumeDb:value}:{op:'clip.fade',clipId:chosen.clipId,inFrames:key==='fadeInFrames'?Math.round(value*30):chosen.fadeInFrames??0,outFrames:key==='fadeOutFrames'?Math.round(value*30):chosen.fadeOutFrames??0}]);}}),key==='volumeDb'?'dB':'s')),
+                h('label',null,t('video.audio.gain'),h('input',{type:'text',inputMode:'decimal',key:chosen.trackId+':'+data.revision,value:levelDrafts.gain??data.tracks.find(tr=>tr.trackId===chosen.trackId)?.gainDb??0,onChange:e=>setLevelDrafts({...levelDrafts,gain:e.target.value}),min:-60,max:12,step:1,'aria-label':t('video.audio.gain'),disabled:busy,onBlur:e=>{const gainDb=Number(e.target.value);if(e.target.value!==''&&Number.isFinite(gainDb)&&gainDb!==(data.tracks.find(tr=>tr.trackId===chosen.trackId)?.gainDb??0))void write([{op:'track.update',trackId:chosen.trackId,patch:{gainDb}}]);}}),'dB')):null,
+            )
+          ) : null,
+
+          h('label',{className:'dv-snap-toggle',title:t('video.timeline.snap')},h('input',{type:'checkbox',checked:snap,'aria-label':t('video.timeline.snap'),onChange:e=>setSnap(e.target.checked)}),h('svg',{viewBox:'0 0 24 24',width:15,height:15,fill:'none',stroke:'currentColor',strokeWidth:1.5,'aria-hidden':true},h('path',{d:'M5 4v9a7 7 0 0 0 14 0V4h-4v9a3 3 0 0 1-6 0V4zM5 8h4m6 0h4'}))),
+          h('input',{type:'range',className:'dv-timeline-zoom',min:1,max:100,value:Math.max(1,Math.min(100,zoom)),'aria-label':t('video.timeline.zoom'),onChange:e=>{setFit(false);setZoom(Number(e.target.value));}}),
+          tool(t('video.timeline.fit'),'M8 4H4v16h4m8-16h4v16h-4M8 12h8m-6-3-3 3 3 3m4-6 3 3-3 3',()=>setFit(true),false),
         ),
         h(
           "div",
@@ -4113,12 +4255,12 @@ window.__ModuleLoader__.load({
                 },
               },
               Array.from(
-                { length: Math.min(1000, Math.ceil(duration / 30) + 1) },
+                { length: Math.min(1000, Math.ceil(duration / 30 / tickStep) + 1) },
                 (_, i) =>
                   h(
                     "span",
-                    { key: i, style: { left: i * zoom } },
-                    zoom < 20 && i % 5 ? "" : i + "s",
+                    { key: i, style: { left: i * tickStep * zoom } },
+                    Math.floor(i*tickStep/60)+":"+String(i*tickStep%60).padStart(2,"0"),
                   ),
               ),
             ),
@@ -4261,80 +4403,15 @@ window.__ModuleLoader__.load({
             }),
           ),
         ),
-        chosen
-          ? h(
-              "div",
-              { className: "dv-timeline-inspector" },
-              h("span", {className:'dv-inspector-name',title:chosen.clipId}, chosen.label || t('video.timeline.title')),
-              h("span", null, (chosen.durationFrames / 30).toFixed(2) + "s"),
-              h('input',{className:'dv-clip-reference',readOnly:true,value:referenceText(referenceToken(props.projectId,'clip',chosen.clipId,data.revision)),'aria-label':t('video.media.reference'),title:t('video.reference.help'),onFocus:e=>e.target.select()}),
-              h(
-                "label",
-                null,
-                t("video.timeline.track"),
-                h(
-                  "select",
-                  {
-                    value: chosen.trackId,
-                    disabled: busy,
-                    onChange: (e) =>
-                      write([
-                        {
-                          op: "clip.move",
-                          clipId: chosen.clipId,
-                          trackId: e.target.value,
-                          startFrame: chosen.startFrame,
-                        },
-                      ]),
-                  },
-                  data.tracks
-                    .filter((x) => x.kind === data.tracks.find(tr=>tr.trackId===chosen.trackId)?.kind)
-                    .map((tr) =>
-                      h("option", { key: tr.trackId, value: tr.trackId }, tr.name),
-                    ),
-                ),
-              ),
-              h(
-                "label",
-                null,
-                t("video.timeline.speed"),
-                h(
-                  "select",
-                  {
-                    value: chosen.speed || 1,
-                    disabled: busy || chosen.kind !== "media",
-                    onChange: (e) =>
-                      write([
-                        {
-                          op: "clip.speed",
-                          clipId: chosen.clipId,
-                          speed: Number(e.target.value),
-                          ripple: true,
-                        },
-                      ]),
-                  },
-                  [0.25, 0.5, 1, 1.5, 2, 4].map((x) =>
-                    h("option", { key: x, value: x }, x + "×"),
-                  ),
-                ),
-              ),
-              chosen.kind==='media'?h(React.Fragment,null,
-                ...[['video.audio.volume','volumeDb',-60,12,1],['video.audio.fadeIn','fadeInFrames',0,chosen.durationFrames/30,0.1],['video.audio.fadeOut','fadeOutFrames',0,chosen.durationFrames/30,0.1]].map(([label,key,min,max,step])=>h('label',{key},t(label),h('input',{type:'text',inputMode:'decimal',key:chosen.clipId+':'+key+':'+data.revision,value:levelDrafts[key]??(key==='volumeDb'?(chosen[key]??0):(chosen[key]??0)/30),onChange:e=>setLevelDrafts({...levelDrafts,[key]:e.target.value}),min,max,step,'aria-label':t(label),disabled:busy,onBlur:e=>{const value=Number(e.target.value);if(e.target.value===''||!Number.isFinite(value))return;if((key==='volumeDb'?value:Math.round(value*30))===(chosen[key]??0))return;void write([key==='volumeDb'?{op:'clip.volume',clipId:chosen.clipId,volumeDb:value}:{op:'clip.fade',clipId:chosen.clipId,inFrames:key==='fadeInFrames'?Math.round(value*30):chosen.fadeInFrames??0,outFrames:key==='fadeOutFrames'?Math.round(value*30):chosen.fadeOutFrames??0}]);}}),key==='volumeDb'?'dB':'s')),
-                h('label',null,t('video.audio.gain'),h('input',{type:'text',inputMode:'decimal',key:chosen.trackId+':'+data.revision,value:levelDrafts.gain??data.tracks.find(tr=>tr.trackId===chosen.trackId)?.gainDb??0,onChange:e=>setLevelDrafts({...levelDrafts,gain:e.target.value}),min:-60,max:12,step:1,'aria-label':t('video.audio.gain'),disabled:busy,onBlur:e=>{const gainDb=Number(e.target.value);if(e.target.value!==''&&Number.isFinite(gainDb)&&gainDb!==(data.tracks.find(tr=>tr.trackId===chosen.trackId)?.gainDb??0))void write([{op:'track.update',trackId:chosen.trackId,patch:{gainDb}}]);}}),'dB')):null,
-            )
-          : null,
-        data.lastChange?.written?h('div',{className:'dv-change-receipt',role:'status','data-operation-id':data.lastChange.operationId},
-          h('span',{title:data.lastChange.changeSummary?.summary},data.lastChange.changeSummary?.summary),
-          data.undoHint?.canUndo&&data.lastChange.revision===data.revision&&data.lastChange.undoHint?.historyCursor===data.historyCursor&&data.lastChange.changeSummary?.opCount>0?h('button',{className:'dv-button dv-button-quiet',disabled:busy||!!recovery,onClick:()=>write(null,'timeline.undo')},t('video.change.undo')):null):null,
         recovery?h('div',{className:'dv-change-recovery',role:'alert','data-recovery':recovery.status},
           h('p',null,recovery.status==='preview'?recovery.preview.changeSummary.summary:t(recovery.status==='retry'?'video.change.uncertain':'video.change.conflict')),
           recovery.status==='retry'?h('button',{className:'dv-button dv-button-quiet',disabled:busy,onClick:()=>sendAttempt(recovery)},t('video.change.retry')):recovery.status==='preview'?h('button',{className:'dv-button dv-button-primary',disabled:busy,onClick:()=>sendAttempt(recovery)},t('video.change.apply')):recovery.params.ops?h('button',{className:'dv-button dv-button-quiet',disabled:busy,onClick:previewRecovery},t('video.change.preview')):null,
           h('button',{className:'dv-button dv-button-quiet',disabled:busy,onClick:()=>setRecovery(null)},t('video.change.dismiss'))):null,
-        h(
+        busy || notice ? h(
           "div",
           { className: "dv-timeline-notice", role: "status" },
-          busy ? t("video.timeline.saving") : notice || t("video.timeline.hint"),
-        ),
+          busy ? t("video.timeline.saving") : notice,
+        ) : null,
       );
     }
 
@@ -5954,6 +6031,10 @@ window.__ModuleLoader__.load({
           'data-preview-retrying': previewRetrying ? 'true' : 'false',
           'data-preview-diagnostics': previewDiagnosticsText(),
         },
+        previewOnly ? h('nav',{className:'dv-resource-bar','aria-label':t('video.canvas.resources')},
+          h('button',{type:'button',className:'dv-resource-tab','aria-label':t('video.canvas.materials'),'aria-expanded':drawerOpen?'true':'false',onClick:()=>{setDrawerOpen(!drawerOpen);setAudioOpen(false);}},h(StudioIcon,{name:'media'}),h('span',null,t('video.canvas.materials'))),
+          h('button',{type:'button',className:'dv-resource-tab','aria-label':t('video.audio.title'),'aria-expanded':audioOpen?'true':'false',onClick:()=>{setAudioOpen(!audioOpen);setDrawerOpen(false);}},h(StudioIcon,{name:'audio'}),h('span',null,t('video.audio.title')))
+        ) : null,
         h('div', { className: 'dv-canvas-wrap', ref: wrapRef }, canvasBody()),
         previewNoticeNode(),
         active !== null && active.revision !== targetRevision && previewNotice === null ? h('span', { className: 'dv-preview-progress', role: 'status' }, h('span', { className: 'dv-status-dot', 'aria-hidden': 'true' }), t('video.canvas.updatingPreview')) : null,
@@ -5980,8 +6061,7 @@ window.__ModuleLoader__.load({
           h('span', { className: 'dv-time' }, formatSeconds(time) + ' / ' + formatSeconds(displayDuration)),
           previewOnly ? null : h('button', { type: 'button', className: 'dv-button dv-button-quiet', onClick: function undo() { void historyStep('undo'); }, disabled: busy !== null, title: t('video.canvas.undo') }, t('video.canvas.undo')),
           previewOnly ? null : h('button', { type: 'button', className: 'dv-button dv-button-quiet', onClick: function redo() { void historyStep('redo'); }, disabled: busy !== null, title: t('video.canvas.redo') }, t('video.canvas.redo')),
-          previewOnly ? h('button',{type:'button',className:'dv-button dv-button-quiet',onClick:()=>{setAudioOpen(!audioOpen);setDrawerOpen(false);}},t('video.audio.title')):null,
-          h('button', { type: 'button', className: 'dv-button dv-button-quiet', onClick: function drawer() { setDrawerOpen(!drawerOpen); }, 'aria-expanded': drawerOpen ? 'true' : 'false' }, t('video.canvas.materials')),
+          previewOnly ? null : h('button',{type:'button',className:'dv-button dv-button-quiet',onClick:()=>setDrawerOpen(!drawerOpen),'aria-expanded':drawerOpen},t('video.canvas.materials')),
           previewOnly ? null : h('button', { type: 'button', className: 'dv-button dv-button-quiet', onClick: function add() { void addScene(); }, disabled: busy !== null }, t('video.canvas.addScene')),
           previewOnly
             ? null

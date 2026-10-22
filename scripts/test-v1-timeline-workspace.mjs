@@ -270,6 +270,22 @@ try {
   await page.waitForSelector(".dv-canvas-shell[data-canvas-phase=ready]");
   await page.waitForSelector(".dv-timeline-clip");
   checks++;
+  assert.equal(await page.$$eval('.dv-canvas-bar button',xs=>xs.some(x=>x.textContent==='素材')),false,'playback bar must not contain the media entry');
+  assert.equal(await page.$eval('.dv-resource-bar button[aria-label="素材"]',e=>e.getAttribute('aria-expanded')),'false');
+  assert.equal(await page.$eval('.dv-timeline-notice',e=>getComputedStyle(e).display).catch(()=> 'none'),'none','idle timeline has no permanent instruction footer');checks++;
+  await page.click('.dv-timeline-clip');
+  assert.equal(await page.$eval('.dv-clip-settings',e=>e.open),false,'clip properties stay collapsed after selection');
+  await page.click('.dv-clip-settings summary');
+  assert.equal(await page.$eval('.dv-timeline-inspector',e=>e.getBoundingClientRect().height>0),true);
+  await page.focus('.dv-clip-settings summary');await page.keyboard.press('Escape');
+  assert.equal(await page.$eval('.dv-clip-settings',e=>e.open),false);checks++;
+  await page.setViewport({width:340,height:760});await page.evaluate(()=>document.getElementById('mount').style.width='100%');
+  await page.waitForFunction(()=>{const el=document.querySelector('.dv-timeline-scroll');return el.scrollWidth<=el.clientWidth+1;});
+  await page.click('.dv-clip-settings summary');
+  assert.equal(await page.$eval('.dv-timeline-inspector',e=>{const r=e.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth;}),true);checks++;
+  await page.click('.dv-clip-settings summary');
+  await page.setViewport({width:900,height:760});await page.evaluate(()=>document.getElementById('mount').style.width='800px');
+
   const clickText = async (text) => {
     await page.waitForFunction(
       (text) => {
@@ -462,7 +478,7 @@ try {
   );
   const beforeAdd = await bridge.invoke("timeline.inspect", { projectId }),
     clipCount = beforeAdd.totalClips;
-  await page.click(".dv-canvas-bar button:last-child");
+  await page.click('.dv-resource-bar button[aria-label="素材"]');
   await page.waitForSelector(".dv-media-tile");
   await page.click(".dv-media-tile");
   await clickText("加入时间线");
@@ -483,7 +499,7 @@ try {
       document.querySelector(".dv-timeline").getAttribute("aria-busy") ===
       "false",
   );
-  await page.click(".dv-canvas-bar button:last-child");
+  await page.click('.dv-resource-bar button[aria-label="素材"]');
   await page.waitForSelector(".dv-media-tile");
   await page.evaluate(() => {
     const transfer = new DataTransfer(),
@@ -579,6 +595,7 @@ try {
     const audioTrack=audioTimeline.tracks.find(x=>x.kind==='audio'),audioClip=audioTrack.clips[0];
     assert.ok(audioClip.durationFrames>30);checks++;
     await page.click('[data-clip-id="'+audioClip.clipId+'"]');
+    await page.click('.dv-clip-settings summary');
     for(const [label,value]of [['音量','-6'],['淡入','0.3'],['淡出','0.4'],['轨道增益','-3']]) {
       const input=await page.$('.dv-timeline-inspector input[aria-label="'+label+'"]');
       await input.click();await input.evaluate(e=>e.select());await input.press('Backspace');await input.type(value);await input.press('Tab');
@@ -651,7 +668,7 @@ try {
     await bridge.invoke('timeline.apply',{projectId,expectedRevision:queuedBefore.revision,operationId:'queue-conflict',ops:[{op:'clip.set',clipId:cid,patch:{label:'保留排队素材'}}]});
     await page.click('.dv-timeline-clip');await (await page.$('.dv-timeline-edge-out')).focus();await page.keyboard.press('ArrowLeft');
     await page.waitForSelector('.dv-change-recovery[data-recovery=conflict]');
-    await page.click('.dv-canvas-bar button:last-child');await page.waitForSelector('.dv-media-tile');await page.click('.dv-media-tile');await clickText('加入时间线');
+    await page.click('.dv-resource-bar button[aria-label="素材"]');await page.waitForSelector('.dv-media-tile');await page.click('.dv-media-tile');await clickText('加入时间线');
     assert.equal((await bridge.invoke('timeline.inspect',{projectId})).totalClips,queuedBefore.totalClips);
     await page.click('.dv-change-recovery button:last-child');
     await count(queuedBefore.totalClips+1);checks++;
