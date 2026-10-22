@@ -2,7 +2,7 @@
 
 ## 当前：M1–M5 CR 与验收候选（2026-10-22）
 
-- 本轮完成代码审查与验收前回归，修复 5 类问题：中断迁移误注册/混写目录、50 次历史上限后撤销回执错误及 no-op 重做提示、工程响度未用于导出、隐藏视频轨的预览/导出声音差异、冲突期间素材上轨请求丢失。复现与修复见 [CR 报告](tasks/V1-CR-regression.md)。
+- 本轮完成代码审查与验收前回归，[PR #22](https://github.com/heswy/dsh-video-editor/pull/22) 按既有授权自行判断合码。修复 5 类问题：中断迁移误注册/混写目录、50 次历史上限后撤销回执错误及 no-op 重做提示、工程响度未用于导出、隐藏视频轨的预览/导出声音差异、冲突期间素材上轨请求丢失。复现与修复见 [CR 报告](tasks/V1-CR-regression.md)。
 - 当前唯一验收候选：bundle **`1.0.0-alpha.7`** / client+worker **`0.8.1`**，固定 runtime `bfc34d13bb3398236d5ec0535049edc4e25358e3`（root=engine、rootDirty=false）；同级 worktrees `artifacts/p2-b/staging-v1.0.0-alpha.7-bfc34d1`，INTEGRITY SHA256 `4cce9e034194646c3c75e785b25e56d2a845d47af4055abe5ea40d2e5013dfe8`。旧候选和作品保留。
 - source 门禁 58/86/71、worker 74、client 23、版本 10 通过；实际 Chrome 工作区 38、固定候选对话链 261/261、预览链 164/164、Host/画布/1 GiB 素材与重启通过，源码只读审计 91→91 无变化。默认导出 -16.02 LUFS，自定义 -20 LUFS 与音画标记另见报告。
 - 进入用户验收准备；尚未替换 DSH 当前安装、重启、请求真实模型或公开发布。原生 @ chip/官方引用共存、真实多轮模型及成功率、宿主升级 Client/Host 一致性仍需真机联合验收。M6 发布硬化和公开发布不因本轮 CR 自动完成。

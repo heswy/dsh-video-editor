@@ -1,6 +1,6 @@
 # V1 M1–M5 CR 与验收前回归（2026-10-22）
 
-用户要求在入场验收前完成 CR 与整轮回归。基线 `d2ddd5643b5d395f03c494b14adae61ebd05e40b`（M5 PR #21），隔离分支 `codex/v1-cr-regression`。沿用当前会话开发、修复、验证与自行判断合码授权。原生安装、重启、真实模型和公开发布仍按 DEVELOPMENT 执行。
+用户要求在入场验收前完成 CR 与整轮回归。基线 `d2ddd5643b5d395f03c494b14adae61ebd05e40b`（M5 PR #21），隔离分支 `codex/v1-cr-regression`，[PR #22](https://github.com/heswy/dsh-video-editor/pull/22)。沿用当前会话开发、修复、验证与自行判断合码授权。原生安装、重启、真实模型和公开发布仍按 DEVELOPMENT 执行。
 
 ## 审查修复
 
