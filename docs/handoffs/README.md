@@ -1,5 +1,9 @@
 # 当前交接入口
 
+## 待评审入口：alpha.13 对话音频
+
+2026-10-23 用户指定当前会话重做音频，允许融入外部 skill，必须复用右侧 AI。本轮候选实现本地数据乐谱合成、插件内 skill/guide/recipe、音频记录试听/恢复和既有上轨导出；固定 runtime `e7c124d`，source/固定工作区各68、实际音频链各14通过。仍待用户验收，未合码或安装；当前实际安装仍alpha.12。事实与限制见 [音频任务](../tasks/V1-audio-creation.md) 和 [STATUS](../STATUS.md)。
+
 ## 最新入口：alpha.12 移动与自动时长
 
 2026-10-23 两项修复完成，已安装 alpha.12 并退出重开 DSH；Test 工程自动时长 532 帧 / 17.73s，片段与素材不变。source/固定 Chrome 各 52 项及真实 532 帧导出通过；固定 runtime `f10e7ff`，alpha.11 回滚保留。见 [任务](../tasks/V1-move-duration-consistency.md) 与 [STATUS](../STATUS.md)。浏览器验证不冒充原生拖动验收，未公开发布。
