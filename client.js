@@ -199,6 +199,7 @@ window.__ModuleLoader__.load({
 'video.timeline.duplicate': "复制",
 'video.timeline.addTrack': "加轨",
 'video.timeline.snap': "吸附",
+      'video.timeline.playhead': '播放头',
       'video.timeline.snapOn': '吸附已开启',
       'video.timeline.snapOff': '吸附已关闭',
 'video.timeline.zoom': "缩放时间线",
@@ -472,6 +473,7 @@ window.__ModuleLoader__.load({
 'video.timeline.duplicate': "Duplicate",
 'video.timeline.addTrack': "Add track",
 'video.timeline.snap': "Snap",
+      'video.timeline.playhead': 'Playhead',
       'video.timeline.snapOn': 'Snapping on',
       'video.timeline.snapOff': 'Snapping off',
 'video.timeline.zoom': "Timeline zoom",
@@ -1785,6 +1787,14 @@ window.__ModuleLoader__.load({
 .dv-root .dv-track-mute svg{width:14px;height:14px;pointer-events:none}
 .dv-root .dv-track-mute:hover{background:var(--dsw-alias-interactive-bg-hover,#ffffff12);opacity:1}
 .dv-root .dv-track-mute[aria-pressed=true]{opacity:1;color:#7a4b00;background:#ffe0a1;border-color:#d7a44d}
+
+.dv-root .dv-timeline-ruler,.dv-root .dv-timeline-ruler *, .dv-root .dv-timeline-playhead,.dv-root .dv-timeline[data-scrubbing=true]{user-select:none;-webkit-user-select:none;touch-action:none}
+.dv-root .dv-timeline-ruler{cursor:ew-resize}
+.dv-root .dv-timeline-playhead{width:1px;background:transparent;pointer-events:auto;cursor:ew-resize;touch-action:none}
+.dv-root .dv-timeline-playhead:after{content:'';position:absolute;left:0;top:0;bottom:0;width:1px;background:var(--dsw-alias-label-primary,#eee);pointer-events:none}
+.dv-root .dv-timeline-playhead:before{left:-3px;pointer-events:none}
+.dv-playhead-handle{position:absolute;left:-6px;top:0;width:13px;height:28px;cursor:ew-resize;touch-action:none}
+.dv-root .dv-timeline-playhead:focus-visible{outline:2px solid var(--dsw-focus-ring-color,#8facbc);outline-offset:1px}
 
 @container video-canvas (max-width:480px){.dv-root .dv-timeline-heading{display:none}.dv-root .dv-timeline-zoom{width:40px}.dv-root .dv-clip-settings summary span{display:none}.dv-root .dv-resource-bar{padding:0 8px}.dv-root .dv-canvas-shell[data-preview-only="true"] .dv-canvas-wrap{margin:12px 12px 4px}.dv-root .dv-timeline-toolbar{padding:0 6px;gap:1px}.dv-root .dv-tool-divider{margin:0 3px}}
 
@@ -4137,12 +4147,13 @@ window.__ModuleLoader__.load({
         [waveVersion,setWaveVersion]=React.useState(0),
         [levelDrafts,setLevelDrafts]=React.useState({}),
         [snap, setSnap] = React.useState(true),
-        [drag, setDrag] = React.useState(null);
+        [drag, setDrag] = React.useState(null),
+        [scrub,setScrub]=React.useState(null);
       const [recovery,setRecovery]=React.useState(null);
       const waves=React.useRef(new Set());
       const alive = React.useRef(true),
         current = React.useRef(null),
-        viewport = React.useRef(null),timelineRef=React.useRef(null),gestureRef=React.useRef(null),laneRefs=React.useRef(new Map()),gestureMoved=React.useRef(false);
+        viewport = React.useRef(null),timelineRef=React.useRef(null),rulerRef=React.useRef(null),scrubRef=React.useRef(null),gestureRef=React.useRef(null),laneRefs=React.useRef(new Map()),gestureMoved=React.useRef(false);
       React.useEffect(() => {
         alive.current = true;
         return () => {
@@ -4290,7 +4301,8 @@ window.__ModuleLoader__.load({
           ]);
         }
       }, [props.assetToAdd, data, busy, recovery]);
-      React.useEffect(()=>{setLevelDrafts({});gestureRef.current=null;setDrag(null);},[data?.revision]);
+      React.useEffect(()=>{setLevelDrafts({});gestureRef.current=null;setDrag(null);if(scrubRef.current)finishScrub();},[data?.revision]);
+      React.useEffect(()=>{if(!scrub)return;const view=timelineRef.current?.ownerDocument.defaultView;const stop=()=>finishScrub();view?.addEventListener('blur',stop);let raf;const scroll=()=>{const g=scrubRef.current,el=viewport.current;if(g&&el){const r=el.getBoundingClientRect(),x=g.clientX;const delta=x<r.left+124?-Math.min(18,Math.ceil((r.left+124-x)/2)):x>r.right-24?Math.min(18,Math.ceil((x-r.right+24)/2)):0;const before=el.scrollLeft;if(delta){el.scrollLeft+=delta;if(before!==el.scrollLeft)moveScrub(x);}}raf=requestAnimationFrame(scroll);};raf=requestAnimationFrame(scroll);return()=>{cancelAnimationFrame(raf);view?.removeEventListener('blur',stop);};},[Boolean(scrub)]);
       // Keep Escape within this timeline even when selecting a clip inserts toolbar controls.
       React.useEffect(()=>{if(drag)timelineRef.current?.focus({preventScroll:true});},[drag]);
       React.useEffect(()=>{
@@ -4327,11 +4339,37 @@ window.__ModuleLoader__.load({
           tr.clips.map((c) => ({ ...c, trackId: tr.trackId })),
         ),
         chosen = clips.find((c) => c.clipId === selected),
-        frame = Math.round(props.time * 30),
+        frame = Math.round((scrub?.time??props.time) * 30),
         duration = data.settings.durationFrames,
-        zoom = drag?.zoom ?? (fit ? Math.max(.05,(viewWidth-100-24)/Math.max(1,duration/30)) : manualZoom),
+        zoom = scrub?.zoom ?? drag?.zoom ?? (fit ? Math.max(.05,(viewWidth-100-24)/Math.max(1,duration/30)) : manualZoom),
         width = Math.max(viewWidth-100, (Math.max(duration,drag?.nextDuration??duration) / 30) * zoom + (drag?.lifted?160:24)),
         tickStep = [1,2,5,10,15,30,60,120,300,600,1800,3600].find(x=>x*zoom>=48) || Math.ceil(48/zoom/3600)*3600;
+      function moveScrub(clientX) {
+        const g=scrubRef.current,ruler=rulerRef.current;if(!g||!ruler)return;
+        const rect=ruler.getBoundingClientRect();
+        const time=Math.max(0,Math.min(g.duration,Math.round((clientX-rect.left)/g.zoom*30)))/30;
+        const next={...g,clientX,time};scrubRef.current=next;setScrub(next);props.onSeek(time);
+      }
+      function finishScrub(restore=false) {
+        const g=scrubRef.current;if(!g)return;
+        const time=Math.max(0,Math.min((data?.settings.durationFrames??g.duration)/30,restore?g.startTime:g.time));scrubRef.current=null;setScrub(null);
+        props.onScrubEnd?.(time);if(!props.onScrubEnd)props.onSeek(time);
+        const node=timelineRef.current;if(node?.hasPointerCapture?.(g.pointerId))node.releasePointerCapture(g.pointerId);
+      }
+      function startScrub(e) {
+        if(e.button!==0||gestureRef.current||scrubRef.current)return;
+        e.preventDefault();e.stopPropagation();
+        const g={pointerId:e.pointerId,startTime:props.time,time:props.time,zoom,duration,clientX:e.clientX};
+        scrubRef.current=g;setScrub(g);props.onScrubStart?.();
+        timelineRef.current?.focus({preventScroll:true});timelineRef.current?.setPointerCapture(e.pointerId);
+        moveScrub(e.clientX);
+      }
+      function scrubKey(e) {
+        const step=e.shiftKey?30:1;
+        const next=e.key==='Home'?0:e.key==='End'?duration:e.key==='ArrowLeft'?frame-step:e.key==='ArrowRight'?frame+step:null;
+        if(next===null)return;e.preventDefault();e.stopPropagation();
+        const time=Math.max(0,Math.min(duration,next))/30;props.onScrubStart?.();props.onScrubEnd?.(time);if(!props.onScrubEnd)props.onSeek(time);
+      }
       function nearest(raw, except) {
         let value = Math.max(0, Math.round(raw));
         if (!snap) return value;
@@ -4405,14 +4443,16 @@ window.__ModuleLoader__.load({
           ref:timelineRef,
           'data-duration-mode':data.settings.durationMode,
           'data-duration-frames':duration,
-          onPointerMove:pointerMove,
-          onPointerUp:e=>{const c=clips.find(c=>c.clipId===gestureRef.current?.clipId);if(c)pointerUp(e,c);},
-          onPointerCancel:()=>{gestureMoved.current=true;gestureRef.current=null;setDrag(null);},
-          onLostPointerCapture:()=>{gestureRef.current=null;setDrag(null);},
-          onBlur:e=>{if(drag&&!e.currentTarget.contains(e.relatedTarget)){gestureMoved.current=true;gestureRef.current=null;setDrag(null);}},
+          'data-scrubbing':scrub?'true':'false',
+          onPointerMove:e=>{if(scrubRef.current){if(e.pointerId===scrubRef.current.pointerId){e.preventDefault();moveScrub(e.clientX);}}else pointerMove(e);},
+          onPointerUp:e=>{if(scrubRef.current){if(e.pointerId===scrubRef.current.pointerId){moveScrub(e.clientX);finishScrub();}return;}const c=clips.find(c=>c.clipId===gestureRef.current?.clipId);if(c)pointerUp(e,c);},
+          onPointerCancel:()=>{finishScrub();gestureMoved.current=true;gestureRef.current=null;setDrag(null);},
+          onLostPointerCapture:()=>{finishScrub();gestureRef.current=null;setDrag(null);},
+          onBlur:e=>{if(scrubRef.current&&!e.currentTarget.contains(e.relatedTarget))finishScrub();if(drag&&!e.currentTarget.contains(e.relatedTarget)){gestureMoved.current=true;gestureRef.current=null;setDrag(null);}},
           "aria-label": t("video.timeline.title"),"aria-busy":busy?"true":"false",
           tabIndex: 0,
           onKeyDown: (e) => {
+            if(scrubRef.current){if(e.key==='Escape'){e.preventDefault();e.stopPropagation();finishScrub(true);}return;}
             if(drag){if(e.key==='Escape'){e.preventDefault();e.stopPropagation();gestureMoved.current=true;gestureRef.current=null;setDrag(null);}return;}
             if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT")
               return;
@@ -4518,17 +4558,9 @@ window.__ModuleLoader__.load({
             h(
               "div",
               {
-                className: "dv-timeline-ruler",
+                className: "dv-timeline-ruler",ref:rulerRef,
                 style: { marginLeft: 100, width },
-                onClick: (e) => {
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  props.onSeek(
-                    Math.min(
-                      duration / 30,
-                      Math.max(0, (e.clientX - rect.left) / zoom),
-                    ),
-                  );
-                },
+                onPointerDown:startScrub,
               },
               Array.from(
                 { length: Math.min(1000, Math.ceil(duration / 30 / tickStep) + 1) },
@@ -4666,9 +4698,11 @@ window.__ModuleLoader__.load({
               ),
             drag?.lifted&&!drag.edge&&drag.valid&&drag.snapFrame!==null?h('div',{className:'dv-drop-guide','aria-hidden':true,style:{left:100+drag.snapFrame/30*zoom}}):null,
             h("div", {
-              className: "dv-timeline-playhead",
-              style: { left: 100 + props.time * zoom },
-            }),
+              className: "dv-timeline-playhead",role:"slider",tabIndex:0,
+              "aria-label":t("video.timeline.playhead"),"aria-valuemin":0,"aria-valuemax":duration/30,"aria-valuenow":frame/30,"aria-valuetext":formatSeconds(frame/30),
+              onPointerDown:startScrub,onKeyDown:scrubKey,
+              style: { left: 100 + (scrub?.time??props.time) * zoom },
+            },h("span",{className:"dv-playhead-handle","aria-hidden":true})),
           ),
         ),
         recovery?h('div',{className:'dv-change-recovery',role:'alert','data-recovery':recovery.status},
@@ -4723,6 +4757,8 @@ window.__ModuleLoader__.load({
       const pendingRequestRef = React.useRef(null);
       const [time, setTime] = React.useState(0);
       const [playing, setPlaying] = React.useState(false);
+      const timelineScrubRef=React.useRef(null);
+      React.useEffect(()=>{timelineScrubRef.current=null;},[projectId]);
       const [selected, setSelected] = React.useState(null);
       const [drag, setDrag] = React.useState(null);
       const [editor, setEditor] = React.useState(null);
@@ -5355,6 +5391,12 @@ window.__ModuleLoader__.load({
         return function stopReadyWait() { clearTimeout(timer); };
       }, [candidate]);
 
+      function syncRuntimeTime(time) {
+        const fence=timelineScrubRef.current;
+        if(fence?.held)return false;
+        if(fence&&Date.now()<fence.until&&(!Number.isFinite(time)||Math.abs(time-fence.time)>1/30))return false;
+        timelineScrubRef.current=null;if(Number.isFinite(time))setTime(time);return true;
+      }
       function handleActiveRuntimeEvent(instance, outcome) {
         if (activeRef.current !== instance) return;
         const payload = outcome.payload;
@@ -5362,16 +5404,16 @@ window.__ModuleLoader__.load({
           readyRef.current = true;
           setPhase('ready');
         } else if (outcome.type === 'seeked' || outcome.type === 'state') {
-          if (Number.isFinite(payload.time)) setTime(payload.time);
-          if (typeof payload.playing === 'boolean') setPlaying(payload.playing);
+          const accepted=syncRuntimeTime(payload.time);
+          if (accepted&&typeof payload.playing === 'boolean') setPlaying(payload.playing);
           readyRef.current = true;
         } else if(outcome.type==='soundEnabled'){
           soundEnabledRef.current=true;
         } else if (outcome.type === 'playing') {
-          setPlaying(true);
+          if(!timelineScrubRef.current)setPlaying(true);
         } else if (outcome.type === 'paused') {
           setPlaying(false);
-          if (Number.isFinite(payload.time)) setTime(payload.time);
+          syncRuntimeTime(payload.time);
         } else if (outcome.type === 'hit') {
           setSelectedSafe(payload.hit || null);
         } else if (outcome.type === 'error') {
@@ -5966,6 +6008,7 @@ window.__ModuleLoader__.load({
       }
 
       function togglePlayback() {
+        timelineScrubRef.current=null;
         if (playing) {
           setPlaying(false);
           void postActiveCommand('pause');
@@ -6378,7 +6421,7 @@ window.__ModuleLoader__.load({
           actionError !== null ? h('span', { className: 'dv-tool-error', role: 'alert' }, errorText(actionError, t)) : null,
           busy !== null ? h('span', { className: 'dv-tool-hint' }, t('video.canvas.busy')) : null
         ),
-        previewOnly && props.timelineEnabled!==false ? h(TimelinePanel,{key:"timeline:"+projectId,t,projectId,revision:inspected.revision,time,onSeek:seekTo,onReload,assetToAdd,onAssetConsumed:()=>setAssetToAdd(null),onQueueAsset:setAssetToAdd}) : null,
+        previewOnly && props.timelineEnabled!==false ? h(TimelinePanel,{key:"timeline:"+projectId,t,projectId,revision:inspected.revision,time,onSeek:seekTo,onScrubStart:()=>{timelineScrubRef.current={held:true};setPlaying(false);void postActiveCommand('pause');},onScrubEnd:value=>{timelineScrubRef.current={held:false,time:value,until:Date.now()+1500};seekTo(value);},onReload,assetToAdd,onAssetConsumed:()=>setAssetToAdd(null),onQueueAsset:setAssetToAdd}) : null,
         audioOpen && previewOnly ? h(AudioPanel,{key:"audio:"+projectId,t,projectId,onClose:()=>setAudioOpen(false),onAudition:()=>{setPlaying(false);void postActiveCommand('pause');},onAdd:a=>{setAssetToAdd(a);setAudioOpen(false);}}):null,
         drawerOpen && previewOnly ? h(MediaLibraryPanel,{key:"media:"+projectId,t:t,projectId:projectId,onClose:()=>setDrawerOpen(false),onAdd:asset=>{setAssetToAdd(asset);setDrawerOpen(false);}}) : null,
         drawerOpen && previewOnly === false
