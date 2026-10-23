@@ -741,13 +741,16 @@ try {
     // A job created through the same API used by right-hand AI appears live.
     await clickText('声音');await page.waitForSelector('.dv-audio-panel');
     assert.equal(await page.$eval('.dv-audio-quick',e=>e.open),false);checks++;
-    const aiJob=await bridge.invoke('audio.generate',{projectId,operationId:'ui-procedural-arrival',provider:'procedural',kind:'sfx',text:'AI 转场提示音',score:{duration:0.5,events:[{sound:'whoosh',at:0,duration:0.5,gainDb:-12}]}});
+    const aiJob=await bridge.invoke('audio.generate',{projectId,operationId:'ui-procedural-arrival',provider:'procedural',kind:'sfx',text:'AI 转场提示音',score:{duration:3,events:[{sound:'whoosh',at:0,duration:3,gainDb:-12}]}});
     await page.waitForFunction(id=>document.querySelector('[data-audio-job="'+id+'"] audio')!==null,{},aiJob.jobId);checks++;
     const audioUrl=await page.$eval('[data-audio-job="'+aiJob.jobId+'"] audio',e=>e.src);
+    await page.$eval('[data-audio-job="'+aiJob.jobId+'"] audio',e=>{window.__auditionNode=e;return e.play();});
+    await page.waitForFunction(()=>window.__auditionNode.currentTime>1.3);assert.equal(await page.evaluate(()=>window.__auditionNode.paused),false);checks++;
     const previewResponse=await fetch(audioUrl);assert.equal(previewResponse.status,200);assert.equal(Buffer.from(await previewResponse.arrayBuffer()).toString('ascii',0,4),'RIFF');checks++;
     await page.evaluate(()=>document.getElementById('mount').style.cssText+=';--dsw-alias-bg-base:#fff;--dsw-alias-label-primary:#202126;--dsw-alias-label-secondary:#70747c;--dsw-alias-interactive-bg-hover:#f0f2f4;color:#202126');
     await page.screenshot({path:join(out,'audio-hub-light.png')});
     await page.keyboard.press('Escape');await page.waitForFunction(()=>!document.querySelector('.dv-audio-panel'));checks++;
+    assert.equal(await page.evaluate(()=>window.__auditionNode.paused),true);checks++;
     await page.evaluate(()=>document.getElementById('mount').style.cssText='');
 
   }

@@ -4015,6 +4015,16 @@ window.__ModuleLoader__.load({
         h('p', { role: 'status' }, notice),
       );
     }
+    function AudioAudition(props) {
+      const player=React.useRef(null);
+      React.useEffect(()=>{
+        const node=player.current;
+        props.players.current.set(props.id,node);
+        return()=>{node?.pause();props.players.current.delete(props.id);};
+      },[props.id]);
+      return React.createElement('audio',{controls:true,preload:'none',ref:player,src:props.src,'aria-label':props.label,onPlay:()=>{props.onAudition?.();for(const [id,node]of props.players.current)if(id!==props.id)node?.pause();}});
+    }
+
     function AudioPanel(props) {
       const t=props.t,h=React.createElement;
       const panelRef=usePanelDismiss(props.onClose,'audio'),alive=React.useRef(true),players=React.useRef(new Map()),attempt=React.useRef(null);
@@ -4048,7 +4058,7 @@ window.__ModuleLoader__.load({
       const jobView=j=>h('article',{className:'dv-audio-job',key:j.jobId,'data-audio-job':j.jobId},
         h('div',{className:'dv-audio-job-heading'},h('strong',null,j.label||t('video.audio.'+j.kind)),h('span',{'data-state':j.state},t('video.audio.'+j.state))),
         h('small',null,t('video.audio.'+j.kind)+' · '+providerName(j.provider)+((j.analysis?.duration||j.asset?.durationFrames)?' · '+(j.analysis?.duration??j.asset.durationFrames/(j.asset.fps||30)).toFixed(2)+'s':'')),
-        j.asset?h('audio',{controls:true,preload:'none','aria-label':(j.label||t('video.audio.'+j.kind))+' '+t('video.audio.audition'),src:'api/dsh-video/media?projectId='+encodeURIComponent(props.projectId)+'&assetId='+encodeURIComponent(j.asset.assetId),ref:node=>{if(node)players.current.set(j.jobId,node);else players.current.delete(j.jobId);},onPlay:()=>{props.onAudition?.();for(const [id,p]of players.current)if(id!==j.jobId)p.pause();}}):null,
+        j.asset?h(AudioAudition,{id:j.jobId,players,onAudition:props.onAudition,label:(j.label||t('video.audio.'+j.kind))+' '+t('video.audio.audition'),src:'api/dsh-video/media?projectId='+encodeURIComponent(props.projectId)+'&assetId='+encodeURIComponent(j.asset.assetId)}):null,
         j.error?h('p',{role:'alert'},j.error.message):null,
         j.asset?h('button',{className:'dv-button dv-button-quiet',onClick:()=>props.onAdd(j.asset)},t('video.audio.add')):null,
         ['queued','running','downloading','cancelling'].includes(j.state)?h('button',{className:'dv-button dv-button-quiet',disabled:busy||j.state==='cancelling',onClick:()=>perform('audio.cancel',{projectId:props.projectId,jobId:j.jobId})},t('video.audio.cancel')):null);
