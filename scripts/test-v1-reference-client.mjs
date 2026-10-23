@@ -36,7 +36,7 @@ assert.deepEqual(
 assert.equal(calls, 0);
 const rows = await native.candidates({ sessionId: "owned" }, { query: "开场" });
 assert.equal(rows.length, 1);
-assert.equal(rows[0].section, "片段");
+assert.equal(rows[0].section, "时间线片段");
 const pick = native.onPick({ candidate: rows[0] });
 assert.equal(pick.insert.source, "dsh-video");
 assert.equal(pick.insert.ref, token);
@@ -64,6 +64,22 @@ assert.equal(
   api.referenceToken("demo", "clip", "cl_one", "a".repeat(64)),
   token,
 );
+const menu = api.createReferenceSource(async () => ({items:[
+ {kind:'clip',label:'原作品',detail:'0.00–17.73s · 视频轨 1',token},
+ {kind:'scene',label:'原作品',detail:'0.00–17.73s · 视频轨 1',token:token.replace('/clip/','/scene/')},
+ {kind:'range',label:'0.00–17.73s',detail:'全部轨道',token:token.replace('/clip/cl_one/','/range/0-532/')},
+ {kind:'asset',label:'1.jpeg',detail:'image',token:token.replace('/clip/cl_one/','/asset/as_one/')},
+ {kind:'clip',label:'原作品',detail:'17.73–20.00s · 视频轨 2',token:token.replace('cl_one','cl_two')}
+]}));
+const compact = await menu.candidates({sessionId:'owned'});
+assert.equal(compact.length,3,'native picker presents one entry per clip plus source assets');
+assert.deepEqual(Array.from(compact,x=>x.section),['时间线片段','时间线片段','素材库']);
+assert.equal(compact[0].label,'原作品 · 0.00–17.73s');
+assert.equal(compact[1].label,'原作品 · 17.73–20.00s');
+assert.equal(compact[0].description,'视频轨 1 · 修改这个片段');
+assert.equal(compact[2].description,'图片 · 引用源素材');
+assert.equal(menu.onPick({candidate:compact[1]}).insert.label,compact[1].label);
+assert.equal(menu.onPick({candidate:compact[1]}).insert.ref,token.replace('cl_one','cl_two'));
 let registered = 0,
   removed = 0,
   callback;
@@ -92,4 +108,4 @@ assert.equal(registered, 2);
 assert.equal(removed, 2);
 assert.doesNotThrow(() => api.installReferenceSource({ get: () => null }));
 assert.doesNotThrow(()=>callback({...scope,effect:()=>{throw new Error('API drift');}}));
-console.log(JSON.stringify({ ok: true, checks: 13 }));
+console.log(JSON.stringify({ ok: true, checks: 21 }));

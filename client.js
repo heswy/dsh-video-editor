@@ -2268,28 +2268,31 @@ window.__ModuleLoader__.load({
               req.signal,
             );
             if (req.signal?.aborted) return [];
+            // Native @ is a concise object picker. Scene aliases and generated
+            // whole-clip ranges repeat the same target; custom ranges stay in
+            // ReferencePanel. The underlying tokens/resolve contract is unchanged.
             return (result.items || [])
-              .filter((x) => REFERENCE_TOKEN.test(x.token))
+              .filter(x => REFERENCE_TOKEN.test(x.token) && ['clip','asset'].includes(x.kind))
+              .sort((a,b) => (a.kind === 'asset') - (b.kind === 'asset'))
               .slice(0, 50)
-              .map((x) => ({
-                name: x.label,
-                label: x.label,
-                description: x.detail,
-                icon: x.kind === 'scene' ? 'folder' : 'file',
-                section: {
-                  clip: '片段',
-                  scene: '场景',
-                  asset: '素材',
-                  range: '区间',
-                }[x.kind],
-                value: JSON.stringify({
-                  token: x.token,
-                  label: String(x.label)
-                    .replace(/[\u0000-\u001f\u007f]/g, ' ')
-                    .slice(0, 80),
-                  kind: x.kind,
-                }),
-              }));
+              .map(x => {
+                const clean = value => String(value || '').replace(/[\u0000-\u001f\u007f]/g, ' ').trim();
+                const detail = clean(x.detail);
+                const boundary = detail.indexOf(' · ');
+                const time = boundary >= 0 ? detail.slice(0,boundary) : detail;
+                const track = boundary >= 0 ? detail.slice(boundary+3) : '';
+                const label = (clean(x.label) + (x.kind === 'clip' && time ? ' · ' + time : '')).slice(0,120);
+                return {
+                  name: label,
+                  label,
+                  description: x.kind === 'clip'
+                    ? (track ? track + ' · ' : '') + '修改这个片段'
+                    : ({image:'图片',video:'视频',audio:'音频'}[detail] || detail || '素材') + ' · 引用源素材',
+                  icon: 'file',
+                  section: x.kind === 'clip' ? '时间线片段' : '素材库',
+                  value: JSON.stringify({token:x.token,label,kind:x.kind}),
+                };
+              });
           } catch (_error) {
             return [];
           }
