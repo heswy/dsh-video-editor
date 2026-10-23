@@ -171,6 +171,10 @@ window.__ModuleLoader__.load({
       'video.audio.fadeOut': "淡出",
       'video.audio.gain': "轨道增益",
       'video.audio.mute': "静音轨道",
+      'video.audio.unmute': '取消静音',
+      'video.timeline.videoTrack': '视频轨道',
+      'video.timeline.audioTrack': '音频轨道',
+      'video.timeline.soundOnly': '仅控制声音，不隐藏画面',
       'video.audio.addTrack': "添加音轨",
       'video.audio.more': "更多编辑",
       'video.audio.voice': "音色",
@@ -440,6 +444,10 @@ window.__ModuleLoader__.load({
       'video.audio.fadeOut': "Fade out",
       'video.audio.gain': "Track gain",
       'video.audio.mute': "Mute track",
+      'video.audio.unmute': 'Unmute track',
+      'video.timeline.videoTrack': 'Video track',
+      'video.timeline.audioTrack': 'Audio track',
+      'video.timeline.soundOnly': 'Controls sound only; video stays visible',
       'video.audio.addTrack': "Add audio track",
       'video.audio.more': "More edits",
       'video.audio.voice': "Voice",
@@ -1768,6 +1776,16 @@ window.__ModuleLoader__.load({
 .dv-root .dv-timeline-track[data-kind=audio] .dv-track-kind{color:#238266;font-weight:600}
 .dv-root .dv-timeline-clip.is-audio.is-muted{filter:saturate(.12);opacity:.58}
 
+.dv-root .dv-timeline-track-name{padding:0 8px;gap:4px}
+.dv-root .dv-track-label{display:flex;align-items:center;gap:4px}
+.dv-root .dv-track-kind{display:inline-flex;align-items:center;flex:none;margin:0}
+.dv-root .dv-track-kind svg{width:13px;height:13px}
+.dv-track-name-text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.dv-root .dv-track-mute{display:inline-flex;align-items:center;justify-content:center;width:22px;height:24px;opacity:.8;border:1px solid transparent;border-radius:5px}
+.dv-root .dv-track-mute svg{width:14px;height:14px;pointer-events:none}
+.dv-root .dv-track-mute:hover{background:var(--dsw-alias-interactive-bg-hover,#ffffff12);opacity:1}
+.dv-root .dv-track-mute[aria-pressed=true]{opacity:1;color:#7a4b00;background:#ffe0a1;border-color:#d7a44d}
+
 @container video-canvas (max-width:480px){.dv-root .dv-timeline-heading{display:none}.dv-root .dv-timeline-zoom{width:40px}.dv-root .dv-clip-settings summary span{display:none}.dv-root .dv-resource-bar{padding:0 8px}.dv-root .dv-canvas-shell[data-preview-only="true"] .dv-canvas-wrap{margin:12px 12px 4px}.dv-root .dv-timeline-toolbar{padding:0 6px;gap:1px}.dv-root .dv-tool-divider{margin:0 3px}}
 
 `;
@@ -2173,6 +2191,9 @@ window.__ModuleLoader__.load({
         name === 'play' ? h('path', { d: 'M9 5.5v13l10-6.5z', fill: 'currentColor', stroke: 'none' }) :
         name === 'pause' ? h('path', { d: 'M9 5.5v13M15 5.5v13', strokeWidth: 2.5 }) :
         name === 'media' ? h('path',{d:'M3 7h7l2 2h9v11H3zM3 7V4h7l2 3M8 13l3 3 3-4 4 5'}) :
+        name === 'video' ? h('path',{d:'M3 6h12v12H3zM15 10l6-3v10l-6-3'}) :
+        name === 'speaker' ? h('path',{d:'M4 9h4l5-4v14l-5-4H4zM17 8a6 6 0 0 1 0 8M20 5a10 10 0 0 1 0 14'}) :
+        name === 'speaker-off' ? h('path',{d:'M4 9h4l5-4v14l-5-4H4zM17 9l5 6M22 9l-5 6'}) :
         name === 'audio' ? h('path',{d:'M9 18V5l11-2v13M9 8l11-2M9 18c0 2-6 3-6 0s6-3 6 0m11-2c0 2-6 3-6 0s6-3 6 0'}) :
         name === 'reference' ? h('path',{d:'M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-2 2M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l2-2'}) :
         name === 'new' ? h('path', { d: 'M12 5v14M5 12h14' }) :
@@ -4524,7 +4545,7 @@ window.__ModuleLoader__.load({
                 h(
                   "div",
                   { key: tr.trackId, className: "dv-timeline-track", "data-kind":tr.kind },
-                  h("div", { className: "dv-timeline-track-name" }, h('span',{className:'dv-track-label'},h('span',{className:'dv-track-kind'},tr.kind==='audio'?'A':'V'),tr.name),h('button',{className:'dv-track-mute','aria-label':t('video.audio.mute')+' '+tr.name,'aria-pressed':Boolean(tr.muted),disabled:busy,onClick:()=>write([{op:'track.update',trackId:tr.trackId,patch:{muted:!tr.muted}}])},'M')),
+                  h("div", { className: "dv-timeline-track-name" }, h('span',{className:'dv-track-label'},h('span',{className:'dv-track-kind',role:'img','aria-label':t(tr.kind==='audio'?'video.timeline.audioTrack':'video.timeline.videoTrack'),title:t(tr.kind==='audio'?'video.timeline.audioTrack':'video.timeline.videoTrack')},h(StudioIcon,{name:tr.kind==='audio'?'audio':'video'})),h('span',{className:'dv-track-name-text',title:tr.name},tr.name)),h('button',{className:'dv-track-mute','aria-label':t(tr.muted?'video.audio.unmute':'video.audio.mute')+' '+tr.name,title:t(tr.muted?'video.audio.unmute':'video.audio.mute')+' · '+tr.name+(tr.kind==='video'?' — '+t('video.timeline.soundOnly'):''),'aria-pressed':tr.muted?'true':'false',disabled:busy,onClick:()=>write([{op:'track.update',trackId:tr.trackId,patch:{muted:!tr.muted}}])},h(StudioIcon,{name:tr.muted?'speaker-off':'speaker'}))),
                   h(
                     "div",
                     {

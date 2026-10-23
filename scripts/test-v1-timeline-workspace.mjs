@@ -279,6 +279,7 @@ try {
   assert.equal(await page.$$eval('.dv-canvas-bar button',xs=>xs.some(x=>x.textContent==='素材')),false,'playback bar must not contain the media entry');
   assert.equal(await page.$eval('.dv-resource-bar button[aria-label="素材"]',e=>e.getAttribute('aria-expanded')),'false');
   assert.equal(await page.$eval('.dv-timeline-notice',e=>getComputedStyle(e).display).catch(()=> 'none'),'none','idle timeline has no permanent instruction footer');checks++;
+  assert.equal(await page.$$eval('.dv-track-mute',xs=>xs.every(x=>x.querySelector('svg')&&!x.textContent.trim())),true,'track sound actions use icons, not ambiguous letters');checks++;
   const snapRevision=(await bridge.invoke('timeline.inspect',{projectId})).revision;
   const snapAppearance=()=>page.$eval('.dv-snap-toggle',e=>({background:getComputedStyle(e).backgroundColor,color:getComputedStyle(e).color}));
   const enabledSnap=await snapAppearance();await page.click('.dv-snap-toggle');const disabledSnap=await snapAppearance();
@@ -717,10 +718,12 @@ try {
     audioTimeline=await bridge.invoke('timeline.inspect',{projectId});
     const edited=audioTimeline.tracks.find(x=>x.kind==='audio');
     assert.equal(edited.clips[0].volumeDb,-6);assert.equal(edited.clips[0].fadeInFrames,9);assert.equal(edited.clips[0].fadeOutFrames,12);assert.equal(edited.gainDb,-3);checks++;
+    const soundIcon=await page.$eval('.dv-track-mute[aria-label$="'+audioTrack.name+'"] path',e=>e.getAttribute('d'));
     await page.click('.dv-track-mute[aria-label$="'+audioTrack.name+'"]');
     await page.waitForFunction(()=>document.querySelector('.dv-timeline').getAttribute('aria-busy')==='false');
     assert.equal((await bridge.invoke('timeline.inspect',{projectId})).tracks.find(x=>x.kind==='audio').muted,true);
     assert.equal(await page.$eval('.dv-timeline-clip.is-audio',e=>e.classList.contains('is-muted')),true);checks++;
+    assert.equal(await page.$eval('.dv-track-mute[aria-pressed=true]',e=>e.getAttribute('aria-label').startsWith('取消静音')),true);assert.notEqual(await page.$eval('.dv-track-mute[aria-pressed=true] path',e=>e.getAttribute('d')),soundIcon);checks++;
     await clickText('撤销');await page.waitForFunction(()=>document.querySelector('.dv-timeline').getAttribute('aria-busy')==='false');checks++;
     await page.waitForFunction(()=>document.querySelector('.dv-canvas-shell').dataset.previewPending==='false');
     const audibleFrame=await (await page.$('.dv-stage-frame[aria-hidden="false"]')).contentFrame();
