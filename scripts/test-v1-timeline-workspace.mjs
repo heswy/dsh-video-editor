@@ -187,7 +187,7 @@ try {
     { source: "http" },
   );
   const js = `const Module=(function(require){${body}\nreturn {CanvasWorkspace,ZH};})(()=>ReactLite.React);const h=ReactLite.createElement;function App(){const [project,setProject]=ReactLite.React.useState(${JSON.stringify(inspected)});window.seek=value=>{const input=document.querySelector('.dv-seek');input.value=value;input.dispatchEvent(new Event('input',{bubbles:true}));};return h(Module.CanvasWorkspace,{projectId:${JSON.stringify(projectId)},t:k=>Module.ZH[k]||k,inspected:project,previewOnly:true,onReload:window.reloadTimelineProject=async()=>{const response=await fetch('/api/dsh-video/request',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({method:'inspect',params:{projectId:${JSON.stringify(projectId)}}})});const value=await response.json();setProject(value.result);},onError:()=>{}});}const root=ReactLite.createRoot(document.getElementById('mount'));root.render(h(App));`;
-  const referenceJs=`const Module=(function(require){${body}\nreturn {ReferencePanel,ZH};})(()=>ReactLite.React);const h=ReactLite.createElement;function App(){const [open,setOpen]=ReactLite.React.useState(true);return h('div',null,open?h(Module.ReferencePanel,{projectId:${JSON.stringify(projectId)},t:k=>Module.ZH[k]||k,onClose:()=>setOpen(false)}):null);}ReactLite.createRoot(document.getElementById('mount')).render(h(App));`;
+  const referenceJs=`const Module=(function(require){${body}\nreturn {ReferencePanel,ZH};})(()=>ReactLite.React);const h=ReactLite.createElement;function App(){const [open,setOpen]=ReactLite.React.useState(true);return h('div',{className:'dv-ai',style:{width:'100%',height:'100%'}},h('header',{className:'dv-ai-head'},h('strong',null,'AI 创作'),h('button',{'data-panel-trigger':'references',onClick:()=>setOpen(!open)},'引用')),h('button',{id:'reference-outside',style:{position:'absolute',bottom:'10px'}},'对话输入区'),open?h(Module.ReferencePanel,{projectId:${JSON.stringify(projectId)},t:k=>Module.ZH[k]||k,onClose:()=>setOpen(false)}):null);}ReactLite.createRoot(document.getElementById('mount')).render(h(App));`;
 
 
   const routes = [
@@ -279,6 +279,21 @@ try {
   assert.equal(await page.$$eval('.dv-canvas-bar button',xs=>xs.some(x=>x.textContent==='素材')),false,'playback bar must not contain the media entry');
   assert.equal(await page.$eval('.dv-resource-bar button[aria-label="素材"]',e=>e.getAttribute('aria-expanded')),'false');
   assert.equal(await page.$eval('.dv-timeline-notice',e=>getComputedStyle(e).display).catch(()=> 'none'),'none','idle timeline has no permanent instruction footer');checks++;
+  // Regression: a resource popup must close on outside click, not occupy the full stage.
+  await page.click('.dv-resource-tab[aria-label="素材"]');
+  await page.waitForSelector('.dv-media-library');
+  await page.screenshot({path:join(out,'media-panel-dark.png')});
+  await page.evaluate(()=>document.getElementById('mount').style.cssText+=';--dsw-alias-bg-base:#fff;--dsw-alias-label-primary:#202126;--dsw-alias-label-secondary:#70747c;--dsw-alias-interactive-bg-hover:#f0f2f4;--dsw-alias-border-l1:#dfe1e5;color:#202126');
+  await page.screenshot({path:join(out,'media-panel-light.png')});
+  const mediaBounds=await page.$eval('.dv-media-library',e=>({height:e.getBoundingClientRect().height,bottom:getComputedStyle(e).bottom}));
+  assert(mediaBounds.height<580,'sparse media content must not stretch to timeline');checks++;
+  await page.click('.dv-time');
+  assert.equal(await page.$('.dv-media-library'),null,'outside click dismisses the media panel');checks++;
+  await page.click('.dv-resource-tab[aria-label="素材"]');
+  await page.waitForSelector('.dv-media-library');
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(()=>!document.querySelector('.dv-media-library'));checks++;
+  await page.evaluate(()=>document.getElementById('mount').style.cssText='');
   await page.click('.dv-timeline-clip');
   assert.equal(await page.$eval('.dv-clip-settings',e=>e.open),false,'clip properties stay collapsed after selection');
   await page.click('.dv-clip-settings summary');
@@ -657,6 +672,9 @@ try {
     assert.equal(await page.$$('.dv-timeline').then(x=>x.length),1);
     await clickText('生成音频');
     await page.waitForSelector('.dv-audio-panel');
+    await page.click('.dv-time');await page.waitForFunction(()=>!document.querySelector('.dv-audio-panel'));checks++;
+    await clickText('生成音频');await page.waitForSelector('.dv-audio-panel');await page.keyboard.press('Escape');await page.waitForFunction(()=>!document.querySelector('.dv-audio-panel'));checks++;
+    await clickText('生成音频');await page.waitForSelector('.dv-audio-panel');
     await page.select('.dv-audio-field select',process.env.M4_CLOUD==='1'?'qianwen':'local');
     await page.type('.dv-audio-panel textarea','这是一段本地旁白，用于验证音频轨道。');
     await clickText('生成并加入素材');
@@ -755,7 +773,14 @@ try {
     await (await referencePage.$('.dv-reference-panel')).screenshot({path:join(out,'references.png')});
     await referencePage.setViewport({width:340,height:760});await referencePage.evaluate(()=>document.getElementById('mount').style.width='100%');assert.equal(await referencePage.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);checks++;
     await referencePage.screenshot({path:join(out,'collaboration-narrow.png')});
-    await referencePage.keyboard.press('Escape');await referencePage.waitForFunction(()=>!document.querySelector('.dv-reference-panel'));checks++;
+    await referencePage.click('#reference-outside');await referencePage.waitForFunction(()=>!document.querySelector('.dv-reference-panel'));checks++;
+    await referencePage.click('[data-panel-trigger="references"]');await referencePage.waitForSelector('.dv-reference-item');
+    await referencePage.evaluate(()=>document.getElementById('mount').style.cssText+=';--dsw-alias-bg-base:#fff;--dsw-alias-label-primary:#202126;--dsw-alias-label-secondary:#70747c;--dsw-alias-interactive-bg-hover:#f0f2f4;color:#202126');
+    assert.equal(await referencePage.$eval('.dv-reference-range-wrap',e=>e.open),false);
+    await referencePage.click('.dv-reference-range-wrap summary');await referencePage.waitForSelector('.dv-reference-range input');checks++;
+    await referencePage.screenshot({path:join(out,'references-light.png')});
+    await referencePage.keyboard.press('Escape');await referencePage.waitForFunction(()=>!document.querySelector('.dv-reference-panel'));assert.equal(await referencePage.evaluate(()=>document.activeElement?.getAttribute('data-panel-trigger')),'references');checks++;
+
   }
   if (process.env.M3_RENDER === "1") {
     const timeline = await bridge.invoke("timeline.inspect", { projectId });
