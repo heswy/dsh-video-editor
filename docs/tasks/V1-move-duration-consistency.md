@@ -19,3 +19,9 @@ The actual Test timeline had fixed duration 600 frames, a 532-frame clip on the 
 - Chrome workspace 52 checks: legacy 22s padding normalizes to 20s; exact 532/68-frame shape reproduces both requested moves, undo, source metadata preservation, free same-track move, clamping, endpoint snap and held-edge scrolling. Full audio/collaboration/export coverage retained.
 - Actual worker export of the screenshot shape after auto normalization is exactly 532 H264 frames / 17.733333s, rather than 600 frames / 20s.
 - Source gates 58/86/71; model context 8 checks, 3979 characters. Fixed candidate and native installation results follow after execution. Browser harness evidence is not native acceptance.
+
+## Fixed candidate and installation
+
+Bundle 1.0.0-alpha.12 / engine 0.8.3, clean root=engine runtime `f10e7ffe001e3a62c03852fdd0365bb90b18c4d5`. Fixed directory `artifacts/p2-b/staging-v1.0.0-alpha.12-move-duration`; INTEGRITY SHA256 `44c7ad251f15822b02f4ba7646d6ab20f6bccbd5d6d1caac454be78292f4b061`. Fixed Chrome workspace 52 and actual worker H264 export 532 frames / 17.733333s passed; version admission 10 passed. Evidence is under sibling worktrees `artifacts/v1/evidence/move-duration-20261023/`.
+
+Official Plugin Manager installed and enabled alpha.12 (applied, warnings=[]), retaining alpha.11 rollback. DSH was quit through its menu and relaunched. Opening the real Test project normalized duration from fixed 600 to automatic 532 frames through the normal revision/history path; tracks, clips and assets compared unchanged. Fresh authenticated DSH browser UI confirmed canvas ready and `0.00 / 17.73`; screenshot `actual-alpha12.png`. Native capture intermittently failed with ScreenCaptureKit -3811, so the browser verification is not represented as native gesture acceptance. No real model request was made; model evidence is the 8-check contract only. No public release.

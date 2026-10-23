@@ -1,5 +1,9 @@
 # 当前交接入口
 
+## 最新入口：alpha.12 移动与自动时长
+
+2026-10-23 两项修复完成，已安装 alpha.12 并退出重开 DSH；Test 工程自动时长 532 帧 / 17.73s，片段与素材不变。source/固定 Chrome 各 52 项及真实 532 帧导出通过；固定 runtime `f10e7ff`，alpha.11 回滚保留。见 [任务](../tasks/V1-move-duration-consistency.md) 与 [STATUS](../STATUS.md)。浏览器验证不冒充原生拖动验收，未公开发布。
+
 ## 最新入口：alpha.11 轨道叠放修复
 
 2026-10-22 按用户要求改为上轨覆盖下轨，预览/导出共用修正层级；source/固定候选红蓝像素测试通过，官方管理器安装 alpha.11 / engine 0.8.3，真实 DSH 新预览确认上轨层级更高。固定 runtime `0381bf0`，详情见 [任务](../tasks/V1-upper-track-priority.md) 与 [STATUS](../STATUS.md)。alpha.10 回滚保留，用户工程未重写，未公开发布。
