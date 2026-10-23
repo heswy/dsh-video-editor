@@ -1,5 +1,11 @@
 # 当前项目状态
 
+## 最新：alpha.12 片段移动与自动时长（2026-10-23）
+
+两项用户反馈已修复：拖动预演和提交共用落点校验，同轨不再隐式重排，双端就近吸附、滚动坐标与边缘滚动统一；工程时长随所有轨道最后片段末端自动伸缩，旧固定留白通过正常可撤销操作迁移。source/固定候选 Chrome 各 52 项、移动规划 16 项、门禁 58/86/71、模型契约 8、版本 10 通过；实际 H264 导出 532 帧 / 17.733333s。
+
+已安装并重启启用 **1.0.0-alpha.12** / engine **0.8.3**，官方管理器 applied、warnings=[]，alpha.11 回滚保留。用户 Test 工程现为 auto / 532 帧，真实 DSH 新浏览器预览 ready、显示 `0.00 / 17.73`，轨道/片段/素材比较不变。固定 runtime `f10e7ffe001e3a62c03852fdd0365bb90b18c4d5`，root=engine、clean；`artifacts/p2-b/staging-v1.0.0-alpha.12-move-duration`，INTEGRITY `44c7ad251f15822b02f4ba7646d6ab20f6bccbd5d6d1caac454be78292f4b061`。详见 [任务与验证边界](tasks/V1-move-duration-consistency.md)。未公开发布，未发真实模型请求。
+
 ## 最新：alpha.11 上轨覆盖下轨（2026-10-22）
 
 修正多视频轨叠放方向：上方视频轨优先显示，转场叠层沿用同轨优先级，轨道 ID/顺序/工程内容不改。bundle **1.0.0-alpha.11** / engine **0.8.3**，固定 runtime `0381bf0`、root=engine、clean；`artifacts/p2-b/staging-v1.0.0-alpha.11-upper-track`，INTEGRITY `35c4c78577fcee6ded26f21180ea804bee350b47d99766c5cef65363dc448041`。source 与固定候选实际帧/MP4 像素验证：上轨红色优先，隐藏后下轨蓝色可见；58/86/71、worker 79、client 22（1 项可选跳过）、版本 10 通过。见 [叠放修复](tasks/V1-upper-track-priority.md)。

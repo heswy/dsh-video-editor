@@ -134,8 +134,8 @@ check('bundle manifest declares patch and client', () => {
   return `platform=web, inject=[${pkg.dsh.client.inject.join(', ')}]`;
 });
 
-check('package version advanced for the V1 upper-track priority 1.0.0-alpha.11 candidate', () => {
-  assert(pkg.version === '1.0.0-alpha.11', `expected version 1.0.0-alpha.11, found "${pkg.version}"`);
+check('package version advanced for the V1 move and automatic-duration 1.0.0-alpha.12 candidate', () => {
+  assert(pkg.version === '1.0.0-alpha.12', `expected version 1.0.0-alpha.12, found "${pkg.version}"`);
   return pkg.version;
 });
 
