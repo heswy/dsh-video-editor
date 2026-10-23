@@ -307,6 +307,7 @@ const SIMPLE_EVENT_NAMES = {
   onPointerMove: 'pointermove',
   onPointerUp: 'pointerup',
   onPointerCancel: 'pointercancel',
+  onLostPointerCapture: 'lostpointercapture',
   onPointerEnter: 'pointerenter',
   onPointerLeave: 'pointerleave',
   onPointerOver: 'pointerover',

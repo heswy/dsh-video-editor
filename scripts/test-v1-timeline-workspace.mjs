@@ -179,12 +179,14 @@ try {
     },
     { source: "http" },
   );
+  const padded=await bridge.invoke('timeline.inspect',{projectId});
+  await bridge.invoke('timeline.apply',{projectId,expectedRevision:padded.revision,operationId:'legacy-fixed-padding',ops:[{op:'timeline.settings',durationFrames:660,durationMode:'fixed'}]});
   const inspected = await bridge.invoke(
     "inspect",
     { projectId },
     { source: "http" },
   );
-  const js = `const Module=(function(require){${body}\nreturn {CanvasWorkspace,ZH};})(()=>ReactLite.React);const h=ReactLite.createElement;function App(){const [project,setProject]=ReactLite.React.useState(${JSON.stringify(inspected)});window.seek=value=>{const input=document.querySelector('.dv-seek');input.value=value;input.dispatchEvent(new Event('input',{bubbles:true}));};return h(Module.CanvasWorkspace,{projectId:${JSON.stringify(projectId)},t:k=>Module.ZH[k]||k,inspected:project,previewOnly:true,onReload:async()=>{const response=await fetch('/api/dsh-video/request',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({method:'inspect',params:{projectId:${JSON.stringify(projectId)}}})});const value=await response.json();setProject(value.result);},onError:()=>{}});}const root=ReactLite.createRoot(document.getElementById('mount'));root.render(h(App));`;
+  const js = `const Module=(function(require){${body}\nreturn {CanvasWorkspace,ZH};})(()=>ReactLite.React);const h=ReactLite.createElement;function App(){const [project,setProject]=ReactLite.React.useState(${JSON.stringify(inspected)});window.seek=value=>{const input=document.querySelector('.dv-seek');input.value=value;input.dispatchEvent(new Event('input',{bubbles:true}));};return h(Module.CanvasWorkspace,{projectId:${JSON.stringify(projectId)},t:k=>Module.ZH[k]||k,inspected:project,previewOnly:true,onReload:window.reloadTimelineProject=async()=>{const response=await fetch('/api/dsh-video/request',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({method:'inspect',params:{projectId:${JSON.stringify(projectId)}}})});const value=await response.json();setProject(value.result);},onError:()=>{}});}const root=ReactLite.createRoot(document.getElementById('mount'));root.render(h(App));`;
   const referenceJs=`const Module=(function(require){${body}\nreturn {ReferencePanel,ZH};})(()=>ReactLite.React);const h=ReactLite.createElement;function App(){const [open,setOpen]=ReactLite.React.useState(true);return h('div',null,open?h(Module.ReferencePanel,{projectId:${JSON.stringify(projectId)},t:k=>Module.ZH[k]||k,onClose:()=>setOpen(false)}):null);}ReactLite.createRoot(document.getElementById('mount')).render(h(App));`;
 
 
@@ -269,6 +271,10 @@ try {
   await page.goto("http://127.0.0.1:" + server.address().port);
   await page.waitForSelector(".dv-canvas-shell[data-canvas-phase=ready]");
   await page.waitForSelector(".dv-timeline-clip");
+  await page.waitForSelector('.dv-timeline[data-duration-mode="auto"][data-duration-frames="600"]');
+  await page.waitForFunction(()=>document.querySelector('.dv-time').textContent.includes('/ 20.00'));
+  await page.waitForFunction(()=>document.querySelector('.dv-timeline').getAttribute('aria-busy')==='false');
+  assert.equal((await bridge.invoke('timeline.inspect',{projectId})).settings.durationFrames,600);checks++;
   checks++;
   assert.equal(await page.$$eval('.dv-canvas-bar button',xs=>xs.some(x=>x.textContent==='素材')),false,'playback bar must not contain the media entry');
   assert.equal(await page.$eval('.dv-resource-bar button[aria-label="素材"]',e=>e.getAttribute('aria-expanded')),'false');
@@ -311,6 +317,60 @@ try {
       {},
       n,
     );
+  // Reproduce the user's exact fixed-20s split (532 + 68 frames), in this disposable project.
+  {
+    const get=()=>bridge.invoke('timeline.inspect',{projectId}),wait=()=>page.waitForFunction(()=>document.querySelector('.dv-timeline').getAttribute('aria-busy')==='false');
+    let t=await get();
+    await bridge.invoke('timeline.apply',{projectId,expectedRevision:t.revision,operationId:'move-audit-setup',ops:[{op:'timeline.settings',durationFrames:600,durationMode:'fixed'},{op:'clip.split',clipId:t.tracks[0].clips[0].clipId,atFrame:532},{op:'track.add',kind:'video'}]});
+    t=await get();const top=t.tracks[0].trackId,lower=t.tracks[1].trackId,long=t.tracks[0].clips[0].clipId,short=t.tracks[0].clips[1].clipId;
+    await bridge.invoke('timeline.apply',{projectId,expectedRevision:t.revision,operationId:'move-audit-short-lower',ops:[{op:'clip.move',clipId:short,trackId:lower,startFrame:54}]});
+    await page.evaluate(()=>window.reloadTimelineProject());
+    await page.waitForFunction(id=>!!document.querySelector('[data-track-id="'+id+'"] [data-clip-id]'),{},lower);await wait();
+    if(await page.$eval('.dv-snap-toggle input',e=>e.checked))await page.click('.dv-snap-toggle');
+    const baseline=await get(),sourceShort=baseline.tracks[1].clips[0];
+    async function hold(id,trackId,start){
+      const state=await get(),clip=state.tracks.flatMap(x=>x.clips).find(x=>x.clipId===id),box=await(await page.$('[data-clip-id="'+id+'"]')).boundingBox(),lane=await(await page.$('[data-track-id="'+trackId+'"]')).boundingBox(),z=box.width/(clip.durationFrames/30),offset=Math.min(30,box.width/2);
+      await page.mouse.move(box.x+offset,box.y+box.height/2);await page.mouse.down();await page.mouse.move(lane.x+start/30*z+offset,lane.y+lane.height/2,{steps:8});
+      await page.waitForFunction(x=>Math.abs(Number(document.querySelector('.dv-drop-preview')?.dataset.startFrame)-Math.max(0,x))<=2,{},start);
+    }
+    async function undoMove(){await clickText('撤销');await wait();await page.waitForFunction(id=>Number(document.querySelector('[data-clip-id="'+id+'"]').getAttribute('aria-pressed'))!==-1,{},long);}
+    for(const [id,target,start,end]of [[short,top,540,608],[long,lower,159,691]]){
+      const before=await get();await hold(id,target,start);
+      assert.equal(await page.$eval('.dv-drop-preview',e=>Number(e.dataset.nextDuration)),end);
+      assert.equal((await get()).revision,before.revision);
+      await page.screenshot({path:join(out,id===short?'move-short-end-held.png':'move-long-end-held.png')});
+      await page.mouse.up();await wait();t=await get();
+      assert.equal(t.settings.durationFrames,end);assert.equal(t.tracks.find(x=>x.trackId===target).clips.find(x=>x.clipId===id).startFrame,start);
+      const moved=t.tracks.flatMap(x=>x.clips).find(x=>x.clipId===id),original=baseline.tracks.flatMap(x=>x.clips).find(x=>x.clipId===id);
+      for(const k of ['sourceInFrame','durationFrames','speed','assetId'])assert.equal(moved[k],original[k]);
+      await undoMove();assert.equal((await get()).settings.durationFrames,600);checks++;
+    }
+    await hold(short,lower,180);await page.mouse.up();await wait();t=await get();assert.equal(t.tracks[1].clips[0].startFrame,180);assert.equal(t.settings.durationFrames,532);assert.equal(t.tracks[0].clips[0].startFrame,0);await undoMove();checks++;
+    await hold(short,lower,-10);await page.mouse.up();await wait();assert.equal((await get()).tracks[1].clips[0].startFrame,0);await undoMove();checks++;
+    await page.click('.dv-snap-toggle');await hold(short,top,530);
+    assert.equal(await page.$eval('.dv-drop-preview',e=>Number(e.dataset.startFrame)),532);
+    await page.mouse.up();await wait();t=await get();assert.equal(t.settings.durationFrames,600);assert.equal(t.tracks[0].clips.find(x=>x.clipId===short).startFrame,532);await undoMove();checks++;
+    // A held pointer at the right edge scrolls continuously; the committed frame includes that scroll.
+    await page.click('.dv-snap-toggle');
+    await page.$eval('.dv-timeline-zoom',e=>{e.value='100';e.dispatchEvent(new Event('input',{bubbles:true}));});
+    const box=await(await page.$('[data-clip-id="'+long+'"]')).boundingBox(),view=await(await page.$('.dv-timeline-scroll')).boundingBox();
+    await page.mouse.move(box.x+15,box.y+box.height/2);await page.mouse.down();await page.mouse.move(view.x+view.width-8,box.y+box.height/2,{steps:8});
+    await page.waitForFunction(()=>document.querySelector('.dv-timeline-scroll').scrollLeft>40);
+    const scrolled=await page.$eval('.dv-timeline-scroll',e=>e.scrollLeft);assert(scrolled>40);
+    await page.mouse.up();await wait();t=await get();assert(t.tracks[0].clips.find(x=>x.clipId===long).startFrame>180);assert(t.settings.durationFrames>600);await undoMove();checks++;
+    await clickText('适应时间线');
+    // Vertical edge scrolling reaches tracks below the visible scroll area.
+    t=await get();await bridge.invoke('timeline.apply',{projectId,expectedRevision:t.revision,operationId:'move-audit-scroll-tracks',ops:Array.from({length:4},()=>({op:'track.add',kind:'video'}))});
+    await page.evaluate(()=>window.reloadTimelineProject());await page.waitForFunction(()=>document.querySelectorAll('.dv-timeline-lane').length===6);await wait();
+    const firstBox=await(await page.$('[data-clip-id="'+long+'"]')).boundingBox(),v=await(await page.$('.dv-timeline-scroll')).boundingBox();
+    await page.mouse.move(firstBox.x+15,firstBox.y+firstBox.height/2);await page.mouse.down();await page.mouse.move(firstBox.x+15,v.y+v.height-8,{steps:8});
+    await page.waitForFunction(()=>document.querySelector('.dv-timeline-scroll').scrollTop>50);
+    await page.keyboard.press('Escape');await page.mouse.up();assert.equal((await get()).totalClips,2);checks++;
+    // Undo only test setup; production user projects are never involved.
+    for(let i=0;i<3;i++){t=await get();await bridge.invoke('timeline.undo',{projectId,expectedRevision:t.revision,operationId:'move-audit-cleanup-'+i});}
+    await page.evaluate(()=>window.reloadTimelineProject());await page.waitForFunction(()=>document.querySelectorAll('.dv-timeline-lane').length===1&&document.querySelectorAll('.dv-timeline-clip').length===1);await wait();
+    if(!(await page.$eval('.dv-snap-toggle input',e=>e.checked)))await page.click('.dv-snap-toggle');
+  }
   await page.click(".dv-timeline-clip");
   await page.evaluate(() => window.seek(5));
   await clickText("切分");
@@ -342,23 +402,12 @@ try {
     first = await (
       await page.$('[data-clip-id="' + ids[0] + '"]')
     ).boundingBox();
-  await page.mouse.move(second.x + 15, second.y + second.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(first.x + 15, first.y + first.height / 2, { steps: 8 });
+  const sameTrackBefore=await bridge.invoke('timeline.inspect',{projectId});
+  await page.mouse.move(second.x+15,second.y+second.height/2);await page.mouse.down();
+  await page.mouse.move(first.x+15,first.y+first.height/2,{steps:8});
+  assert.equal(await page.$('.dv-timeline-lane.is-drop-invalid').then(Boolean),true,'same-track overlap must not silently reorder other clips');
   await page.mouse.up();
-  await page.waitForFunction(
-    (id) => document.querySelector(".dv-timeline-clip").dataset.clipId === id,
-    {},
-    ids[1],
-  );
-  checks++;
-  await clickText("撤销");
-  await page.waitForFunction(
-    (id) => document.querySelector(".dv-timeline-clip").dataset.clipId === id,
-    {},
-    ids[0],
-  );
-  checks++;
+  assert.equal((await bridge.invoke('timeline.inspect',{projectId})).revision,sameTrackBefore.revision);checks++;
   await page.click('[data-clip-id="' + ids[1] + '"]');
   await clickText("←");
   await page.waitForFunction(

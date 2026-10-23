@@ -291,6 +291,13 @@ window.__ModuleLoader__.load({
       'video.canvas.undo': '撤销',
       'video.canvas.redo': '重做',
       'video.timeline.dropInvalid': '不能放到这里',
+      'video.timeline.move.outside': '拖到轨道内放置',
+      'video.timeline.move.missing': '片段已变化，请重试',
+      'video.timeline.move.locked': '轨道已锁定',
+      'video.timeline.move.kind': '请选择同类型轨道',
+      'video.timeline.move.overlap': '目标位置已有片段',
+      'video.timeline.move.extend': '工程延长至',
+
       'video.timeline.properties': '片段设置',
       'video.timeline.fit': '适应时间线',
       'video.timeline.history': '最近修改',
@@ -542,6 +549,13 @@ window.__ModuleLoader__.load({
       'video.canvas.undo': 'Undo',
       'video.canvas.redo': 'Redo',
       'video.timeline.dropInvalid': 'Cannot place here',
+      'video.timeline.move.outside': 'Drop inside a track',
+      'video.timeline.move.missing': 'Clip changed; try again',
+      'video.timeline.move.locked': 'Track is locked',
+      'video.timeline.move.kind': 'Choose a compatible track',
+      'video.timeline.move.overlap': 'Clips overlap at this position',
+      'video.timeline.move.extend': 'Film extends to',
+
       'video.timeline.properties': 'Clip settings',
       'video.timeline.fit': 'Fit timeline',
       'video.timeline.history': 'Recent change',
@@ -1595,6 +1609,7 @@ window.__ModuleLoader__.load({
 .dv-root .dv-timeline-clip.is-dragging.is-invalid{cursor:not-allowed;outline-color:var(--dsw-alias-state-error-primary,#dd777d)}
 .dv-root .dv-timeline-lane.is-drop-target{background:color-mix(in srgb,var(--dsw-alias-brand-primary,#82c8cf) 9%,transparent);box-shadow:inset 0 1px color-mix(in srgb,var(--dsw-alias-brand-primary,#82c8cf) 35%,transparent),inset 0 -1px color-mix(in srgb,var(--dsw-alias-brand-primary,#82c8cf) 35%,transparent)}
 .dv-root .dv-timeline-lane.is-drop-invalid{background:color-mix(in srgb,var(--dsw-alias-state-error-primary,#dd777d) 7%,transparent)}
+.dv-drop-guide{position:absolute;top:0;bottom:0;border-left:1px dashed var(--dsw-alias-brand-primary,#82c8cf);z-index:5;pointer-events:none}
 .dv-drag-origin,.dv-drop-preview{position:absolute;top:7px;bottom:7px;box-sizing:border-box;border-radius:5px;pointer-events:none}
 .dv-drag-origin{border:1px dashed var(--dsw-alias-border-l1,#ffffff26);background:var(--dsw-alias-interactive-bg-hover,#ffffff06)}
 .dv-drop-preview{z-index:1;border:1px dashed var(--dsw-alias-brand-primary,#82c8cf);background:color-mix(in srgb,var(--dsw-alias-brand-primary,#82c8cf) 12%,transparent);color:var(--dsw-alias-label-primary,#eee)}
@@ -2132,6 +2147,37 @@ window.__ModuleLoader__.load({
 
     const REFERENCE_TOKEN =
       /^dshvideo:v1\/[A-Za-z0-9][A-Za-z0-9._-]{0,127}\/(clip|scene|asset|range)\/[A-Za-z0-9_.-]{1,128}\/[a-f0-9]{64}$/;
+    /** Pure move plan shared by pointer preview, pointer release, drop and track selection. */
+    function planTimelineMove(timeline,clipId,trackId,rawFrame,options={}) {
+      const tracks=timeline.tracks,source=tracks.find(tr=>tr.clips.some(c=>c.clipId===clipId)),
+        clip=source?.clips.find(c=>c.clipId===clipId),target=tracks.find(tr=>tr.trackId===trackId);
+      const invalid=reason=>({valid:false,reason,startFrame:Math.max(0,Math.round(rawFrame||0)),snapFrame:null,nextDuration:timeline.settings.durationFrames,ops:[]});
+      if(!clip)return invalid('missing');
+      if(!target)return invalid('outside');
+      if(source.locked||target.locked)return invalid('locked');
+      if(source.kind!==target.kind)return invalid('kind');
+      const raw=Math.max(0,Math.round(rawFrame)),others=target.clips.filter(c=>c.clipId!==clipId),
+        overlaps=start=>others.some(c=>start<c.startFrame+c.durationFrames&&start+clip.durationFrames>c.startFrame),
+        points=[0,timeline.settings.durationFrames,options.playheadFrame,...tracks.flatMap(tr=>tr.clips.filter(c=>c.clipId!==clipId).flatMap(c=>[c.startFrame,c.startFrame+c.durationFrames]))].filter(Number.isFinite);
+      let startFrame=raw,snapFrame=null;
+      if(options.snap){
+        const candidates=points.flatMap(point=>[{start:point,point},{start:point-clip.durationFrames,point}])
+          .filter(c=>c.start>=0&&Math.abs(c.start-raw)*(options.zoom||36)/30<=6&&!overlaps(c.start))
+          .sort((a,b)=>Math.abs(a.start-raw)-Math.abs(b.start-raw));
+        if(candidates.length){startFrame=candidates[0].start;snapFrame=candidates[0].point;}
+      }
+      const end=startFrame+clip.durationFrames,
+        nextDuration=Math.max(1,end,...tracks.flatMap(tr=>tr.clips.filter(c=>c.clipId!==clipId).map(c=>c.startFrame+c.durationFrames)));
+      if(overlaps(startFrame))return {...invalid('overlap'),startFrame,snapFrame,nextDuration};
+      const ops=[];
+      if(target.trackId!==source.trackId||startFrame!==clip.startFrame){
+        // Product editing follows content bounds; preserve generic Tool fixed-mode support.
+        if(timeline.settings.durationMode!=='auto')ops.push({op:'timeline.settings',durationMode:'auto'});
+        ops.push({op:'clip.move',clipId,trackId:target.trackId,startFrame,mode:'reject'});
+      }
+      return {valid:true,reason:null,startFrame,snapFrame,nextDuration,ops};
+    }
+
     function referenceToken(projectId, kind, id, revision) {
       const token =
         'dshvideo:v1/' + projectId + '/' + kind + '/' + id + '/' + revision;
@@ -3893,7 +3939,7 @@ window.__ModuleLoader__.load({
       const waves=React.useRef(new Set());
       const alive = React.useRef(true),
         current = React.useRef(null),
-        viewport = React.useRef(null),timelineRef=React.useRef(null),laneRefs=React.useRef(new Map()),gestureMoved=React.useRef(false);
+        viewport = React.useRef(null),timelineRef=React.useRef(null),gestureRef=React.useRef(null),laneRefs=React.useRef(new Map()),gestureMoved=React.useRef(false);
       React.useEffect(() => {
         alive.current = true;
         return () => {
@@ -3933,8 +3979,9 @@ window.__ModuleLoader__.load({
         let stop = false;
         (async () => {
           try {
-            await load();
-            if (!stop) await props.onReload();
+            const initial=await load();
+            if(!stop&&(initial.settings.durationMode!=='auto'||initial.settings.durationFrames!==Math.max(1,...initial.tracks.flatMap(tr=>tr.clips.map(c=>c.startFrame+c.durationFrames)))))await write([{op:'timeline.settings',durationMode:'auto'}],undefined,true);
+            else if(!stop)await props.onReload();
           } catch (e) {
             if (!stop) setNotice(errorText(hostError(e), t));
           }
@@ -3955,7 +4002,7 @@ window.__ModuleLoader__.load({
           const result = await hostRequest(attempt.method, attempt.params);
           if (!alive.current) return;
           setRecovery(null);
-          setNotice(result.changeSummary?.summary || t('video.timeline.saved'));
+          setNotice(attempt.quiet?'':result.changeSummary?.summary || t('video.timeline.saved'));
           await load();
           await props.onReload();
           return result;
@@ -3963,6 +4010,10 @@ window.__ModuleLoader__.load({
           if (alive.current) {
             const error = hostError(e);
             setNotice(errorText(error, t));
+            if(error.code==='E_REVISION_CONFLICT'&&attempt.quiet){
+              const fresh=await load();
+              if(fresh.settings.durationMode==='auto'){setRecovery(null);setNotice('');await props.onReload();return;}
+            }
             if (error.code === 'E_REVISION_CONFLICT') {
               setRecovery({ ...attempt, status: 'conflict', preview: null });
               try {await load();await props.onReload();}catch(refreshError){setNotice(errorText(hostError(refreshError),t));}
@@ -3977,10 +4028,12 @@ window.__ModuleLoader__.load({
           if (alive.current) setBusy(false);
         }
       }
-      async function write(ops, action) {
+      async function write(ops, action, quiet=false) {
         if (busy || !current.current || recovery) return;
+        if(ops&&current.current.settings.durationMode!=='auto'&&!ops.some(o=>o.op==='timeline.settings'&&o.durationMode==='auto'))ops=[{op:'timeline.settings',durationMode:'auto'},...ops];
         return sendAttempt({
           method: action || 'timeline.apply',
+          quiet,
           params: {
             projectId: props.projectId,
             expectedRevision: current.current.revision,
@@ -4034,9 +4087,27 @@ window.__ModuleLoader__.load({
           ]);
         }
       }, [props.assetToAdd, data, busy, recovery]);
-      React.useEffect(()=>{setLevelDrafts({});setDrag(null);},[data?.revision]);
+      React.useEffect(()=>{setLevelDrafts({});gestureRef.current=null;setDrag(null);},[data?.revision]);
       // Keep Escape within this timeline even when selecting a clip inserts toolbar controls.
       React.useEffect(()=>{if(drag)timelineRef.current?.focus({preventScroll:true});},[drag]);
+      React.useEffect(()=>{
+        if(!drag)return;
+        let raf;
+        function scrollDrag(){
+          const gesture=gestureRef.current,el=viewport.current;
+          if(gesture?.lifted&&!gesture.edge&&el){
+            const r=el.getBoundingClientRect(),x=gesture.pointerX,y=gesture.pointerY;
+            if(x>=r.left+100&&x<=r.right&&y>=r.top&&y<=r.bottom){
+              const speed=(p,lo,hi)=>p<lo+24?-Math.ceil((lo+24-p)/2):p>hi-24?Math.ceil((p-hi+24)/2):0,
+                left=el.scrollLeft,top=el.scrollTop;
+              el.scrollLeft+=speed(x,r.left+100,r.right);el.scrollTop+=speed(y,r.top,r.bottom);
+              if(left!==el.scrollLeft||top!==el.scrollTop){const next=dragPosition({clientX:x,clientY:y},gesture);gestureRef.current=next;setDrag(next);}
+            }
+          }
+          raf=requestAnimationFrame(scrollDrag);
+        }
+        raf=requestAnimationFrame(scrollDrag);return ()=>cancelAnimationFrame(raf);
+      },[Boolean(drag)]);
       React.useEffect(()=>{for(const a of data?.assets??[]){if(a.kind!=='audio'||waves.current.has(a.assetId))continue;waves.current.add(a.assetId);void hostRequest('asset.derive',{projectId:props.projectId,assetId:a.assetId,kind:'waveform'}).then(()=>{if(alive.current)setWaveVersion(v=>v+1);}).catch(()=>{waves.current.delete(a.assetId);});}},[data?.revision]);
       React.useEffect(()=>{
         const el=viewport.current;if(!el)return;
@@ -4055,8 +4126,8 @@ window.__ModuleLoader__.load({
         chosen = clips.find((c) => c.clipId === selected),
         frame = Math.round(props.time * 30),
         duration = data.settings.durationFrames,
-        zoom = fit ? Math.max(.05,(viewWidth-100-24)/Math.max(1,duration/30)) : manualZoom,
-        width = Math.max(viewWidth-100, (duration / 30) * zoom + 24),
+        zoom = drag?.zoom ?? (fit ? Math.max(.05,(viewWidth-100-24)/Math.max(1,duration/30)) : manualZoom),
+        width = Math.max(viewWidth-100, (Math.max(duration,drag?.nextDuration??duration) / 30) * zoom + (drag?.lifted?160:24)),
         tickStep = [1,2,5,10,15,30,60,120,300,600,1800,3600].find(x=>x*zoom>=48) || Math.ceil(48/zoom/3600)*3600;
       function nearest(raw, except) {
         let value = Math.max(0, Math.round(raw));
@@ -4068,7 +4139,7 @@ window.__ModuleLoader__.load({
             .filter((c) => c.clipId !== except)
             .flatMap((c) => [c.startFrame, c.startFrame + c.durationFrames]),
         ];
-        const at = points.find((x) => Math.abs(x - value) <= 180 / zoom);
+        const at = points.filter(x=>Math.abs(x-value)<=180/zoom).sort((a,b)=>Math.abs(a-value)-Math.abs(b-value))[0];
         return at ?? value;
       }
       function cut() {
@@ -4090,60 +4161,38 @@ window.__ModuleLoader__.load({
         [ids[i], ids[j]] = [ids[j], ids[i]];
         void write([{ op: "clip.reorder", trackId: tr.trackId, clipIds: ids }]);
       }
-      // Preview belongs to the gesture only. No timeline writes until release.
-      function dragPosition(e, gesture) {
-        const c=clips.find(x=>x.clipId===gesture.clipId);
-        if(!c)return {...gesture,valid:false};
-        const delta=Math.round(((e.clientX-gesture.x)/zoom)*30),
-          dy=e.clientY-gesture.y,
-          lifted=gesture.lifted||Math.hypot(e.clientX-gesture.x,dy)>=4,
-          source=data.tracks.find(x=>x.trackId===c.trackId),
-          lane=[...laneRefs.current.values()].find(el=>{const r=el.getBoundingClientRect();return e.clientY>=r.top&&e.clientY<=r.bottom&&e.clientX>=r.left&&e.clientX<=r.right;}),
-          target=data.tracks.find(x=>x.trackId===lane?.dataset.trackId),
-          startFrame=nearest(c.startFrame+delta,c.clipId),
-          valid=Boolean(target&&!source.locked&&!target.locked&&target.kind===source.kind&&
-            (target===source||!target.clips.some(x=>x.clipId!==c.clipId&&startFrame<x.startFrame+x.durationFrames&&startFrame+c.durationFrames>x.startFrame)));
-        return {...gesture,delta,dy,dx:e.clientX-gesture.x,lifted,trackId:target?.trackId,startFrame,valid};
+      function movePlan(clipId,trackId,startFrame) {
+        return planTimelineMove(data,clipId,trackId,startFrame,{snap,zoom,playheadFrame:frame});
       }
-      function pointerDown(e, c, edge) {
-        if (busy || data.tracks.find(tr=>tr.clips.some(x=>x.clipId===c.clipId))?.locked) return;
-        e.preventDefault();
-        e.stopPropagation();
-        setSelected(c.clipId);
-        e.currentTarget.focus();
-        e.currentTarget.setPointerCapture(e.pointerId);
+      function commitMove(plan){if(!plan.valid){setNotice(t('video.timeline.move.'+plan.reason));return;}if(plan.ops.length)void write(plan.ops);}
+      // Coordinates include scroll displacement; the exact same plan is committed on release.
+      function dragPosition(e,gesture) {
+        const c=clips.find(x=>x.clipId===gesture.clipId);if(!c)return {...gesture,valid:false};
+        const dx=e.clientX-gesture.x+(viewport.current?.scrollLeft??0)-gesture.scrollLeft,
+          dy=e.clientY-gesture.y+(viewport.current?.scrollTop??0)-gesture.scrollTop,
+          delta=Math.round(dx/gesture.zoom*30),r=viewport.current?.getBoundingClientRect(),
+          lane=r&&e.clientX>=r.left+100&&e.clientX<=r.right&&e.clientY>=r.top&&e.clientY<=r.bottom?
+            [...laneRefs.current.values()].find(el=>{const b=el.getBoundingClientRect();return e.clientY>=b.top&&e.clientY<=b.bottom;}):null,
+          plan=planTimelineMove(data,c.clipId,lane?.dataset.trackId,c.startFrame+delta,{snap:gesture.snap,zoom:gesture.zoom,playheadFrame:gesture.playheadFrame});
+        return {...gesture,...plan,trackId:lane?.dataset.trackId,delta,dx,dy,pointerX:e.clientX,pointerY:e.clientY,
+          lifted:gesture.lifted||Math.hypot(e.clientX-gesture.x,e.clientY-gesture.y)>=4};
+      }
+      function pointerDown(e,c,edge){
+        if(busy||data.tracks.find(tr=>tr.clips.some(x=>x.clipId===c.clipId))?.locked)return;
+        e.preventDefault();e.stopPropagation();setSelected(c.clipId);timelineRef.current.focus({preventScroll:true});timelineRef.current.setPointerCapture(e.pointerId);
         gestureMoved.current=false;
-        setDrag({clipId:c.clipId,x:e.clientX,y:e.clientY,edge,delta:0,dx:0,dy:0,lifted:false});
+        const gesture={clipId:c.clipId,x:e.clientX,y:e.clientY,pointerX:e.clientX,pointerY:e.clientY,edge,delta:0,dx:0,dy:0,lifted:false,
+          scrollLeft:viewport.current?.scrollLeft??0,scrollTop:viewport.current?.scrollTop??0,revision:data.revision,zoom,snap,playheadFrame:frame};
+        gestureRef.current=gesture;setDrag(gesture);
       }
-      function pointerMove(e) {
-        if (!drag) return;
-        setDrag(dragPosition(e,drag));
-      }
-      function pointerUp(e, c) {
-        if (!drag) return;
-        const final=dragPosition(e,drag);
-        setDrag(null);
-        if(!final.lifted)return;
+      function pointerMove(e){const gesture=gestureRef.current;if(!gesture)return;const next=dragPosition(e,gesture);gestureRef.current=next;setDrag(next);}
+      function pointerUp(e,c){
+        const gesture=gestureRef.current;if(!gesture)return;
+        const final=dragPosition(e,gesture);gestureRef.current=null;setDrag(null);
+        if(!final.lifted||gesture.revision!==data.revision)return;
         gestureMoved.current=true;
-        const delta=final.delta,edge=final.edge,trackId=final.trackId;
-        // Resize handles keep their original track; moving clips require a valid landing lane.
-        if(!edge&&!final.valid)return;
-        const fromTrack=data.tracks.find(tr=>tr.clips.some(x=>x.clipId===c.clipId));
-        if(!edge&&!delta&&trackId===fromTrack?.trackId)return;
-        const startFrame=final.startFrame;
-        if(!edge&&trackId===fromTrack?.trackId){const hit=fromTrack.clips.find(x=>x.clipId!==c.clipId&&startFrame<x.startFrame+x.durationFrames&&startFrame+c.durationFrames>x.startFrame);if(hit){const order=fromTrack.clips.filter(x=>x.clipId!==c.clipId).map(x=>x.clipId);let at=order.indexOf(hit.clipId);if(startFrame>=hit.startFrame+hit.durationFrames/2)at++;order.splice(at,0,c.clipId);void write([{op:'clip.reorder',trackId,clipIds:order}]);return;}}
-        const ops = edge
-          ? [{ op: "clip.trim", clipId: c.clipId, edge, deltaFrames: delta }]
-          : [
-              {
-                op: "clip.move",
-                clipId: c.clipId,
-                startFrame: nearest(c.startFrame + delta, c.clipId),
-                trackId,
-                mode: "reject",
-              },
-            ];
-        void write(ops);
+        if(final.edge){if(final.delta)void write([{op:'clip.trim',clipId:c.clipId,edge:final.edge,deltaFrames:final.delta}]);}
+        else commitMove(final);
       }
       function tool(label,path,onClick,disabled){return h('button',{className:'dv-timeline-tool',title:label,'aria-label':label,onClick,disabled},h('svg',{viewBox:'0 0 24 24',width:16,height:16,fill:'none',stroke:'currentColor',strokeWidth:1.5,strokeLinecap:'round',strokeLinejoin:'round','aria-hidden':true},h('path',{d:path})),h('span',{className:'dv-sr-only'},label));}
       return h(
@@ -4151,11 +4200,17 @@ window.__ModuleLoader__.load({
         {
           className: "dv-timeline" + (compact ? " dv-timeline-compact" : ""),
           ref:timelineRef,
-          onBlur:e=>{if(drag&&!e.currentTarget.contains(e.relatedTarget)){gestureMoved.current=true;setDrag(null);}},
+          'data-duration-mode':data.settings.durationMode,
+          'data-duration-frames':duration,
+          onPointerMove:pointerMove,
+          onPointerUp:e=>{const c=clips.find(c=>c.clipId===gestureRef.current?.clipId);if(c)pointerUp(e,c);},
+          onPointerCancel:()=>{gestureMoved.current=true;gestureRef.current=null;setDrag(null);},
+          onLostPointerCapture:()=>{gestureRef.current=null;setDrag(null);},
+          onBlur:e=>{if(drag&&!e.currentTarget.contains(e.relatedTarget)){gestureMoved.current=true;gestureRef.current=null;setDrag(null);}},
           "aria-label": t("video.timeline.title"),"aria-busy":busy?"true":"false",
           tabIndex: 0,
           onKeyDown: (e) => {
-            if(drag){if(e.key==='Escape'){e.preventDefault();e.stopPropagation();gestureMoved.current=true;setDrag(null);}return;}
+            if(drag){if(e.key==='Escape'){e.preventDefault();e.stopPropagation();gestureMoved.current=true;gestureRef.current=null;setDrag(null);}return;}
             if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT")
               return;
             if (e.key === "Delete" || e.key === "Backspace") {
@@ -4208,15 +4263,7 @@ window.__ModuleLoader__.load({
                   {
                     value: chosen.trackId,
                     disabled: busy,
-                    onChange: (e) =>
-                      write([
-                        {
-                          op: "clip.move",
-                          clipId: chosen.clipId,
-                          trackId: e.target.value,
-                          startFrame: chosen.startFrame,
-                        },
-                      ]),
+                    onChange:e=>commitMove(planTimelineMove(data,chosen.clipId,e.target.value,chosen.startFrame,{snap:false})),
                   },
                   data.tracks
                     .filter((x) => x.kind === data.tracks.find(tr=>tr.trackId===chosen.trackId)?.kind)
@@ -4314,16 +4361,7 @@ window.__ModuleLoader__.load({
                             ((e.clientX - rect.left) / zoom) * 30,
                             clipId,
                           );
-                        if (clipId)
-                          void write([
-                            {
-                              op: "clip.move",
-                              clipId,
-                              trackId: tr.trackId,
-                              startFrame,
-                              mode: "reject",
-                            },
-                          ]);
+                        if (clipId)commitMove(movePlan(clipId,tr.trackId,((e.clientX-rect.left)/zoom)*30));
                         else if (a)
                           void write([
                             {
@@ -4337,7 +4375,7 @@ window.__ModuleLoader__.load({
                       },
                     },
                     drag?.lifted&&!drag.edge&&tr.clips.some(c=>c.clipId===drag.clipId)?h('div',{className:'dv-drag-origin','aria-hidden':true,style:{left:clips.find(c=>c.clipId===drag.clipId).startFrame/30*zoom,width:Math.max(8,clips.find(c=>c.clipId===drag.clipId).durationFrames/30*zoom)}}):null,
-                    drag?.lifted&&!drag.edge&&drag.trackId===tr.trackId?h('div',{className:'dv-drop-preview'+(drag.valid?'':' is-invalid'),'aria-hidden':true,style:{left:drag.startFrame/30*zoom,width:Math.max(8,clips.find(c=>c.clipId===drag.clipId).durationFrames/30*zoom)}},h('span',null,drag.valid?tr.name+' · '+formatSeconds(drag.startFrame/30):t('video.timeline.dropInvalid'))):null,
+                    drag?.lifted&&!drag.edge&&drag.trackId===tr.trackId?h('div',{className:'dv-drop-preview'+(drag.valid?'':' is-invalid'),'aria-hidden':true,'data-start-frame':drag.startFrame,'data-next-duration':drag.nextDuration,style:{left:drag.startFrame/30*zoom,width:Math.max(8,clips.find(c=>c.clipId===drag.clipId).durationFrames/30*zoom)}},h('span',null,drag.valid?tr.name+' · '+formatSeconds(drag.startFrame/30)+(drag.nextDuration>duration?' · '+t('video.timeline.move.extend')+' '+formatSeconds(drag.nextDuration/30):''):t('video.timeline.move.'+drag.reason))):null,
                     tr.clips.map((c) =>
                       h(
                         "div",
@@ -4359,10 +4397,6 @@ window.__ModuleLoader__.load({
                           },
                           onKeyDown:e=>{if(e.target!==e.currentTarget)return;if(e.key==='Enter'||e.key===' '){e.preventDefault();setSelected(c.clipId);props.onSeek(c.startFrame/30);}},
                           onPointerDown: (e) => pointerDown(e, c, null),
-                          onPointerMove: pointerMove,
-                          onPointerUp: (e) => pointerUp(e, c),
-                          onPointerCancel: () => {gestureMoved.current=true;setDrag(null);},
-                          onLostPointerCapture: () => setDrag(null),
                           style: {
                             left: ((c.startFrame+(drag?.clipId===c.clipId&&drag.edge==="in"?drag.delta:0)) / 30) * zoom,
                             width: Math.max(8, ((c.durationFrames+(drag?.clipId===c.clipId&&drag.edge?(drag.edge==="in"?-drag.delta:drag.delta):0)) / 30) * zoom),
@@ -4427,6 +4461,7 @@ window.__ModuleLoader__.load({
                   ),
                 ),
               ),
+            drag?.lifted&&!drag.edge&&drag.valid&&drag.snapFrame!==null?h('div',{className:'dv-drop-guide','aria-hidden':true,style:{left:100+drag.snapFrame/30*zoom}}):null,
             h("div", {
               className: "dv-timeline-playhead",
               style: { left: 100 + props.time * zoom },
