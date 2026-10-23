@@ -187,7 +187,7 @@ try {
     { source: "http" },
   );
   const js = `const Module=(function(require){${body}\nreturn {CanvasWorkspace,ZH};})(()=>ReactLite.React);const h=ReactLite.createElement;function App(){const [project,setProject]=ReactLite.React.useState(${JSON.stringify(inspected)});window.seek=value=>{const input=document.querySelector('.dv-seek');input.value=value;input.dispatchEvent(new Event('input',{bubbles:true}));};return h(Module.CanvasWorkspace,{projectId:${JSON.stringify(projectId)},t:k=>Module.ZH[k]||k,inspected:project,previewOnly:true,onReload:window.reloadTimelineProject=async()=>{const response=await fetch('/api/dsh-video/request',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({method:'inspect',params:{projectId:${JSON.stringify(projectId)}}})});const value=await response.json();setProject(value.result);},onError:()=>{}});}const root=ReactLite.createRoot(document.getElementById('mount'));root.render(h(App));`;
-  const referenceJs=`const Module=(function(require){${body}\nreturn {ReferencePanel,ZH};})(()=>ReactLite.React);const h=ReactLite.createElement;function App(){const [open,setOpen]=ReactLite.React.useState(true);return h('div',null,open?h(Module.ReferencePanel,{projectId:${JSON.stringify(projectId)},t:k=>Module.ZH[k]||k,onClose:()=>setOpen(false)}):null);}ReactLite.createRoot(document.getElementById('mount')).render(h(App));`;
+  const referenceJs=`const Module=(function(require){${body}\nreturn {ReferencePanel,ZH};})(()=>ReactLite.React);const h=ReactLite.createElement;function App(){const [open,setOpen]=ReactLite.React.useState(true);return h('div',{className:'dv-ai',style:{width:'100%',height:'100%'}},h('header',{className:'dv-ai-head'},h('strong',null,'AI 创作'),h('button',{'data-panel-trigger':'references',onClick:()=>setOpen(!open)},'引用')),h('button',{id:'reference-outside',style:{position:'absolute',bottom:'10px'}},'对话输入区'),open?h(Module.ReferencePanel,{projectId:${JSON.stringify(projectId)},t:k=>Module.ZH[k]||k,onClose:()=>setOpen(false)}):null);}ReactLite.createRoot(document.getElementById('mount')).render(h(App));`;
 
 
   const routes = [
@@ -279,7 +279,67 @@ try {
   assert.equal(await page.$$eval('.dv-canvas-bar button',xs=>xs.some(x=>x.textContent==='素材')),false,'playback bar must not contain the media entry');
   assert.equal(await page.$eval('.dv-resource-bar button[aria-label="素材"]',e=>e.getAttribute('aria-expanded')),'false');
   assert.equal(await page.$eval('.dv-timeline-notice',e=>getComputedStyle(e).display).catch(()=> 'none'),'none','idle timeline has no permanent instruction footer');checks++;
+  assert.equal(await page.$$eval('.dv-track-mute',xs=>xs.every(x=>x.querySelector('svg')&&!x.textContent.trim())),true,'track sound actions use icons, not ambiguous letters');checks++;
+  await page.click('.dv-play');await page.waitForFunction(()=>document.querySelector('.dv-play').getAttribute('aria-label')==='暂停');
+  const scrubRevision=(await bridge.invoke('timeline.inspect',{projectId})).revision;
+  const ruler=await page.$eval('.dv-timeline-ruler',e=>{const r=e.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width};});
+  await page.mouse.move(ruler.x+ruler.width*.2,ruler.y+12);await page.mouse.down();
+  await page.waitForFunction(()=>document.querySelector('.dv-play').getAttribute('aria-label')==='播放');checks++;
+  await page.mouse.move(ruler.x+ruler.width*.4,ruler.y+12,{steps:8});
+  await page.waitForFunction(x=>Math.abs(parseFloat(document.querySelector('.dv-timeline-playhead').style.left)-x)<2,{timeout:2000},100+ruler.width*.4);checks++;
+  await page.mouse.move(ruler.x+ruler.width*.65,ruler.y+22,{steps:8});
+  await page.waitForFunction(x=>Math.abs(parseFloat(document.querySelector('.dv-timeline-playhead').style.left)-x)<2,{},100+ruler.width*.65);
+  assert.equal(await page.evaluate(()=>getSelection().toString()),'');checks++;
+  await (await page.$('.dv-timeline')).screenshot({path:join(out,'playhead-dragging.png')});
+  await page.mouse.up();
+  const head=await page.$eval('.dv-timeline-playhead',e=>{const r=e.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+7};});
+  await page.mouse.move(head.x,head.y);await page.mouse.down();await page.mouse.move(ruler.x+ruler.width*.3,ruler.y+45,{steps:8});
+  await page.waitForFunction(x=>Math.abs(parseFloat(document.querySelector('.dv-timeline-playhead').style.left)-x)<2,{},100+ruler.width*.3);checks++;
+  await page.mouse.up();assert.equal((await bridge.invoke('timeline.inspect',{projectId})).revision,scrubRevision);checks++;
+  const headPoint=()=>page.$eval('.dv-timeline-playhead',e=>{const r=e.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+7,left:parseFloat(e.style.left)};});
+  let handle=await headPoint();await page.mouse.move(handle.x,handle.y);await page.mouse.down();await page.mouse.move(0,ruler.y+40,{steps:6});
+  await page.waitForFunction(()=>parseFloat(document.querySelector('.dv-timeline-playhead').style.left)===100);
+  await page.mouse.move(899,ruler.y+40,{steps:6});await page.mouse.up();
+  assert.equal(Number(await page.$eval('.dv-timeline-playhead',e=>e.getAttribute('aria-valuenow'))),20);checks++;
+  handle=await headPoint();await page.mouse.move(handle.x,handle.y);await page.mouse.down();await page.mouse.move(ruler.x+ruler.width*.4,ruler.y+12,{steps:6});
+  await page.keyboard.press('Escape');await page.mouse.up();await page.waitForFunction(()=>document.querySelector('.dv-timeline').dataset.scrubbing==='false');
+  assert(Math.abs((await headPoint()).left-handle.left)<2);checks++;
+  await page.focus('.dv-timeline-playhead');await page.keyboard.press('Home');await page.keyboard.press('ArrowRight');
+  await page.waitForFunction(()=>Number(document.querySelector('.dv-timeline-playhead').getAttribute('aria-valuenow'))===1/30);checks++;
+  await page.$eval('.dv-timeline-zoom',e=>{e.value='80';e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));});
+  await page.$eval('.dv-timeline-scroll',e=>{e.scrollLeft=200;});
+  let scrolled=await page.$eval('.dv-timeline-ruler',e=>{const r=e.getBoundingClientRect();return {x:r.x,y:r.y};});
+  await page.mouse.move(300,scrolled.y+12);await page.mouse.down();await page.$eval('.dv-timeline-scroll',e=>{e.scrollLeft+=120;});await page.mouse.move(340,scrolled.y+12);
+  const expectedScrollTime=await page.$eval('.dv-timeline-ruler',e=>Math.round((340-e.getBoundingClientRect().left)/80*30)/30);
+  await page.waitForFunction(t=>Math.abs(Number(document.querySelector('.dv-timeline-playhead').getAttribute('aria-valuenow'))-t)<1/30,{},expectedScrollTime);await page.mouse.up();checks++;
+  const edge=await page.$eval('.dv-timeline-scroll',e=>({right:e.getBoundingClientRect().right,left:e.scrollLeft}));
+  await page.mouse.move(edge.right-2,scrolled.y+12);await page.mouse.down();await page.waitForFunction(x=>document.querySelector('.dv-timeline-scroll').scrollLeft>x+8,{},edge.left);await page.mouse.up();checks++;
+  await page.click('button[aria-label="适应时间线"]');await page.$eval('.dv-timeline-scroll',e=>{e.scrollLeft=0;});
+
+  const snapRevision=(await bridge.invoke('timeline.inspect',{projectId})).revision;
+  const snapAppearance=()=>page.$eval('.dv-snap-toggle',e=>({background:getComputedStyle(e).backgroundColor,color:getComputedStyle(e).color}));
+  const enabledSnap=await snapAppearance();await page.click('.dv-snap-toggle');const disabledSnap=await snapAppearance();
+  assert.notEqual(enabledSnap.background,disabledSnap.background,'snap must have a clearly different active surface');
+  assert.notEqual(enabledSnap.color,disabledSnap.color);checks++;
+  await page.focus('.dv-snap-toggle input');await page.keyboard.press('Space');
+  assert.equal(await page.$eval('.dv-snap-toggle input',e=>e.checked),true);assert.equal((await bridge.invoke('timeline.inspect',{projectId})).revision,snapRevision);checks++;
+  // Regression: a resource popup must close on outside click, not occupy the full stage.
+  await page.click('.dv-resource-tab[aria-label="素材"]');
+  await page.waitForSelector('.dv-media-library');
+  await page.screenshot({path:join(out,'media-panel-dark.png')});
+  await page.evaluate(()=>document.getElementById('mount').style.cssText+=';--dsw-alias-bg-base:#fff;--dsw-alias-label-primary:#202126;--dsw-alias-label-secondary:#70747c;--dsw-alias-interactive-bg-hover:#f0f2f4;--dsw-alias-border-l1:#dfe1e5;color:#202126');
+  await page.screenshot({path:join(out,'media-panel-light.png')});
+  const mediaBounds=await page.$eval('.dv-media-library',e=>({height:e.getBoundingClientRect().height,bottom:getComputedStyle(e).bottom}));
+  assert(mediaBounds.height<580,'sparse media content must not stretch to timeline');checks++;
+  await page.click('.dv-time');
+  assert.equal(await page.$('.dv-media-library'),null,'outside click dismisses the media panel');checks++;
+  await page.click('.dv-resource-tab[aria-label="素材"]');
+  await page.waitForSelector('.dv-media-library');
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(()=>!document.querySelector('.dv-media-library'));checks++;
+  await page.evaluate(()=>document.getElementById('mount').style.cssText='');
   await page.click('.dv-timeline-clip');
+  assert.equal(await page.$eval('.dv-timeline-clip',e=>{const r=e.getBoundingClientRect();return !!document.elementFromPoint(r.left+3,r.top+r.height/2)?.closest('.dv-timeline-edge');}),true);checks++;
   assert.equal(await page.$eval('.dv-clip-settings',e=>e.open),false,'clip properties stay collapsed after selection');
   await page.click('.dv-clip-settings summary');
   assert.equal(await page.$eval('.dv-timeline-inspector',e=>e.getBoundingClientRect().height>0),true);
@@ -655,12 +715,26 @@ try {
     await page.setViewport({width:900,height:760});
     await page.evaluate(()=>document.getElementById('mount').style.width='100%');
     assert.equal(await page.$$('.dv-timeline').then(x=>x.length),1);
-    await clickText('生成音频');
+    await clickText('声音');
     await page.waitForSelector('.dv-audio-panel');
+    await page.click('.dv-time');await page.waitForFunction(()=>!document.querySelector('.dv-audio-panel'));checks++;
+    await clickText('声音');await page.waitForSelector('.dv-audio-panel');await page.keyboard.press('Escape');await page.waitForFunction(()=>!document.querySelector('.dv-audio-panel'));checks++;
+    await clickText('声音');await page.waitForSelector('.dv-audio-panel');
+    await page.click('.dv-audio-quick > summary');
     await page.select('.dv-audio-field select',process.env.M4_CLOUD==='1'?'qianwen':'local');
     await page.type('.dv-audio-panel textarea','这是一段本地旁白，用于验证音频轨道。');
+    await page.evaluate(()=>{const original=window.fetch;let reject=true;window.fetch=async(url,init)=>{const request=init?.body?JSON.parse(init.body):{};if(reject&&request.method==='audio.generate'){reject=false;return new Response(JSON.stringify({ok:false,error:{code:'E_AUDIO_BUSY',message:'已有音频任务'}}),{headers:{'content-type':'application/json'}});}return original(url,init);};});
     await clickText('生成并加入素材');
+    await page.waitForFunction(()=>document.querySelector('.dv-audio-panel [role=status]')?.textContent.includes('已有音频任务'));
+    assert.equal(await page.$eval('.dv-audio-quick-body > .dv-button-primary',e=>e.disabled),false);assert.equal(await page.$$eval('.dv-audio-panel button',xs=>xs.some(e=>e.textContent.includes('恢复本次请求'))),false);checks++;
+    await page.evaluate(()=>{const original=window.fetch;window.__audioAttempts=[];window.__holdAudioStatus=false;window.fetch=async(url,init)=>{const request=init?.body?JSON.parse(init.body):{};if(request.method==='audio.status'&&window.__holdAudioStatus)throw new TypeError('blocked status');if(request.method==='audio.generate'){window.__audioAttempts.push(request.params);const response=await original(url,init);if(window.__audioAttempts.length===1){await response.text();window.__holdAudioStatus=true;throw new TypeError('lost generation reply');}window.__holdAudioStatus=false;return response;}return original(url,init);};});
+    await clickText('生成并加入素材');
+    await page.waitForFunction(()=>Array.from(document.querySelectorAll('.dv-audio-panel button')).some(e=>e.textContent.includes('恢复本次请求')));
+    await clickText('恢复本次请求（不重复生成）');
     await page.waitForFunction(()=>document.querySelector('.dv-audio-job')?.textContent.includes('生成成功'),{timeout:60000});
+    const audioAttempts=await page.evaluate(()=>window.__audioAttempts);assert.equal(audioAttempts.length,2);assert.deepEqual(audioAttempts[0],audioAttempts[1]);checks++;
+    assert.equal((await bridge.invoke('audio.status',{projectId})).jobs.filter(j=>j.operationId===audioAttempts[0].operationId).length,1);checks++;
+
     checks++;
     await page.screenshot({path:join(out,'audio-generation.png')});
     const beforeAudio=await bridge.invoke('timeline.inspect',{projectId});
@@ -681,9 +755,12 @@ try {
     audioTimeline=await bridge.invoke('timeline.inspect',{projectId});
     const edited=audioTimeline.tracks.find(x=>x.kind==='audio');
     assert.equal(edited.clips[0].volumeDb,-6);assert.equal(edited.clips[0].fadeInFrames,9);assert.equal(edited.clips[0].fadeOutFrames,12);assert.equal(edited.gainDb,-3);checks++;
+    const soundIcon=await page.$eval('.dv-track-mute[aria-label$="'+audioTrack.name+'"] path',e=>e.getAttribute('d'));
     await page.click('.dv-track-mute[aria-label$="'+audioTrack.name+'"]');
     await page.waitForFunction(()=>document.querySelector('.dv-timeline').getAttribute('aria-busy')==='false');
     assert.equal((await bridge.invoke('timeline.inspect',{projectId})).tracks.find(x=>x.kind==='audio').muted,true);
+    assert.equal(await page.$eval('.dv-timeline-clip.is-audio',e=>e.classList.contains('is-muted')),true);checks++;
+    assert.equal(await page.$eval('.dv-track-mute[aria-pressed=true]',e=>e.getAttribute('aria-label').startsWith('取消静音')),true);assert.notEqual(await page.$eval('.dv-track-mute[aria-pressed=true] path',e=>e.getAttribute('d')),soundIcon);checks++;
     await clickText('撤销');await page.waitForFunction(()=>document.querySelector('.dv-timeline').getAttribute('aria-busy')==='false');checks++;
     await page.waitForFunction(()=>document.querySelector('.dv-canvas-shell').dataset.previewPending==='false');
     const audibleFrame=await (await page.$('.dv-stage-frame[aria-hidden="false"]')).contentFrame();
@@ -705,10 +782,29 @@ try {
     await nextFrame.waitForFunction(()=>document.querySelector('audio')?.muted===false,{timeout:5000});checks++;
     await page.waitForFunction(()=>[...document.querySelectorAll('.dv-clip-waveform')].some(x=>x.naturalWidth>0));checks++;
     await page.screenshot({path:join(out,'audio-timeline.png')});
+    await page.evaluate(()=>document.getElementById('mount').style.cssText+=';--dsw-alias-bg-base:#fff;--dsw-alias-label-primary:#202126;--dsw-alias-label-secondary:#70747c;--dsw-alias-interactive-bg-hover:#f0f2f4;color:#202126');
+    await page.screenshot({path:join(out,'audio-timeline-light.png')});
+    await page.evaluate(()=>document.getElementById('mount').style.cssText='width:100%');
+
     await (await page.$('.dv-timeline')).screenshot({path:join(out,'timeline-detail.png')});
     await page.setViewport({width:340,height:760});
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
     await page.screenshot({path:join(out,'audio-narrow.png')});checks++;
+    // A job created through the same API used by right-hand AI appears live.
+    await clickText('声音');await page.waitForSelector('.dv-audio-panel');
+    assert.equal(await page.$eval('.dv-audio-quick',e=>e.open),false);checks++;
+    const aiJob=await bridge.invoke('audio.generate',{projectId,operationId:'ui-procedural-arrival',provider:'procedural',kind:'sfx',text:'AI 转场提示音',score:{duration:3,events:[{sound:'whoosh',at:0,duration:3,gainDb:-12}]}});
+    await page.waitForFunction(id=>document.querySelector('[data-audio-job="'+id+'"] audio')!==null,{},aiJob.jobId);checks++;
+    const audioUrl=await page.$eval('[data-audio-job="'+aiJob.jobId+'"] audio',e=>e.src);
+    await page.$eval('[data-audio-job="'+aiJob.jobId+'"] audio',e=>{window.__auditionNode=e;return e.play();});
+    await page.waitForFunction(()=>window.__auditionNode.currentTime>1.3);assert.equal(await page.evaluate(()=>window.__auditionNode.paused),false);checks++;
+    const previewResponse=await fetch(audioUrl);assert.equal(previewResponse.status,200);assert.equal(Buffer.from(await previewResponse.arrayBuffer()).toString('ascii',0,4),'RIFF');checks++;
+    await page.evaluate(()=>document.getElementById('mount').style.cssText+=';--dsw-alias-bg-base:#fff;--dsw-alias-label-primary:#202126;--dsw-alias-label-secondary:#70747c;--dsw-alias-interactive-bg-hover:#f0f2f4;color:#202126');
+    await page.screenshot({path:join(out,'audio-hub-light.png')});
+    await page.keyboard.press('Escape');await page.waitForFunction(()=>!document.querySelector('.dv-audio-panel'));checks++;
+    assert.equal(await page.evaluate(()=>window.__auditionNode.paused),true);checks++;
+    await page.evaluate(()=>document.getElementById('mount').style.cssText='');
+
   }
   if(process.env.M5_COLLAB==='1'){
     await page.setViewport({width:900,height:760});
@@ -755,7 +851,14 @@ try {
     await (await referencePage.$('.dv-reference-panel')).screenshot({path:join(out,'references.png')});
     await referencePage.setViewport({width:340,height:760});await referencePage.evaluate(()=>document.getElementById('mount').style.width='100%');assert.equal(await referencePage.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);checks++;
     await referencePage.screenshot({path:join(out,'collaboration-narrow.png')});
-    await referencePage.keyboard.press('Escape');await referencePage.waitForFunction(()=>!document.querySelector('.dv-reference-panel'));checks++;
+    await referencePage.click('#reference-outside');await referencePage.waitForFunction(()=>!document.querySelector('.dv-reference-panel'));checks++;
+    await referencePage.click('[data-panel-trigger="references"]');await referencePage.waitForSelector('.dv-reference-item');
+    await referencePage.evaluate(()=>document.getElementById('mount').style.cssText+=';--dsw-alias-bg-base:#fff;--dsw-alias-label-primary:#202126;--dsw-alias-label-secondary:#70747c;--dsw-alias-interactive-bg-hover:#f0f2f4;color:#202126');
+    assert.equal(await referencePage.$eval('.dv-reference-range-wrap',e=>e.open),false);
+    await referencePage.click('.dv-reference-range-wrap summary');await referencePage.waitForSelector('.dv-reference-range input');checks++;
+    await referencePage.screenshot({path:join(out,'references-light.png')});
+    await referencePage.keyboard.press('Escape');await referencePage.waitForFunction(()=>!document.querySelector('.dv-reference-panel'));assert.equal(await referencePage.evaluate(()=>document.activeElement?.getAttribute('data-panel-trigger')),'references');checks++;
+
   }
   if (process.env.M3_RENDER === "1") {
     const timeline = await bridge.invoke("timeline.inspect", { projectId });

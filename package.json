@@ -1,6 +1,6 @@
 {
   "name": "dsh-video",
-  "version": "1.0.0-alpha.12",
+  "version": "1.0.0-alpha.13",
   "private": true,
   "description": "Native sidebar entry, a controlled Host bridge, frame-time preview and a restrained video workspace for DeepSeek Harness.",
   "type": "module",
@@ -14,6 +14,7 @@
   "files": [
     "index.js",
     "host/*.js",
+    "skills/audio-creation/*.md",
     "client.js",
     "cordis.patch.yml",
     "icon.svg",
