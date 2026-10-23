@@ -279,6 +279,13 @@ try {
   assert.equal(await page.$$eval('.dv-canvas-bar button',xs=>xs.some(x=>x.textContent==='素材')),false,'playback bar must not contain the media entry');
   assert.equal(await page.$eval('.dv-resource-bar button[aria-label="素材"]',e=>e.getAttribute('aria-expanded')),'false');
   assert.equal(await page.$eval('.dv-timeline-notice',e=>getComputedStyle(e).display).catch(()=> 'none'),'none','idle timeline has no permanent instruction footer');checks++;
+  const snapRevision=(await bridge.invoke('timeline.inspect',{projectId})).revision;
+  const snapAppearance=()=>page.$eval('.dv-snap-toggle',e=>({background:getComputedStyle(e).backgroundColor,color:getComputedStyle(e).color}));
+  const enabledSnap=await snapAppearance();await page.click('.dv-snap-toggle');const disabledSnap=await snapAppearance();
+  assert.notEqual(enabledSnap.background,disabledSnap.background,'snap must have a clearly different active surface');
+  assert.notEqual(enabledSnap.color,disabledSnap.color);checks++;
+  await page.focus('.dv-snap-toggle input');await page.keyboard.press('Space');
+  assert.equal(await page.$eval('.dv-snap-toggle input',e=>e.checked),true);assert.equal((await bridge.invoke('timeline.inspect',{projectId})).revision,snapRevision);checks++;
   // Regression: a resource popup must close on outside click, not occupy the full stage.
   await page.click('.dv-resource-tab[aria-label="素材"]');
   await page.waitForSelector('.dv-media-library');
@@ -713,6 +720,7 @@ try {
     await page.click('.dv-track-mute[aria-label$="'+audioTrack.name+'"]');
     await page.waitForFunction(()=>document.querySelector('.dv-timeline').getAttribute('aria-busy')==='false');
     assert.equal((await bridge.invoke('timeline.inspect',{projectId})).tracks.find(x=>x.kind==='audio').muted,true);
+    assert.equal(await page.$eval('.dv-timeline-clip.is-audio',e=>e.classList.contains('is-muted')),true);checks++;
     await clickText('撤销');await page.waitForFunction(()=>document.querySelector('.dv-timeline').getAttribute('aria-busy')==='false');checks++;
     await page.waitForFunction(()=>document.querySelector('.dv-canvas-shell').dataset.previewPending==='false');
     const audibleFrame=await (await page.$('.dv-stage-frame[aria-hidden="false"]')).contentFrame();
@@ -734,6 +742,10 @@ try {
     await nextFrame.waitForFunction(()=>document.querySelector('audio')?.muted===false,{timeout:5000});checks++;
     await page.waitForFunction(()=>[...document.querySelectorAll('.dv-clip-waveform')].some(x=>x.naturalWidth>0));checks++;
     await page.screenshot({path:join(out,'audio-timeline.png')});
+    await page.evaluate(()=>document.getElementById('mount').style.cssText+=';--dsw-alias-bg-base:#fff;--dsw-alias-label-primary:#202126;--dsw-alias-label-secondary:#70747c;--dsw-alias-interactive-bg-hover:#f0f2f4;color:#202126');
+    await page.screenshot({path:join(out,'audio-timeline-light.png')});
+    await page.evaluate(()=>document.getElementById('mount').style.cssText='width:100%');
+
     await (await page.$('.dv-timeline')).screenshot({path:join(out,'timeline-detail.png')});
     await page.setViewport({width:340,height:760});
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);

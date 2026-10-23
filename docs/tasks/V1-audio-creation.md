@@ -28,3 +28,17 @@ source/固定候选 Chrome 工作区各 **68** 项通过；实际 Tool→Host→
 证据：同级 worktrees `artifacts/v1/evidence/audio-creation-20261023/`，包含固定 workspace 截图/结果、export/audio-creation.mp4、audio-demo.m4a 和实际音频测量。预览/导出延续项目总线响度目标（默认-16 LUFS）；片段音量用于相对混音，总体响度可用 timeline.settings.loudnessTargetLufs 调整。
 
 保持 draft 待用户验收；未合码/发布。前一阶段中间候选 `staging-v1.0.0-alpha.13-audio-creation` 仅为试听生命周期修正前的未安装构建，不用于验收，当前固定目标以上述 e7c124d 为准。
+
+
+## 用户追加：吸附状态与音轨视觉（2026-10-23）
+
+研究依据：Final Cut Pro 官方说明用角色颜色区分音乐等音频，Resolve Fairlight 强调片段和波形同视图。当前项目没有可靠的片段角色字段，故不按名称猜“旁白/配乐/音效”或随机分配色彩；保持视频蓝色，音频统一高辨识绿色。
+
+- https://support.apple.com/en-gb/guide/final-cut-pro/ver717f43e9/mac
+- https://www.blackmagicdesign.com/ca/products/davinciresolve/fairlight
+
+旧吸附开启只改图标颜色，在浅色主题近似同色。现使用蓝色实底/白图标/勾标，并提供动态开关 tooltip、原生 checkbox 状态与键盘焦点。音频片段改绿色主体、深色标题条和白色波形；选中描边更明显，静音降低饱和度，仍保留 M 按钮状态，不只靠颜色表达。
+
+先加背景差异断言，旧代码因启用/禁用都是 transparent 而失败。修复后 source Chrome 完整 **71** 项通过（原68＋开关视觉、Space恢复且工程revision不变、静音外观），源码门禁58/86/71通过；浅色/深色与340px截图已检查。测试主题切换先恢复 mount 的100%宽度，避免测试自己引入横向溢出。证据 `artifacts/v1/evidence/timeline-colors-20261023/`。
+
+这是固定 e7c124d 音频候选之后的 source UI 追加；旧固定包不含本节样式，安装前需按最终批准 head 重新固定打包。当前仍未合码/安装/重启，草稿 PR #29 随本提交更新。

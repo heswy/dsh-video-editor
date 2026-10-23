@@ -195,6 +195,8 @@ window.__ModuleLoader__.load({
 'video.timeline.duplicate': "复制",
 'video.timeline.addTrack': "加轨",
 'video.timeline.snap': "吸附",
+      'video.timeline.snapOn': '吸附已开启',
+      'video.timeline.snapOff': '吸附已关闭',
 'video.timeline.zoom': "缩放时间线",
 'video.timeline.compact': "片条",
 'video.timeline.trimIn': "调节入点",
@@ -462,6 +464,8 @@ window.__ModuleLoader__.load({
 'video.timeline.duplicate': "Duplicate",
 'video.timeline.addTrack': "Add track",
 'video.timeline.snap': "Snap",
+      'video.timeline.snapOn': 'Snapping on',
+      'video.timeline.snapOff': 'Snapping off',
 'video.timeline.zoom': "Timeline zoom",
 'video.timeline.compact': "Compact",
 'video.timeline.trimIn': "Trim in",
@@ -1749,6 +1753,20 @@ window.__ModuleLoader__.load({
 .dv-root .dv-audio-quick{border-top:1px solid var(--dv-panel-line);padding-top:12px;font-size:11px}
 .dv-root .dv-audio-quick summary{cursor:pointer;line-height:24px}
 .dv-root .dv-audio-quick-body{display:flex;flex-direction:column;gap:12px;padding-top:12px}
+
+/* Timeline state and media identity must remain legible in both themes. */
+.dv-root .dv-snap-toggle{display:inline-flex;align-items:center;justify-content:center;width:30px;height:28px;box-sizing:border-box;border:1px solid color-mix(in srgb,var(--dsw-alias-label-primary,#eee) 22%,transparent);border-radius:6px;background:transparent;color:var(--dsw-alias-label-secondary,#a4a8b2)}
+.dv-root .dv-snap-toggle:hover{background:var(--dsw-alias-interactive-bg-hover,#ffffff0c)}
+.dv-root .dv-snap-toggle:has(input:checked){background:#245cba;border-color:#245cba;color:#fff;box-shadow:inset 0 1px #ffffff24}
+.dv-root .dv-snap-toggle:has(input:focus-visible){outline-offset:2px}
+.dv-snap-state{position:absolute;right:1px;bottom:-1px;font-size:10px;font-weight:700;line-height:12px;pointer-events:none}
+.dv-root .dv-timeline-clip.is-audio{background:#227b60;border:1px solid #176047;color:#fff;box-shadow:inset 0 -1px #00000014}
+.dv-root .dv-timeline-clip.is-audio:hover{background:#29896b}
+.dv-root .dv-timeline-clip.is-audio.is-selected{background:#1a6c52;outline:2px solid #8ce8bd;outline-offset:-2px;box-shadow:inset 0 0 0 3px #14533e}
+.dv-root .is-audio .dv-timeline-clip-label{align-self:flex-start;box-sizing:border-box;width:100%;height:15px;line-height:15px;padding:0 8px;font-size:10px;color:#fff;background:#14573f;text-shadow:none}
+.dv-root .is-audio .dv-clip-waveform{top:17px;height:calc(100% - 19px);opacity:.75;filter:brightness(0) invert(1)}
+.dv-root .dv-timeline-track[data-kind=audio] .dv-track-kind{color:#238266;font-weight:600}
+.dv-root .dv-timeline-clip.is-audio.is-muted{filter:saturate(.12);opacity:.58}
 
 @container video-canvas (max-width:480px){.dv-root .dv-timeline-heading{display:none}.dv-root .dv-timeline-zoom{width:40px}.dv-root .dv-clip-settings summary span{display:none}.dv-root .dv-resource-bar{padding:0 8px}.dv-root .dv-canvas-shell[data-preview-only="true"] .dv-canvas-wrap{margin:12px 12px 4px}.dv-root .dv-timeline-toolbar{padding:0 6px;gap:1px}.dv-root .dv-tool-divider{margin:0 3px}}
 
@@ -4466,7 +4484,7 @@ window.__ModuleLoader__.load({
             )
           ) : null,
 
-          h('label',{className:'dv-snap-toggle',title:t('video.timeline.snap')},h('input',{type:'checkbox',checked:snap,'aria-label':t('video.timeline.snap'),onChange:e=>setSnap(e.target.checked)}),h('svg',{viewBox:'0 0 24 24',width:15,height:15,fill:'none',stroke:'currentColor',strokeWidth:1.5,'aria-hidden':true},h('path',{d:'M5 4v9a7 7 0 0 0 14 0V4h-4v9a3 3 0 0 1-6 0V4zM5 8h4m6 0h4'}))),
+          h('label',{className:'dv-snap-toggle',title:t(snap?'video.timeline.snapOn':'video.timeline.snapOff')},h('input',{type:'checkbox',checked:snap,'aria-label':t('video.timeline.snap'),onChange:e=>setSnap(e.target.checked)}),h('svg',{viewBox:'0 0 24 24',width:15,height:15,fill:'none',stroke:'currentColor',strokeWidth:1.5,'aria-hidden':true},h('path',{d:'M5 4v9a7 7 0 0 0 14 0V4h-4v9a3 3 0 0 1-6 0V4zM5 8h4m6 0h4'})),h('span',{className:'dv-snap-state','aria-hidden':true},snap?'✓':'')),
           h('input',{type:'range',className:'dv-timeline-zoom',min:1,max:100,value:Math.max(1,Math.min(100,zoom)),'aria-label':t('video.timeline.zoom'),onChange:e=>{setFit(false);setZoom(Number(e.target.value));}}),
           tool(t('video.timeline.fit'),'M8 4H4v16h4m8-16h4v16h-4M8 12h8m-6-3-3 3 3 3m4-6 3 3-3 3',()=>setFit(true),false),
         ),
@@ -4505,7 +4523,7 @@ window.__ModuleLoader__.load({
               .map((tr) =>
                 h(
                   "div",
-                  { key: tr.trackId, className: "dv-timeline-track" },
+                  { key: tr.trackId, className: "dv-timeline-track", "data-kind":tr.kind },
                   h("div", { className: "dv-timeline-track-name" }, h('span',{className:'dv-track-label'},h('span',{className:'dv-track-kind'},tr.kind==='audio'?'A':'V'),tr.name),h('button',{className:'dv-track-mute','aria-label':t('video.audio.mute')+' '+tr.name,'aria-pressed':Boolean(tr.muted),disabled:busy,onClick:()=>write([{op:'track.update',trackId:tr.trackId,patch:{muted:!tr.muted}}])},'M')),
                   h(
                     "div",
@@ -4546,7 +4564,7 @@ window.__ModuleLoader__.load({
                         {
                           key: c.clipId,
                           className:
-                            "dv-timeline-clip" + (tr.kind==='audio'?' is-audio':'') +
+                            "dv-timeline-clip" + (tr.kind==='audio'?' is-audio':'') + ((tr.muted||c.muted)?' is-muted':'') +
                             (selected === c.clipId ? " is-selected" : "") +
                             (drag?.clipId===c.clipId&&drag.lifted&&!drag.edge?" is-dragging"+(!drag.valid?" is-invalid":""):""),
                           "data-clip-id": c.clipId,
