@@ -670,15 +670,26 @@ try {
     await page.setViewport({width:900,height:760});
     await page.evaluate(()=>document.getElementById('mount').style.width='100%');
     assert.equal(await page.$$('.dv-timeline').then(x=>x.length),1);
-    await clickText('生成音频');
+    await clickText('声音');
     await page.waitForSelector('.dv-audio-panel');
     await page.click('.dv-time');await page.waitForFunction(()=>!document.querySelector('.dv-audio-panel'));checks++;
-    await clickText('生成音频');await page.waitForSelector('.dv-audio-panel');await page.keyboard.press('Escape');await page.waitForFunction(()=>!document.querySelector('.dv-audio-panel'));checks++;
-    await clickText('生成音频');await page.waitForSelector('.dv-audio-panel');
+    await clickText('声音');await page.waitForSelector('.dv-audio-panel');await page.keyboard.press('Escape');await page.waitForFunction(()=>!document.querySelector('.dv-audio-panel'));checks++;
+    await clickText('声音');await page.waitForSelector('.dv-audio-panel');
+    await page.click('.dv-audio-quick > summary');
     await page.select('.dv-audio-field select',process.env.M4_CLOUD==='1'?'qianwen':'local');
     await page.type('.dv-audio-panel textarea','这是一段本地旁白，用于验证音频轨道。');
+    await page.evaluate(()=>{const original=window.fetch;let reject=true;window.fetch=async(url,init)=>{const request=init?.body?JSON.parse(init.body):{};if(reject&&request.method==='audio.generate'){reject=false;return new Response(JSON.stringify({ok:false,error:{code:'E_AUDIO_BUSY',message:'已有音频任务'}}),{headers:{'content-type':'application/json'}});}return original(url,init);};});
     await clickText('生成并加入素材');
+    await page.waitForFunction(()=>document.querySelector('.dv-audio-panel [role=status]')?.textContent.includes('已有音频任务'));
+    assert.equal(await page.$eval('.dv-audio-quick-body > .dv-button-primary',e=>e.disabled),false);assert.equal(await page.$$eval('.dv-audio-panel button',xs=>xs.some(e=>e.textContent.includes('恢复本次请求'))),false);checks++;
+    await page.evaluate(()=>{const original=window.fetch;window.__audioAttempts=[];window.__holdAudioStatus=false;window.fetch=async(url,init)=>{const request=init?.body?JSON.parse(init.body):{};if(request.method==='audio.status'&&window.__holdAudioStatus)throw new TypeError('blocked status');if(request.method==='audio.generate'){window.__audioAttempts.push(request.params);const response=await original(url,init);if(window.__audioAttempts.length===1){await response.text();window.__holdAudioStatus=true;throw new TypeError('lost generation reply');}window.__holdAudioStatus=false;return response;}return original(url,init);};});
+    await clickText('生成并加入素材');
+    await page.waitForFunction(()=>Array.from(document.querySelectorAll('.dv-audio-panel button')).some(e=>e.textContent.includes('恢复本次请求')));
+    await clickText('恢复本次请求（不重复生成）');
     await page.waitForFunction(()=>document.querySelector('.dv-audio-job')?.textContent.includes('生成成功'),{timeout:60000});
+    const audioAttempts=await page.evaluate(()=>window.__audioAttempts);assert.equal(audioAttempts.length,2);assert.deepEqual(audioAttempts[0],audioAttempts[1]);checks++;
+    assert.equal((await bridge.invoke('audio.status',{projectId})).jobs.filter(j=>j.operationId===audioAttempts[0].operationId).length,1);checks++;
+
     checks++;
     await page.screenshot({path:join(out,'audio-generation.png')});
     const beforeAudio=await bridge.invoke('timeline.inspect',{projectId});
@@ -727,6 +738,18 @@ try {
     await page.setViewport({width:340,height:760});
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
     await page.screenshot({path:join(out,'audio-narrow.png')});checks++;
+    // A job created through the same API used by right-hand AI appears live.
+    await clickText('声音');await page.waitForSelector('.dv-audio-panel');
+    assert.equal(await page.$eval('.dv-audio-quick',e=>e.open),false);checks++;
+    const aiJob=await bridge.invoke('audio.generate',{projectId,operationId:'ui-procedural-arrival',provider:'procedural',kind:'sfx',text:'AI 转场提示音',score:{duration:0.5,events:[{sound:'whoosh',at:0,duration:0.5,gainDb:-12}]}});
+    await page.waitForFunction(id=>document.querySelector('[data-audio-job="'+id+'"] audio')!==null,{},aiJob.jobId);checks++;
+    const audioUrl=await page.$eval('[data-audio-job="'+aiJob.jobId+'"] audio',e=>e.src);
+    const previewResponse=await fetch(audioUrl);assert.equal(previewResponse.status,200);assert.equal(Buffer.from(await previewResponse.arrayBuffer()).toString('ascii',0,4),'RIFF');checks++;
+    await page.evaluate(()=>document.getElementById('mount').style.cssText+=';--dsw-alias-bg-base:#fff;--dsw-alias-label-primary:#202126;--dsw-alias-label-secondary:#70747c;--dsw-alias-interactive-bg-hover:#f0f2f4;color:#202126');
+    await page.screenshot({path:join(out,'audio-hub-light.png')});
+    await page.keyboard.press('Escape');await page.waitForFunction(()=>!document.querySelector('.dv-audio-panel'));checks++;
+    await page.evaluate(()=>document.getElementById('mount').style.cssText='');
+
   }
   if(process.env.M5_COLLAB==='1'){
     await page.setViewport({width:900,height:760});

@@ -12,6 +12,7 @@ import { join, dirname } from 'node:path';
 import { randomUUID, createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { BridgeError } from './errors.js';
+import { ProceduralProvider, validateScore } from './audio-synth.js';
 const error = (code, message, uncertain = false) =>
   new BridgeError(code, message, { stage: 'audio', uncertain });
 const digest = (v) =>
@@ -325,6 +326,7 @@ export class AudioService {
         providers ?? [
           new QianwenProvider({ getKey: () => this.key() }),
           new LocalSayProvider(),
+          new ProceduralProvider(),
         ]
       ).map((p) => [p.id, p]),
     );
@@ -437,8 +439,8 @@ export class AudioService {
         j.state = 'interrupted';
         j.error = {
           code: 'E_AUDIO_INTERRUPTED',
-          message: '上次生成被中断，可能已计费；不会自动重复请求',
-          uncertain: true,
+          message: ['local','procedural'].includes(j.provider)?'上次本地生成被中断，请重新发起':'上次生成被中断，可能已计费；不会自动重复请求',
+          uncertain: !['local','procedural'].includes(j.provider),
         };
       }
     return s;
@@ -457,6 +459,7 @@ export class AudioService {
         text,
         voice,
         rate,
+        score,
       } = req;
       if (
         typeof text !== 'string' ||
@@ -475,7 +478,9 @@ export class AudioService {
         text,
         voice,
         rate,
+        ...(provider === 'procedural' ? {score:validateScore(score)} : {}),
       };
+      if (score !== undefined && provider !== 'procedural') throw error('E_PARAMS','score 仅用于本地合成');
       if (
         rate !== undefined &&
         (!Number.isFinite(rate) || rate < 0.5 || rate > 2)
@@ -514,9 +519,9 @@ export class AudioService {
         s.jobs.filter(
           (j) =>
             j.createdAt.slice(0, 10) ===
-              new Date().toISOString().slice(0, 10) && j.provider !== 'local',
+              new Date().toISOString().slice(0, 10) && !['local','procedural'].includes(j.provider),
         ).length >= 20 &&
-        provider !== 'local'
+        !['local','procedural'].includes(provider)
       )
         throw error('E_AUDIO_BUDGET', '今日已达 20 次调用护栏，请明日再试');
       if (s.jobs.length >= 1000)
@@ -533,15 +538,18 @@ export class AudioService {
           characters: text.length,
           approxSpeechSeconds:
             kind === 'tts' ? Math.ceil(text.length / 3.3) : null,
-          cny: null,
-          note: '仅估算输入规模；费用以供应商账单为准',
+          cny: ['local','procedural'].includes(provider) ? 0 : null,
+          note: ['local','procedural'].includes(provider) ? '本地生成，不调用付费服务' : '仅估算输入规模；费用以供应商账单为准',
         },
         state: 'queued',
+        label: text.slice(0,80),
+        editable: provider === 'procedural',
       };
       s.jobs.push(j);
       const control = new AbortController();
       this.running.set(j.jobId, { control });
       try {
+        await atomic(join(this.root,j.jobId+'.recipe.json'),request);
         await this.save(s);
       } catch {
         this.running.delete(j.jobId);
@@ -585,6 +593,7 @@ export class AudioService {
         asset: imported.asset,
         usage: result.usage ?? null,
         model: result.model ?? p.id,
+        analysis: result.analysis ?? null,
       });
     } catch (e) {
       if (
@@ -611,12 +620,12 @@ export class AudioService {
             : (e?.code ?? 'E_AUDIO_PROVIDER'),
           message: control.signal.aborted
             ? control.signal.reason === 'timeout'
-              ? '生成超时；供应商可能已计费，不会自动重试'
-              : '已取消；供应商可能仍计费'
+              ? (['local','procedural'].includes(j.provider)?'本地生成超时，请简化内容':'生成超时；供应商可能已计费，不会自动重试')
+              : (['local','procedural'].includes(j.provider)?'已取消本地生成':'已取消；供应商可能仍计费')
             : e instanceof BridgeError
               ? e.message
               : '生成失败，请检查连接后重试',
-          uncertain: control.signal.aborted || e?.uncertain === true,
+          uncertain: !['local','procedural'].includes(j.provider) && (control.signal.aborted || e?.uncertain === true),
         },
       }).catch(() => {});
     } finally {
@@ -640,6 +649,14 @@ export class AudioService {
     );
     if (!j) throw error('E_JOB_NOT_FOUND', '音频任务不存在');
     return this.public(j);
+  }
+  async recipe(projectId, jobId) {
+    const j=await this.status(projectId,jobId);
+    if(!/^audio_[a-f0-9-]{36}$/.test(j.jobId))throw error('E_JOB_NOT_FOUND','音频任务不存在');
+    const request=await json(join(this.root,j.jobId+'.recipe.json'),null);
+    if(!request)throw error('E_AUDIO_RECIPE','旧任务没有生成参数，请重新描述');
+    const {provider,kind,text,voice,rate,score}=request;
+    return {provider,kind,text,voice,rate,score};
   }
   async cancel(projectId, jobId) {
     const j = await this.status(projectId, jobId);

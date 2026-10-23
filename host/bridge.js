@@ -32,7 +32,7 @@ import { dataRootLayout, ensureDataRoot, legacyRootsFromConfig, loadManagedProje
 
 export const REQUEST_METHODS = Object.freeze([
 'reference.list', 'timeline.references',
-'audio.providers','audio.settings','audio.configure','audio.check','audio.generate','audio.status','audio.cancel',
+'audio.guide','audio.recipe','audio.providers','audio.settings','audio.configure','audio.check','audio.generate','audio.status','audio.cancel',
 'timeline.inspect',
 'timeline.apply',
 'timeline.resolve',
@@ -81,11 +81,13 @@ export const REQUEST_METHODS = Object.freeze([
 const METHOD_PARAMS = Object.freeze({
 'reference.list':['sessionId','query','offset','limit'],
 'timeline.references':['projectId','query','offset','limit'],
+'audio.guide': ['projectId'],
+'audio.recipe': ['projectId','jobId'],
 'audio.providers': ['projectId'],
 'audio.settings': [],
 'audio.configure': ['apiKey'],
 'audio.check': [],
-'audio.generate': ['projectId', 'operationId', 'provider', 'kind', 'text', 'voice', 'rate'],
+'audio.generate': ['projectId', 'operationId', 'provider', 'kind', 'text', 'voice', 'rate', 'score'],
 'audio.status': ['projectId', 'jobId'],
 'audio.cancel': ['projectId', 'jobId'],
 
@@ -468,10 +470,10 @@ export function validateParams(config, method, params) {
   }
   if(method.startsWith('audio.')) {
     const next={...params};
-    if(['audio.providers','audio.generate','audio.status','audio.cancel'].includes(method))next.projectId=allowedProject(config,params.projectId);
+    if(['audio.guide','audio.recipe','audio.providers','audio.generate','audio.status','audio.cancel'].includes(method))next.projectId=allowedProject(config,params.projectId);
     if(method==='audio.generate')next.operationId=operationId(params.operationId);
     if(params.jobId!==undefined&&(typeof params.jobId!=='string'||!/^audio_[a-f0-9-]{36}$/.test(params.jobId)))fail('E_PARAMS','Invalid audio job id');
-    if(method==='audio.cancel'&&!params.jobId)fail('E_PARAMS','Provide audio job id');
+    if(['audio.cancel','audio.recipe'].includes(method)&&!params.jobId)fail('E_PARAMS','Provide audio job id');
     return next;
   }
   if (method === 'doctor') return {};
@@ -1787,6 +1789,8 @@ export class VideoBridge {
       else if(method==='audio.settings')result=await this.audio.settings();
       else if(method==='audio.providers'){const s=await this.audio.settings();result={providers:s.providers,limits:s.limits,billing:s.billing};}
       else if(method==='audio.check')result=await this.audio.check();
+      else if(method==='audio.guide')result={skill:await readFile(new URL('../skills/audio-creation/SKILL.md',import.meta.url),'utf8')};
+      else if(method==='audio.recipe')result=await this.audio.recipe(normalized.projectId,normalized.jobId);
       else if(method==='audio.generate')result=await this.audio.generate(normalized);
       else if(method==='audio.cancel')result=await this.audio.cancel(normalized.projectId,normalized.jobId);
       else result=await this.audio.status(normalized.projectId,normalized.jobId);

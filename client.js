@@ -139,7 +139,15 @@ window.__ModuleLoader__.load({
       'video.reference.customRange': '自定义时间区间',
       'video.reference.title': '引用',
 
-      'video.audio.title': "生成音频",
+      'video.audio.title': "声音",
+      'video.audio.conversation': '音频创作，在右侧继续',
+      'video.audio.conversationHelp': '告诉 AI：给开场配乐、为转场加音效，或生成一段旁白。它会生成声音并加入作品。',
+      'video.audio.procedural': '本地合成 · 免费',
+      'video.audio.recent': '生成记录',
+      'video.audio.empty': '生成的声音会出现在这里，可试听后加入音轨。已有音频请从素材导入。',
+      'video.audio.quick': '快捷生成与供应商设置',
+      'video.audio.audition': '试听',
+      'video.audio.recover': '恢复本次请求（不重复生成）',
       'video.audio.tts': "旁白",
       'video.audio.music': "配乐",
       'video.audio.sfx': "音效",
@@ -157,7 +165,7 @@ window.__ModuleLoader__.load({
       'video.audio.configured': "密钥已配置",
       'video.audio.missing': "尚未配置密钥",
       'video.audio.billing': "云端按实际用量计费 · 每日最多 20 次 · 取消可能仍计费",
-      'video.audio.invitation': "音乐需供应商开通邀测；不可用时请导入配乐。",
+      'video.audio.invitation': "云端音乐需开通权限；也可让右侧 AI 免费合成本地配乐，或导入音频。",
       'video.audio.volume': "音量",
       'video.audio.fadeIn': "淡入",
       'video.audio.fadeOut': "淡出",
@@ -398,7 +406,15 @@ window.__ModuleLoader__.load({
       'video.reference.customRange': 'Custom time range',
       'video.reference.title': 'References',
 
-      'video.audio.title': "Generate audio",
+      'video.audio.title': "Sounds",
+      'video.audio.conversation': 'Create audio in the conversation',
+      'video.audio.conversationHelp': 'Ask AI for a score, transition sound or narration. It will create the audio and add it to your film.',
+      'video.audio.procedural': 'Local synthesis · Free',
+      'video.audio.recent': 'Generated audio',
+      'video.audio.empty': 'Generated sounds appear here for audition and placement. Import existing audio from Materials.',
+      'video.audio.quick': 'Quick generation and provider settings',
+      'video.audio.audition': 'Audition',
+      'video.audio.recover': 'Recover this request (no duplicate generation)',
       'video.audio.tts': "Voiceover",
       'video.audio.music': "Music",
       'video.audio.sfx': "Sound effect",
@@ -1718,6 +1734,21 @@ window.__ModuleLoader__.load({
 .dv-root .dv-audio-note{margin:0;font-size:11px;line-height:1.6}
 .dv-root .dv-audio-settings{border-top:1px solid var(--dv-panel-line);padding-top:8px;margin:0}
 .dv-root .dv-audio-panel>*{flex-shrink:0}
+
+.dv-root .dv-audio-intro{padding:12px;background:color-mix(in srgb,var(--dv-panel-ink) 5%,transparent);border-radius:8px;font-size:12px}
+.dv-root .dv-audio-intro p{font-size:11px;line-height:1.7;margin:6px 0 0;opacity:.65}
+.dv-root .dv-audio-list-head,.dv-root .dv-audio-job-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px}
+.dv-root .dv-audio-job-heading strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500}
+.dv-root .dv-audio-job-heading span{font-size:10px;flex-shrink:0;opacity:.6}
+.dv-root .dv-audio-jobs{max-height:280px;overflow:auto;flex-shrink:1;min-height:80px}
+.dv-root .dv-audio-job{display:flex;flex-direction:column;align-items:stretch;gap:8px;padding:12px 0;font-size:11px}
+.dv-root .dv-audio-job:first-child{border-top:0;padding-top:0}
+.dv-root .dv-audio-job small{font-size:10px;opacity:.6}
+.dv-root .dv-audio-job audio{width:100%;height:32px}
+.dv-root .dv-audio-job>.dv-button{align-self:flex-end;min-height:26px;font-size:11px}
+.dv-root .dv-audio-quick{border-top:1px solid var(--dv-panel-line);padding-top:12px;font-size:11px}
+.dv-root .dv-audio-quick summary{cursor:pointer;line-height:24px}
+.dv-root .dv-audio-quick-body{display:flex;flex-direction:column;gap:12px;padding-top:12px}
 
 @container video-canvas (max-width:480px){.dv-root .dv-timeline-heading{display:none}.dv-root .dv-timeline-zoom{width:40px}.dv-root .dv-clip-settings summary span{display:none}.dv-root .dv-resource-bar{padding:0 8px}.dv-root .dv-canvas-shell[data-preview-only="true"] .dv-canvas-wrap{margin:12px 12px 4px}.dv-root .dv-timeline-toolbar{padding:0 6px;gap:1px}.dv-root .dv-tool-divider{margin:0 3px}}
 
@@ -3986,27 +4017,61 @@ window.__ModuleLoader__.load({
     }
     function AudioPanel(props) {
       const t=props.t,h=React.createElement;
-      const panelRef = usePanelDismiss(props.onClose, 'audio');
-      const [settings,setSettings]=React.useState(null),[kind,setKind]=React.useState('tts'),[provider,setProvider]=React.useState('qianwen'),[text,setText]=React.useState(''),[key,setKey]=React.useState(''),[voice,setVoice]=React.useState('longanhuan_v3.1'),[job,setJob]=React.useState(null),[jobs,setJobs]=React.useState([]),[notice,setNotice]=React.useState(''),[busy,setBusy]=React.useState(false);
-      const alive=React.useRef(true);
-      React.useEffect(()=>{alive.current=true;void Promise.all([hostRequest('audio.settings',{}),hostRequest('audio.status',{projectId:props.projectId})]).then(([a,b])=>{if(alive.current){setSettings(a);setJobs(b.jobs);setJob(b.jobs.find(j=>['queued','running','downloading'].includes(j.state))||null);}}).catch(e=>{if(alive.current)setNotice(errorText(hostError(e),t));});return()=>{alive.current=false;};},[props.projectId]);
-      React.useEffect(()=>{if(!job||!['queued','running','downloading','cancelling'].includes(job.state))return;let stopped=false;const timer=setInterval(()=>{void hostRequest('audio.status',{projectId:props.projectId,jobId:job.jobId}).then(j=>{if(!stopped){setJob(j);if(j.state==='succeeded')setNotice(t('video.audio.ready'));if(j.state==='failed')void hostRequest('audio.settings',{}).then(v=>{if(!stopped)setSettings(v);});}}).catch(e=>{if(!stopped)setNotice(errorText(hostError(e),t));});},800);return()=>{stopped=true;clearInterval(timer);};},[job?.jobId,job?.state]);
-      async function perform(method,params){setBusy(true);setNotice('');try{const r=await hostRequest(method,params);if(!alive.current)return;if(method==='audio.generate'||method==='audio.cancel')setJob(r);else if(method==='audio.configure'){setSettings(r);setKey('');setNotice(t('video.audio.configured'));}else {if(r.providers)setSettings(r);setNotice(r.note||t('video.audio.configured'));}}catch(e){if(alive.current)setNotice(errorText(hostError(e),t));}finally{if(alive.current)setBusy(false);}}
-      const generating=job&&['queued','running','downloading','cancelling'].includes(job.state);
-      const jobView=j=>h('div',{className:'dv-audio-job',key:j.jobId},h('span',null,t('video.audio.'+j.kind)+' · '+t('video.audio.'+j.state)),j.error?h('p',{role:'alert'},j.error.message):null,j.asset?h('button',{className:'dv-button dv-button-quiet',onClick:()=>props.onAdd(j.asset)},t('video.audio.add')):null);
-      return h('aside',{className:'dv-drawer dv-audio-panel',ref:panelRef,role:'dialog','aria-label':t('video.audio.title'),onKeyDown:e=>{if(e.key==='Escape')props.onClose();}},
+      const panelRef=usePanelDismiss(props.onClose,'audio'),alive=React.useRef(true),players=React.useRef(new Map()),attempt=React.useRef(null);
+      const [settings,setSettings]=React.useState(null),[kind,setKind]=React.useState('tts'),[provider,setProvider]=React.useState('qianwen'),[text,setText]=React.useState(''),[key,setKey]=React.useState(''),[voice,setVoice]=React.useState('longanhuan_v3.1'),[jobs,setJobs]=React.useState([]),[notice,setNotice]=React.useState(''),[busy,setBusy]=React.useState(false),[uncertain,setUncertain]=React.useState(false);
+      async function refresh(){
+        const r=await hostRequest('audio.status',{projectId:props.projectId});
+        if(!alive.current)return;
+        setJobs(r.jobs);
+        if(attempt.current&&r.jobs.some(j=>j.operationId===attempt.current.operationId)){attempt.current=null;setUncertain(false);}
+      }
+      React.useEffect(()=>{
+        alive.current=true;let polling=false;
+        void hostRequest('audio.settings',{}).then(r=>{if(alive.current)setSettings(r);}).catch(e=>{if(alive.current)setNotice(errorText(hostError(e),t));});
+        const poll=async()=>{if(polling)return;polling=true;try{await refresh();}catch(e){if(alive.current)setNotice(errorText(hostError(e),t));}finally{polling=false;}};
+        void poll();const timer=setInterval(poll,1200);
+        return()=>{alive.current=false;clearInterval(timer);for(const player of players.current.values())player?.pause();};
+      },[props.projectId]);
+      async function perform(method,params){
+        setBusy(true);setNotice('');
+        if(method==='audio.generate')attempt.current=params;
+        try{
+          const r=await hostRequest(method,params);if(!alive.current)return;
+          if(method==='audio.configure'){setSettings(r);setKey('');setNotice(t('video.audio.configured'));}
+          else if(method==='audio.check'){setSettings(r);setNotice(r.note||t('video.audio.configured'));}
+          else {if(method==='audio.generate'){attempt.current=null;setUncertain(false);setJobs(list=>[r,...list.filter(j=>j.jobId!==r.jobId)]);}try{await refresh();}catch(e){setNotice(errorText(hostError(e),t));}}
+        }catch(e){if(alive.current){setNotice(errorText(hostError(e),t));if(method==='audio.generate'){const failure=hostError(e);const unknown=failure.uncertain||failure.jobUnknown||['E_NETWORK','E_RESPONSE'].includes(failure.code);setUncertain(unknown);if(!unknown)attempt.current=null;}}}
+        finally{if(alive.current)setBusy(false);}
+      }
+      const active=jobs.some(j=>['queued','running','downloading','cancelling'].includes(j.state));
+      const providerName=id=>id==='procedural'?t('video.audio.procedural'):id==='local'?t('video.audio.local'):t('video.audio.qianwen');
+      const jobView=j=>h('article',{className:'dv-audio-job',key:j.jobId,'data-audio-job':j.jobId},
+        h('div',{className:'dv-audio-job-heading'},h('strong',null,j.label||t('video.audio.'+j.kind)),h('span',{'data-state':j.state},t('video.audio.'+j.state))),
+        h('small',null,t('video.audio.'+j.kind)+' · '+providerName(j.provider)+((j.analysis?.duration||j.asset?.durationFrames)?' · '+(j.analysis?.duration??j.asset.durationFrames/(j.asset.fps||30)).toFixed(2)+'s':'')),
+        j.asset?h('audio',{controls:true,preload:'none','aria-label':(j.label||t('video.audio.'+j.kind))+' '+t('video.audio.audition'),src:'api/dsh-video/media?projectId='+encodeURIComponent(props.projectId)+'&assetId='+encodeURIComponent(j.asset.assetId),ref:node=>{if(node)players.current.set(j.jobId,node);else players.current.delete(j.jobId);},onPlay:()=>{props.onAudition?.();for(const [id,p]of players.current)if(id!==j.jobId)p.pause();}}):null,
+        j.error?h('p',{role:'alert'},j.error.message):null,
+        j.asset?h('button',{className:'dv-button dv-button-quiet',onClick:()=>props.onAdd(j.asset)},t('video.audio.add')):null,
+        ['queued','running','downloading','cancelling'].includes(j.state)?h('button',{className:'dv-button dv-button-quiet',disabled:busy||j.state==='cancelling',onClick:()=>perform('audio.cancel',{projectId:props.projectId,jobId:j.jobId})},t('video.audio.cancel')):null);
+      return h('aside',{className:'dv-drawer dv-audio-panel',ref:panelRef,role:'dialog','aria-label':t('video.audio.title')},
         h('div',{className:'dv-drawer-head'},h('strong',null,t('video.audio.title')),h('button',{className:'dv-icon-button','aria-label':t('video.canvas.close'),onClick:props.onClose},'×')),
-        h('div',{className:'dv-audio-tabs'},['tts','music','sfx'].map(x=>h('button',{key:x,className:kind===x?'is-active':'','aria-pressed':kind===x,onClick:()=>{setKind(x);if(x!=='tts')setProvider('qianwen');}},t('video.audio.'+x)))),
-        h('label',{className:'dv-audio-field'},t('video.audio.provider'),h('select',{value:provider,onChange:e=>{setProvider(e.target.value);setVoice(e.target.value==='local'?'Tingting':'longanhuan_v3.1');}},h('option',{value:'qianwen'},t('video.audio.qianwen')),kind==='tts'?h('option',{value:'local'},t('video.audio.local')):null)),
-        kind==='tts'?h('label',{className:'dv-audio-field'},t('video.audio.voice'),h('select',{value:voice,onChange:e=>setVoice(e.target.value)},(provider==='local'?[['Tingting','Tingting · 普通话'],['Meijia','Meijia · 台湾'],['Sinji','Sinji · 粤语']]:[['longanhuan_v3.1','安欢 · 女声'],['xunanchuan_v3.1','南川 · 男声'],['longanlingxin_v3.1','灵心 · 女声']]).map(([v,n])=>h('option',{key:v,value:v},n)))):null,
-        h('textarea',{value:text,maxLength:2000,rows:6,placeholder:t('video.audio.text'),'aria-label':t('video.audio.text'),onChange:e=>setText(e.target.value)}),
-        kind==='music'?h('p',{className:'dv-audio-note'},t('video.audio.invitation')):null,
-        h('p',{className:'dv-audio-note'},(provider==='local'?t('video.audio.local'):t('video.audio.billing'))+' · '+text.length+'/2000'),
-        h('button',{className:'dv-button dv-button-primary',disabled:busy||generating||!text.trim()||(provider==='local'&&kind!=='tts')||(provider==='qianwen'&&kind==='music'&&settings?.providers?.find(p=>p.id==='qianwen')?.capabilities.music===false),onClick:()=>perform('audio.generate',{projectId:props.projectId,operationId:operationId(),provider,kind,text,voice:kind==='tts'?voice:undefined})},t('video.audio.generate')),
-        generating?h('button',{className:'dv-button dv-button-quiet',disabled:busy,onClick:()=>perform('audio.cancel',{projectId:props.projectId,jobId:job.jobId})},t('video.audio.cancel')):null,
-        job?jobView(job):null,h('div',{className:'dv-audio-note',role:'status'},notice),
-        h('details',{className:'dv-audio-settings'},h('summary',null,t('video.audio.settings')),h('p',null,t('video.audio.'+(settings?.configured?'configured':'missing'))),h('input',{type:'password',autoComplete:'off',value:key,placeholder:t('video.audio.key'),'aria-label':t('video.audio.key'),onChange:e=>setKey(e.target.value)}),h('div',{className:'dv-audio-actions'},h('button',{className:'dv-button dv-button-quiet',disabled:busy,onClick:()=>perform('audio.configure',{apiKey:key})},t('video.audio.save')),h('button',{className:'dv-button dv-button-quiet',disabled:busy,onClick:()=>perform('audio.check',{})},t('video.audio.check')))),
-        jobs.filter(j=>j.jobId!==job?.jobId).slice(0,5).map(jobView));
+        h('div',{className:'dv-audio-intro'},h('strong',null,t('video.audio.conversation')),h('p',null,t('video.audio.conversationHelp'))),
+        h('div',{className:'dv-audio-list-head'},h('strong',null,t('video.audio.recent')),h('button',{className:'dv-icon-button','aria-label':t('video.reference.refresh'),onClick:()=>{void refresh().catch(e=>setNotice(errorText(hostError(e),t)));}},'↻')),
+        jobs.length?h('div',{className:'dv-audio-jobs'},jobs.map(jobView)):h('p',{className:'dv-audio-note'},t('video.audio.empty')),
+        h('div',{className:'dv-audio-note',role:'status'},notice),
+        uncertain?h('button',{className:'dv-button dv-button-quiet',disabled:busy,onClick:()=>{if(attempt.current)void perform('audio.generate',attempt.current);}},t('video.audio.recover')):null,
+        h('details',{className:'dv-audio-quick'},h('summary',null,t('video.audio.quick')),
+          h('div',{className:'dv-audio-quick-body'},
+            h('div',{className:'dv-audio-tabs'},['tts','music','sfx'].map(x=>h('button',{key:x,className:kind===x?'is-active':'','aria-pressed':kind===x,onClick:()=>{setKind(x);if(x!=='tts')setProvider('qianwen');}},t('video.audio.'+x)))),
+            h('label',{className:'dv-audio-field'},t('video.audio.provider'),h('select',{value:provider,onChange:e=>{setProvider(e.target.value);setVoice(e.target.value==='local'?'Tingting':'longanhuan_v3.1');}},h('option',{value:'qianwen'},t('video.audio.qianwen')),kind==='tts'?h('option',{value:'local'},t('video.audio.local')):null)),
+            kind==='tts'?h('label',{className:'dv-audio-field'},t('video.audio.voice'),h('select',{value:voice,onChange:e=>setVoice(e.target.value)},(provider==='local'?[['Tingting','Tingting · 普通话'],['Meijia','Meijia · 台湾'],['Sinji','Sinji · 粤语']]:[['longanhuan_v3.1','安欢 · 女声'],['xunanchuan_v3.1','南川 · 男声'],['longanlingxin_v3.1','灵心 · 女声']]).map(([v,n])=>h('option',{key:v,value:v},n)))):null,
+            h('textarea',{value:text,maxLength:2000,rows:4,placeholder:t('video.audio.text'),'aria-label':t('video.audio.text'),onChange:e=>setText(e.target.value)}),
+            kind==='music'?h('p',{className:'dv-audio-note'},t('video.audio.invitation')):null,
+            h('p',{className:'dv-audio-note'},(provider==='local'?t('video.audio.local'):t('video.audio.billing'))+' · '+text.length+'/2000'),
+            h('button',{className:'dv-button dv-button-primary',disabled:busy||active||uncertain||!text.trim()||(provider==='local'&&kind!=='tts')||(provider==='qianwen'&&kind==='music'&&settings?.providers?.find(p=>p.id==='qianwen')?.capabilities.music===false),onClick:()=>perform('audio.generate',{projectId:props.projectId,operationId:operationId(),provider,kind,text,voice:kind==='tts'?voice:undefined})},t('video.audio.generate')),
+            h('details',{className:'dv-audio-settings'},h('summary',null,t('video.audio.settings')),h('p',null,t('video.audio.'+(settings?.configured?'configured':'missing'))),h('input',{type:'password',autoComplete:'off',value:key,placeholder:t('video.audio.key'),'aria-label':t('video.audio.key'),onChange:e=>setKey(e.target.value)}),h('div',{className:'dv-audio-actions'},h('button',{className:'dv-button dv-button-quiet',disabled:busy||!key.trim(),onClick:()=>perform('audio.configure',{apiKey:key})},t('video.audio.save')),h('button',{className:'dv-button dv-button-quiet',disabled:busy,onClick:()=>perform('audio.check',{})},t('video.audio.check'))))
+          )
+        )
+      );
     }
 
     function TimelinePanel(props) {
@@ -6265,7 +6330,7 @@ window.__ModuleLoader__.load({
           busy !== null ? h('span', { className: 'dv-tool-hint' }, t('video.canvas.busy')) : null
         ),
         previewOnly && props.timelineEnabled!==false ? h(TimelinePanel,{key:"timeline:"+projectId,t,projectId,revision:inspected.revision,time,onSeek:seekTo,onReload,assetToAdd,onAssetConsumed:()=>setAssetToAdd(null),onQueueAsset:setAssetToAdd}) : null,
-        audioOpen && previewOnly ? h(AudioPanel,{key:"audio:"+projectId,t,projectId,onClose:()=>setAudioOpen(false),onAdd:a=>{setAssetToAdd(a);setAudioOpen(false);}}):null,
+        audioOpen && previewOnly ? h(AudioPanel,{key:"audio:"+projectId,t,projectId,onClose:()=>setAudioOpen(false),onAudition:()=>{setPlaying(false);void postActiveCommand('pause');},onAdd:a=>{setAssetToAdd(a);setAudioOpen(false);}}):null,
         drawerOpen && previewOnly ? h(MediaLibraryPanel,{key:"media:"+projectId,t:t,projectId:projectId,onClose:()=>setDrawerOpen(false),onAdd:asset=>{setAssetToAdd(asset);setDrawerOpen(false);}}) : null,
         drawerOpen && previewOnly === false
           ? h(
