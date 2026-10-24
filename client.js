@@ -4245,6 +4245,12 @@ window.__ModuleLoader__.load({
         timelineRef.current?.focus({preventScroll:true});timelineRef.current?.setPointerCapture(e.pointerId);
         moveScrub(e.clientX);
       }
+      function seekAtLane(clientX,lane){
+        if(!lane)return;
+        const raw=(clientX-lane.getBoundingClientRect().left)/zoom;
+        const time=Math.max(0,Math.min(duration/30,Math.round(raw*30)/30));
+        props.onScrubStart?.();props.onScrubEnd?.(time);if(!props.onScrubEnd)props.onSeek(time);
+      }
       function scrubKey(e) {
         const step=e.shiftKey?30:1;
         const next=e.key==='Home'?0:e.key==='End'?duration:e.key==='ArrowLeft'?frame-step:e.key==='ArrowRight'?frame+step:null;
@@ -4300,10 +4306,11 @@ window.__ModuleLoader__.load({
           lifted:gesture.lifted||Math.hypot(e.clientX-gesture.x,e.clientY-gesture.y)>=4};
       }
       function pointerDown(e,c,edge){
-        if(busy||data.tracks.find(tr=>tr.clips.some(x=>x.clipId===c.clipId))?.locked)return;
+        if(e.button!==0||busy||data.tracks.find(tr=>tr.clips.some(x=>x.clipId===c.clipId))?.locked)return;
+        const clickTime=Math.max(0,Math.min(duration/30,Math.round((c.startFrame/30+(e.clientX-e.currentTarget.getBoundingClientRect().left)/zoom)*30)/30));
         e.preventDefault();e.stopPropagation();setSelected(c.clipId);setSelectedTrack(c.trackId||data.tracks.find(x=>x.clips.some(v=>v.clipId===c.clipId))?.trackId);timelineRef.current.focus({preventScroll:true});timelineRef.current.setPointerCapture(e.pointerId);
         gestureMoved.current=false;
-        const gesture={clipId:c.clipId,x:e.clientX,y:e.clientY,pointerX:e.clientX,pointerY:e.clientY,edge,delta:0,dx:0,dy:0,lifted:false,
+        const gesture={clipId:c.clipId,clickTime,x:e.clientX,y:e.clientY,pointerX:e.clientX,pointerY:e.clientY,edge,delta:0,dx:0,dy:0,lifted:false,
           scrollLeft:viewport.current?.scrollLeft??0,scrollTop:viewport.current?.scrollTop??0,revision:data.revision,zoom,snap,playheadFrame:frame};
         gestureRef.current=gesture;setDrag(gesture);
       }
@@ -4311,7 +4318,8 @@ window.__ModuleLoader__.load({
       function pointerUp(e,c){
         const gesture=gestureRef.current;if(!gesture)return;
         const final=dragPosition(e,gesture);gestureRef.current=null;setDrag(null);
-        if(!final.lifted||gesture.revision!==data.revision)return;
+        if(gesture.revision!==data.revision)return;
+        if(!final.lifted){if(!gesture.edge){props.onScrubStart?.();props.onScrubEnd?.(gesture.clickTime);if(!props.onScrubEnd)props.onSeek(gesture.clickTime);}gestureMoved.current=true;return;}
         gestureMoved.current=true;
         if(final.edge){if(final.delta)void write([{op:'clip.trim',clipId:c.clipId,edge:final.edge,deltaFrames:final.delta}]);}
         else commitMove(final);
@@ -4472,6 +4480,7 @@ window.__ModuleLoader__.load({
                     {
                       className: "dv-timeline-lane"+(drag?.lifted&&!drag.edge&&drag.trackId===tr.trackId?(drag.valid?" is-drop-target":" is-drop-invalid"):""),ref:el=>{if(el)laneRefs.current.set(tr.trackId,el);else laneRefs.current.delete(tr.trackId);},
                       "data-track-id": tr.trackId,
+                      onClick:e=>{if(e.target===e.currentTarget){setSelectedTrack(tr.trackId);seekAtLane(e.clientX,e.currentTarget);}},
                       style: { width },
                       onDragOver: (e) => e.preventDefault(),
                       onDrop: (e) => {
@@ -4514,10 +4523,10 @@ window.__ModuleLoader__.load({
                           role: "button",
                           "aria-label": c.label || c.clipId,
                           "aria-pressed": selected === c.clipId,
-                          onClick: () => {
+                          onClick: (e) => {
                             if(gestureMoved.current){gestureMoved.current=false;return;}
                             setSelected(c.clipId);setSelectedTrack(tr.trackId);
-                            props.onSeek(c.startFrame / 30);
+                            seekAtLane(e.clientX,e.currentTarget.parentElement);
                           },
                           onKeyDown:e=>{if(e.target!==e.currentTarget)return;if(e.key==='Enter'||e.key===' '){e.preventDefault();setSelected(c.clipId);setSelectedTrack(tr.trackId);props.onSeek(c.startFrame/30);}},
                           onPointerDown: (e) => pointerDown(e, c, null),
