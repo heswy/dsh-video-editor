@@ -1,5 +1,13 @@
 # 当前项目状态
 
+## 当前安装：1.0.0 媒体跳转修复候选（2026-10-24）
+
+用户授权直接操控电脑验收。官方Plugin Manager安装启用并重启，当前固定包 `artifacts/p2-b/staging-v1.0.0-media-native-810891c`，clean runtime/root/engine `810891cc3c34d28ac01ac98261058d70265f2444`，bundle1.0.0 / engine0.8.3，INTEGRITY SHA256 `0ff8720c3c9c02b166603d706d03584b6aa784b1635e660ea9ce6641fa057245`。旧包保留回滚，未公开发布。
+
+原生Test工程实测：启动后直接跳44.05秒显示视频；点击视频片段定位65.53秒，画面更新；连续播放66.02→70.77秒画面持续更新；暂停后点击空白视频轨定位29.80秒并显示对应画面。按钮明确为“开启作品预览声音”，点击后收起；未监听系统输出，扬声器听感不算已验收。两个用户工程timeline SHA256与操作前一致。固定包工作区90项、长GOP媒体7项通过；新增媒体origin/CSP保护6项通过，源码门禁58/86/71、版本10通过。首个1563cbc包原生黑屏已被此包替代。截图位于 `artifacts/v1/evidence/media-preview-20261024/native-810891c-accepted.png`。
+
+[修复记录](tasks/V1-media-preview-recovery.md)；[可视化方案](plans/V1.0-TIMELINE-VISUALIZATION.md)。波形增强、视频缩略图/原声波形及分离音频仍是方案项，未实现，不能据此宣称整个1.0.0全部需求验收完成。
+
 ## 当前安装：1.0.0 最终用户验收包（2026-10-24）
 
 用户授权安装最终发布版本，准备自行测试。已冻结 clean runtime/root/engine `e09f267f19e7219e8a05e2ed6474a7f4b7f55142`（基线main `6dfd8b2`），bundle **1.0.0** / engine **0.8.3**；固定目录 `artifacts/p2-b/staging-v1.0.0-final-20261024`，INTEGRITY SHA256 `b31218bf46689a4aa1e3681d91b01a01076f493f9585d579ff3c923b1e99cf97`。源码门禁58/86/71、版本10通过，最终固定包Chrome工作区87项、真实音频工具/上轨/4秒120帧AAC导出14项通过。
