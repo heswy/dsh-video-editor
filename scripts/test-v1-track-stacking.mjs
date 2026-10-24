@@ -30,6 +30,9 @@ try{
  await checkFrame('upper-visible',0);
  t=await call('timeline.inspect');await call('timeline.apply',{expectedRevision:t.revision,operationId:'hide-upper',ops:[{op:'track.update',trackId:t.tracks[0].trackId,patch:{hidden:true}}]});
  await checkFrame('upper-hidden',2);
+ t=await call('timeline.inspect');const hiddenJob=await call('render',{revision:t.revision});const hiddenResult=await waitJob(c,hiddenJob.jobId);assert.equal(hiddenResult.state,'succeeded',JSON.stringify(hiddenResult));const hiddenVideo=join(out,'upper-hidden.mp4');await copyFile((hiddenResult.artifact.path||join(f.config.outputRoot,hiddenResult.artifact.name)),hiddenVideo);
+ const hiddenRaw=execFileSync('ffmpeg',['-v','error','-ss','0.5','-i',hiddenVideo,'-frames:v','1','-vf','crop=2:2:160:90','-f','rawvideo','-pix_fmt','rgb24','pipe:1']);assert(hiddenRaw[2]>220&&hiddenRaw[0]<35);pixels.push({name:'mp4-upper-hidden',rgb:[...hiddenRaw.subarray(0,3)]});
+
  t=await call('timeline.inspect');await call('timeline.apply',{expectedRevision:t.revision,operationId:'show-upper',ops:[{op:'track.update',trackId:t.tracks[0].trackId,patch:{hidden:false}}]});
  t=await call('timeline.inspect');const job=await call('render',{revision:t.revision});const result=await waitJob(c,job.jobId);assert.equal(result.state,'succeeded',JSON.stringify(result));const video=join(out,'upper-track.mp4');await copyFile((result.artifact.path||join(f.config.outputRoot,result.artifact.name)),video);
  const raw=execFileSync('ffmpeg',['-v','error','-ss','0.5','-i',video,'-frames:v','1','-vf','crop=2:2:160:90','-f','rawvideo','-pix_fmt','rgb24','pipe:1']);assert(raw[0]>220&&raw[2]<35,JSON.stringify([...raw.subarray(0,3)]));pixels.push({name:'mp4-upper-visible',rgb:[...raw.subarray(0,3)]});
