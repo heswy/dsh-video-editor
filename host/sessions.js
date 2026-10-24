@@ -469,7 +469,7 @@ export class SessionService {
       if(facts?.mode==='timeline'){
         lines.splice(2, lines.length-2,
           'Timeline project: use timeline.inspect first for revision, tracks, clip IDs and settings. Never use project.compose/project.source or legacy scene writes here.',
-          'Audio requests: FIRST audio.guide(projectId) for the bundled skill. AI composes procedural scores locally (free), or uses local/qianwen narration/imported audio; poll audio.status then insert the real asset on an audio track. No second AI panel or HTML audio. Revise scores with audio.recipe. Only claim added after written:true.',
+          'Audio requests: FIRST audio.guide(projectId) for the bundled skill. AI composes procedural scores locally (free), then polls audio.status and inserts the real asset on an audio track in the same turn. Uploads stay in Materials until asked to place. Guide external voice/music generation and import; no provider setup, cloud calls, second panel or HTML audio. Revise scores with audio.recipe. Only claim added after written:true.',
           'Every write REQUIRES projectId, expectedRevision (the inspected SHA-256) and a unique operationId. They are not optional; revision/baseRevision are NOT substitutes. Undo/redo also require these fields.',
           `Create a scene: {"action":"scene.compose","projectId":"${projectId}","expectedRevision":"<revision>","operationId":"scene-1","trackId":"tr_v1","startFrame":0,"html":"<complete HTML>"}. For replacement, use clipId instead of trackId/startFrame; read scene.inspect first and preserve other clips. A new empty project has no clipId: insert the first scene.`,
           'timeline.apply requires ops with exact names: clip.insert, clip.split, clip.trim, clip.delete, clip.move, clip.reorder, clip.duplicate, clip.speed, clip.replace, clip.set, clip.fade, clip.volume, clip.transition; track.add, track.update, track.remove; timeline.settings. Use integer frames @30fps. Never send bare trim/move/delete or nested settings.',
@@ -504,7 +504,7 @@ export class SessionService {
       } else {
         factsLines.push('Inspect the project before editing so the revision and target ids are current.');
       }
-      factsLines.push('Imported media: query video_engine asset.list (projectId, kind/query/cursor/limit); place video/image/audio with timeline.apply clip.insert. audio.providers discovers generation capabilities; cloud audio.generate is billable and only on user request; poll audio.status, never auto-retry uncertain jobs.');
+      factsLines.push('Imported media: query video_engine asset.list (projectId, kind/query/cursor/limit); place video/image/audio with timeline.apply clip.insert. Generate procedural audio via audio.guide, poll audio.status and place it. External audio is user-generated and imported; do not configure or call cloud providers.');
       const mediaCount=this.bridge?.mediaCounts?.get(projectId);
       if(Number.isSafeInteger(mediaCount))factsLines.splice(1,0,`Imported media: ${mediaCount} assets. Use video_engine asset.list for paginated metadata.`);
       // Whole-line budget: the fixed instructions above are never truncated;

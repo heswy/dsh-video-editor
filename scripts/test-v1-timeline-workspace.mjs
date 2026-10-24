@@ -715,32 +715,33 @@ try {
     await page.setViewport({width:900,height:760});
     await page.evaluate(()=>document.getElementById('mount').style.width='100%');
     assert.equal(await page.$$('.dv-timeline').then(x=>x.length),1);
-    await clickText('声音');
-    await page.waitForSelector('.dv-audio-panel');
-    await page.click('.dv-time');await page.waitForFunction(()=>!document.querySelector('.dv-audio-panel'));checks++;
-    await clickText('声音');await page.waitForSelector('.dv-audio-panel');await page.keyboard.press('Escape');await page.waitForFunction(()=>!document.querySelector('.dv-audio-panel'));checks++;
-    await clickText('声音');await page.waitForSelector('.dv-audio-panel');
-    await page.click('.dv-audio-quick > summary');
-    await page.select('.dv-audio-field select',process.env.M4_CLOUD==='1'?'qianwen':'local');
-    await page.type('.dv-audio-panel textarea','这是一段本地旁白，用于验证音频轨道。');
-    await page.evaluate(()=>{const original=window.fetch;let reject=true;window.fetch=async(url,init)=>{const request=init?.body?JSON.parse(init.body):{};if(reject&&request.method==='audio.generate'){reject=false;return new Response(JSON.stringify({ok:false,error:{code:'E_AUDIO_BUSY',message:'已有音频任务'}}),{headers:{'content-type':'application/json'}});}return original(url,init);};});
-    await clickText('生成并加入素材');
-    await page.waitForFunction(()=>document.querySelector('.dv-audio-panel [role=status]')?.textContent.includes('已有音频任务'));
-    assert.equal(await page.$eval('.dv-audio-quick-body > .dv-button-primary',e=>e.disabled),false);assert.equal(await page.$$eval('.dv-audio-panel button',xs=>xs.some(e=>e.textContent.includes('恢复本次请求'))),false);checks++;
-    await page.evaluate(()=>{const original=window.fetch;window.__audioAttempts=[];window.__holdAudioStatus=false;window.fetch=async(url,init)=>{const request=init?.body?JSON.parse(init.body):{};if(request.method==='audio.status'&&window.__holdAudioStatus)throw new TypeError('blocked status');if(request.method==='audio.generate'){window.__audioAttempts.push(request.params);const response=await original(url,init);if(window.__audioAttempts.length===1){await response.text();window.__holdAudioStatus=true;throw new TypeError('lost generation reply');}window.__holdAudioStatus=false;return response;}return original(url,init);};});
-    await clickText('生成并加入素材');
-    await page.waitForFunction(()=>Array.from(document.querySelectorAll('.dv-audio-panel button')).some(e=>e.textContent.includes('恢复本次请求')));
-    await clickText('恢复本次请求（不重复生成）');
-    await page.waitForFunction(()=>document.querySelector('.dv-audio-job')?.textContent.includes('生成成功'),{timeout:60000});
-    const audioAttempts=await page.evaluate(()=>window.__audioAttempts);assert.equal(audioAttempts.length,2);assert.deepEqual(audioAttempts[0],audioAttempts[1]);checks++;
-    assert.equal((await bridge.invoke('audio.status',{projectId})).jobs.filter(j=>j.operationId===audioAttempts[0].operationId).length,1);checks++;
-
-    checks++;
-    await page.screenshot({path:join(out,'audio-generation.png')});
+    assert.equal(await page.$('.dv-resource-tab[data-panel-trigger="audio"]'),null,'sound entry removed');
+    assert.equal(await page.$('.dv-audio-panel'),null);checks++;
+    const uploadBefore=await bridge.invoke('timeline.inspect',{projectId});
+    const uploadedAudio=join(root,'user-upload.wav');
+    execFileSync('ffmpeg',['-v','error','-f','lavfi','-i','sine=frequency=440:duration=1','-y',uploadedAudio]);
+    await page.click('.dv-resource-tab[aria-label="素材"]');
+    await page.waitForSelector('.dv-media-library input[type=file]');
+    await (await page.$('.dv-media-library input[type=file]')).uploadFile(uploadedAudio);
+    await page.waitForFunction(()=>[...document.querySelectorAll('.dv-media-tile')].some(e=>e.textContent.includes('user-upload.wav')));
+    const uploadAfter=await bridge.invoke('timeline.inspect',{projectId});
+    assert.equal(uploadAfter.totalClips,uploadBefore.totalClips,'upload stays in materials');checks++;
+    await page.keyboard.press('Escape');
     const beforeAudio=await bridge.invoke('timeline.inspect',{projectId});
-    await clickText('加入音轨');
+    let generated=await bridge.invoke('audio.generate',{projectId,operationId:'ai-direct-audio',provider:'procedural',kind:'music',text:'AI直接配乐',score:{duration:4,events:[{sound:'bell',note:60,at:0,duration:4,gainDb:-12}]}});
+    const deadline=Date.now()+60000;
+    while(['queued','running','downloading'].includes(generated.state)){assert(Date.now()<deadline);await new Promise(r=>setTimeout(r,50));generated=await bridge.invoke('audio.status',{projectId,jobId:generated.jobId});}
+    assert.equal(generated.state,'succeeded');
+    // The AI follows its skill through generation and placement, without a panel click.
+    let generatedTimeline=await bridge.invoke('timeline.inspect',{projectId});
+    await bridge.invoke('timeline.apply',{projectId,expectedRevision:generatedTimeline.revision,operationId:'ai-audio-track',ops:[{op:'track.add',kind:'audio',name:'配乐'}]});
+    generatedTimeline=await bridge.invoke('timeline.inspect',{projectId});
+    const generatedTrack=generatedTimeline.tracks.find(t=>t.kind==='audio');
+    const placement=await bridge.invoke('timeline.apply',{projectId,expectedRevision:generatedTimeline.revision,operationId:'ai-audio-place',ops:[{op:'clip.insert',assetId:generated.asset.assetId,trackId:generatedTrack.trackId,startFrame:0,mode:'reject'}]});
+    assert.equal(placement.written,true);checks++;
+    // This component harness supplies the parent revision update explicitly.
+    await page.evaluate(()=>window.reloadTimelineProject());
     await count(beforeAudio.totalClips+1);
-    assert.equal(await page.$$('.dv-timeline').then(x=>x.length),1);checks++;
     await page.waitForFunction(()=>document.querySelector('.dv-timeline').getAttribute('aria-busy')==='false');
     let audioTimeline=await bridge.invoke('timeline.inspect',{projectId});
     const audioTrack=audioTimeline.tracks.find(x=>x.kind==='audio'),audioClip=audioTrack.clips[0];
@@ -790,20 +791,6 @@ try {
     await page.setViewport({width:340,height:760});
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
     await page.screenshot({path:join(out,'audio-narrow.png')});checks++;
-    // A job created through the same API used by right-hand AI appears live.
-    await clickText('声音');await page.waitForSelector('.dv-audio-panel');
-    assert.equal(await page.$eval('.dv-audio-quick',e=>e.open),false);checks++;
-    const aiJob=await bridge.invoke('audio.generate',{projectId,operationId:'ui-procedural-arrival',provider:'procedural',kind:'sfx',text:'AI 转场提示音',score:{duration:3,events:[{sound:'whoosh',at:0,duration:3,gainDb:-12}]}});
-    await page.waitForFunction(id=>document.querySelector('[data-audio-job="'+id+'"] audio')!==null,{},aiJob.jobId);checks++;
-    const audioUrl=await page.$eval('[data-audio-job="'+aiJob.jobId+'"] audio',e=>e.src);
-    await page.$eval('[data-audio-job="'+aiJob.jobId+'"] audio',e=>{window.__auditionNode=e;return e.play();});
-    await page.waitForFunction(()=>window.__auditionNode.currentTime>1.3);assert.equal(await page.evaluate(()=>window.__auditionNode.paused),false);checks++;
-    const previewResponse=await fetch(audioUrl);assert.equal(previewResponse.status,200);assert.equal(Buffer.from(await previewResponse.arrayBuffer()).toString('ascii',0,4),'RIFF');checks++;
-    await page.evaluate(()=>document.getElementById('mount').style.cssText+=';--dsw-alias-bg-base:#fff;--dsw-alias-label-primary:#202126;--dsw-alias-label-secondary:#70747c;--dsw-alias-interactive-bg-hover:#f0f2f4;color:#202126');
-    await page.screenshot({path:join(out,'audio-hub-light.png')});
-    await page.keyboard.press('Escape');await page.waitForFunction(()=>!document.querySelector('.dv-audio-panel'));checks++;
-    assert.equal(await page.evaluate(()=>window.__auditionNode.paused),true);checks++;
-    await page.evaluate(()=>document.getElementById('mount').style.cssText='');
 
   }
   if(process.env.M5_COLLAB==='1'){
