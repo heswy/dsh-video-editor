@@ -159,14 +159,16 @@ window.__ModuleLoader__.load({
 'video.timeline.cutHint': "将播放头移到选中片段内再切分",
 'video.timeline.split': "切分",
 'video.timeline.delete': "删除",
-'video.timeline.duplicate': "复制",
-'video.timeline.addTrack': "加轨",
+'video.timeline.duplicate': "复制片段",
+'video.timeline.swapPrevious': '与前一片段交换',
+'video.timeline.swapNext': '与后一片段交换',
+'video.timeline.addTrack': "添加视频轨",
 'video.timeline.snap': "吸附",
       'video.timeline.playhead': '播放头',
       'video.timeline.snapOn': '吸附已开启',
       'video.timeline.snapOff': '吸附已关闭',
 'video.timeline.zoom': "缩放时间线",
-'video.timeline.compact': "片条",
+'video.timeline.compact': "紧凑轨道",
 'video.timeline.trimIn': "调节入点",
 'video.timeline.trimOut': "调节出点",
 'video.timeline.track': "轨道",
@@ -396,8 +398,10 @@ window.__ModuleLoader__.load({
 'video.timeline.cutHint': "Move the playhead inside the selected clip",
 'video.timeline.split': "Split",
 'video.timeline.delete': "Delete",
-'video.timeline.duplicate': "Duplicate",
-'video.timeline.addTrack': "Add track",
+'video.timeline.duplicate': "Duplicate clip",
+'video.timeline.swapPrevious': 'Swap with previous clip',
+'video.timeline.swapNext': 'Swap with next clip',
+'video.timeline.addTrack': "Add video track",
 'video.timeline.snap': "Snap",
       'video.timeline.playhead': 'Playhead',
       'video.timeline.snapOn': 'Snapping on',
@@ -604,7 +608,7 @@ window.__ModuleLoader__.load({
 .dv-timeline-tool:hover,.dv-timeline-more summary:hover{background:var(--dsw-alias-interactive-bg-hover,#ffffff0c);color:var(--dsw-alias-label-primary,#eee)}
 .dv-timeline-tool:disabled{opacity:.28;cursor:default}.dv-timeline-tool:focus-visible,.dv-track-mute:focus-visible{outline:2px solid var(--dsw-focus-ring-color,#8facbc);outline-offset:1px}
 .dv-tool-divider{width:1px;height:14px;background:var(--dsw-alias-border-l1,#ffffff14);margin:0 5px}.dv-timeline-spacer{flex:1}
-.dv-timeline-more{position:relative}.dv-timeline-more summary::-webkit-details-marker{display:none}.dv-timeline-menu{position:absolute;top:32px;left:0;min-width:154px;padding:4px;background:var(--dsw-alias-bg-layer-1,#25262a);border:1px solid var(--dsw-alias-border-l1,#ffffff16);border-radius:8px;z-index:10;box-shadow:0 8px 28px #0003}.dv-timeline-menu button{display:block;width:100%;background:none;border:0;color:inherit;font:inherit;text-align:left;padding:8px;border-radius:4px;cursor:pointer}.dv-timeline-menu button:hover{background:#8881}.dv-timeline-menu button:disabled{opacity:.3}
+.dv-timeline-more{position:relative}.dv-timeline-more summary::-webkit-details-marker{display:none}.dv-timeline-menu{position:absolute;bottom:calc(100% + 6px);left:0;min-width:184px;padding:6px;background:var(--dsw-alias-bg-layer-1,#25262a);border:1px solid var(--dsw-alias-border-l1,#ffffff16);border-radius:8px;z-index:10;box-shadow:0 8px 28px #0003}.dv-timeline-menu button{display:block;width:100%;background:none;border:0;color:inherit;font:inherit;text-align:left;padding:8px;border-radius:4px;cursor:pointer}.dv-timeline-menu button:hover{background:#8881}.dv-timeline-menu button:disabled{opacity:.45;cursor:default}.dv-timeline-menu button:nth-child(4){margin-top:5px;border-top:1px solid var(--dsw-alias-border-l1,#8883);border-radius:0;padding-top:12px}.dv-timeline-menu button:last-child{margin-top:5px;border-top:1px solid var(--dsw-alias-border-l1,#8883);border-radius:0;padding-top:12px}
 .dv-snap-toggle{display:flex;align-items:center;gap:4px;font-size:10px;color:var(--dsw-alias-label-tertiary,#92959e);margin-right:8px;cursor:pointer}.dv-snap-toggle input{width:11px;height:11px;accent-color:#96afba}.dv-timeline-zoom{width:64px;height:2px;accent-color:#96afba}
 .dv-timeline-scroll{overflow:auto;max-height:174px;scrollbar-width:thin;scrollbar-color:#7774 transparent}.dv-timeline-content{position:relative}.dv-timeline-ruler{height:26px;position:relative;cursor:crosshair;background:var(--dsw-alias-bg-base,#191a1d);border-bottom:1px solid var(--dsw-alias-border-l1,#ffffff0b)}.dv-timeline-ruler span{position:absolute;top:7px;border-left:1px solid var(--dsw-alias-border-l1,#ffffff1a);padding-left:5px;color:var(--dsw-alias-label-tertiary,#777d88);font-size:9px;font-variant-numeric:tabular-nums;line-height:13px}
 .dv-timeline-track{display:flex;height:46px;border-bottom:1px solid var(--dsw-alias-border-l1,#ffffff0b)}.dv-timeline-track-name{width:100px;flex-shrink:0;display:flex;align-items:center;gap:4px;padding:0 9px;box-sizing:border-box;position:sticky;left:0;z-index:4;background:var(--dsw-alias-bg-base,#191a1d);border-right:1px solid var(--dsw-alias-border-l1,#ffffff0b);white-space:nowrap}.dv-track-label{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;font-size:10px}.dv-track-kind{display:inline-block;font-size:9px;color:var(--dsw-alias-label-tertiary,#707783);margin-right:7px}.dv-track-mute{flex-shrink:0;width:18px;height:20px;padding:0;border:0;background:transparent;color:var(--dsw-alias-label-tertiary,#777d88);font:inherit;font-size:9px;cursor:pointer;border-radius:3px}.dv-track-mute[aria-pressed=true]{color:#e8c887;background:#e8c88718}
@@ -3968,6 +3972,19 @@ window.__ModuleLoader__.load({
         h('p', { role: 'status' }, notice),
       );
     }
+    function TimelinePopover(props) {
+      const nodeRef=React.useRef(null);
+      React.useEffect(()=>{
+        const node=nodeRef.current,owner=node.ownerDocument;
+        const outside=e=>{if(node.open&&!node.contains(e.target))node.open=false;};
+        const escape=e=>{if(node.open&&e.key==='Escape'&&!e.isComposing){e.preventDefault();e.stopPropagation();node.open=false;node.firstElementChild?.focus();}};
+        owner.addEventListener('pointerdown',outside,true);
+        owner.addEventListener('keydown',escape,true);
+        return()=>{owner.removeEventListener('pointerdown',outside,true);owner.removeEventListener('keydown',escape,true);};
+      },[]);
+      return React.createElement('details',{className:props.className,ref:nodeRef,onClick:e=>{if(props.closeOnAction&&e.target.closest('button:not(:disabled)')){nodeRef.current.open=false;nodeRef.current.firstElementChild?.focus();}}},props.children);
+    }
+
     function TimelinePanel(props) {
       const h = React.createElement,
         t = props.t;
@@ -4314,18 +4331,18 @@ window.__ModuleLoader__.load({
           h('span',{className:'dv-tool-divider'}),
           tool(t('video.timeline.split'),'M9 9 20 3M9 15l11 6M12 12l-3-3M12 12l-3 3M6 6a3 3 0 1 0 0 6 3 3 0 0 0 0-6M6 12a3 3 0 1 0 0 6 3 3 0 0 0 0-6',cut,busy||!chosen),
           tool(t('video.timeline.delete'),'M4 6h16M9 6V3h6v3M7 6l1 15h8l1-15',()=>chosen&&write([{op:'clip.delete',clipId:chosen.clipId,ripple:false}]),busy||!chosen),
-          h('details',{className:'dv-timeline-more'},h('summary',{'aria-label':t('video.audio.more'),title:t('video.audio.more')},'···'),h('div',{className:'dv-timeline-menu'},
+          h(TimelinePopover,{className:'dv-timeline-more',closeOnAction:true},h('summary',{'aria-label':t('video.audio.more'),title:t('video.audio.more')},'···'),h('div',{className:'dv-timeline-menu'},
             h('button',{disabled:busy||!chosen,onClick:()=>chosen&&write([{op:'clip.duplicate',clipId:chosen.clipId,mode:'ripple'}])},t('video.timeline.duplicate')),
-            h('button',{disabled:busy||!chosen,onClick:()=>moveOrder(-1)},'←'),
-            h('button',{disabled:busy||!chosen,onClick:()=>moveOrder(1)},'→'),
+            h('button',{disabled:busy||!chosen||data.tracks.find(tr=>tr.trackId===chosen.trackId)?.clips[0]?.clipId===chosen.clipId,onClick:()=>moveOrder(-1)},t('video.timeline.swapPrevious')),
+            h('button',{disabled:busy||!chosen||data.tracks.find(tr=>tr.trackId===chosen.trackId)?.clips.at(-1)?.clipId===chosen.clipId,onClick:()=>moveOrder(1)},t('video.timeline.swapNext')),
             h('button',{disabled:busy,onClick:()=>write([{op:'track.add',kind:'video'}])},t('video.timeline.addTrack')),
             h('button',{disabled:busy,onClick:()=>write([{op:'track.add',kind:'audio'}])},t('video.audio.addTrack')),
             h('button',{'aria-pressed':compact,onClick:()=>setCompact(!compact)},t('video.timeline.compact')))),
-          data.lastChange?.written?h('details',{className:'dv-timeline-history'},h('summary',{'aria-label':t('video.timeline.history'),title:t('video.timeline.history')},h('svg',{viewBox:'0 0 24 24',width:15,height:15,fill:'none',stroke:'currentColor',strokeWidth:1.5,'aria-hidden':true},h('path',{d:'M3 11a9 9 0 1 1 2 7M3 4v7h7m2-4v6l4 2'}))),h('div',{className:'dv-change-receipt',role:'status','data-operation-id':data.lastChange.operationId},
+          data.lastChange?.written?h(TimelinePopover,{className:'dv-timeline-history'},h('summary',{'aria-label':t('video.timeline.history'),title:t('video.timeline.history')},h('svg',{viewBox:'0 0 24 24',width:15,height:15,fill:'none',stroke:'currentColor',strokeWidth:1.5,'aria-hidden':true},h('path',{d:'M3 11a9 9 0 1 1 2 7M3 4v7h7m2-4v6l4 2'}))),h('div',{className:'dv-change-receipt',role:'status','data-operation-id':data.lastChange.operationId},
           h('span',{title:data.lastChange.changeSummary?.summary},data.lastChange.changeSummary?.summary),
           data.undoHint?.canUndo&&data.lastChange.revision===data.revision&&data.lastChange.undoHint?.historyCursor===data.historyCursor&&data.lastChange.changeSummary?.opCount>0?h('button',{className:'dv-button dv-button-quiet',disabled:busy||!!recovery,onClick:()=>write(null,'timeline.undo')},t('video.change.undo')):null)):null,
           h('span',{className:'dv-timeline-spacer'}),
-          chosen ? h('details',{className:'dv-clip-settings',key:selected,onKeyDown:e=>{if(e.key==='Escape'){e.currentTarget.open=false;e.currentTarget.firstElementChild.focus();}}},
+          chosen ? h(TimelinePopover,{className:'dv-clip-settings',key:selected},
             h('summary',{title:t('video.timeline.properties')},h('svg',{viewBox:'0 0 24 24',width:16,height:16,fill:'none',stroke:'currentColor',strokeWidth:1.5,'aria-hidden':true},h('path',{d:'M4 7h16M4 17h16M8 4v6m8 4v6'})),h('span',null,t('video.timeline.properties'))),h(
               "div",
               { className: "dv-timeline-inspector" },

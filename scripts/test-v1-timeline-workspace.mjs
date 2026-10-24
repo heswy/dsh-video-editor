@@ -280,6 +280,17 @@ try {
   assert.equal(await page.$eval('.dv-resource-bar button[aria-label="素材"]',e=>e.getAttribute('aria-expanded')),'false');
   assert.equal(await page.$eval('.dv-timeline-notice',e=>getComputedStyle(e).display).catch(()=> 'none'),'none','idle timeline has no permanent instruction footer');checks++;
   assert.equal(await page.$$eval('.dv-track-mute',xs=>xs.every(x=>x.querySelector('svg')&&!x.textContent.trim())),true,'track sound actions use icons, not ambiguous letters');checks++;
+  await page.click('.dv-timeline-more > summary');
+  await page.click('.dv-time');
+  assert.equal(await page.$eval('.dv-timeline-more',e=>e.open),false,'outside click dismisses edit menu');checks++;
+  await page.click('.dv-timeline-more > summary');
+  assert.deepEqual(await page.$$eval('.dv-timeline-menu button',xs=>xs.map(e=>e.textContent)),['复制片段','与前一片段交换','与后一片段交换','添加视频轨','添加音轨','紧凑轨道']);checks++;
+  assert.equal(await page.$eval('.dv-timeline-menu button:nth-child(2)',e=>e.disabled),true);
+  const editMenu=await page.$eval('.dv-timeline-menu',e=>{const r=e.getBoundingClientRect();return {top:r.top,bottom:r.bottom,height:innerHeight};});
+  assert(editMenu.top>=0&&editMenu.bottom<=editMenu.height,'all menu actions fit in viewport');checks++;
+  await page.screenshot({path:join(out,'edit-menu.png')});
+  await page.keyboard.press('Escape');
+  assert.equal(await page.$eval('.dv-timeline-more',e=>e.open),false);checks++;
   await page.click('.dv-play');await page.waitForFunction(()=>document.querySelector('.dv-play').getAttribute('aria-label')==='暂停');
   const scrubRevision=(await bridge.invoke('timeline.inspect',{projectId})).revision;
   const ruler=await page.$eval('.dv-timeline-ruler',e=>{const r=e.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width};});
@@ -469,7 +480,9 @@ try {
   await page.mouse.up();
   assert.equal((await bridge.invoke('timeline.inspect',{projectId})).revision,sameTrackBefore.revision);checks++;
   await page.click('[data-clip-id="' + ids[1] + '"]');
-  await clickText("←");
+  await page.click(".dv-timeline-more > summary");
+  await clickText("与前一片段交换");
+  assert.equal(await page.$eval(".dv-timeline-more",e=>e.open),false);checks++;
   await page.waitForFunction(
     (id) => document.querySelector(".dv-timeline-clip").dataset.clipId === id,
     {},
@@ -490,13 +503,15 @@ try {
     ids[1],
   );
   checks++;
-  await clickText("复制");
+  await page.click(".dv-timeline-more > summary");
+  await clickText("复制片段");
   await count(4);
   checks++;
   await clickText("删除");
   await count(3);
   checks++;
-  await clickText("加轨");
+  await page.click(".dv-timeline-more > summary");
+  await clickText("添加视频轨");
   await page.waitForFunction(
     () => document.querySelectorAll(".dv-timeline-track").length === 2,
   );
@@ -777,6 +792,7 @@ try {
     assert.equal(audioState.muted,false,JSON.stringify(audioState));assert.equal(audioState.paused,false);assert.ok(audioState.delta<=2/30,JSON.stringify(audioState));await page.click('.dv-play');checks++;
     await writeFile(join(out,'audio-preview.json'),JSON.stringify(audioState,null,2));
     const oldPreview=await page.$eval('.dv-canvas-shell',e=>e.dataset.canvasRevision);
+    if(!await page.$eval('.dv-clip-settings',e=>e.open))await page.click('.dv-clip-settings > summary');
     const input=await page.$('.dv-timeline-inspector input[aria-label="音量"]');await input.click();await input.evaluate(e=>e.select());await input.press('Backspace');await input.type('-8');await input.press('Tab');
     await page.waitForFunction(old=>document.querySelector('.dv-canvas-shell').dataset.canvasRevision!==old&&document.querySelector('.dv-canvas-shell').dataset.previewPending==='false',{},oldPreview);
     const nextFrame=await (await page.$('.dv-stage-frame[aria-hidden="false"]')).contentFrame();
