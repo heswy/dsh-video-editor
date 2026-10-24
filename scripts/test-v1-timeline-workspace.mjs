@@ -352,6 +352,15 @@ try {
   await page.mouse.move(edge.right-2,scrolled.y+12);await page.mouse.down();await page.waitForFunction(x=>document.querySelector('.dv-timeline-scroll').scrollLeft>x+8,{},edge.left);await page.mouse.up();checks++;
   await page.click('button[aria-label="适应时间线"]');await page.$eval('.dv-timeline-scroll',e=>{e.scrollLeft=0;});
 
+  const middle=await page.$eval('.dv-timeline-clip',e=>{const r=e.getBoundingClientRect();return {x:r.x+r.width*.6,y:r.y+r.height/2};});
+  await page.mouse.click(middle.x,middle.y);
+  await page.waitForFunction(()=>Math.abs(Number(document.querySelector('.dv-seek').value)-12)<.1,{timeout:3000}).catch(async e=>{console.log('click-time-debug',middle,await page.$eval('.dv-timeline',n=>({seek:document.querySelector('.dv-seek').value,head:n.querySelector('.dv-timeline-playhead').style.left,clip:n.querySelector('.dv-timeline-clip').outerHTML.slice(0,450)})));throw e;});checks++;
+  const contextTime=await page.$eval('.dv-seek',e=>Number(e.value));
+  await page.mouse.click(middle.x,middle.y,{button:'right'});
+  assert.equal(await page.$eval('.dv-seek',e=>Number(e.value)),contextTime);await page.keyboard.press('Escape');checks++;
+  const blankTail=await page.$eval('.dv-timeline-lane',e=>{const lane=e.getBoundingClientRect(),clip=e.querySelector('.dv-timeline-clip').getBoundingClientRect();return {x:clip.right+8,y:lane.y+lane.height/2};});
+  await page.mouse.click(blankTail.x,blankTail.y);
+  await page.waitForFunction(()=>Number(document.querySelector('.dv-seek').value)===20);checks++;
   const snapRevision=(await bridge.invoke('timeline.inspect',{projectId})).revision;
   const snapAppearance=()=>page.$eval('.dv-snap-toggle',e=>({background:getComputedStyle(e).backgroundColor,color:getComputedStyle(e).color}));
   const enabledSnap=await snapAppearance();await page.click('.dv-snap-toggle');const disabledSnap=await snapAppearance();

@@ -241,8 +241,9 @@ export const CANVAS_RUNTIME_SOURCE = String.raw`// P3-008 fixed preview runtime,
   const audioNodes=new Map();
   function enableSoundButton(){
     if(soundButton||![...main.querySelectorAll('audio,video[data-has-audio="true"]')].some(el=>Number(el.dataset.volume??1)>0))return;
-    soundButton=document.createElement('button');soundButton.textContent='开启声音';soundButton.type='button';
+    soundButton=document.createElement('button');soundButton.textContent='开启作品预览声音';soundButton.type='button';
     soundButton.setAttribute('aria-label','开启预览声音');
+    soundButton.title='仅播放当前作品的视频原声与音轨；不改变导出或轨道静音设置';
     Object.assign(soundButton.style,{position:'absolute',bottom:'24px',left:'50%',transform:'translateX(-50%)',zIndex:'2147483647',padding:'12px 24px',border:'1px solid #ffffff44',borderRadius:'24px',background:'#18191de8',color:'#fff',fontSize:'20px',cursor:'pointer'});
     soundButton.addEventListener('click',()=>{void enableSound();});
     document.body.appendChild(soundButton);
@@ -259,9 +260,31 @@ export const CANVAS_RUNTIME_SOURCE = String.raw`// P3-008 fixed preview runtime,
       soundEnabled=true;
       if(soundButton){soundButton.dataset.audioState='enabled';soundButton.style.display='none';}
       renderAt(compositionTime);send('soundEnabled',{},replyTo);
-    }catch{if(soundButton){soundButton.textContent='点击开启声音';soundButton.dataset.audioState='blocked';soundButton.style.display='';}}
+    }catch{if(soundButton){soundButton.textContent='开启作品预览声音';soundButton.dataset.audioState='blocked';soundButton.style.display='';}}
   }
-  function renderAt(time) {
+  // Coalesce explicit seeks. Repeated currentTime assignments while the decoder
+  // is catching up can prevent it from ever presenting a frame (long GOP media).
+  const mediaSync=new Map();
+  function syncMedia(el,target,active,force){
+    let state=mediaSync.get(el);
+    if(!state){
+      state={target:null,active:false,pending:false,playRequest:false};
+      const pump=()=>{
+        if(destroyed||state.target===null||el.readyState<1||el.seeking)return;
+        const next=Math.min(state.target,Number.isFinite(el.duration)?Math.max(0,el.duration-.001):state.target);
+        if(Math.abs(el.currentTime-next)>1/60){state.pending=true;state.requested=next;try{el.currentTime=next;}catch{state.pending=false;}}
+        else state.pending=false;
+      };
+      const ready=()=>{state.pending=false;if(state.requested===undefined||Math.abs(state.target-state.requested)>.002)pump();};
+      el.addEventListener('loadedmetadata',ready);el.addEventListener('seeked',ready);
+      state.pump=pump;state.dispose=()=>{el.removeEventListener('loadedmetadata',ready);el.removeEventListener('seeked',ready);};mediaSync.set(el,state);
+    }
+    if(active&&(force||!state.active||!playing||(!state.pending&&!el.seeking&&Math.abs(el.currentTime-target)>.35))){state.target=target;state.pump();}
+    state.active=active;
+    if(active&&playing&&el.paused&&!state.playRequest){state.playRequest=true;el.play().then(()=>{if(destroyed||!state.active||!playing)el.pause();}).catch(()=>{diagnostic('media-play-failed');if(soundButton){soundButton.style.display='';soundButton.textContent='开启作品预览声音';}}).finally(()=>{state.playRequest=false;});}
+    else if((!active||!playing)&&!el.paused)el.pause();
+  }
+  function renderAt(time,forceMediaSeek=false) {
     // GSAP state: clamp to the timeline's own duration; the composition may
     // have a static tail after the last tween.
     const animationTime = Math.min(time, timeline.duration());
@@ -277,9 +300,7 @@ export const CANVAS_RUNTIME_SOURCE = String.raw`// P3-008 fixed preview runtime,
       const envelope=Math.min(1,fadeIn?local/fadeIn:1,fadeOut?Math.max(0,duration-local)/fadeOut:1);
       const volume=Number(el.dataset.volume??1)*envelope;
       const node=audioNodes.get(el);if(node){el.volume=1;node.gain.setValueAtTime(active?volume:0,audioContext.currentTime);}else el.volume=Math.max(0,Math.min(1,volume));
-      if(active&&Math.abs(el.currentTime-target)>1/30){try{el.currentTime=target;}catch{}}
-      if(active&&playing&&el.paused)el.play().catch(()=>{diagnostic('media-play-failed');if(soundButton){soundButton.style.display='';soundButton.textContent='点击开启声音';}});
-      else if((!active||!playing)&&!el.paused)el.pause();
+      syncMedia(el,target,active,forceMediaSeek);
     }
     for(const el of main.querySelectorAll('[data-composition-src]')){
       const frame=el.querySelector('iframe');if(!frame?.contentWindow)continue;
@@ -400,7 +421,7 @@ export const CANVAS_RUNTIME_SOURCE = String.raw`// P3-008 fixed preview runtime,
           return;
         }
         compositionTime = command.payload.time;
-        renderAt(compositionTime);
+        renderAt(compositionTime,true);
         if (playing) lastTickAt = null;
         send("seeked", { time: compositionTime }, replyTo);
         return;
@@ -439,6 +460,7 @@ export const CANVAS_RUNTIME_SOURCE = String.raw`// P3-008 fixed preview runtime,
     if (destroyed) return;
     destroyed = true;
     for(const el of main?.querySelectorAll("audio,video")??[])el.pause();
+    for(const state of mediaSync.values())state.dispose();mediaSync.clear();
     soundButton?.remove();audioContext?.close().catch(()=>{});
     playing = false;
     stopClock();
