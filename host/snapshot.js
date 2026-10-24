@@ -369,7 +369,22 @@ export class SnapshotRoutes {
     if (INSTANCE_ID.test(instanceId) === false || NONCE.test(nonce) === false) {
       return new Response('invalid instance parameters', { status: 400 });
     }
-    const html = original.toString('utf8');
+    let html = original.toString('utf8');
+    // Desktop's dsh-app proxy rejects Origin:null from opaque sandbox media.
+    // Reuse our existing TTL-bounded, exact public snapshot capability routes
+    // over the trusted loopback server. No cookie or global auth token is exposed.
+    let mediaOrigin=null;
+    try {
+      const origin=new URL(this.webServer?.getOrigin?.());
+      if(['http:','https:'].includes(origin.protocol)&&['127.0.0.1','[::1]','localhost'].includes(origin.hostname)&&!origin.username&&!origin.password&&origin.pathname==='/'&&!origin.search&&!origin.hash)mediaOrigin=origin.origin;
+    } catch { /* toy/remote servers retain same-origin resources */ }
+    if(mediaOrigin){
+      html=html.replace(/<script\b[^>]*>[\s\S]*?<\/script>|<(?:video|audio|source)\b[^>]*>/gi,tag=>{
+        if(/^<script\b/i.test(tag))return tag;
+        return tag.replace(/\bsrc\s*=\s*(["'])([^"']+)\1/i,(attribute,quote,path)=>record.files.get(path)?.media?
+          'src='+quote+mediaOrigin+this.routePath(record.snapshotId,path)+quote:attribute);
+      });
+    }
     const hashes = inlineScriptHashes(html);
     // The browser resolves 'self' against the URL it actually loaded this entry
     // document from (the DSH Web GUI origin), while `request.url` inside the
@@ -390,7 +405,7 @@ export class SnapshotRoutes {
       "font-src 'self'",
       "connect-src 'none'",
       "frame-src 'self'",
-      "media-src 'self'",
+      "media-src 'self'"+(mediaOrigin?" "+mediaOrigin:""),
       "object-src 'none'",
       "base-uri 'none'",
       "form-action 'none'",

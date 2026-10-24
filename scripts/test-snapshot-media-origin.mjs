@@ -1,0 +1,15 @@
+import assert from 'node:assert/strict';
+import {SnapshotRoutes} from '../host/snapshot.js';
+const id='a'.repeat(32),nonce='b'.repeat(32),record={snapshotId:id,files:new Map([['media/1234abcd.mp4',{media:true}],['media/5678abcd.wav',{media:true}]])};
+const html=Buffer.from('<html><body><video crossorigin="anonymous" src="media/1234abcd.mp4"></video><audio src="media/5678abcd.wav"></audio><img src="media/1234abcd.mp4"><script>const label="<video src=\\\"media/1234abcd.mp4\\\">";</script></body></html>');
+const req=new Request('http://dsh.internal/api/dsh-video/preview/'+id+'/index.html?instance=test-media-0001&nonce='+nonce);
+const routes=new SnapshotRoutes(undefined,{register(){return()=>{};},getOrigin(){return 'http://127.0.0.1:54321';}});
+const response=routes.serveEntry(record,html,req),text=await response.text();
+assert(text.includes('src="http://127.0.0.1:54321/api/dsh-video/preview/'+id+'/media/1234abcd.mp4"'),'sandbox video must bypass the desktop protocol Origin:null fence');
+assert(text.includes('src="http://127.0.0.1:54321/api/dsh-video/preview/'+id+'/media/5678abcd.wav"'));
+assert(text.includes('<img src="media/1234abcd.mp4">'),'non-media fetch policy remains unchanged');
+assert(response.headers.get('content-security-policy').includes("media-src 'self' http://127.0.0.1:54321"));
+assert(response.headers.get('content-security-policy').includes("connect-src 'none'"));
+const remote=new SnapshotRoutes(undefined,{register(){return()=>{};},getOrigin(){return 'https://outside.example';}});
+const safe=remote.serveEntry(record,html,req);assert(!(await safe.text()).includes('https://outside.example'));assert(!safe.headers.get('content-security-policy').includes('outside.example'));
+console.log(JSON.stringify({ok:true,checks:6}));
