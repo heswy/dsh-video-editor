@@ -1,6 +1,6 @@
 # DSH Video
 
-> V1 开发候选：bundle `1.0.0-alpha.6` / engine `0.8.0`。M5 加入原生 @ 工程引用、可复制 token 降级、目标解析、持久变更回执、定向撤销与冲突预演恢复。音频与轻量剪辑台沿用 M4。固定候选与验证读 [STATUS](docs/STATUS.md)；真实 DSH 安装/重启/模型验收与 M6 发布硬化仍待执行。
+> **1.0.0 发布验收候选 / engine 0.8.3**。当前包含 AI 对话创作与续改、素材导入、多轨剪辑、轨道画面/声音开关、轨道右键与删除、共享撤销及 MP4 导出。AI 本地生成音频后直接上轨；用户上传音频进入素材库。无独立声音面板或供应商配置 UI。最终固定包、安装与验收结果以 [STATUS](docs/STATUS.md) 为准，尚未对外发布。
 
 
 运行在 DeepSeek Harness 内的 AI 视频创作与编辑插件。当前目标是用户通过右侧对话生成视频，左侧自动预览/播放，再通过对话持续修改同一作品；时间线支持手动剪辑与 AI 共用操作历史；画布内对象编辑仍延期。
@@ -19,7 +19,7 @@
 - [P2-002 Host 契约调查](docs/research/P2-002-host-bridge-contract.md)
 - [P3-005-A 原生会话契约调查](docs/research/P3-005A-native-conversation-contract.md)
 
-## 本版交付（1.0.0-alpha.2 · M2 素材库与媒体管线）
+## 历史交付（1.0.0-alpha.2 · M2 素材库与媒体管线）
 
 固定候选：`artifacts/p2-b/staging-v1.0.0-alpha.2-939419e`（同级 worktrees/artifacts 下），root=engine=`939419e10fe5e0b3b9c526d6bc580558d850c9cb`、rootDirty=false，INTEGRITY sha256 `0ead5c6bf48b340dc6712fe457ee3c46cff46ce7603d05426a76b1a7ed3903fa`。本轮未安装/重启/合并；[M2 PR #18](https://github.com/heswy/dsh-video-editor/pull/18) 依赖 [M1 PR #17](https://github.com/heswy/dsh-video-editor/pull/17)。
 
@@ -30,7 +30,7 @@
 - `video_engine asset.list`：只读分页元数据与 Session/project 隔离。导入、删除、派生为 UI-only；在用素材按 timeline 片段或 composition 路径拒绝删除。
 - 验证与验收入口：[M2 任务卡](docs/tasks/V1-M2-media.md)、[V1 验收矩阵](docs/plans/V1.0-ACCEPTANCE.md)。固定候选及摘要构建后记入任务卡；本地浏览器/worker 结果不等于 DSH 真机通过。
 
-## 本版交付（1.0.0-alpha.1 · M1 存储与工程生命周期，本地开发候选；稳定数据根 + 旧工程迁移 + 文件夹按钮 + 面板状态 + 容错）
+## 历史交付（1.0.0-alpha.1 · M1 存储与工程生命周期，本地开发候选；稳定数据根 + 旧工程迁移 + 文件夹按钮 + 面板状态 + 容错）
 
 | 项 | 值 |
 |---|---|
