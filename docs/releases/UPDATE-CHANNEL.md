@@ -19,7 +19,7 @@ V1 首轮发行渠道为公开仓库 `https://github.com/heswy/dsh-video-editor/
 
    输出对应平台tgz、SHA256SUMS；包内RELEASE.json记载源码提交、平台与固定包摘要。没有npm token，也不在包里放凭据、用户工程或本机配置。
 3. 完成固定包工作区、更新单元/UI以及 `test-release-install.mjs <tgz>` 隔离实装验收。该测试用临时DSH_HOME，验证旧测试版安装→新版→同一工程revision保留→真实抽帧，不操作用户profile。
-4. 在main对应提交创建 `v<version>` Release。`.github/workflows/release.yml` 校验tag与版本、main归属，在macOS arm64构建验证并上传tgz/摘要。手动运行workflow只产生Actions产物，不发布。首次公开Release及网络下载链路需要发布后单独实测，未发布前不能声称公网升级验收通过。
+4. 在main对应提交创建 `v<version>` Release，可手动上传已验证的tgz及SHA256SUMS。启用Actions时先把工作流模板放入.github/workflows，并由具有workflow权限的账号提交。`docs/releases/release-workflow.yml.example`（待启用模板） 校验tag与版本、main归属，在macOS arm64构建验证并上传tgz/摘要。手动运行workflow只产生Actions产物，不发布。首次公开Release及网络下载链路需要发布后单独实测，未发布前不能声称公网升级验收通过。
 5. 确认公网资产可下载，然后从上一正式版本通过更新按钮安装并核对版本、工程、渲染及回滚。若流水线失败/缺包，用户会看到该设备尚无安装包，不会装不完整Release。
 
 ## 管理器与恢复

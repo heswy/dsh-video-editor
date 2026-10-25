@@ -23,6 +23,6 @@
 
 12项更新/发行配置测试、8项真实浏览器UI检查、最终固定包工作区103项、源码门禁58/86/71通过。真实DSH CLI在临时DSH_HOME安装测试0.9.9→1.0.0 tarball，同一工程revision保留且新引擎真实抽帧成功；实际DSH额外临时插件从认证HTTP用户动作触发，自身卸载后继续安装新版成功（disposed=true），已通过官方管理器移除测试插件。启动apply的HMR事务内不能嵌套管理操作；生产安装仅走用户HTTP动作，后台只检查、不安装。
 
-可迁移发行包 `artifacts/v1/release-updates-b45e28a/dsh-video-1.0.0-darwin-arm64.tgz`，SHA256 `99b82a48ce8737d29a71f20a7afc21d172f47b79d9bffa7b8cadc94fef3a6f26`，包含引擎及JS依赖，非本机link布局；仍需DSH>=0.2.1-rc.2、系统Node22+/FFmpeg/Chrome。目前只实测macOS arm64。GitHub发布流水线已准备，未在云端执行；首次公网下载/升级必须正式Release发布后验证，不能以本地包和模拟feed冒充公网已通。
+可迁移发行包 `artifacts/v1/release-updates-b45e28a/dsh-video-1.0.0-darwin-arm64.tgz`，SHA256 `99b82a48ce8737d29a71f20a7afc21d172f47b79d9bffa7b8cadc94fef3a6f26`，包含引擎及JS依赖，非本机link布局；仍需DSH>=0.2.1-rc.2、系统Node22+/FFmpeg/Chrome。目前只实测macOS arm64。GitHub发布工作流模板已准备，当前OAuth缺workflow scope，未启用/未在云端执行；首次公网下载/升级必须正式Release发布后验证，不能以本地包和模拟feed冒充公网已通。
 
-证据 `artifacts/v1/evidence/plugin-updates-20261025`；[任务](tasks/V1-plugin-updates.md)、[更新通道说明](releases/UPDATE-CHANNEL.md)。
+证据 `artifacts/v1/evidence/plugin-updates-20261025`；[任务](V1-plugin-updates.md)、[更新通道说明](../releases/UPDATE-CHANNEL.md)。
