@@ -155,6 +155,18 @@
     "timeline.references": {
       "request": "#/$defs/request_timeline_references",
       "result": "#/$defs/result_timeline_references"
+    },
+    "timeline.visuals.request": {
+      "request": "#/$defs/request_timeline_visuals_request",
+      "result": "#/$defs/result_timeline_visuals_request"
+    },
+    "timeline.visuals.status": {
+      "request": "#/$defs/request_timeline_visuals_status",
+      "result": "#/$defs/result_timeline_visuals_status"
+    },
+    "timeline.visuals.cancel": {
+      "request": "#/$defs/request_timeline_visuals_cancel",
+      "result": "#/$defs/result_timeline_visuals_cancel"
     }
   },
   "oneOf": [
@@ -190,6 +202,15 @@
     },
     {
       "$ref": "#/$defs/request_timeline_references"
+    },
+    {
+      "$ref": "#/$defs/request_timeline_visuals_request"
+    },
+    {
+      "$ref": "#/$defs/request_timeline_visuals_status"
+    },
+    {
+      "$ref": "#/$defs/request_timeline_visuals_cancel"
     }
   ],
   "$defs": {
@@ -1388,7 +1409,8 @@
         "templateId": {
           "type": "string",
           "enum": [
-            "product-launch-v1", "blank-v1"
+            "product-launch-v1",
+            "blank-v1"
           ]
         },
         "title": {
@@ -1965,7 +1987,10 @@
           "maxLength": 128
         },
         "templateId": {
-          "enum": ["product-launch-v1", "blank-v1"]
+          "enum": [
+            "product-launch-v1",
+            "blank-v1"
+          ]
         },
         "revision": {
           "type": "string",
@@ -4518,6 +4543,171 @@
         "revision"
       ],
       "additionalProperties": true
+    },
+    "params_timeline_visuals_request": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "projectId": {
+          "type": "string"
+        },
+        "expectedRevision": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "clipId": {
+          "type": "string",
+          "pattern": "^cl_[a-z0-9]+$"
+        },
+        "startFrame": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "endFrame": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4
+        }
+      },
+      "required": [
+        "projectId",
+        "expectedRevision",
+        "clipId",
+        "startFrame",
+        "endFrame",
+        "count"
+      ]
+    },
+    "request_timeline_visuals_request": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "id": {
+          "$ref": "#/$defs/requestId"
+        },
+        "method": {
+          "const": "timeline.visuals.request"
+        },
+        "params": {
+          "$ref": "#/$defs/params_timeline_visuals_request"
+        }
+      },
+      "required": [
+        "v",
+        "id",
+        "method",
+        "params"
+      ]
+    },
+    "result_timeline_visuals_request": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "taskId"
+      ]
+    },
+    "params_timeline_visuals_status": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "projectId": {
+          "type": "string"
+        },
+        "taskId": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{24}$"
+        }
+      },
+      "required": [
+        "projectId",
+        "taskId"
+      ]
+    },
+    "request_timeline_visuals_status": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "id": {
+          "$ref": "#/$defs/requestId"
+        },
+        "method": {
+          "const": "timeline.visuals.status"
+        },
+        "params": {
+          "$ref": "#/$defs/params_timeline_visuals_status"
+        }
+      },
+      "required": [
+        "v",
+        "id",
+        "method",
+        "params"
+      ]
+    },
+    "result_timeline_visuals_status": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "taskId"
+      ]
+    },
+    "params_timeline_visuals_cancel": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "projectId": {
+          "type": "string"
+        },
+        "taskId": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{24}$"
+        }
+      },
+      "required": [
+        "projectId",
+        "taskId"
+      ]
+    },
+    "request_timeline_visuals_cancel": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "id": {
+          "$ref": "#/$defs/requestId"
+        },
+        "method": {
+          "const": "timeline.visuals.cancel"
+        },
+        "params": {
+          "$ref": "#/$defs/params_timeline_visuals_cancel"
+        }
+      },
+      "required": [
+        "v",
+        "id",
+        "method",
+        "params"
+      ]
+    },
+    "result_timeline_visuals_cancel": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "cancelled"
+      ]
     }
   }
 }

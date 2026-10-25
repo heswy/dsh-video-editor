@@ -31,7 +31,7 @@ import { UiStateStore } from './ui-state.js';
 import { dataRootLayout, ensureDataRoot, legacyRootsFromConfig, loadManagedProjects, migrateLegacyRoots, quarantineCorruptFile, readWorkerRegistry, repairProjectsRegistry, resolveDataRoot, scanProjectsRoot, writeProjectsBackup } from './data-root.js';
 
 export const REQUEST_METHODS = Object.freeze([
-'reference.list', 'timeline.references',
+'reference.list', 'timeline.references', 'timeline.visuals.request', 'timeline.visuals.status', 'timeline.visuals.cancel',
 'audio.guide','audio.recipe','audio.providers','audio.settings','audio.configure','audio.check','audio.generate','audio.status','audio.cancel',
 'timeline.inspect',
 'timeline.apply',
@@ -91,7 +91,10 @@ const METHOD_PARAMS = Object.freeze({
 'audio.status': ['projectId', 'jobId'],
 'audio.cancel': ['projectId', 'jobId'],
 
-'timeline.inspect': ['projectId', 'view', 'trackId', 'offset', 'limit'],
+'timeline.visuals.request': ['projectId','expectedRevision','clipId','startFrame','endFrame','count'],
+ 'timeline.visuals.status': ['projectId','taskId'],
+ 'timeline.visuals.cancel': ['projectId','taskId'],
+ 'timeline.inspect': ['projectId', 'view', 'trackId', 'offset', 'limit'],
 'timeline.apply': ['projectId', 'expectedRevision', 'operationId', 'ops', 'dryRun'],
 'timeline.resolve': ['projectId', 'revision', 'refs'],
 'timeline.undo': ['projectId', 'expectedRevision', 'operationId', 'expectedHistoryCursor', 'expectedOperationId'],
@@ -459,6 +462,7 @@ export function validateParams(config, method, params) {
     if(params.query!==undefined&&(typeof params.query!=='string'||params.query.length>120))fail('E_PARAMS','Invalid reference query');
     return {...params};
   }
+  if(method.startsWith('timeline.visuals.')) {const next={...params,projectId:allowedProject(config,params.projectId)};if(method.endsWith('request')){next.expectedRevision=revision(params.expectedRevision);if(!/^cl_[a-z0-9]+$/.test(params.clipId)||![params.startFrame,params.endFrame,params.count].every(Number.isSafeInteger)||params.startFrame<0||params.endFrame<=params.startFrame||params.count<1||params.count>4)fail('E_PARAMS','Invalid visual request');}else if(!/^[a-f0-9]{24}$/.test(params.taskId))fail('E_PARAMS','Invalid visual task');return next;}
   if (['timeline.references','timeline.inspect','timeline.apply','timeline.resolve','timeline.undo','timeline.redo','scene.compose','scene.inspect'].includes(method)) {
     const next={...params,projectId:allowedProject(config,params.projectId)};
     if(['timeline.apply','timeline.undo','timeline.redo','scene.compose'].includes(method)){next.expectedRevision=revision(params.expectedRevision);next.operationId=operationId(params.operationId);}
@@ -1765,6 +1769,7 @@ export class VideoBridge {
     if (normalized.projectId !== undefined && this.isQuarantinedProject(normalized.projectId)) {
       throw new BridgeError('E_PROJECT_UNAVAILABLE', 'The project directory is currently unavailable', { stage: 'project' });
     }
+    if(method.startsWith('timeline.visuals.') && settings.source==='tool') throw new BridgeError('E_METHOD','Timeline visuals are UI-only');
     if(method==='reference.list'){
       if(settings.source==='tool')throw new BridgeError('E_METHOD','Reference menu is UI-only');
       const projectId=await this.sessions.projectForSession(normalized.sessionId);

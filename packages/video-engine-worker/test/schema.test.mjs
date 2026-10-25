@@ -523,6 +523,9 @@ function buildSample(method, state) {
       };
     case "project.source":
       return { projectId };
+    case "timeline.visuals.request":return {projectId,expectedRevision:state.revision,clipId:"cl_probe",startFrame:0,endFrame:30,count:2};
+    case "timeline.visuals.status":
+    case "timeline.visuals.cancel":return {projectId,taskId:"a".repeat(24)};
     case "timeline.references":return {projectId,query:"",limit:50};
     case "asset.importMedia": return {projectId,sourceName:"logo.png",operationId:"probe-media"};
     case "asset.list": return {projectId};

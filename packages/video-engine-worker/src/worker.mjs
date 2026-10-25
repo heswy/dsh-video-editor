@@ -1,3 +1,4 @@
+import { TimelineVisuals } from "./timeline-visuals.mjs";
 import { Timelines } from "./timeline.mjs";
 import {
   MediaLibrary,
@@ -82,6 +83,7 @@ async function shutdown() {
   if (jobs) jobs.closing = true;
   shutdownPromise = (async () => {
     await jobs?.drain();
+    await store?.visuals?.drain();
     await Promise.all([...(store?.queues.values() || [])]);
     // Private preview snapshots must not survive worker shutdown/EOF/signal.
     await store?.shutdown();
@@ -96,6 +98,7 @@ function closeProject(projectId) {
   store.beginClose(projectId);
   const closingProject = (async () => {
     await jobs.drain(projectId);
+    await store.visuals?.drain(projectId);
     await store.queue(projectId, () => store.completeClose(projectId));
     return { projectId, closed: true };
   })();
@@ -136,6 +139,16 @@ async function method(name, p) {
     case "project.rename":
       validateProjectRename(p);
       return store.rename(p);
+    case "timeline.visuals.request":
+    case "timeline.visuals.status":
+    case "timeline.visuals.cancel": {
+      keys(p, name.endsWith('request') ? ['projectId','expectedRevision','clipId','startFrame','endFrame','count'] : ['projectId','taskId'], ['projectId']);
+      string(p.projectId);store.assertNotClosing(p.projectId);
+      await store.requestOpen(p.projectId);
+      const timelines=store.timelines??(store.timelines=new Timelines(store,media));
+      const visuals=store.visuals??(store.visuals=new TimelineVisuals(timelines,()=>[...jobs.jobs.values()].some(job=>!["succeeded","failed","cancelled","timed_out"].includes(job.state))));
+      return visuals[name.split('.').at(-1)](p);
+    }
     case "timeline.inspect":
     case "timeline.apply":
     case "timeline.references":

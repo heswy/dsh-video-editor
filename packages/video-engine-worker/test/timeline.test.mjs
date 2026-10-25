@@ -246,3 +246,47 @@ test('upper timeline tracks cover lower tracks, including crossfade overlays', (
   assert.equal(layer('transition-cl_top_next'),layer('cl_top'));
   assert.match(html,/id="cl_top"[^>]*data-track-index="0"/,'track identity must not change with visual layering');
 });
+
+test('detach audio preserves source timing and effective gain in one transaction', () => {
+  const t=base(); t.assets[0].hasAudio=true;
+  Object.assign(t.tracks[0],{gainDb:-3,muted:true});
+  Object.assign(t.tracks[0].clips[0],{sourceInFrame:120,speed:1.5,volumeDb:-4,fadeInFrames:12,label:'Video'});
+  const r=applyOperations(t,[{op:'clip.detachAudio',clipId:'cl_one'}]).timeline;
+  const v=r.tracks[0].clips[0], a=r.tracks.find(x=>x.kind==='audio').clips[0];
+  assert.equal(v.muted,true); assert.equal(a.audioOnly,true);
+  assert.equal(a.assetId,v.assetId); assert.equal(a.sourceInFrame,120);
+  assert.equal(a.speed,1.5); assert.equal(a.volumeDb+a.sourceGainDb,-7);
+  assert.equal(a.muted,true); assert.equal(a.fadeInFrames,12);
+  assert.equal(a.durationFrames,v.durationFrames);
+  assert.match(generateComposition(r), /<audio[^>]*data-media-start="2"/);
+  assert.throws(()=>applyOperations(r,[{op:'clip.detachAudio',clipId:'cl_one'}]),{code:'E_AUDIO_DETACHED'});
+  assert.equal(t.tracks.length,2);
+});
+test('detach rejects videos without an audio stream',()=>{
+  assert.throws(()=>applyOperations(base(),[{op:'clip.detachAudio',clipId:'cl_one'}]),{code:'E_NO_AUDIO'});
+});
+test('detach preserves summed gains outside the clip fader range',()=>{
+ const t=base();t.assets[0].hasAudio=true;t.tracks[0].gainDb=12;t.tracks[0].clips[0].volumeDb=12;
+ const r=applyOperations(t,[{op:'clip.detachAudio',clipId:'cl_one'}]).timeline;
+ const a=r.tracks.find(x=>x.kind==='audio').clips[0];
+ assert.equal(a.volumeDb+a.sourceGainDb,24);
+});
+test('detach leaves the export audio mix exactly equivalent',async()=>{
+ const {audioMixPlan}=await import('../src/audio.mjs');const t=base();t.settings.durationMode='fixed';
+ t.assets[0].hasAudio=true;t.tracks[0].gainDb=-3;
+ Object.assign(t.tracks[0].clips[0],{sourceInFrame:120,speed:1.5,volumeDb:-4,fadeInFrames:12,fadeOutFrames:20});
+ const before=audioMixPlan(t,'/test');const r=applyOperations(t,[{op:'clip.detachAudio',clipId:'cl_one'}]).timeline;
+ assert.deepEqual(audioMixPlan(r,'/test'),before);
+});
+test('detach refuses full audio tracks atomically and allows recreating a deleted result',()=>{
+ const t=base();t.assets[0].hasAudio=true;
+ for(let i=0;i<3;i++)t.tracks.push({trackId:'tr_a'+i,kind:'audio',muted:true,clips:[]});
+ const before=structuredClone(t);
+ assert.throws(()=>applyOperations(t,[{op:'clip.detachAudio',clipId:'cl_one'}]),{code:'E_LIMIT'});assert.deepEqual(t,before);
+ t.tracks.splice(2);const detached=applyOperations(t,[{op:'clip.detachAudio',clipId:'cl_one'}]).timeline;
+ const audio=detached.tracks.find(x=>x.kind==='audio').clips[0];
+ const deleted=applyOperations(detached,[{op:'clip.delete',clipId:audio.clipId}]).timeline;
+ assert.equal(deleted.tracks[0].clips[0].muted,true);
+ const again=applyOperations(deleted,[{op:'clip.detachAudio',clipId:'cl_one'}]).timeline;
+ assert.ok(again.tracks.flatMap(x=>x.clips).some(x=>x.detachedFrom==='cl_one'));
+});

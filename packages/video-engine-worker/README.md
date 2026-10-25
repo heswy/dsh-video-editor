@@ -319,6 +319,9 @@ JSONL v1 方法集新增 1 个 UI-only 方法（共 25 个）；既有方法的�
 
 ### M3 timeline methods
 
+| `timeline.visuals.request` | UI background derivation: projectId, expectedRevision, clipId, bounded visible frame window, count 1–4; returns taskId |
+| `timeline.visuals.status` | Project-scoped task status and bounded image/peak data; no disk paths |
+| `timeline.visuals.cancel` | Cancel this view request without editing content |
 | `timeline.inspect` | Timeline truth, integer frames, expectedRevision for writes |
 | `timeline.apply` | Timeline truth, integer frames, expectedRevision for writes |
 | `timeline.references` | Current project clip/scene/asset/range tokens; query, offset/limit |
@@ -331,3 +334,5 @@ JSONL v1 方法集新增 1 个 UI-only 方法（共 25 个）；既有方法的�
 `preview.files` paginates the private snapshot manifest in 100-file pages; Host assembles it before registering exact routes.
 
 M5 reference tokens are `dshvideo:v1/PROJECT/KIND/ID/REVISION`. Resolve tokens with `refs:[{kind:"token",token:"..."}]` before applying edits. Range tokens expire when revision changes. Clip/scene/asset IDs survive moves; missing and foreign references never match a substitute. Ordinals are per track; multiple tracks matching the ordinal return ambiguous. `timeline.inspect` includes the durable `lastChange` and `historyCursor`; targeted undo/redo accepts `expectedHistoryCursor` and `expectedOperationId`. `timeline.apply(dryRun:true)` returns a summary without writing or consuming the operation ID.
+
+Timeline 0.9.0 adds `clip.detachAudio` to the existing atomic apply transaction. The detached audio references the same immutable video asset with `audioOnly:true`, preserving source timing and original track gain as `sourceGainDb`. The original clip is muted. The UI right-click flow is the release acceptance scope; AI calls are allowed through the same operation without an AI quality guarantee.
