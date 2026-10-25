@@ -14,3 +14,15 @@
 ## 验收
 
 版本/来源/兼容筛选、缓存、超时/离线、来源切换、重复点击、失败恢复及UI-only边界测试；真实浏览器深浅界面/关闭/更新按钮/重启提示；隔离安装实际tarball并启动引擎、保留工程数据升级；固定候选包回归与本机安装。公开发布和公网首次下载验证需要真实Release，单独报告，不把模拟feed或本地包当作公网已发布。
+
+## 当前安装：1.0.0 插件更新候选（2026-10-25）
+
+用户指定更新入口作为1.0.0最后功能；无npm账号，采用GitHub Releases首发，保留新DSH的npm版本API适配。顶栏“插件更新”提供当前版本、检查/新版说明/用户点击安装/失败重试/需重启提示。link本地开发安装不联网、不替换；正式版资产按平台架构匹配。独立认证UI路由，不对AI开放安装URL或更新方法。
+
+固定运行时/root/engine `b45e28af184bfb1ac53e4232e1361ae8fc1d6827`，bundle1.0.0 / engine0.9.0；目录 `artifacts/p2-b/staging-v1.0.0-updates-verified`，INTEGRITY SHA256 `580ae822909bf4c3b72b8195380b4c242e19369e799efc0ce313aeb29006bbe8`。官方管理器安装启用并重启，实际worker路径核对；原生更新面板显示当前1.0.0及本地开发来源，Esc关闭通过。bb7829e旧包保留回滚。PR #33未合并，未公开发布。
+
+12项更新/发行配置测试、8项真实浏览器UI检查、最终固定包工作区103项、源码门禁58/86/71通过。真实DSH CLI在临时DSH_HOME安装测试0.9.9→1.0.0 tarball，同一工程revision保留且新引擎真实抽帧成功；实际DSH额外临时插件从认证HTTP用户动作触发，自身卸载后继续安装新版成功（disposed=true），已通过官方管理器移除测试插件。启动apply的HMR事务内不能嵌套管理操作；生产安装仅走用户HTTP动作，后台只检查、不安装。
+
+可迁移发行包 `artifacts/v1/release-updates-b45e28a/dsh-video-1.0.0-darwin-arm64.tgz`，SHA256 `99b82a48ce8737d29a71f20a7afc21d172f47b79d9bffa7b8cadc94fef3a6f26`，包含引擎及JS依赖，非本机link布局；仍需DSH>=0.2.1-rc.2、系统Node22+/FFmpeg/Chrome。目前只实测macOS arm64。GitHub发布流水线已准备，未在云端执行；首次公网下载/升级必须正式Release发布后验证，不能以本地包和模拟feed冒充公网已通。
+
+证据 `artifacts/v1/evidence/plugin-updates-20261025`；[任务](tasks/V1-plugin-updates.md)、[更新通道说明](releases/UPDATE-CHANNEL.md)。
