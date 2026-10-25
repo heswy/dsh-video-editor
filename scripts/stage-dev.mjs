@@ -45,6 +45,8 @@ const RUNTIME_PATHS = [
   'locale/en.json',
   'locale/zh.json',
   'host/bridge.js',
+  'host/updates.js',
+  'host/release-runtime.js',
   'host/audio.js',
   'host/audio-synth.js',
   'host/audio-synth-worker.js',

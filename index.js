@@ -1,3 +1,5 @@
+import { releaseConfig } from './host/release-runtime.js';
+import { PluginUpdates, createUpdateRoute } from './host/updates.js';
 import { createMediaRoute } from './host/media-routes.js';
 /**
  * dsh-video — Host half.
@@ -42,11 +44,16 @@ function safeDispose(disposer, ctx, code) {
 
 /** Cordis plugin body. */
 export function apply(ctx, config) {
-  const bridge = new VideoBridge({ ctx, rawConfig: config });
+  const bridge = new VideoBridge({ ctx, rawConfig: releaseConfig(config) });
   const disposers = [];
+  let manager;try{manager=ctx.get?.('pluginManager');}catch{}
+  const updates=new PluginUpdates({manager,beforeInstall:async()=>{
+    for(const [jobId,job] of bridge.jobs){const result=await bridge.callClient('status',{projectId:job.projectId,jobId});if(!['succeeded','failed','cancelled','timed_out'].includes(result.state))throw new Error('Render in progress');}
+  }});
 
   ctx.effect(
     function hostBridgeResources() {
+      try{disposers.push(ctx.connection.fetch.register(createUpdateRoute(updates)));}catch(error){report(ctx,'update-route-registration-failed',error);}
       try {
         disposers.push(ctx.connection.fetch.register(createRequestRoute(bridge)));
       } catch (error) {
@@ -71,6 +78,7 @@ export function apply(ctx, config) {
       }
 
       return async function disposeHostBridge() {
+        updates.dispose();
         for (const disposer of disposers.splice(0).reverse()) {
           safeDispose(disposer, ctx, 'host-resource-cleanup-failed');
         }

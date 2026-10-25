@@ -49,6 +49,13 @@ function resolveWorkerEntry(require, workerEntry) {
 export async function loadEngine(options) {
   const settings = options || {};
   const baseUrl = settings.baseUrl === undefined ? import.meta.url : String(settings.baseUrl);
+  const packagedRoot=fileURLToPath(new URL('../runtime/',baseUrl));
+  if(existsSync(resolve(packagedRoot,'engine-client/src/index.mjs'))){
+    const clientEntry=resolve(packagedRoot,'engine-client/src/index.mjs'),workerEntry=settings.workerEntry||resolve(packagedRoot,'engine-worker/src/worker.mjs');
+    const {readFile}=await import('node:fs/promises');
+    const clientModule=await import(pathToFileURL(clientEntry).href);
+    return {WorkerClient:clientModule.WorkerClient,clientEntry,workerEntry,clientVersion:JSON.parse(await readFile(resolve(packagedRoot,'engine-client/package.json'),'utf8')).version,workerVersion:JSON.parse(await readFile(resolve(packagedRoot,'engine-worker/package.json'),'utf8')).version,baseUrl};
+  }
   let require;
   try {
     require = createRequire(baseUrl);

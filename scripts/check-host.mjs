@@ -3128,9 +3128,9 @@ async function main() {
     apply(fake.ctx, workspace.config);
     // M1-01: the stable data root always provides an asset inbox, so the effect
     // registers request + artifact + streaming upload in every valid deployment.
-    assert(fake.routes.length === 5, `routes ${fake.routes.length}`);
-    assert(fake.routes[0].path === '/api/dsh-video/request', 'request route path');
-    assert(fake.routes[1].path === '/api/dsh-video/artifact', 'artifact route path');
+    assert(fake.routes.length === 6, `routes ${fake.routes.length}`);
+    assert(fake.routes.some(r=>r.path === '/api/dsh-video/request'), 'request route path');
+    assert(fake.routes.some(r=>r.path === '/api/dsh-video/artifact'), 'artifact route path');
     assert(fake.routes.find(r=>r.path === '/api/dsh-video/asset-upload')?.requestBody === 'streaming', 'asset upload route is not the streaming route');
     assert(fake.tools.length === 1 && fake.tools[0].name === TOOL_NAME, 'tool registration');
     assert(fake.cleanups.length === 1 && typeof fake.cleanups[0] === 'function', 'effect cleanup');

@@ -144,6 +144,27 @@ window.__ModuleLoader__.load({
       'video.timeline.alreadyDetached': "此片段原声已分离",
       'video.timeline.detachAudioHelp': "将视频原声放入独立音频轨",
       'video.timeline.doubleAudio': "原声已分离，重新开启会与独立音频叠加播放",
+      'video.update.title': "插件更新",
+      'video.update.close': "关闭更新面板",
+      'video.update.busy': "请等待当前操作或导出结束",
+      'video.update.version': "当前版本",
+      'video.update.idle': "检查是否有新版本。",
+      'video.update.checking': "正在检查更新…",
+      'video.update.available': "有新版本可用。安装由 DSH 管理，作品保留在原处。",
+      'video.update.availableButton': "有新版本",
+      'video.update.current': "已是最新正式版。",
+      'video.update.local': "当前是本地开发安装，由开发者更新；不会自动替换。",
+      'video.update.unsupported': "此安装来源或 DSH 版本暂不支持在线更新。请在 DSH 插件页管理。",
+      'video.update.unpublished': "尚未发布正式版本。",
+      'video.update.release-unavailable': "新版本尚未提供适用于这台设备的安装包，请稍后再试。",
+      'video.update.check-failed': "暂时无法检查更新，请稍后重试。",
+      'video.update.installing': "正在通过 DSH 安装更新，请稍候…",
+      'video.update.restart-required': "更新已安装，重启 DSH 后生效。",
+      'video.update.installed': "更新已应用。重新打开编辑器可确认版本。",
+      'video.update.failed': "更新未完成。请重试或在 DSH 插件页检查安装状态。",
+      'video.update.notes': "查看更新说明",
+      'video.update.install': "安装更新",
+      'video.update.check': "检查更新",
       'video.timeline.enableOriginal': "开启视频原声",
       'video.timeline.disableOriginal': "关闭视频原声",
       'video.timeline.enableClipSound': "开启片段声音",
@@ -397,6 +418,27 @@ window.__ModuleLoader__.load({
       'video.timeline.alreadyDetached': "Original audio is already detached",
       'video.timeline.detachAudioHelp': "Put original audio on an independent audio track",
       'video.timeline.doubleAudio': "Audio is detached; enabling original audio will play both",
+      'video.update.title': "Plugin updates",
+      'video.update.close': "Close updates",
+      'video.update.busy': "Wait for the current operation or export to finish",
+      'video.update.version': "Current version",
+      'video.update.idle': "Check for a newer release.",
+      'video.update.checking': "Checking for updates…",
+      'video.update.available': "A new release is available. DSH installs it; your projects stay in place.",
+      'video.update.availableButton': "Update available",
+      'video.update.current': "You have the latest stable release.",
+      'video.update.local': "Local development installation. Updated by the developer, never replaced automatically.",
+      'video.update.unsupported': "This source or DSH version does not support online updates. Manage it in DSH Plugins.",
+      'video.update.unpublished': "No stable release has been published yet.",
+      'video.update.release-unavailable': "The new release has no package for this device yet. Please try again later.",
+      'video.update.check-failed': "Cannot check right now. Please try again later.",
+      'video.update.installing': "DSH is installing the update. Please wait…",
+      'video.update.restart-required': "Update installed. Restart DSH to use it.",
+      'video.update.installed': "Update applied. Reopen the editor to confirm its version.",
+      'video.update.failed': "Update did not complete. Retry or check installation status in DSH Plugins.",
+      'video.update.notes': "Release notes",
+      'video.update.install': "Install update",
+      'video.update.check': "Check for updates",
       'video.timeline.enableOriginal': "Enable original audio",
       'video.timeline.disableOriginal': "Disable original audio",
       'video.timeline.enableClipSound': "Enable clip audio",
@@ -1615,6 +1657,7 @@ window.__ModuleLoader__.load({
 /* Resource shelf, transport, and editing tools have separate visual roles. */
 
 .dv-root .dv-canvas-shell[data-preview-only="true"]{padding:0;gap:0;overflow:hidden;container-type:inline-size;container-name:video-canvas}
+.dv-update-control{position:relative;flex-shrink:0}.dv-update-control>button{font-size:11px;color:var(--dsw-alias-label-secondary,#858992)}.dv-update-panel{position:absolute;right:0;top:calc(100% + 12px);z-index:60;box-sizing:border-box;width:min(300px,calc(100vw - 24px));padding:18px;border:1px solid var(--dsw-alias-border-l1,#8883);border-radius:12px;background:var(--dsw-alias-bg-layer-1,#25262a);color:var(--dsw-alias-label-primary,#eee);box-shadow:0 12px 40px #0003;font-size:12px}.dv-update-panel header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}.dv-update-panel p{line-height:1.7;margin:12px 0}.dv-update-panel small{color:var(--dsw-alias-label-secondary,#858992)}.dv-update-panel a{display:block;margin-top:8px;color:inherit}.dv-update-panel footer{display:flex;justify-content:flex-end;margin-top:16px}
 .dv-resource-bar{display:flex;align-items:center;gap:4px;min-height:44px;padding:0 16px;flex-shrink:0;border-bottom:1px solid var(--dsw-alias-border-l1,#ffffff10)}
 .dv-resource-tab{display:flex;align-items:center;gap:7px;padding:7px 10px;border:0;border-radius:5px;background:transparent;color:var(--dsw-alias-label-secondary,#aaaeb6);font:inherit;font-size:12px;cursor:pointer}
 .dv-resource-tab:hover,.dv-resource-tab[aria-expanded=true]{background:var(--dsw-alias-interactive-bg-hover,#ffffff0c);color:var(--dsw-alias-label-primary,#eee)}
@@ -3335,6 +3378,30 @@ window.__ModuleLoader__.load({
         return () => { owner.removeEventListener('pointerdown', outside, true); owner.removeEventListener('keydown', keyboard, true); };
       }, [trigger]);
       return panel;
+    }
+
+    async function updateRequest(action,extra){
+      const response=await fetch('api/dsh-video/updates',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action,...extra})});
+      if(!response.ok)throw new Error('Update request failed');return response.json();
+    }
+    function UpdatePanel(props){
+      const h=React.createElement,t=props.t,ref=usePanelDismiss(props.onClose,'updates'),v=props.value;
+      return h('section',{className:'dv-update-panel',ref,role:'dialog','aria-label':t('video.update.title')},
+        h('header',null,h('strong',null,t('video.update.title')),h('button',{className:'dv-icon-button',onClick:props.onClose,'aria-label':t('video.update.close')},'×')),
+        h('small',null,t('video.update.version')+' '+(v.currentVersion||'…')),
+        h('p',{role:'status'},t('video.update.'+v.phase)),
+        v.latestVersion?h('strong',null,'v'+v.latestVersion):null,
+        v.releaseUrl?h('a',{href:v.releaseUrl,target:'_blank',rel:'noopener noreferrer'},t('video.update.notes')):null,
+        h('footer',null,['available','failed'].includes(v.phase)?h('button',{className:'dv-button dv-button-primary',onClick:props.onInstall,disabled:props.busy,title:props.busy?t('video.update.busy'):undefined},t('video.update.install')):h('button',{className:'dv-button',disabled:['checking','installing','installed','restart-required'].includes(v.phase),onClick:props.onCheck},t('video.update.check'))));
+    }
+    function UpdateControl(props){
+      const h=React.createElement,t=props.t,[open,setOpen]=React.useState(false),[value,setValue]=React.useState({phase:'idle'}),alive=React.useRef(true);
+      async function request(action,extra){try{const next=await updateRequest(action,extra);if(alive.current)setValue(next);}catch{if(alive.current)setValue(v=>({...v,phase:action==='install'?'failed':'check-failed'}));}}
+      React.useEffect(()=>{alive.current=true;const timer=setTimeout(()=>void request('check'),15000);return()=>{alive.current=false;clearTimeout(timer);};},[]);
+      React.useEffect(()=>{if(value.phase!=='installing')return;const timer=setInterval(()=>void request('status'),1000);return()=>clearInterval(timer);},[value.phase]);
+      const check=()=>{setValue(v=>({...v,phase:'checking'}));void request('check');};
+      return h('div',{className:'dv-update-control'},h('button',{className:'dv-button dv-button-quiet','data-panel-trigger':'updates','aria-expanded':open,'aria-label':t('video.update.title'),onClick:()=>{setOpen(!open);if(!open&&value.phase==='idle')check();}},t(value.phase==='available'?'video.update.availableButton':'video.update.title')),
+        open?h(UpdatePanel,{t,value,busy:props.busy,onClose:()=>setOpen(false),onCheck:check,onInstall:()=>{setValue(v=>({...v,phase:'installing'}));void request('install',{version:value.latestVersion,confirm:true});}}):null);
     }
 
     function MediaLibraryPanel(props) {
@@ -8291,6 +8358,7 @@ window.__ModuleLoader__.load({
               )
             : null,
           h('span', { className: 'dv-spacer', key: 'spacer' }),
+          h(UpdateControl,{key:'updates',t,busy:projectBusy!==null||exportState?.phase==='running'}),
           exportControl()
         ),
         h(
