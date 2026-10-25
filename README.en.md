@@ -1,6 +1,6 @@
 <div align="center">
 
-![dsh-video-editor — From conversation to creation](docs/assets/hero.svg)
+![dsh-video-editor — IDEA IN. VIDEO OUT.](docs/assets/hero.svg)
 
 # dsh-video-editor
 
@@ -9,7 +9,7 @@
 An AI video workspace inside DeepSeek Harness.<br>
 Create and refine in chat, preview alongside it, edit across tracks, and export to MP4.
 
-[![npm](https://img.shields.io/npm/v/dsh-video-editor?color=829cff&style=flat-square)](https://www.npmjs.com/package/dsh-video-editor) [![DSH](https://img.shields.io/badge/DeepSeek_Harness-%E2%89%A50.2.1--rc.2-5865f2?style=flat-square)](https://github.com/deepseek-ai/deepseek-harness) [![Node](https://img.shields.io/badge/Node.js-22%2B-70b798?style=flat-square)](https://nodejs.org/) [![Platform](https://img.shields.io/badge/tested-macOS_Apple_Silicon-a7b8d3?style=flat-square)](#installation) [![MIT](https://img.shields.io/badge/license-MIT-c4b5fd?style=flat-square)](LICENSE)
+[![npm](https://img.shields.io/npm/v/dsh-video-editor?color=2048ff&style=flat-square)](https://www.npmjs.com/package/dsh-video-editor) [![DSH](https://img.shields.io/badge/DeepSeek_Harness-%E2%89%A50.2.1--rc.2-111111?style=flat-square)](https://github.com/deepseek-ai/deepseek-harness) [![Node](https://img.shields.io/badge/Node.js-22%2B-111111?style=flat-square)](https://nodejs.org/) [![MIT](https://img.shields.io/badge/license-MIT-2048ff?style=flat-square)](LICENSE)
 
 [简体中文](README.md) · **English**
 
@@ -28,11 +28,9 @@ Create and refine in chat, preview alongside it, edit across tracks, and export 
 | **Keep your progress** | Share undo/redo between AI and manual edits. Projects persist across restarts. |
 | **Export a finished video** | Render H264/AAC MP4 with progress and cancellation. |
 
-The cover is a workflow illustration. See [current status](docs/STATUS.md) for verification boundaries.
-
 ## Installation
 
-Requires **DeepSeek Harness ≥ 0.2.1-rc.2, Node.js ≥ 22, FFmpeg/ffprobe, and Google Chrome**. Tested on macOS Apple Silicon; other platforms have not completed acceptance testing.
+Requires **DeepSeek Harness ≥ 0.2.1-rc.2, Node.js ≥ 22, FFmpeg/ffprobe, and Google Chrome**.
 
 Open DSH **Plugins → Add plugin**, enter one of the following sources, install, and enable:
 
@@ -42,21 +40,15 @@ Open DSH **Plugins → Add plugin**, enter one of the following sources, install
 https://github.com/heswy/dsh-video-editor
 ```
 
-Plain JavaScript and engine sources ship in the repository. DSH installs dependencies; no plugin build script approval is needed. Pin a verified commit for a stable installation: `github:heswy/dsh-video-editor#<commit>`.
-
 ### npm package
 
 ```text
 dsh-video-editor
 ```
 
-Choose the official npm registry, or wait for your mirror to synchronize. `dsh-video` belongs to another author.
+Use the official npm registry for installation.
 
-### Release / offline package
-
-Download the appropriate `.tgz` from [Releases](https://github.com/heswy/dsh-video-editor/releases). Enter its download URL or absolute local path in Add plugin. The first public Release is still pending.
-
-See [installation and publishing](docs/releases/UPDATE-CHANNEL.md) for channel details.
+See the [installation guide](docs/releases/UPDATE-CHANNEL.md) for more options.
 
 ## Quick start
 
@@ -69,13 +61,13 @@ Try an idea like this:
 
 > Make a 15-second product introduction with a dark background. Use three sections for the title, key features, and closing line. Keep transitions simple.
 
-Projects default to `~/Movies/DSH Video`. DSH manages model credentials; no model API key belongs in this repository. Locally synthesized audio does not imply human singing. Direct object editing inside the canvas is deferred.
+Projects save automatically to `~/Movies/DSH Video` and use your DSH model configuration.
 
 ## Updates, disabling, and rollback
 
-Use **Plugin updates** in the editor toolbar to check versions, read notes, and install explicitly. Local linked development installs are updated by the developer. Restart DSH when prompted.
+Use **Plugin updates** in the editor toolbar to check and install new versions.
 
-Disable the plugin in DSH's plugin page. To roll back, remove it and install the previous verified package. Keep the project data directory and the old package.
+Disable the plugin from DSH's plugin page. To roll back, reinstall the previous version. Project data is saved independently.
 
 ## Development
 
@@ -89,7 +81,7 @@ node --test tests/*.test.mjs
 
 The runtime loads JavaScript directly. `host/` owns project, session, and resource boundaries; `client.js` provides the native workspace; `packages/` contains the independent engine. Read [development rules](docs/DEVELOPMENT.md) and the [publishing guide](docs/releases/UPDATE-CHANNEL.md).
 
-Report problems through [Issues](https://github.com/heswy/dsh-video-editor/issues) with your DSH/plugin version, device, and reproduction steps. Keep credentials and private projects out of reports. See [SECURITY](SECURITY.md) for vulnerability reports.
+Report problems through [Issues](https://github.com/heswy/dsh-video-editor/issues) with your DSH/plugin version, device, and reproduction steps. See [SECURITY](SECURITY.md) for vulnerability reports.
 
 ## Acknowledgements and license
 

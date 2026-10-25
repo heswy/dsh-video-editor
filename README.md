@@ -1,6 +1,6 @@
 <div align="center">
 
-![dsh-video-editor — From conversation to creation](docs/assets/hero.svg)
+![dsh-video-editor — IDEA IN. VIDEO OUT.](docs/assets/hero.svg)
 
 # dsh-video-editor
 
@@ -9,7 +9,7 @@
 DeepSeek Harness 内的 AI 视频创作与剪辑工作台。<br>
 右侧对话生成与续改，左侧即时预览，多轨剪辑与 MP4 导出一站完成。
 
-[![npm](https://img.shields.io/npm/v/dsh-video-editor?color=829cff&style=flat-square)](https://www.npmjs.com/package/dsh-video-editor) [![DSH](https://img.shields.io/badge/DeepSeek_Harness-%E2%89%A50.2.1--rc.2-5865f2?style=flat-square)](https://github.com/deepseek-ai/deepseek-harness) [![Node](https://img.shields.io/badge/Node.js-22%2B-70b798?style=flat-square)](https://nodejs.org/) [![Platform](https://img.shields.io/badge/tested-macOS_Apple_Silicon-a7b8d3?style=flat-square)](#安装) [![MIT](https://img.shields.io/badge/license-MIT-c4b5fd?style=flat-square)](LICENSE)
+[![npm](https://img.shields.io/npm/v/dsh-video-editor?color=2048ff&style=flat-square)](https://www.npmjs.com/package/dsh-video-editor) [![DSH](https://img.shields.io/badge/DeepSeek_Harness-%E2%89%A50.2.1--rc.2-111111?style=flat-square)](https://github.com/deepseek-ai/deepseek-harness) [![Node](https://img.shields.io/badge/Node.js-22%2B-111111?style=flat-square)](https://nodejs.org/) [![MIT](https://img.shields.io/badge/license-MIT-2048ff?style=flat-square)](LICENSE)
 
 **简体中文** · [English](README.en.md)
 
@@ -28,11 +28,9 @@ DeepSeek Harness 内的 AI 视频创作与剪辑工作台。<br>
 | **放心修改** | AI 与手动操作共享撤销/重做；工程自动保存，重开继续创作。 |
 | **交付成片** | 导出带声音的 H264/AAC MP4，查看进度或取消任务。 |
 
-封面为产品工作流插画。功能与验证边界见[当前状态](docs/STATUS.md)。
-
 ## 安装
 
-需要 **DeepSeek Harness ≥ 0.2.1-rc.2、Node.js ≥ 22、FFmpeg/ffprobe 和 Google Chrome**。目前实测 macOS Apple Silicon；其他平台尚未完成验收。
+需要 **DeepSeek Harness ≥ 0.2.1-rc.2、Node.js ≥ 22、FFmpeg/ffprobe 和 Google Chrome**。
 
 打开 DSH **插件 → 添加插件**，使用下列任一来源，安装后启用：
 
@@ -42,21 +40,15 @@ DeepSeek Harness 内的 AI 视频创作与剪辑工作台。<br>
 https://github.com/heswy/dsh-video-editor
 ```
 
-源码直接提供 JavaScript 和引擎源码，依赖由 DSH 安装，无需授权插件构建脚本。稳定使用可固定到已验收提交：`github:heswy/dsh-video-editor#<commit>`。
-
 ### npm 包名
 
 ```text
 dsh-video-editor
 ```
 
-npm 来源选择官方源，或等待所用镜像同步。`dsh-video` 是其他作者的包，请勿混淆。
+npm 安装推荐选择官方源。
 
-### Release / 离线包
-
-从 [Releases](https://github.com/heswy/dsh-video-editor/releases) 下载设备对应的 `.tgz`，在添加插件时输入下载地址或本地文件的绝对路径。首次公开 Release 尚未发布。
-
-安装方式、发行准备和更新说明见[安装与发布](docs/releases/UPDATE-CHANNEL.md)。
+更多安装与更新方式见[安装指南](docs/releases/UPDATE-CHANNEL.md)。
 
 ## 开始创作
 
@@ -69,13 +61,13 @@ npm 来源选择官方源，或等待所用镜像同步。`dsh-video` 是其他�
 
 > 做一段 15 秒的产品介绍，深色背景，分三段展示标题、亮点和结束语，转场简洁。
 
-工程默认保存在 `~/Movies/DSH Video`。模型和密钥由 DSH 管理，本仓库无需配置模型 API key。音频本地生成不等于真人演唱；画布内对象直接编辑暂不提供。
+工程自动保存到 `~/Movies/DSH Video`，模型沿用 DSH 中的配置。
 
 ## 更新、停用与回滚
 
-编辑器顶栏 **插件更新** 支持检查版本、查看说明和主动安装；本地 link 开发安装由开发者更新。安装完成后按提示重启 DSH。
+点击顶栏 **插件更新** 检查并安装新版本。
 
-在 DSH 插件页可以停用。回滚时移除当前插件并安装上一已验证包，保留用户数据目录和旧包；不要删除工程文件。
+在 DSH 插件页可以停用；需要回滚时，重新安装上一版本即可，工程数据独立保存。
 
 ## 开发
 
@@ -89,7 +81,7 @@ node --test tests/*.test.mjs
 
 运行时为直接加载的 JavaScript。`host/` 负责工程、会话与资源边界，`client.js` 提供原生工作区，`packages/` 保存独立视频引擎。开发规则见 [DEVELOPMENT](docs/DEVELOPMENT.md)，发布流程见[发行指南](docs/releases/UPDATE-CHANNEL.md)。
 
-发现问题请提交 [Issue](https://github.com/heswy/dsh-video-editor/issues)，附 DSH/插件版本、设备及复现步骤；不要上传密钥或私人作品。安全问题见 [SECURITY](SECURITY.md)。
+发现问题请提交 [Issue](https://github.com/heswy/dsh-video-editor/issues)，附 DSH/插件版本、设备及复现步骤。安全问题见 [SECURITY](SECURITY.md)。
 
 ## 致谢与许可
 
