@@ -14,7 +14,7 @@ export class PluginUpdates{
     if(this.disposed)throw new Error('Updates disposed');
     if(this.pending||['installed','restart-required'].includes(this.view.phase))return this.status();
     if(this.checking)return this.checking;
-    if(!force&&this.checkedAt&&this.now()-this.checkedAt<600000)return this.status();
+    if(!force&&this.checkedAt&&['available','current'].includes(this.view.phase)&&this.now()-this.checkedAt<600000)return this.status();
     this.checking=this.lookup().finally(()=>{this.checking=null;});return this.checking;
   }
   async lookup(){
