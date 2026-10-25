@@ -4046,20 +4046,23 @@ window.__ModuleLoader__.load({
         return()=>{clearTimeout(timer);observer.disconnect();el?.ownerDocument.removeEventListener('scroll',measure,true);el?.ownerDocument.removeEventListener('visibilitychange',measure);};
       },[props.zoom,props.revision]);
       React.useEffect(()=>{
-        if(!view||props.playing)return;let dead=false,taskId;const jobs=[];const c=props.clip;
+        if(!view||props.playing)return;let dead=false,taskId;const c=props.clip;
         const cancel=()=>{dead=true;if(taskId)void hostRequest('timeline.visuals.cancel',{projectId:props.projectId,taskId}).catch(()=>{});};
         (async()=>{try{
           const visibleStart=Math.max(c.startFrame,Math.floor(c.startFrame+view.left/props.zoom*30)),visibleEnd=Math.min(c.startFrame+c.durationFrames,Math.ceil(c.startFrame+view.right/props.zoom*30));
           const count=Math.max(1,Math.min(24,Math.ceil((view.right-view.left)/88))),batches=Math.ceil(count/4);
+          let jobs=result?.revision===props.revision?result.jobs.filter(j=>j.endFrame>visibleStart&&j.startFrame<visibleEnd):[];
           for(let batch=0;batch<batches&&!dead;batch++){
             const startFrame=Math.floor(visibleStart+(visibleEnd-visibleStart)*batch/batches),endFrame=Math.ceil(visibleStart+(visibleEnd-visibleStart)*(batch+1)/batches);
             if(endFrame<=startFrame)continue;
-            const request=await hostRequest('timeline.visuals.request',{projectId:props.projectId,expectedRevision:props.revision,clipId:c.clipId,startFrame,endFrame,count:Math.min(4,count-batch*4)});taskId=request.taskId;
+            const sampleCount=Math.min(4,count-batch*4);
+            if(jobs.some(j=>j.startFrame===startFrame&&j.endFrame===endFrame&&j.count===sampleCount))continue;
+            const request=await hostRequest('timeline.visuals.request',{projectId:props.projectId,expectedRevision:props.revision,clipId:c.clipId,startFrame,endFrame,count:sampleCount});taskId=request.taskId;
             if(dead){void hostRequest('timeline.visuals.cancel',{projectId:props.projectId,taskId}).catch(()=>{});break;}
             let status=request;
             while(!dead&&!['complete','failed','cancelled'].includes(status.status)){await new Promise(resolve=>setTimeout(resolve,180));if(dead)break;status=await hostRequest('timeline.visuals.status',{projectId:props.projectId,taskId});}
             if(dead)break;
-            if(status.status==='complete'&&status.revision===props.revision){jobs.push({...status.result,startFrame,endFrame});setResult({jobs:[...jobs],revision:props.revision});}
+            if(status.status==='complete'&&status.revision===props.revision){jobs=jobs.filter(j=>j.endFrame<=startFrame||j.startFrame>=endFrame);jobs.push({...status.result,startFrame,endFrame,count:sampleCount});setResult({jobs:[...jobs],revision:props.revision});}
           }
         }catch{/* Name and editing remain available when derivation fails. */}})();return cancel;
       },[view,props.revision,props.clip.clipId,props.projectId,props.playing]);

@@ -301,6 +301,14 @@ try {
   }
   await page.waitForSelector('.dv-timeline[data-duration-mode="auto"][data-duration-frames="600"]');
   await page.waitForFunction(()=>document.querySelector('.dv-time').textContent.includes('/ 20.00'));
+  await page.waitForNetworkIdle({idleTime:500,timeout:15000});
+  await page.evaluate(()=>{window.visualTilesBefore=document.querySelectorAll('.dv-filmstrip img').length;window.visualMinTiles=window.visualTilesBefore;window.visualObserver=new MutationObserver(()=>{window.visualMinTiles=Math.min(window.visualMinTiles,document.querySelectorAll('.dv-filmstrip img').length);});window.visualObserver.observe(document.querySelector('.dv-timeline'),{childList:true,subtree:true});});
+  await page.click('.dv-play');await page.waitForFunction(()=>Number(document.querySelector('.dv-seek').value)>.2);await page.click('.dv-play');
+  await page.waitForNetworkIdle({idleTime:500,timeout:15000});
+  const preserved=await page.evaluate(()=>{window.visualObserver.disconnect();return {before:window.visualTilesBefore,min:window.visualMinTiles};});
+  assert.ok(preserved.min>=preserved.before,JSON.stringify(preserved));checks++;
+  await page.evaluate(()=>window.seek(0));
+
   await page.waitForFunction(()=>document.querySelector('.dv-timeline').getAttribute('aria-busy')==='false');
   assert.equal((await bridge.invoke('timeline.inspect',{projectId})).settings.durationFrames,600);checks++;
   checks++;
