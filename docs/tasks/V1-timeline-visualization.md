@@ -64,4 +64,3 @@
 用户验收要求已实现：分离后视频只显示名称和缩略图，波形留在独立音轨；普通静音保留暗波形，重开视频原声/撤销分离恢复波形。源码与固定包工作区均101项通过，源码门禁58/86/71通过。官方管理器安装并重启，实际worker来源及原生截图确认新版本已加载。
 
 固定运行时 `55ff055c1093ea60a294a5e1a5b81d918a923a90`，bundle1.0.0 / engine0.9.0；目录 `artifacts/p2-b/staging-v1.0.0-detached-wave-55ff055-final`，INTEGRITY SHA256 `0763abf2c78e4c30ebc200bd4ad36465aaf9c63cf01cc30e2a5dd322b1fc9724`。旧5ddb697包保留回滚；PR #33继续未合并。证据 `artifacts/v1/evidence/detached-wave-20261025/native-hidden-wave.png`。未改变音频处理或用户工程数据。
-
