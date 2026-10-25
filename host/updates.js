@@ -32,7 +32,7 @@ export class PluginUpdates{
         if(listed.status!=='accepted')throw new Error('Version lookup unavailable');
         const v=listed.versions.find(x=>x.bundle&&!x.incompatible&&!x.deprecated&&!x.prerelease&&newer(x.version,this.version));
         if(v)candidate={version:v.version,kind:'registry',registry:listed.registry};
-      }else if(source.startsWith(REPO+'/releases/download/')||source.startsWith('git+'+REPO+'.git#')||source.startsWith('github:heswy/dsh-video-editor#')){
+      }else if(source.startsWith(REPO+'/releases/download/')||/^(?:git\+)?https:\/\/github\.com\/heswy\/dsh-video-editor(?:\.git)?(?:#.*)?$/.test(source)||/^github:heswy\/dsh-video-editor(?:#.*)?$/.test(source)){
         this.abort=new AbortController();const timer=setTimeout(()=>this.abort?.abort(),8000);
         try{
           const response=await this.fetchImpl(API,{headers:{accept:'application/vnd.github+json'},signal:this.abort.signal});

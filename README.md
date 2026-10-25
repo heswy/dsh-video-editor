@@ -1,255 +1,98 @@
-# DSH Video
+<div align="center">
 
-> **1.0.0 发布验收候选 / engine 0.8.3**。当前包含 AI 对话创作与续改、素材导入、多轨剪辑、轨道画面/声音开关、轨道右键与删除、共享撤销及 MP4 导出。AI 本地生成音频后直接上轨；用户上传音频进入素材库。无独立声音面板或供应商配置 UI。最终固定包、安装与验收结果以 [STATUS](docs/STATUS.md) 为准，尚未对外发布。
+![dsh-video-editor — From conversation to creation](docs/assets/hero.svg)
 
+# dsh-video-editor
 
-运行在 DeepSeek Harness 内的 AI 视频创作与编辑插件。当前目标是用户通过右侧对话生成视频，左侧自动预览/播放，再通过对话持续修改同一作品；时间线支持手动剪辑与 AI 共用操作历史；画布内对象编辑仍延期。
+**用对话构思，用时间线打磨，让想法成为影片。**
 
-用户确定的入口（P0-005，延续到本阶段）：DSH 左侧原生导航中，在「上下文洞察」之后、「工作区」分组之前，单行 **Vedio Editor** + 细线条视频图标。原顶部「普通｜视频」胶囊已移除。入口是产品工作区导航，不改变 Agent preset、模型或权限。
+DeepSeek Harness 内的 AI 视频创作与剪辑工作台。<br>
+右侧对话生成与续改，左侧即时预览，多轨剪辑与 MP4 导出一站完成。
 
-当前只维护 **main** 作为长期主线。右侧原生对话生成/续改，左侧自动预览/播放；时间线剪辑按 V1 里程碑开放，画布内对象编辑延期。用户实机测试发现问题后，从最新main建立独立codex/<问题名>分支、验证并交PR。规则读[DEVELOPMENT](docs/DEVELOPMENT.md)，当前交接读[handoffs](docs/handoffs/README.md)。真实DSH/模型闭环仍需验收，不把开发组件/工具模拟当作通过。
+[![npm](https://img.shields.io/npm/v/dsh-video-editor?color=829cff&style=flat-square)](https://www.npmjs.com/package/dsh-video-editor) [![DSH](https://img.shields.io/badge/DeepSeek_Harness-%E2%89%A50.2.1--rc.2-5865f2?style=flat-square)](https://github.com/deepseek-ai/deepseek-harness) [![Node](https://img.shields.io/badge/Node.js-22%2B-70b798?style=flat-square)](https://nodejs.org/) [![Platform](https://img.shields.io/badge/tested-macOS_Apple_Silicon-a7b8d3?style=flat-square)](#安装) [![MIT](https://img.shields.io/badge/license-MIT-c4b5fd?style=flat-square)](LICENSE)
 
-- [当前状态与下一步](docs/STATUS.md)
-- [开发与协作规则](docs/DEVELOPMENT.md)
-- [产品范围](docs/product/PRODUCT.md)
-- [前端设计规划](docs/design/FRONTEND-DESIGN.md)
-- [决策记录](docs/DECISIONS.md)
-- [ADR-0001 引擎 worker](docs/adr/0001-independent-video-worker.md)
-- [ADR-0002 Host 桥运行时与边界](docs/adr/0002-host-bridge-runtime-and-boundaries.md)
-- [P2-002 Host 契约调查](docs/research/P2-002-host-bridge-contract.md)
-- [P3-005-A 原生会话契约调查](docs/research/P3-005A-native-conversation-contract.md)
+**简体中文** · [English](README.en.md)
 
-## 历史交付（1.0.0-alpha.2 · M2 素材库与媒体管线）
+[功能](#从一句想法到一条影片) · [安装](#安装) · [开始创作](#开始创作) · [开发](#开发) · [文档](docs/README.md)
 
-固定候选：`artifacts/p2-b/staging-v1.0.0-alpha.2-939419e`（同级 worktrees/artifacts 下），root=engine=`939419e10fe5e0b3b9c526d6bc580558d850c9cb`、rootDirty=false，INTEGRITY sha256 `0ead5c6bf48b340dc6712fe457ee3c46cff46ce7603d05426a76b1a7ed3903fa`。本轮未安装/重启/合并；[M2 PR #18](https://github.com/heswy/dsh-video-editor/pull/18) 依赖 [M1 PR #17](https://github.com/heswy/dsh-video-editor/pull/17)。
+</div>
 
-- 素材按钮打开工程素材抽屉：视频/图片/音频，多文件选择或拖入、上传百分比与取消、筛选/搜索/分页、详情和播放/seek、确认删除、可复制的素材引用标记。
-- 认证流式上传：默认单文件 2 GiB / 工程 8 GiB（`maxAssetBytes` / `maxProjectAssetBytes` 可降低），剩余磁盘预检；临时 receipt 定时过期与实例资源清理。Worker 按完整 SHA-256 去重，ffprobe 探测；短 ID 冲突拒绝，不覆盖。
-- 媒体认证路由：GET/HEAD、Range/206/416，读取索引后检查工程/文件 realpath，媒体字节流式响应；界面与 Tool 都不能传磁盘路径。
-- 缩略图/波形/兼容播放代理为可重建工程缓存；不会改作品 revision。媒体可从素材库加入对应的视觉/音频轨，使用共享时间线编辑。
-- `video_engine asset.list`：只读分页元数据与 Session/project 隔离。导入、删除、派生为 UI-only；在用素材按 timeline 片段或 composition 路径拒绝删除。
-- 验证与验收入口：[M2 任务卡](docs/tasks/V1-M2-media.md)、[V1 验收矩阵](docs/plans/V1.0-ACCEPTANCE.md)。固定候选及摘要构建后记入任务卡；本地浏览器/worker 结果不等于 DSH 真机通过。
+## 从一句想法，到一条影片
 
-## 历史交付（1.0.0-alpha.1 · M1 存储与工程生命周期，本地开发候选；稳定数据根 + 旧工程迁移 + 文件夹按钮 + 面板状态 + 容错）
-
-| 项 | 值 |
+| 创作环节 | 你可以做什么 |
 |---|---|
-| 包名 / Loader 行 id / Client 模块 id | `dsh-video` |
-| Bundle 版本 | `1.0.0-alpha.1` |
-| Host 路由 | `POST /api/dsh-video/request`、`GET/HEAD /api/dsh-video/artifact?jobId=…`、`POST /api/dsh-video/asset-upload`、`GET/HEAD /api/dsh-video/preview/<snapshotId>/<manifest path>`、`GET/HEAD /api/dsh-video/canvas-runtime.js` |
-| Host 请求方法 | doctor/open/inspect/edit/frame/render/status/cancel/close、session.*、preview（文件预览），P3-008 的 project.create/project.list/asset.import/scene.create/scene.update/scene.remove/scene.reorder/project.revise/history/undo/redo/preview.snapshot/preview.release，P3-012 的 project.compose/project.source，以及 P3-016 的 project.rename；asset 上传、preview.snapshot 与 project.rename 为 UI-only，Tool 不能调用 |
-| Tool | `video_engine`（同一 dispatcher；非 doctor action 必须来自绑定工程的受信 Agent Session）；P3-012 增加 conversation-first 创作/修改入口 `project.compose`、`project.source` |
-| 侧栏入口 | `sidebar.panellist`，`id: dsh-video`、`order: 30`、label `Vedio Editor` |
-| 面板 key | `main` keyed slot 的 `dsh-video`；另声明私有 session child，仅用于取得原生 `SessionProvider` kit |
-| 引擎依赖 | 独立 `dsh-video-engine-client` / `dsh-video-engine-worker`，仅开发 staging 快照内解析；两包维持 `0.4.0`（M1 未改引擎，升级 `0.5.0` 留到时间线里程碑）。M1 候选 root/engine 提交由 Lead 构建 staging 时固定并记录 |
+| **对话创作** | 描述想要的影片，复用 DSH 的模型和原生对话，持续修改同一作品。 |
+| **即时预览** | 自动更新画面，播放、暂停、跳转，边看边调整。 |
+| **多轨剪辑** | 导入图片、视频与音频；移动、裁剪、拆分、复制、排序和吸附。 |
+| **看见声音** | 真实音频波形、连续视频缩略图，视频原声一键分离为独立音轨。 |
+| **放心修改** | AI 与手动操作共享撤销/重做；工程自动保存，重开继续创作。 |
+| **交付成片** | 导出带声音的 H264/AAC MP4，查看进度或取消任务。 |
 
-| 开发 staging | M2 固定候选 `artifacts/p2-b/staging-v1.0.0-alpha.2-939419e`（bundle alpha.2 / engine 0.5.0，本轮未安装）；M1 `staging-v1.0.0-alpha.1-5d42b1f` 和 0.3 回滚锚点 `staging-alpha11-51b95dc` 均保留。详见 M2 任务卡 |
+封面为产品工作流插画。功能与验证边界见[当前状态](docs/STATUS.md)。
 
-`index.js` 是 Host half：一个 plugin-local `VideoBridge` 同时服务精确 Fetch 路由和 Tool；`host/` 保存校验、错误映射、环境清理、worker 适配、产物发布、会话映射、局部图片预览、受控项目/素材收件箱与预览快照路由。`client.js` 是手写浏览器半（`window.__ModuleLoader__.load` 格式），只 `require('react')`，通过文档相对 `fetch('api/dsh-video/request')` 调用 Host；右侧 AI 直接渲染宿主原生 `conversation.content` Factory，不自建聊天。
+## 安装
 
-### Host 可信配置（由安装/部署提供）
+需要 **DeepSeek Harness ≥ 0.2.1-rc.2、Node.js ≥ 22、FFmpeg/ffprobe 和 Google Chrome**。目前实测 macOS Apple Silicon；其他平台尚未完成验收。
 
-根包的 `cordis.patch.yml` 只有空 `config: {}`；真实安装时必须在 Loader 行的 `config` 中提供以下值。**包内不写死开发工作树、系统 Node/Chrome/FFmpeg 路径。** 缺配置或路径不可用时插件壳仍加载，业务请求返回 `E_CONFIGURATION`，不会猜测其它路径。
+打开 DSH **插件 → 添加插件**，使用下列任一来源，安装后启用：
 
-```yaml
-- id: dsh-video
-  name: dsh-video
-  config:
-    workerNode: /absolute/path/to/real/node        # 真实 Node 可执行文件；不是 Electron-as-Node
-    workerEntry: /optional/absolute/worker.mjs     # 可选；默认解析 dsh-video-engine-worker/worker
-    workerCwd: /absolute/private/worker-cwd        # 必须存在；Host 显式传给子进程
-    registryPath: /absolute/controlled/registry.json
-    artifactRoot: /absolute/output-root            # 必须与 registry.outputRoot 同一 realpath
-    allowedProjects: [demo]                        # 非空；UI/Tool 只能引用这些 id
-    sessionStatePath: /absolute/private/session-state.json   # 插件自有的工程↔会话映射（原子写）
-    sessionCwd: /absolute/private/creation-cwd                # Host 创建创作会话的受信 cwd
-    # P3-008/P3-009 受控工程/素材（0.3.x managed 模式；worker registry 文件同时声明这些根）
-    projectsRoot: /absolute/managed/projects                  # 受控工程目录；worker 注册表条目必须 realpath 在此根内
-    assetInboxRoot: /absolute/private/asset-inbox             # Host 上传收件箱；UI 不能传任意路径
-    # V1 M1：稳定用户数据根（默认 ~/Movies/DSH Video，可用 env DSH_VIDEO_DATA_ROOT 覆盖）
-    dataRoot: /absolute/user-data-root                        # 可选；显式 config > env > 默认，外置盘可指到这里
-    legacyDataRoots: [/absolute/old-staging]                  # 可选；旧 staging 只读迁移来源（stage-dev 注入）
-    browserPath: /absolute/chrome                            # 可选；写入 <dataRoot>/registry.json 的 worker browserPath
-    # 可选上限：startupTimeoutMs/requestTimeoutMs/shutdownTimeoutMs/maxRequestBytes/
-    # maxArtifactBytes/maxResultBytes/maxPreviewBytes/maxAssetBytes/maxPending 等，见 host/config.js
-```
-
-- `workerNode` 经 `ctx.subprocess.resolveExecutable` 验证后才启动 worker；Host 构造**完整、清理后的子进程环境**（去掉 `ELECTRON_*`、`NODE_*`、`DSH_*`、`npm_*` 等继承项，不修改 `process.env`），并显式传 `cwd`。
-- 启动前只读校验 registry（root/projects/outputRoot/browserPath）、allowlist 项目存在且位于 registry.root 内、`artifactRoot === realpath(outputRoot)`；不会写入工程内容。
-- 缺 `env`/`cwd` seam 的旧引擎 client 会被拒绝（需要复审通过的 P2-003 快照）。
-- `sessionStatePath`/`sessionCwd` 缺失只禁用创作会话与历史，画面预览、编辑与导出仍可用；两者都在可信配置里，UI 只能传工程 id 与已登记 session id，不能指定路径。
-
-### 工程会话与上下文
-
-- 映射由插件 Host 唯一拥有并持久化：`projectId → sessionIds/activeSessionId`，一工程多会话、一 Session 只属于一工程；文件带版本号，写入串行并使用临时文件 + rename，坏文件/未知版本不被静默清空。消息、标题与模型选择仍以 DSH Session 为权威，插件不复制聊天日志或凭据。
-- 新会话由 Host 侧 Session Controller 以受信 `sessionCwd` 创建，只接纳实际返回的 id；客户端双击/重试以 requestId 与单飞去重。历史只列本 Host 登记到该工程的会话；工程内切换会话不导航宿主、不回滚工程。
-- 绑定期间 Host 通过受支持的 `systemPrompt.context` 为对应 Agent 提供实时工程 id、最近 revision 与可用目标能力摘要；上下文不是授权，每个 Tool 操作仍按持久映射检查。
-- `video_engine` 的工程/作业操作从**可信 `exec.agent`** 提取 Session 身份（`agent.session.id`，与 `agent.id` 同时存在时必须一致），按映射校验 projectId 与 job 归属；无 Agent、未绑定、跨工程分别返回 `E_AGENT_REQUIRED` / `E_SESSION_NOT_BOUND` / `E_PROJECT_SCOPE`。`doctor` 不受绑定限制；UI Fetch 路径保持自身连接与工程边界。
-- 工程会话允许被宿主搜索/历史发现，不创建独立 Workspace，不通过归档隐藏。模型选择复用原生 Composer seat，下一次请求生效。
-
-### 嵌入会话图片预览（P3-006-C）
-
-全局主面板中宿主右侧栏没有挂载会话 surface，原生会话的文件打开事件不能走 `ctx.sidebarRight`。本版不修改宿主/不猴补全局服务，而是在插件自己的嵌入 AI 区域内按需打开局部预览：
-
-- 点击原生文件卡、内联文件 mention 或 Markdown 本地文件链接时，插件只在该面板的捕获阶段识别路径类目标并拦截；其他点击与宿主原生行为不变。
-- 路径交给 Host 受信 `preview` 路由：调用必须携带已登记 `sessionId`，Host 用持久映射校验工程归属，并只允许读取**确有归属**的文件：该工程自己的工程目录、该工程绑定 Session 的工程独立工作目录（新会话创建在 `<sessionCwd>/<projectId>`）、登记到该工程的 worker job 产物、Host 颁发的上传 receipt，以及旧共享根中能由该 Session 自己的消息事件明确引用该绝对路径的遗留文件。同根跨工程文件、任意绝对路径、目录/符号链接逃逸与未支持类型全部拒绝。
-- 只按**实际文件字节**嗅探 PNG/JPEG/GIF/WebP 并核对扩展名，不接受重命名为图片的 HTML；超过 `maxPreviewBytes`（默认 8 MiB）直接拒绝。返回有界 data URL，不把 Host 绝对路径作为浏览器 URL。
-- 图片显示在右 AI 区域的局部 dialog 中，关闭即回到原会话；不导航普通对话、不占第三列、不替换左工程预览。当前只支持图片内嵌预览；PDF/Office/视频等明确显示“暂不支持内嵌预览”，不假装已支持全部原生文件类型。
-
-### 对话生成、自动预览与续改（P3-012，当前主流程）
-
-- **唯一提交路径**：AI 通过 `video_engine` 的 `project.compose` 提交**完整 HTML composition**（同一路径同时用于首次生成与每轮修改）；发布前 Host+worker 共同校验 composition 契约（原始 48 KiB 且 JSON-escaped 60 KiB 双上限、唯一 `#main`+`data-composition-id`+数值尺寸/时长、inline `<script>` 中的 `window.__timelines={main:…}`、无外部 URL/嵌入元素、仅已声明本地资产、SDK 回环），再原子写入口、字节回读、私有快照证明、写历史；任一失败回滚最后有效作品并返回可操作 typed error（回滚失败才标 `uncertain`）。`project.source` 读取当前权威 HTML+revision 作为修改基线（同样受 escaped 上限，保证单次 Tool 结果有界）。
-- **AI 与预览同一修订**：compose 成功返回 `publishedRevision` 与 `preview:{mode:'snapshot',status:'ready',checked:'composition+snapshot'}`（只证明契约+快照管线可服务，不声称浏览器已播放）；Host 立即刷新 prompt facts。左侧 `preview.snapshot` 按同一 revision 加载，播放/seek 由 fixed runtime 自身时钟驱动。
-- **自动更新**：左面板对任意已载入工程每 1500ms `inspect` 一次，revision 变化自动换新快照，无需刷新/重开；加载中保留最后有效画面；快照失败显示可恢复错误+重试，不再有旧 PNG/表单降级或永久“画面尚未生成”。迟到的旧工程/旧 revision 结果有 projectId/mounted 守卫，不覆盖当前作品。
-- **首开即创作**：`project.list` 返回 `{projects:[{projectId,updatedAt,title}], defaultProjectId}`（`title` 为 P3-016 可选显示标题，旧工程为 `null`）；Plugin 自动打开记住的/最近的受管工程并载入其绑定原生 Session，工程无会话时自动创建一次；完全无工程时自动创建一次「空工程+会话」。右侧原生 Conversation/历史/模型/文件预览不变，不常驻第三列、无场景卡片。
-- **产品 UI 只读**：对象点选/描边/拖动/缩放手柄、原位文字编辑、浮动属性、目标下拉/颜色/字号/时间表单、“保存修改”、素材抽屉/场景按钮/导出按钮均不出现在当前产品 UI；底层 typed edit/scene API 与旧手动画布实现保留，后续恢复直接编辑时复用。
-- **P3-016 界面（本候选）**：右栏可拖拽加宽（默认约 42%、上限 720px、左侧保底、双击恢复、方向键微调、比例按版本化 localStorage 记住；窄容器仍上下堆叠）；顶栏左对齐为「返回 → 作品名 → 工程下拉箭头」，点作品名内联重命名（Enter 保存 / Esc 取消，失败就地提示），旧工程无 `title` 时继续从内容推导；移除插件内显示设置（gear/简化界面效果）及其 localStorage 与 `data-simplified`，系统 `prefers-reduced-motion/transparency` 自动适配保留。
-- **失败保护（协调复审 R1/R2 补修，2026-10-18 第二轮）**：R1 = `project.compose` 的权威 commit 点为入口写+回读+快照证明；其后历史写入失败返回**成功**并以 `history:{status:"degraded",code:"E_HISTORY"}` 结构化降级（真实 `publishedRevision` 不丢，不把已发布内容报成失败，同 operationId 重试返回同一结果）。R2 = 左侧失败时**保留最后有效作品**：新 revision 在隐藏 candidate iframe 预加载，只有其 runtime ready 才替换并释放旧快照；snapshot/runtime 失败保留旧画面（仍可播放）并在就近显示可恢复提示+重试，`data-canvas-revision`/`data-canvas-target-revision` 分别表示已显示/请求中的 revision。Host 快照路由按工程有界保留，切换成功后显式释放。**R2-follow-up（review-02 唯一残留）**：width/height/duration 绑定到每个预览实例，等待/失败期间旧作品的 viewport、letterbox、seek 范围与时长显示不受新 target props 影响，runtime ready 后才原子切换全部显示元数据。独立真 Chrome：chain 261/261（含 R1）、preview 151/151（B1–B5）、R2 压力 159/159、R1 对抗 probe 32/32；R1/R2/R2-follow-up 均 CLOSED。
-- **独立复审**：独立 verifier 在冻结 staging 上发现 1 项 HIGH availability 缺陷（quote 密集但契约合法的 HTML 经 JSON 转义后可逾 64 KiB JSONL 帧并杀死 worker）与 2 项校验/声言问题；已在 `d84ec5d` 修复：Host+worker 双侧 escaped ≤60 KiB 上限、timeline 只认 inline `<script>` 且拒绝 null/undefined，并用 post-fix probe 闭环。最终 fix staging 上独立 harness A–E 全过（chain 230/230、browser 41/41）。
-- 支持范围由上述 composition 契约决定，不绑定 `product-launch-v1` 模板；首轮采用已验证的 HTML/SVG/GSAP 程序化作品形式，不引入新渲染后端。已知边界：48 KiB（且 JSON-escaped ≤60 KiB）是 AI 编辑路径上限；timeline 暴露是静态必要校验，真正播放由左侧 runtime 证明，静态检查通过但运行时不播放会显示可恢复预览错误而不是假“已完成”；compose 全量替换文档，未要求修改的内容由 AI 保留；真实模型生成质量/长对话效果未在本轮授权内验收。
-
-### 受控画布、工程与素材（P3-008）
-
-- **工程**：0.3.0 managed 模式下，Host `project.list/project.create` 只接受受控模板 `product-launch-v1`，并从 worker 管理的注册表发现/校验 `projectsRoot` 下的工程；新工程先由 worker 真实创建，再创建并绑定原生创作 Session。UI 只采用 worker 返回的 projectId；创建/绑定失败保留已创建工程并诚实报错，可重试会话绑定。
-- **画布**：`preview.snapshot` 让 worker 生成私有只读快照；Host 按 manifest 逐文件校验 bytes/sha256 后注册精确 Fetch 路由，entry 注入固定 runtime 并下发严格 CSP（`connect-src 'none'`、inline script hash、`frame-ancestors 'self'`）。客户端以 `sandbox="allow-scripts"`（无 allow-same-origin）加载，按 composition CSS px 做 letterbox/hitTest；播放/暂停/seek 由 runtime 自身时钟驱动，不靠 PNG 轮询冒充播放。
-- **直接编辑**：文字/位置/尺寸/颜色/字号通过 worker `edit` 的 `text/layout/style` typed ops 提交，携带 `expectedRevision`+`operationId`；成功换新 revision 并重载快照，失败保留原状并显示可恢复错误。播放中禁止写；Scene 级底色走 `scene.update`，不把调色副产物当工程已改。
-- **复审 R1–R5 修复（P3-008 review 01）**：Scene 换色/换 shot 先取当次权威 `inspect` 的完整 `scenes[].template`，只改目标字段并携带新鲜 `expectedRevision`，无完整模板时拒绝破坏性写而不是用 UI 默认值补；拖动/缩放以 `elements[].layout` 静态基座和当前动画逆映射求 patch，移动不携带无关尺寸、不把动画矩形/transform 烘焙进 HTML；原位文字在成功后才关闭编辑，失败/冲突保留草稿、目标与显式重试，不自动重放 uncertain 写；运行时消息恢复严格 v1 信封/允许事件/载荷/单调序号，并明确结算被销毁实例的 pending；Host 文件预览按工程/Session/产物/receipt 归属校验，所有已接请求与上传统一准入/排空，停用后不再发布路由、文件或 receipt。
-- **第二轮复审补修（P3-008 review 02）**：Scene 模板文本上限与冻结引擎 0.3.2 对齐（title 1–2048、subtitle/badge 0–2048，Client 复制校验与 Host 模板校验一致，不截断合法文本，2049 超界拒绝且到不了 worker）；原位文字的 operationId 绑定**一次不可变写入尝试**（冻结 operationId/expectedRevision/ops），原样重试发送完全相同的请求并由 worker 幂等返回，不再读取最新 revision 或变化草稿冒充原请求；修改保留草稿或显式刷新形成新意图时，先结算旧尝试的确定/不确定结果，再用新 operationId 与结算后 revision 提交，冲突走显式刷新路径，E_OPERATION_REUSED 不再是死路，用户无需 Esc/重开编辑器脱困。
-- **AI 同工程**：右 AI 仍使用原生 Conversation；Host 在 Tool/UI 两条路径上按 Session→工程持久映射校验，Tool 的 `edit` 已支持 text/timing/layout/style，并有受控 scene/history/revise actions（这些是针对 template Scene 的底层能力，产品 UI 当前不再暴露手动入口）。会话 prompt context 注入新鲜 revision、Scene/可编辑 stableId/capabilities 与素材摘要；P3-012 起自由创作工程改用 `project.source`+`project.compose` 全文档路径，prompt 中同时保留 typed edit 提示。
-- **素材**：Host `POST /api/dsh-video/asset-upload` 只接受 PNG/JPEG（≤8 MiB、签名/扩展名一致），写入受信 inbox 并返回短期 receipt；`asset.import` 只收 receipt，worker 再按自己的 assetInboxRoot 复制并重算 revision。UI/Tool 都不能传绝对路径或任意 URL；不支持视频/音频/SVG。
-- **兼容**：旧 legacy demo 已从产品 UI 过滤（不在自动打开/切换列表中出现）；engine 仍能读取旧 legacy 工程，旧手动画布/表单实现保留在 `previewOnly:false` 代码路径，不伪装具备不存在的 layout/style 能力。
-
-### Host 请求与 Tool
-
-- 请求体为 JSON `{ "method": "...", "params": { ... } }`，正文默认上限 64 KiB；拒绝额外字段、未知方法、任意 path/URL。项目参数只能是配置 allowlist 的 id；`status`/`cancel`/`artifact` 还必须对应该 Host 实例已登记、由本实例启动的 job。
-- Tool 与路由调用同一个 dispatcher；错误统一为 `{ code, message, stage, uncertain?, jobUnknown? }`，保留 edit 的结果不确定性、frame/render 丢失 jobId 的不确定性；Host 不自动重试写/渲染，也不保存第二份 revision 或 operationId 结果。Tool execute 与渲染共用 64 KiB 原始 UTF-8 字节预算；超限返回 `E_RESULT_LIMIT`，不截断后伪装成功。
-- 成功 frame/render 登记 `jobId → projectId/revision`；`GET/HEAD artifact` 会重新向 worker 取 succeeded 记录，再校验 UUID 文件名、realpath 在输出根、普通文件、大小上限与 SHA-256，才发布 PNG/MP4。只支持完整 GET/HEAD，不做 Range、目录列表或任意 URL 代理；不返回绝对路径、源码、stderr。
-- P3-015 提速：事实已有 revision 时走 `project.source`→`project.compose` 快路径并跳过 inspect；prompt 明确禁止本地渲染/调试回路与无预算视觉自检。`frame` 支持 `times`（1–4 个时间点一次渲染）与 Host 层 `wait:true`（250ms 轮询、≤30s/timeoutMs），worker 用一次 HyperFrames `snapshot` + ffmpeg 拼成单张 contact sheet；`wait` 成功结果带 workspace 相对 `frameImage`（`.dsh-video-frames/latest.png`，经复核后原子写入，0600），模型可直接 `read_image` 一次。旧 `time`、`render` 行为不变。
-- 无 per-session ACL、无多用户工程隔离；当前只允许受控 fixture。worker 路径校验不是安全沙箱。
-
-### 界面
-
-- 打开 **Vedio Editor** 即进入创作：左侧自动出现只读预览（快照加载中显示准备状态；无工程时自动创建一个空工程）；右侧原生 Conversation 常驻，直接输入即可开始。
-- 左侧 = 作品预览 + 播放/暂停 + 连续进度条(seek) + 时间；无对象选择/手柄/原位文字/属性表单/素材抽屉/场景卡片/导出按钮；失败显示本地化可恢复错误+重试。
-- 打开后左侧按 Host 上报 revision 自动显示并可播放；AI 通过对话提交新 revision 后自动更新同一作品，无需点击“更新画面”。工程切换/返回面板保留当前工程与绑定会话；历史会话切换不回滚工程。
-- 右侧为原生 Conversation embedded occurrence（无宿主主 Header、无宽把手），保留原生 Composer、模型 seat、权限、审批、附件与 Stop；`hero:false` 保证不会经 hero 入口导航宿主。上方保留「新会话」与「创作历史」（只列本工程已登记会话）。
-- 打开中/打开失败/就绪按真实状态表达，不会用无条件 active 掩盖 open 错误；没有假播放、时间线或静默自建聊天。
-
-## 开发 staging（固定引擎提交）
-
-根仓库不是完整发行包；worker/client 依赖通过**不可变开发快照**准备。最终 staging 必须使用主会话复审通过的 P2-003 引擎提交。
-
-```sh
-node scripts/stage-dev.mjs   --engine-commit <reviewed-P2-003-sha>   --bundle-version <reviewed-bundle-version>   --node /absolute/real/node   --browser /absolute/chrome   [--font /absolute/font] [--out /absolute/staging-dir]   [--data-root /absolute/user-data-root]   [--legacy-data-root /absolute/previous-staging]
-```
-
-`--bundle-version` 必须显式给出，且与所固定提交根 `package.json` 的版本（当前 **1.0.0-alpha.2**）完全一致；非法 semver 或不一致会在创建输出目录、安装依赖之前失败，脚本不会猜测或隐式接受任意版本。后续升级根版本时同步传入新版本，不删除这项校验。
-
-引擎版本只接受主会话已复审的固定版本对（当前 `0.1.1/0.1.1`、`0.3.0/0.3.0`、`0.3.1/0.3.1`、`0.3.2/0.3.2`、`0.4.0/0.4.0`）；0.3.x 起使用 managed `projectsRoot`/`assetInboxRoot`。版本对只按主会话明确固定的提交维护，**绝不自动跟随 p1 分支 HEAD**。
-
-脚本要求根 worktree 干净、引擎包版本属于已复审版本对且暴露 `./worker` / `./package.json` 导出；用该提交的 client/worker 快照 + `npm ci --ignore-scripts` 准备依赖闭包与受控 fixture，生成：
+### GitHub 仓库
 
 ```text
-<staging>/
-  bundle/                  # 1.0.0-alpha.2 M2 候选根 bundle；仅此快照内加本地依赖与 node_modules 链接
-  engine-client/           # 固定 engine commit 快照
-  engine-worker/           # 固定 engine commit 快照 + 依赖闭包 + artifacts fixture/registry/output
-  config.json              # 仅此快照的绝对路径 Host 配置（含 sessionStatePath/sessionCwd）
-  session-cwd/             # 仅此快照的受信创作会话 cwd
-  INTEGRITY.json           # 根/引擎提交、版本、文件摘要、依赖/解析证据、限制
+https://github.com/heswy/dsh-video-editor
 ```
 
-- 相对 `file:` 依赖与链接只对这个开发快照有效，**不是可移植发行 tarball**；正式分发另行定义。staging 会在**快照副本**的 `cordis.patch.yml` 注入本次可信 config（根提交的 patch 仍是空 `config: {}`），因此 link 安装后无需手改 profile。
-- V1 M1 起注入的 config 还包含 `dataRoot`（仅当构建时用 `--data-root` 显式给出；否则由运行时解析默认值）、`legacyDataRoots`（`--legacy-data-root`/`--migrate-from` 传入的旧 staging + 本快照自身 fixture 根）和 `browserPath`。旧 staging 目录只作为**只读迁移来源**，运行数据写到稳定数据根。
-- 缺 esbuild 二进制或 pendingBuilds 时记录为阻塞，不运行 postinstall/未知构建脚本、不升级依赖。
-- staging 校验/真实受控引擎链（不改 DSH 安装）由 `scripts/lib/staged-host.mjs` 先核对 INTEGRITY 中的 Host/config/patch/engine 源文件摘要和包解析，再实际 import **staging 内的** Host，拒绝被改动或混入未记录源文件的快照：
+源码直接提供 JavaScript 和引擎源码，依赖由 DSH 安装，无需授权插件构建脚本。稳定使用可固定到已验收提交：`github:heswy/dsh-video-editor#<commit>`。
 
-```sh
-node scripts/test-host-engine.mjs --staging /absolute/staging-dir
-```
-
-该脚本通过 staging 内的 `VideoBridge` 跑 doctor→open→inspect→title/timing edit→inspect→frame/status/PNG 字节→render/status/MP4 字节→取消→close→dispose，并把脱敏证据写入 staging 同级的 `evidence/`（不修改不可变快照）；它**不等于** DSH 真实激活或真页面验收。
-
-## V1 M1：稳定数据根 / 迁移 / 面板状态
-
-工程与面板数据从「按版本新建的 staging 目录」迁出到**稳定用户数据根**，默认 `~/Movies/DSH Video/`（macOS；非 darwin 的默认位置未验证，v1 以 macOS 为准），可用 Loader config `dataRoot` 或 env `DSH_VIDEO_DATA_ROOT` 覆盖（外置盘）。优先级：config > env > 默认。目录在**首个业务请求**时创建：`projects/`、`asset-inbox/`、`exports/`、`cache/output/`、`session-cwd/` 用 0700；只 chmod 数据根及其子目录，不会 chmod `~/Movies` 之类的父目录。
+### npm 包名
 
 ```text
-<dataRoot>/
-  registry.json        # worker managed 外部配置：仅 projectsRoot/registryPath/outputRoot/assetInboxRoot/browserPath 五键（冻结 schema）
-  projects.json        # 工程登记表 {version, managed, projects:{id: 绝对路径}}（额外字段两端读取器均忽略）
-  session-state.json   # 工程↔创作会话映射（schema v1，原子写；损坏时备份 .corrupt-<ts> 后重建）
-  ui-state.json        # 面板状态 {lastProjectId, layout.aiPaneRatio, timelineOpen}（白名单、原子写、不进 revision）
-  migration.json       # 一次性迁移记录 {version, migratedAt, sources:[{root, projects, copied, skipped, errors}]}
-  projects/<id>/       # 工程内容（index.html + project.json + assets/ + .dsh-video/history）
-  asset-inbox/  exports/  cache/output/  session-cwd/
+dsh-video-editor
 ```
 
-- **兼容性**：worker 的 managed registry 格式不变，只是路径换成数据根；旧 staging 的 `projectsRoot/assetInboxRoot/sessionStatePath/sessionCwd/artifactRoot/registryPath` 降级为迁移来源，不再被写入。
-- **迁移**：来源 = config `legacyDataRoots` > env `DSH_VIDEO_LEGACY_ROOTS` > 从旧 config 路径推导。只复制不移动、按工程记录 copied/skipped/errors、`migration.json` 原子写、失败源可重试、旧目录不删除不改写；重复激活幂等。回滚：删除/清空数据根即可回到旧 staging 安装（旧数据仍在）。
-- **容错**：project map 损坏时依次尝试 `projects.json.bak` → 同目录原子 temp 残留 → **扫描 `projects/` 目录重建**（有 index.html+project.json 才登记，缺文件的目录标 quarantined），仍失败则以空表启动；损坏文件保留为 `.corrupt-<ts>`，绝不静默删除。单工程目录缺失/越界只影响该工程：`project.list` 标 `quarantined:true`，业务请求返回 `E_PROJECT_UNAVAILABLE`，其余工程正常。worker `registry.json` 是派生物，损坏时保留证据后按布局重建。
-- **文件夹按钮（M1-04）**：顶栏工程名/箭头右侧的可见文件夹按钮 + 工程菜单「在 Finder 中显示 / 在文件管理器中显示」「复制路径」。Host 只提供 UI-only `project.path`（registry + realpath + projectsRoot 校验后的绝对路径）与 `project.reveal`（`spawn(cmd,[dir],{detached:true,stdio:'ignore'})` argv 形式，darwin `open`/win `explorer`/linux `xdg-open`，失败 `E_REVEAL_FAILED`）；`source:'tool'` 一律拒绝，`project.list` 不返回路径。复制路径用 `navigator.clipboard` → `document.execCommand('copy')` → 失败 toast 显示路径可手动复制。
-- **面板状态（M1-05）**：启动先 `ui.state.get` 恢复上次打开工程与 AI 栏比例（Host 权威，localStorage 仅 fallback）；打开/切换工程去抖 250ms 写回并显示「保存中/已保存/保存失败·重试」，旧 Host 无 ui-state 时静默降级。该状态不参与工程 revision。
-- **L3 staging harness**：`scripts/lib/data-root-isolation.mjs` 让所有 staged 桥接跑在临时 `<base>/data`，`legacyDataRoots` 只指向被测 staging 快照（M1 配置才启用；alpha.10/alpha.11 旧快照原样透传），并在 teardown 断言真实 `~/Movies/DSH Video` 未被创建/修改。
-- **已知限制/风险**：迁移在首个业务请求**同步**执行，大工程会拖慢首次 `project.list`（M3 素材/长工程后评估后台化）；非 darwin 默认数据根未验证；`scan` 兜底恢复的 map 会把来源标记为 `registryRecovery.projectsRegistry='scanned'`，无法校验的目录标 quarantined；`browserPath` 之后才配置时会原子补写进既有 registry。
+npm 来源选择官方源，或等待所用镜像同步。`dsh-video` 是其他作者的包，请勿混淆。
 
-## 安装（需用户明确授权；由 DSH 界面执行）
+### Release / 离线包
 
-本仓库未做 profile 修改；当前安装为 0.3.0-alpha.11（`artifacts/p2-b/staging-alpha11-51b95dc`），1.0.0-alpha.1 M1 候选 staging 构建后待安装。复审通过并完成 staging 后：
+从 [Releases](https://github.com/heswy/dsh-video-editor/releases) 下载设备对应的 `.tgz`，在添加插件时输入下载地址或本地文件的绝对路径。首次公开 Release 尚未发布。
 
-1. 侧栏 **Plugins → Add plugin**，填入 staging 的 `bundle/` 绝对路径（开发 link）或审阅通过的固定包；
-2. **Install**，完成后 **Enable now**；
-3. 在插件 Loader 行填入 `config.json` 对应的可信配置（或由部署安装流程写入）。
+安装方式、发行准备和更新说明见[安装与发布](docs/releases/UPDATE-CHANNEL.md)。
 
-安装后最小人工清单（需另行授权）：
+## 开始创作
 
-1. 打开 **Vedio Editor**，确认左侧画面/导出仍工作、右侧 AI 常驻且无宿主主 Header；
-2. 点「开始创作」，确认只创建一个会话、Composer 出现并可切换模型（不发送真实请求前不冒充回复）；
-3. 再点「新会话」创建第二个，确认历史列表按工程出现并可在两者间切换；切走其他导航再返回，确认同一 Session 只有一个编辑根且历史可恢复；
-4. 若宿主同时打开同一会话，插件应显示提示而不是抢占编辑根；审批/权限 UI 只来自宿主原生 take-over。
+1. 从 DSH 左侧进入 **dsh-video-editor**，创建或打开作品。
+2. 在右侧描述影片；生成后左侧自动更新预览。
+3. 继续对话，或在时间线上调整片段。自己的图片、视频和音频从 **素材** 导入。
+4. 点击 **导出 MP4**，等待完成并保存成片。
 
-不要在 shell/profile 中手改 `package.json`、`cordis.patch.yml` 或 `node_modules`；安装和 bundle 选择由 Plugin Manager 负责。
+可以从这样的想法开始：
 
-## 停用与回滚
+> 做一段 15 秒的产品介绍，深色背景，分三段展示标题、亮点和结束语，转场简洁。
 
-- **停用**：Plugins 页面关闭 `dsh-video`。Host 停止接受新请求并 `await` 一次 worker dispose；UI/侧栏/路由/Tool/会话引用与 prompt context 随 fiber 释放。worker 只在插件停用/移除时收尾，切换视频面板或返回对话不会停止共享 worker。
-- **重新启用**：再次打开开关；worker 在第一次业务请求时惰性启动，不随面板挂载启动；历史与映射从 `sessionStatePath` 恢复，草稿由宿主会话保留。
-- **回滚**：保留并恢复上一受控候选（alpha.11 staging 为 0.3 回滚锚点；alpha.10/alpha.9/alpha.8 staging 均保留）；移除 1.0.0-alpha.1 bundle 后重装 `staging-alpha11-51b95dc/bundle`，或按 Plugin Manager 历史选择回退。浏览器偏好可删除 `localStorage['dsh-video.ui.v1']`；如需清理插件映射，可在插件停用后按运维流程删除 `sessionStatePath`（不会删除 DSH Session）。
-- **数据影响**：本插件不写 DSH session 事件、不写 profile；工程内容只由受控 worker 写入其配置的 registry 工程目录；云不可用或映射文件损坏时不会静默删除任何会话或工程。
+工程默认保存在 `~/Movies/DSH Video`。模型和密钥由 DSH 管理，本仓库无需配置模型 API key。音频本地生成不等于真人演唱；画布内对象直接编辑暂不提供。
 
-## 本地检查（零构建，无安装）
+## 更新、停用与回滚
+
+编辑器顶栏 **插件更新** 支持检查版本、查看说明和主动安装；本地 link 开发安装由开发者更新。安装完成后按提示重启 DSH。
+
+在 DSH 插件页可以停用。回滚时移除当前插件并安装上一已验证包，保留用户数据目录和旧包；不要删除工程文件。
+
+## 开发
 
 ```sh
-node --check index.js
-node --check client.js
-node --check scripts/check-host.mjs
-node scripts/check.mjs          # manifest/patch/exports/files/locale/侧栏契约/会话接线/UI 范围
-node scripts/smoke-client.mjs   # Client 模块、侧栏原子生命周期、原生会话 kit/历史/切换、真实打开/编辑/帧/导出/取消/错误
-node scripts/check-host.mjs     # Host 配置/env/启动单飞/参数/job 归属/路由/Tool/会话持久化与范围/artifact 字节校验/预览归属/准入排空
-node scripts/test-stage-version.mjs  # staging 版本门禁行为回归（不安装依赖、不生成快照）
-node scripts/test-v1-storage.mjs     # V1 M1 存储 E2E：临时 HOME/dataRoot 的 ensure/迁移/幂等/重启恢复/容错/path+reveal/ui-state
+git clone https://github.com/heswy/dsh-video-editor.git
+cd dsh-video-editor
+npm ci --ignore-scripts
 npm run check
+node --test tests/*.test.mjs
 ```
 
-固定 staging 上的真实链（需要绝对 staging 路径；不安装、不改 profile）：
+运行时为直接加载的 JavaScript。`host/` 负责工程、会话与资源边界，`client.js` 提供原生工作区，`packages/` 保存独立视频引擎。开发规则见 [DEVELOPMENT](docs/DEVELOPMENT.md)，发布流程见[发行指南](docs/releases/UPDATE-CHANNEL.md)。
 
-```sh
-node scripts/test-host-engine.mjs --staging /absolute/staging-dir          # 旧 demo Host→worker 兼容链 + artifact 字节
-node scripts/test-canvas-chain.mjs --staging /absolute/staging-dir         # 受控新工程全链 + R1 scene.template/R3 预览归属条件断言 + Tool project.revise 续改
-node scripts/test-canvas-browser.mjs --staging /absolute/staging-dir       # 真 Chrome 快照 runtime 播放/seek/命中
-node scripts/test-canvas-workspace.mjs --staging /absolute/staging-dir     # 真 Chrome 驱动真实 CanvasWorkspace 鼠标手势与失败恢复（默认 false 手动路径，产品 UI 当前不可达）
-node scripts/test-conversation-chain.mjs --staging /absolute/staging-dir   # P3-012：Tool compose/source 真实链、两题材、连续续改、失败矩阵、真 Chrome 快照播放/seek
-node scripts/test-conversation-preview.mjs --staging /absolute/staging-dir # P3-012：真实 client 工作区在真 Chrome 中自动首预览/续改跟随/失败恢复/无手动控件
-```
+发现问题请提交 [Issue](https://github.com/heswy/dsh-video-editor/issues)，附 DSH/插件版本、设备及复现步骤；不要上传密钥或私人作品。安全问题见 [SECURITY](SECURITY.md)。
 
-`scripts/` 只用于本地检查与 staging，不在根包 `files` 安装清单内。
+## 致谢与许可
 
-## 未验证（复审/安装后按另行授权验收）
+基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)，视频引擎使用 [HyperFrames](https://github.com/heygen-com/hyperframes)。感谢开源社区。
 
-- 真实 DSH 激活后的 kit 形状与 SessionProvider 实际渲染、嵌入聊天/焦点/审批/模型切换、HMR/停用/重连与真实模型请求；
-- 本轮 P3-012 固定提交 staging（R2-follow-up 后 `artifacts/p2-b/staging-p3-012-r2f-0deef8f-a59fb13`，engine 0.4.0）的本地链/浏览器证据见 docs/research 与交付消息；真实 DSH 安装点击验收仍需另行授权，不能把本地 staging/浏览器证据当安装验收；
-- 真实页面视觉/键盘焦点/明暗/窄窗/草稿保持、真实 worker 启停与产物字节；
-- 真实引擎子进程链只能在复审通过的固定 staging/引擎提交上运行，证据归属以 `INTEGRITY.json`/执行路径为准；
-- Windows/Linux、Chrome/FFmpeg 缺失、用户素材与资产导入（PNG/JPEG 先行，SVG/音视频仍缺口）、多用户权限、OS 沙箱、Range/连续预览均未验证。
-
-仓库中的原始方案、开发包及截图用于追溯，采纳范围以产品文档、决策和当前任务为准。
+[MIT](LICENSE) © dsh-video-editor contributors

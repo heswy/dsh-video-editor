@@ -1,3 +1,4 @@
+import {dependencyFile} from './dependencies.mjs';
 import { linkMedia } from "./timeline.mjs";
 import {
   realpath,
@@ -10,7 +11,6 @@ import {
 import { resolve, relative, isAbsolute, dirname } from "node:path";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { openComposition, buildDocument } from "@hyperframes/sdk";
 import { createFsAdapter } from "@hyperframes/sdk/adapters/fs";
 import { fail, keys, string, number, revision, WorkerError } from "./errors.mjs";
@@ -72,7 +72,6 @@ import {
   validateStylePatch,
 } from "./layout.mjs";
 
-const packageRoot = fileURLToPath(new URL("../", import.meta.url));
 // The internal preview-pipeline proof copy of a freshly published revision is
 // discarded in the same request, so a short TTL is enough.
 const COMPOSE_PREVIEW_TTL_MS = 60 * 1000;
@@ -1135,7 +1134,7 @@ export class Projects {
       try {
         await mkdir(resolve(dir, "assets"), { recursive: true });
         const gsap = readFileSync(
-          resolve(packageRoot, "node_modules/gsap/dist/gsap.min.js"),
+          dependencyFile("gsap", "dist/gsap.min.js"),
         );
         await writeFile(resolve(dir, "assets/gsap.min.js"), gsap);
         let manifest = {

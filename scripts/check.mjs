@@ -68,7 +68,7 @@ const moduleId = moduleIdMatch === null ? undefined : moduleIdMatch[1];
 
 check('package name identifies one unique bundle', () => {
   assert(typeof pkg.name === 'string' && /^[a-z0-9][a-z0-9._-]*$/.test(pkg.name), 'package name is missing or not a plain lowercase package id');
-  assert(pkg.private === true, 'expected "private": true for a locally delivered bundle');
+  assert(pkg.private === false, 'distribution bundle must be publishable');
   return pkg.name;
 });
 
@@ -277,8 +277,8 @@ check('P0-005: sidebar entry registration matches the verified list contract', (
   assert(clientSource.includes("ctx.slots.inject('sidebar.panellist'"), 'sidebar entry must follow declaration lifetimes through slots.inject');
   assert(clientSource.includes("ctx.slots.inject('main'"), 'main panel declaration hook missing');
   assert(clientSource.includes("name: 'main'") && clientSource.includes('key: PANEL_ID'), 'main panel key must stay dsh-video');
-  assert(clientSource.includes("'nav.label': 'Vedio Editor'"), 'exact user-requested label spelling missing from locale dictionaries');
-  assert(clientSource.indexOf("'nav.label': 'Vedio Editor'") !== clientSource.lastIndexOf("'nav.label': 'Vedio Editor'"), 'label must exist in both shipped dictionaries');
+  assert(clientSource.includes("'nav.label': 'dsh-video-editor'"), 'exact user-requested label spelling missing from locale dictionaries');
+  assert(clientSource.indexOf("'nav.label': 'dsh-video-editor'") !== clientSource.lastIndexOf("'nav.label': 'dsh-video-editor'"), 'label must exist in both shipped dictionaries');
   return 'native sidebar.panellist id/order/label + main key';
 });
 
@@ -448,7 +448,7 @@ check('P2-002-B: committed runtime carries no development/deployment absolute pa
       assert(source.includes(forbidden) === false, `${name} hard-codes or adopts unsupported runtime detail "${forbidden}"`);
     }
   }
-  assert(pkg.dependencies === undefined, 'the committed root manifest must not carry engine/dev dependencies; staging adds them only to its snapshot');
+  assert(!Object.values(pkg.dependencies||{}).some(value=>/^(file:|link:|\/)/.test(value)), 'published dependencies must not use local filesystem paths');
   return `${runtime.length} runtime files, no absolute dev/deployment paths`;
 });
 

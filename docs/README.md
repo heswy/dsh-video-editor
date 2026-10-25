@@ -1,19 +1,9 @@
-# 文档索引
+# 文档
 
-更新：2026-10-17。开工先看当前文件，不按文件数量或历史任务编号推断优先级。
+- [安装与发布](releases/UPDATE-CHANNEL.md)：GitHub、npm、离线包及版本更新。
+- [当前状态](STATUS.md)：已完成、已验证与发行边界。
+- [开发规则](DEVELOPMENT.md)：协作、分支、验证和用户数据保护。
+- [产品范围](product/PRODUCT.md) · [界面设计](design/FRONTEND-DESIGN.md) · [架构决策](DECISIONS.md)
+- [独立 worker](adr/0001-independent-video-worker.md) · [Host 桥](adr/0002-host-bridge-runtime-and-boundaries.md)
 
-| 文档 | 唯一职责 |
-|---|---|
-| [STATUS](STATUS.md) | 当前事实、活动任务、未验证关口、下一动作 |
-| [DEVELOPMENT](DEVELOPMENT.md) | 可复用规则、工作区/分支路径、权限与协作流程 |
-| [PRODUCT](product/PRODUCT.md) | 用户确认的产品目标和范围 |
-| [FRONTEND-DESIGN](design/FRONTEND-DESIGN.md) | 当前交互与视觉规格；已移除场景卡片 |
-| [DECISIONS](DECISIONS.md) | 决策演变；先看顶部有效决策索引 |
-| [ROADMAP](ROADMAP.md) | 阶段规划，不等于实现授权 |
-| [handoffs](handoffs/README.md) | 按工作区名进入当前接手说明 |
-| tasks/ | 固定任务范围、基线、交付记录；完成不等于验收 |
-| reviews/ | 独立评审结论、发现、接受范围与限制 |
-| research/ | 调查与证据；需辨别时间、Host 版本与验证层级 |
-| [STATUS-HISTORY](STATUS-HISTORY.md) | 旧阶段与交接流水；不可作为当前指令 |
-
-reference/、product/references/ 和概念图是参考证据，不是执行授权。旧任务或旧分支中的全局文档可能落后；开发会话按 AGENTS.md 从协调分支读取最新入口，不整分支 merge 来同步文档。
+早期实验、第三方开发包副本、评审流水和原始验收证据不再随当前源码分发。需要追溯时查看[整理前的固定版本](https://github.com/heswy/dsh-video-editor/tree/56841bb60b989aa55aa0ef4897f107a8a66823d1)。当前入口以 main 为准。

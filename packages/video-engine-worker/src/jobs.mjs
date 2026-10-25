@@ -1,3 +1,4 @@
+import {dependencyManifest,dependencyFile} from './dependencies.mjs';
 import { mkdir, mkdtemp, rm, readFile, rename, stat } from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
@@ -8,7 +9,7 @@ import { audioMixPlan } from "./audio.mjs";
 import { runOwned } from "./process.mjs";
 import { fail, number } from "./errors.mjs";
 const packageRoot = fileURLToPath(new URL("../", import.meta.url));
-const cli = resolve(packageRoot, "node_modules/hyperframes/dist/cli.js");
+const cli = dependencyFile("hyperframes", "dist/cli.js");
 const terminal = new Set(["succeeded", "failed", "cancelled", "timed_out"]);
 export const MAX_FRAME_TIMES = 4;
 /**
@@ -704,7 +705,7 @@ export function versions(config = {}) {
   };
   const pkg = (name) =>
     JSON.parse(
-      readFileSync(resolve(packageRoot, "node_modules", name, "package.json")),
+      readFileSync(dependencyManifest(name)),
     ).version;
   return {
     node: process.version,

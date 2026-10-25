@@ -1,0 +1,3 @@
+title = "dsh-video-editor secret scanning"
+[extend]
+useDefault = true
