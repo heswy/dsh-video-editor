@@ -302,6 +302,12 @@ try {
   await page.waitForSelector('.dv-timeline[data-duration-mode="auto"][data-duration-frames="600"]');
   await page.waitForFunction(()=>document.querySelector('.dv-time').textContent.includes('/ 20.00'));
   await page.waitForNetworkIdle({idleTime:500,timeout:15000});
+  await page.evaluate(()=>document.getElementById('mount').style.width='799px');
+  await page.waitForNetworkIdle({idleTime:500,timeout:15000});
+  const coverage=await page.$eval('.dv-clip-visuals',el=>{const r=el.getBoundingClientRect(),bands=[...el.querySelectorAll('.dv-filmstrip')].filter(x=>x.children.length).map(x=>x.getBoundingClientRect());return {left:Math.min(...bands.map(x=>x.left))-r.left,right:r.right-Math.max(...bands.map(x=>x.right)),width:r.width};});
+  assert.ok(coverage.left<=2&&coverage.right<=2,JSON.stringify(coverage));checks++;
+  await page.evaluate(()=>document.getElementById('mount').style.width='800px');
+  await page.waitForNetworkIdle({idleTime:500,timeout:15000});
   await page.evaluate(()=>{window.visualTilesBefore=document.querySelectorAll('.dv-filmstrip img').length;window.visualMinTiles=window.visualTilesBefore;window.visualObserver=new MutationObserver(()=>{window.visualMinTiles=Math.min(window.visualMinTiles,document.querySelectorAll('.dv-filmstrip img').length);});window.visualObserver.observe(document.querySelector('.dv-timeline'),{childList:true,subtree:true});});
   await page.click('.dv-play');await page.waitForFunction(()=>Number(document.querySelector('.dv-seek').value)>.2);await page.click('.dv-play');
   await page.waitForNetworkIdle({idleTime:500,timeout:15000});

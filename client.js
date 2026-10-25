@@ -4053,7 +4053,7 @@ window.__ModuleLoader__.load({
           const count=Math.max(1,Math.min(24,Math.ceil((view.right-view.left)/88))),batches=Math.ceil(count/4);
           let jobs=result?.revision===props.revision?result.jobs.filter(j=>j.endFrame>visibleStart&&j.startFrame<visibleEnd):[];
           for(let batch=0;batch<batches&&!dead;batch++){
-            const startFrame=Math.floor(visibleStart+(visibleEnd-visibleStart)*batch/batches),endFrame=Math.ceil(visibleStart+(visibleEnd-visibleStart)*(batch+1)/batches);
+            const startFrame=Math.floor(visibleStart+(visibleEnd-visibleStart)*batch/batches),endFrame=Math.floor(visibleStart+(visibleEnd-visibleStart)*(batch+1)/batches);
             if(endFrame<=startFrame)continue;
             const sampleCount=Math.min(4,count-batch*4);
             if(jobs.some(j=>j.startFrame===startFrame&&j.endFrame===endFrame&&j.count===sampleCount))continue;
