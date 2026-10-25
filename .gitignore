@@ -12,3 +12,12 @@ playwright-report/
 
 # ignored local evidence (fixed tarballs, renders)
 artifacts/
+
+# Local credentials, private configs and generated media
+.npmrc
+*.pem
+*.key
+*.p12
+*.pfx
+*.tgz
+*.tar.gz

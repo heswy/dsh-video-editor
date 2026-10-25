@@ -68,7 +68,7 @@ const moduleId = moduleIdMatch === null ? undefined : moduleIdMatch[1];
 
 check('package name identifies one unique bundle', () => {
   assert(typeof pkg.name === 'string' && /^[a-z0-9][a-z0-9._-]*$/.test(pkg.name), 'package name is missing or not a plain lowercase package id');
-  assert(pkg.private === true, 'expected "private": true for a locally delivered bundle');
+  assert(pkg.private === false, 'distribution bundle must be publishable');
   return pkg.name;
 });
 
@@ -448,7 +448,7 @@ check('P2-002-B: committed runtime carries no development/deployment absolute pa
       assert(source.includes(forbidden) === false, `${name} hard-codes or adopts unsupported runtime detail "${forbidden}"`);
     }
   }
-  assert(pkg.dependencies === undefined, 'the committed root manifest must not carry engine/dev dependencies; staging adds them only to its snapshot');
+  assert(!Object.values(pkg.dependencies||{}).some(value=>/^(file:|link:|\/)/.test(value)), 'published dependencies must not use local filesystem paths');
   return `${runtime.length} runtime files, no absolute dev/deployment paths`;
 });
 

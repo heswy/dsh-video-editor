@@ -1,29 +1,63 @@
-# 插件安装与后续更新
+# 安装、发布与更新
 
-V1 首轮发行渠道为公开仓库 `https://github.com/heswy/dsh-video-editor/releases`，不需要npm账号。不把本地link候选当作对外发行包。
+## DSH 支持四类来源
 
-## 用户体验
+| 输入 | DSH 的处理方式 | 本项目 |
+|---|---|---|
+| `https://github.com/heswy/dsh-video-editor` | 获取 Git 源码并安装依赖 | 直接提供 JS 与引擎源码，无 prepare/postinstall。稳定版建议固定提交。 |
+| `dsh-video-editor` 或 `dsh-video-editor@1.0.0` | 从所选 npm registry 下载已发布包 | 需要先发布到 npm；镜像可能延迟同步。 |
+| HTTPS `.tgz` URL / 本地 `.tgz` 绝对路径 | 安装压缩包及声明依赖 | 常规 npm 包需联网获取依赖；离线平台包另含依赖。 |
+| 本地源码目录绝对路径 | link 开发安装 | 先在源码目录装好依赖；不自动替换为公网版本。 |
 
-首次在DSH插件页安装对应设备的Release资产URL；目前验证macOS Apple Silicon，文件名为 `dsh-video-<version>-darwin-arm64.tgz`。之后在编辑器顶栏“插件更新”中检查/安装。GitHub Release必须为非草稿正式版，tag `v<version>`，并带对应平台架构的资产；缺包明确提示，不报告已是最新。不自动安装、不擅自重启。工程和素材保存在稳定数据根，更新只替换插件。
+Release 页面 URL 不是安装包地址。GitHub 仓库 URL 也不会自动下载最新 Release，而是安装仓库源码。
 
-本机当前是link安装，显示“本地开发安装，由开发者更新”；不会将测试候选静默替换为公网包。转为正式发行安装时，使用官方插件管理器安装Release URL。未知来源/旧DSH不支持时提供明确状态，不猜测来源。已发布npm安装在支持版本API的DSH上走官方listVersions/updateBundle。
+上述契约核对自本机 DSH Plugin Manager 与[官方打包文档](https://deepseek-harness.github.io/deepseek-harness/en/develop/basic/publish)。不要在用户真实 profile 中手写配置或运行包管理器。
 
-运行先决条件：DSH至少0.2.1-rc.2，系统可用Node22+、FFmpeg和Chrome；DSH自身Node/Electron进程不当作普通Node执行。首轮发行包带引擎及JavaScript依赖，不带这些系统程序，不宣称Linux、Windows或Intel实机验收。
+## 包名与身份
 
-## 开发者发布流程
+公开包名为 **dsh-video-editor**；`dsh-video` 已由其他作者占用，不属于本仓库。Loader 行与客户端模块 id 使用新包名；UI panel key、API 路由和用户数据保持原值。
 
-1. 合并已验证的代码到main；根package.json升级semver。首次正式版1.0.0，后续修复1.0.1、功能1.1.0；不覆盖同版资产。
-2. 用干净固定提交运行stage-dev，之后运行：
+旧本机 `dsh-video` link 安装不受此次仓库修改影响。迁移到正式包时通过官方管理器停用/移除旧包再安装新包，不同时启用两者；保留旧固定包和 `~/Movies/DSH Video`，不要删除用户工程。
 
-   `node scripts/pack-release.mjs /absolute/immutable-stage /absolute/new-output`
+## 首次 npm 发布
 
-   输出对应平台tgz、SHA256SUMS；包内RELEASE.json记载源码提交、平台与固定包摘要。没有npm token，也不在包里放凭据、用户工程或本机配置。
-3. 完成固定包工作区、更新单元/UI以及 `test-release-install.mjs <tgz>` 隔离实装验收。该测试用临时DSH_HOME，验证旧测试版安装→新版→同一工程revision保留→真实抽帧，不操作用户profile。
-4. 在main对应提交创建 `v<version>` Release，可手动上传已验证的tgz及SHA256SUMS。启用Actions时先把工作流模板放入.github/workflows，并由具有workflow权限的账号提交。`docs/releases/release-workflow.yml.example`（待启用模板） 校验tag与版本、main归属，在macOS arm64构建验证并上传tgz/摘要。手动运行workflow只产生Actions产物，不发布。首次公开Release及网络下载链路需要发布后单独实测，未发布前不能声称公网升级验收通过。
-5. 确认公网资产可下载，然后从上一正式版本通过更新按钮安装并核对版本、工程、渲染及回滚。若流水线失败/缺包，用户会看到该设备尚无安装包，不会装不完整Release。
+1. 先将已评审 PR 合入 main，从干净提交制作发行包。根依赖与 worker 的固定版本必须一致。
+2. 检查 npm 登录账号和包名权限；`npm whoami --registry=https://registry.npmjs.org`。使用交互登录或可信发布，不把 token 放进源码、文档、构建包或终端记录。
+3. 完成验证：
 
-## 管理器与恢复
+   ```sh
+   npm ci --ignore-scripts
+   npm run check
+   node --test tests/*.test.mjs
+   npm pack --ignore-scripts --pack-destination /absolute/release-output
+   node scripts/test-release-install.mjs /absolute/release-output/dsh-video-editor-1.0.0.tgz
+   npm publish --dry-run --ignore-scripts --access public --registry=https://registry.npmjs.org /absolute/release-output/dsh-video-editor-1.0.0.tgz
+   ```
 
-新DSH的npm升级交给官方updateBundle。GitHub渠道兼容现有removeBundle/installBundle，保留来源和启用状态，失败重装原来源，失败信息保留；恢复失败时用户需在DSH插件页重装上一Release。安装/恢复由宿主管理器持有，插件卸载不取消该事务。导出中拒绝更新。客户端不能提交任意包名、URL或构建脚本授权，AI业务工具没有更新方法。
+   发布前使用 Gitleaks 扫描当前受控文件与全部 Git 历史；核对包内不含 key、个人路径、用户工程和历史证据。`npm pack` 只收录 package.json 的 files 清单。
+4. 获得当次正式发布授权后，发布**同一个已验证 tarball**：
 
-当前功能和隔离安装证据见 `docs/tasks/V1-plugin-updates.md`；首次公开发布状态以STATUS为准。
+   ```sh
+   npm publish --ignore-scripts --access public --registry=https://registry.npmjs.org /absolute/release-output/dsh-video-editor-1.0.0.tgz
+   ```
+
+   npm 可能要求网页/双因素认证；用户自行完成，不索取验证码或令牌。登录成功不等于包已发布。
+5. 发布后确认 npm 元数据、下载包摘要，再用临时 DSH_HOME 执行包名安装、创建工程及真实抽帧；GitHub 则固定合入提交验证。然后移除 README 的“待发布/待合入”提示。版本不可覆盖，后续修复使用1.0.1。
+
+## GitHub Release 与离线包
+
+npm 包与 GitHub 源码安装相同的 JS/引擎源码；正常安装仍需 registry 获取依赖。macOS arm64 离线包可以通过现有固定 staging 构建：
+
+```sh
+node scripts/pack-release.mjs /absolute/immutable-stage /absolute/new-output
+```
+
+输出 `dsh-video-<version>-darwin-arm64.tgz` 与 SHA256SUMS。离线包包含引擎与 JavaScript 依赖，不包含 Node/FFmpeg/Chrome；只发布已验证设备平台。`RELEASE.json` 记录固定源码提交和平台。
+
+获授权后在对应 main 提交创建 `v<version>` Release，上传已验证包、摘要和版本说明；不覆盖同版资产。`release-workflow.yml.example` 是待启用模板，尚未在云端验证；启用需要 GitHub workflow 权限。不要把“模板存在”当成“发布完成”。
+
+## 后续更新
+
+npm 安装在支持版本 API 的 DSH 上使用官方 listVersions/updateBundle。GitHub 安装检查本仓库非草稿、非预发布的最新 Release，并严格匹配平台资产；Release 尚未发布时明确提示。GitHub 源码安装不会自动轮询 main 提交。
+
+后台只检查；安装由用户主动点击。旧 DSH 不支持 npm 更新 API 时，可通过管理器重新安装新版本。本地 link 仅显示开发安装，不联网替换。更新时保留工程数据，导出期间拒绝安装，失败尝试恢复旧来源，不自动重启。

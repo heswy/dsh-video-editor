@@ -1,5 +1,5 @@
 /**
- * dsh-video — Client half.
+ * dsh-video-editor — Client half (stable workspace key: dsh-video).
  *
  * Hand-written DSH client bundle (no bundler, no JSX, no npm dependencies).
  * It contributes exactly two things:
@@ -29,7 +29,7 @@
  * versioned and corruption-safe. Project content is not stored here.
  */
 window.__ModuleLoader__.load({
-  id: 'dsh-video',
+  id: 'dsh-video-editor',
   factory(require) {
     'use strict';
 

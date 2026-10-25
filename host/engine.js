@@ -49,12 +49,17 @@ function resolveWorkerEntry(require, workerEntry) {
 export async function loadEngine(options) {
   const settings = options || {};
   const baseUrl = settings.baseUrl === undefined ? import.meta.url : String(settings.baseUrl);
-  const packagedRoot=fileURLToPath(new URL('../runtime/',baseUrl));
-  if(existsSync(resolve(packagedRoot,'engine-client/src/index.mjs'))){
-    const clientEntry=resolve(packagedRoot,'engine-client/src/index.mjs'),workerEntry=settings.workerEntry||resolve(packagedRoot,'engine-worker/src/worker.mjs');
+  const runtimeRoot=fileURLToPath(new URL('../runtime/',baseUrl));
+  const sourceRoot=fileURLToPath(new URL('../packages/',baseUrl));
+  const sourceLayout=existsSync(resolve(sourceRoot,'video-engine-client/src/index.mjs'));
+  const packagedRoot=existsSync(resolve(runtimeRoot,'engine-client/src/index.mjs'))?runtimeRoot:sourceLayout?sourceRoot:runtimeRoot;
+  const clientDir=packagedRoot===sourceRoot?'video-engine-client':'engine-client';
+  const workerDir=packagedRoot===sourceRoot?'video-engine-worker':'engine-worker';
+  if(existsSync(resolve(packagedRoot,clientDir+'/src/index.mjs'))){
+    const clientEntry=resolve(packagedRoot,clientDir+'/src/index.mjs'),workerEntry=settings.workerEntry||resolve(packagedRoot,workerDir+'/src/worker.mjs');
     const {readFile}=await import('node:fs/promises');
     const clientModule=await import(pathToFileURL(clientEntry).href);
-    return {WorkerClient:clientModule.WorkerClient,clientEntry,workerEntry,clientVersion:JSON.parse(await readFile(resolve(packagedRoot,'engine-client/package.json'),'utf8')).version,workerVersion:JSON.parse(await readFile(resolve(packagedRoot,'engine-worker/package.json'),'utf8')).version,baseUrl};
+    return {WorkerClient:clientModule.WorkerClient,clientEntry,workerEntry,clientVersion:JSON.parse(await readFile(resolve(packagedRoot,clientDir+'/package.json'),'utf8')).version,workerVersion:JSON.parse(await readFile(resolve(packagedRoot,workerDir+'/package.json'),'utf8')).version,baseUrl};
   }
   let require;
   try {

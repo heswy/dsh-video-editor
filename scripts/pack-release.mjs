@@ -12,7 +12,7 @@ try{await stat(out);throw new Error('Output must not already exist');}catch(e){i
 const integrity=JSON.parse(await readFile(join(stage,'INTEGRITY.json'),'utf8'));
 if(integrity.rootDirty)throw new Error('Release requires a clean pinned stage');
 const manifest=JSON.parse(await readFile(join(stage,'bundle/package.json'),'utf8'));
-if(manifest.name!=='dsh-video'||!/^\d+\.\d+\.\d+(?:-[\w.-]+)?$/.test(manifest.version))throw new Error('Unexpected release identity');
+if(manifest.name!=='dsh-video-editor'||!/^\d+\.\d+\.\d+(?:-[\w.-]+)?$/.test(manifest.version))throw new Error('Unexpected release identity');
 await mkdir(join(out,'package/runtime'),{recursive:true});const pkg=join(out,'package');
 // Copy authored bundle only; development config and absolute dependency links are replaced below.
 for(const item of await readdir(join(stage,'bundle'))){if(['node_modules','package.json','cordis.patch.yml'].includes(item))continue;await cp(join(stage,'bundle',item),join(pkg,item),{recursive:true,dereference:true});}

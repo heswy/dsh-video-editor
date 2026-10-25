@@ -1120,7 +1120,7 @@ async function mountBootedPanel(hostFetch, options) {
 //#region tests: module + registration baseline
 test('module registers one browser module with the dsh-video id and factory', () => {
   const loaded = loadClient();
-  assert(loaded.registration.id === PANEL_ID, `module id is "${loaded.registration.id}"`);
+  assert(loaded.registration.id === 'dsh-video-editor', `module id is "${loaded.registration.id}"`);
   assert(typeof loaded.registration.factory === 'function', 'factory missing');
   assert(typeof loaded.exports.apply === 'function', 'plugin body lacks apply()');
   assert(
