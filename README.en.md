@@ -17,6 +17,8 @@ Create and refine in chat, preview alongside it, edit across tracks, and export 
 
 </div>
 
+![dsh-video-editor workspace](docs/assets/workspace.png)
+
 ## From an idea to a video
 
 | Step | What you can do |

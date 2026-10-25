@@ -17,6 +17,8 @@ DeepSeek Harness 内的 AI 视频创作与剪辑工作台。<br>
 
 </div>
 
+![dsh-video-editor workspace](docs/assets/workspace.png)
+
 ## 从一句想法，到一条影片
 
 | 创作环节 | 你可以做什么 |
