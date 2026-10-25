@@ -276,6 +276,25 @@ try {
   await page.waitForFunction(()=>[...document.querySelectorAll('.dv-filmstrip img')].filter(x=>x.naturalWidth>0).length>=2);
   assert.ok(await page.$$eval('.dv-filmstrip img',xs=>new Set(xs.map(x=>x.src)).size>1));checks++;
   await page.waitForFunction(()=>document.querySelector('.dv-timeline')?.getAttribute('aria-busy')==='false'&&document.querySelector('.dv-timeline')?.dataset.durationMode==='auto');
+  await page.evaluate(()=>{const m=document.getElementById('mount');m.style.transform='translateX(48px)';m.style.width='680px';});
+  const contextTarget=await page.$('.dv-timeline-clip');const contextRect=await contextTarget.boundingBox();
+  const contextPoint={x:contextRect.x+100,y:contextRect.y+25};
+  await page.mouse.click(contextPoint.x,contextPoint.y,{button:'right'});
+  await page.waitForSelector('.dv-timeline-more[open]');
+  const contextBounds=await page.$eval('.dv-timeline-menu',e=>{const r=e.getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,bottom:r.bottom};});
+  assert.ok(Math.min(Math.abs(contextBounds.left-contextPoint.x),Math.abs(contextBounds.right-contextPoint.x))<=8,JSON.stringify({contextPoint,contextBounds}));
+  assert.ok(Math.min(Math.abs(contextBounds.top-contextPoint.y),Math.abs(contextBounds.bottom-contextPoint.y))<=8,JSON.stringify({contextPoint,contextBounds}));
+  assert.ok(contextBounds.left>=8&&contextBounds.right<=892&&contextBounds.top>=8&&contextBounds.bottom<=752);checks++;
+  await page.keyboard.press('Escape');
+  const trackRect=await (await page.$('.dv-track-name-text')).boundingBox();
+  const trackPoint={x:trackRect.x+10,y:trackRect.y+8};
+  await page.mouse.click(trackPoint.x,trackPoint.y,{button:'right'});
+  await page.waitForSelector('.dv-track-menu-title');
+  const trackBounds=await page.$eval('.dv-timeline-menu',e=>{const r=e.getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,bottom:r.bottom};});
+  assert.ok(Math.min(Math.abs(trackBounds.left-trackPoint.x),Math.abs(trackBounds.right-trackPoint.x))<=8,JSON.stringify({trackPoint,trackBounds}));
+  assert.ok(Math.min(Math.abs(trackBounds.top-trackPoint.y),Math.abs(trackBounds.bottom-trackPoint.y))<=8,JSON.stringify({trackPoint,trackBounds}));checks++;
+  await page.keyboard.press('Escape');
+  await page.evaluate(()=>{const m=document.getElementById('mount');m.style.transform='';m.style.width='800px';});
   if(process.env.VISUALS_ACCEPTANCE==='1'){
     const before=await bridge.invoke('timeline.inspect',{projectId});
     const original=before.tracks[0].clips[0];

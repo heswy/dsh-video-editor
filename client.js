@@ -4015,16 +4015,33 @@ window.__ModuleLoader__.load({
     }
     function TimelinePopover(props) {
       const nodeRef=React.useRef(null);
+      const hidePopup=()=>{const menu=nodeRef.current?.children[1];if(menu?.hasAttribute('popover'))menu.hidePopover?.();};
       React.useEffect(()=>{
         const node=nodeRef.current,owner=node.ownerDocument;
-        const outside=e=>{if(node.open&&!node.contains(e.target))node.open=false;};
-        const escape=e=>{if(node.open&&e.key==='Escape'&&!e.isComposing){e.preventDefault();e.stopPropagation();node.open=false;node.firstElementChild?.focus();}};
+        const close=()=>{hidePopup();node.open=false;};
+        const outside=e=>{if(node.open&&!node.contains(e.target))close();};
+        const escape=e=>{if(node.open&&e.key==='Escape'&&!e.isComposing){e.preventDefault();e.stopPropagation();close();node.firstElementChild?.focus();}};
         owner.addEventListener('pointerdown',outside,true);
         owner.addEventListener('keydown',escape,true);
         return()=>{owner.removeEventListener('pointerdown',outside,true);owner.removeEventListener('keydown',escape,true);};
       },[]);
-      React.useEffect(()=>{if(props.requestOpen)nodeRef.current.open=true;},[props.requestOpen]);
-      return React.createElement('details',{className:props.className,style:props.style,ref:nodeRef,onToggle:()=>{if(!nodeRef.current.open)props.onClosed?.();},onClick:e=>{if(props.closeOnAction&&e.target.closest('button')){nodeRef.current.open=false;props.onClosed?.();nodeRef.current.firstElementChild?.focus();}}},props.children);
+      React.useEffect(()=>{
+        const node=nodeRef.current,menu=node.children[1];
+        if(!props.requestOpen||!menu)return;
+        node.open=true;
+        // The top layer uses viewport coordinates even inside transformed host panels.
+        menu.setAttribute('popover','manual');
+        menu.style.margin='0';menu.style.right='auto';menu.style.bottom='auto';menu.style.color='inherit';
+        menu.style.maxWidth='calc(100vw - 16px)';menu.style.maxHeight='calc(100vh - 16px)';
+        menu.showPopover?.();
+        const place=()=>{const view=node.ownerDocument.defaultView,r=menu.getBoundingClientRect(),{x,y}=props.requestOpen;
+          menu.style.left=Math.max(8,Math.min(x+r.width<=view.innerWidth-8?x:x-r.width,view.innerWidth-r.width-8))+'px';
+          menu.style.top=Math.max(8,Math.min(y+r.height<=view.innerHeight-8?y:y-r.height,view.innerHeight-r.height-8))+'px';};
+        place();const observer=new ResizeObserver(place);observer.observe(menu);
+        const view=node.ownerDocument.defaultView;view.addEventListener('resize',place);
+        return()=>{observer.disconnect();view.removeEventListener('resize',place);menu.hidePopover?.();menu.removeAttribute('popover');};
+      },[props.requestOpen]);
+      return React.createElement('details',{className:props.className,style:props.style,ref:nodeRef,onToggle:()=>{if(!nodeRef.current.open){hidePopup();props.onClosed?.();}},onClick:e=>{if(props.closeOnAction&&e.target.closest('button')){hidePopup();nodeRef.current.open=false;props.onClosed?.();nodeRef.current.firstElementChild?.focus();}}},props.children);
     }
 
     function TrackDeleteConfirmation(props) {
@@ -4540,7 +4557,7 @@ window.__ModuleLoader__.load({
               .map((tr) =>
                 h(
                   "div",
-                  { key: tr.trackId, className: "dv-timeline-track", "data-kind":tr.kind,onContextMenu:e=>{e.preventDefault();e.stopPropagation();setSelectedTrack(tr.trackId);const view=e.currentTarget.ownerDocument.defaultView;setTrackContext({x:Math.max(12,Math.min(e.clientX,view.innerWidth-212)),y:Math.max(12,Math.min(e.clientY,view.innerHeight-310))});} },
+                  { key: tr.trackId, className: "dv-timeline-track", "data-kind":tr.kind,onContextMenu:e=>{e.preventDefault();e.stopPropagation();setSelectedTrack(tr.trackId);setClipContext(null);setTrackContext({x:e.clientX,y:e.clientY});} },
                   h("div", { className: "dv-timeline-track-name",'data-selected':activeTrack?.trackId===tr.trackId?'true':'false',onClick:()=>setSelectedTrack(tr.trackId) },
                     h('button',{className:'dv-track-name-text',title:tr.name,onClick:()=>setSelectedTrack(tr.trackId),'aria-pressed':activeTrack?.trackId===tr.trackId?'true':'false'}, /^(视频轨|音频轨)(\s*\d+)?$/.test(tr.name)?t(tr.kind==='audio'?'video.timeline.audioTrack':'video.timeline.videoTrack').replace('轨道','轨')+' '+(data.tracks.filter(x=>x.kind===tr.kind).indexOf(tr)+1):tr.name),
                     tr.kind==='video'?h('button',{className:'dv-track-visibility','aria-label':t(tr.hidden?'video.timeline.showTrack':'video.timeline.hideTrack')+' '+tr.name,title:t(tr.hidden?'video.timeline.showTrack':'video.timeline.hideTrack')+' · '+tr.name,'aria-pressed':tr.hidden?'false':'true',disabled:busy,onClick:()=>write([{op:'track.update',trackId:tr.trackId,patch:{hidden:!tr.hidden}}])},h(StudioIcon,{name:tr.hidden?'video-off':'video'})):null,
@@ -4589,7 +4606,7 @@ window.__ModuleLoader__.load({
                             (selected === c.clipId ? " is-selected" : "") +
                             (drag?.clipId===c.clipId&&drag.lifted&&!drag.edge?" is-dragging"+(!drag.valid?" is-invalid":""):""),
                           "data-clip-id": c.clipId,
-                          onContextMenu:e=>{e.preventDefault();e.stopPropagation();setSelected(c.clipId);setSelectedTrack(tr.trackId);setTrackContext(null);const view=e.currentTarget.ownerDocument.defaultView;setClipContext({x:Math.max(12,Math.min(e.clientX,view.innerWidth-212)),y:Math.max(12,Math.min(e.clientY,view.innerHeight-350))});},
+                          onContextMenu:e=>{e.preventDefault();e.stopPropagation();setSelected(c.clipId);setSelectedTrack(tr.trackId);setTrackContext(null);setClipContext({x:e.clientX,y:e.clientY});},
                           tabIndex: 0,
                           role: "button",
                           "aria-label": c.label || c.clipId,
