@@ -42,7 +42,7 @@ Release 页面 URL 不是安装包地址。GitHub 仓库 URL 也不会自动下�
    ```
 
    npm 可能要求网页/双因素认证；用户自行完成，不索取验证码或令牌。登录成功不等于包已发布。
-5. 发布后确认 npm 元数据、下载包摘要，再用临时 DSH_HOME 执行包名安装、创建工程及真实抽帧；GitHub 则固定合入提交验证。然后移除 README 的“待发布/待合入”提示。版本不可覆盖，后续修复使用1.0.1。
+5. 发布后确认 npm 元数据、下载包摘要，再用临时 DSH_HOME 执行包名安装、创建工程及真实抽帧；GitHub 则固定合入提交验证（`node scripts/test-source-install.mjs <git-or-npm-spec>`）。然后移除 README 的“待发布/待合入”提示。版本不可覆盖，后续修复使用1.0.1。
 
 ## GitHub Release 与离线包
 

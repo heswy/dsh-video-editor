@@ -4,7 +4,7 @@
  * Hand-written DSH client bundle (no bundler, no JSX, no npm dependencies).
  * It contributes exactly two things:
  *
- *   1. one native sidebar navigation entry ("Vedio Editor") in the host's
+ *   1. one native sidebar navigation entry ("dsh-video-editor") in the host's
  *      `sidebar.panellist` list, immediately after the shipped panel rows and
  *      before the Workspace/Session browsing region;
  *   2. one global main panel under the `dsh-video` key, registered in the host
@@ -212,7 +212,7 @@ window.__ModuleLoader__.load({
 'video.timeline.hint': "选择片段 · S 切分 · 拖边精调 · Delete 删除",
 'video.timeline.add': "加入时间线",
 
-      'nav.label': 'Vedio Editor',
+      'nav.label': 'dsh-video-editor',
       'video.back': '返回对话',
       'video.empty': '尚无工程',
       'video.open': '打开示例',
@@ -486,7 +486,7 @@ window.__ModuleLoader__.load({
 'video.timeline.hint': "Select a clip · S to split · drag edges to trim · Delete",
 'video.timeline.add': "Add to timeline",
 
-      'nav.label': 'Vedio Editor',
+      'nav.label': 'dsh-video-editor',
       'video.back': 'Back to conversation',
       'video.empty': 'No project yet',
       'video.open': 'Open example',
@@ -8466,7 +8466,7 @@ window.__ModuleLoader__.load({
         } catch (error) {
           reportOnce('sidebar-label-failed', error);
         }
-        return 'Vedio Editor';
+        return 'dsh-video-editor';
       }
 
       function navigation() {

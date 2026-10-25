@@ -1,8 +1,8 @@
 <div align="center">
 
-![DSH Video — From conversation to creation](docs/assets/hero.svg)
+![dsh-video-editor — From conversation to creation](docs/assets/hero.svg)
 
-# DSH Video
+# dsh-video-editor
 
 **用对话构思，用时间线打磨，让想法成为影片。**
 
@@ -62,7 +62,7 @@ dsh-video-editor
 
 ## 开始创作
 
-1. 从 DSH 左侧进入 **Vedio Editor**（当前界面入口名称），创建或打开作品。
+1. 从 DSH 左侧进入 **dsh-video-editor**，创建或打开作品。
 2. 在右侧描述影片；生成后左侧自动更新预览。
 3. 继续对话，或在时间线上调整片段。自己的图片、视频和音频从 **素材** 导入。
 4. 点击 **导出 MP4**，等待完成并保存成片。
@@ -97,4 +97,4 @@ node --test tests/*.test.mjs
 
 基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)，视频引擎使用 [HyperFrames](https://github.com/heygen-com/hyperframes)。感谢开源社区。
 
-[MIT](LICENSE) © DSH Video contributors
+[MIT](LICENSE) © dsh-video-editor contributors

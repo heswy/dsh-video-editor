@@ -1,6 +1,6 @@
-# DSH Video 产品范围
+# dsh-video-editor 产品范围
 
-DSH Video 是 DeepSeek Harness 内的 AI 视频创作与剪辑插件。右侧复用宿主原生对话、模型与权限，左侧自动预览同一工程的新版本。
+dsh-video-editor 是 DeepSeek Harness 内的 AI 视频创作与剪辑插件。右侧复用宿主原生对话、模型与权限，左侧自动预览同一工程的新版本。
 
 ## 1.0.0
 

@@ -1,8 +1,8 @@
 <div align="center">
 
-![DSH Video — From conversation to creation](docs/assets/hero.svg)
+![dsh-video-editor — From conversation to creation](docs/assets/hero.svg)
 
-# DSH Video
+# dsh-video-editor
 
 **Start with a conversation. Refine on a timeline. Make it move.**
 
@@ -62,7 +62,7 @@ See [installation and publishing](docs/releases/UPDATE-CHANNEL.md) for channel d
 
 ## Quick start
 
-1. Open **Vedio Editor** in the DSH sidebar (the current UI label). Create or open a project.
+1. Open **dsh-video-editor** in the DSH sidebar. Create or open a project.
 2. Describe the video in the right-hand conversation; the preview updates on the left.
 3. Continue in chat or edit clips on the timeline. Import your own media through **素材 / Assets**.
 4. Choose **Export MP4**, wait for rendering, and save your video.
@@ -97,4 +97,4 @@ Report problems through [Issues](https://github.com/heswy/dsh-video-editor/issue
 
 Built for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness), with a video engine powered by [HyperFrames](https://github.com/heygen-com/hyperframes). Thanks to the open-source community.
 
-[MIT](LICENSE) © DSH Video contributors
+[MIT](LICENSE) © dsh-video-editor contributors

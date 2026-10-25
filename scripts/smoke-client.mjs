@@ -1141,7 +1141,7 @@ test('apply registers the video main panel and one native sidebar entry', () => 
   assert(entry.options.id === PANEL_ID, 'sidebar id must address the same main panel');
   assert(entry.options.order === 30, `sidebar order is ${entry.options.order}`);
   assert(typeof entry.options.label === 'function', 'sidebar label must be a locale-aware thunk');
-  assert(entry.options.label() === 'Vedio Editor', `sidebar label is "${entry.options.label()}"`);
+  assert(entry.options.label() === 'dsh-video-editor', `sidebar label is "${entry.options.label()}"`);
   assert(env.events.locale.length === 1 && env.events.locale[0].ns === 'dshVideo', 'locale dictionaries not registered');
   assert(registrationOf(env, 'conversation.header.leading') === undefined, 'the old top capsule seat must not be used');
   assert(env.events.errors.length === 0, `unexpected activation errors: ${activationErrors(env).join('; ')}`);
@@ -1152,11 +1152,11 @@ test('sidebar label keeps the exact user spelling in both locales', () => {
   const env = createFakeEnvironment();
   loaded.exports.apply(env.ctx);
   const entry = sidebarEntryOf(env);
-  assert(entry.options.label() === 'Vedio Editor', 'zh label must be exactly Vedio Editor');
+  assert(entry.options.label() === 'dsh-video-editor', 'zh label must be exactly dsh-video-editor');
   env.setLocale('en');
-  assert(entry.options.label() === 'Vedio Editor', 'en label must keep the exact user spelling');
-  assert(dictionaryOf(env, 'zh')['nav.label'] === 'Vedio Editor', 'zh dictionary label missing');
-  assert(dictionaryOf(env, 'en')['nav.label'] === 'Vedio Editor', 'en dictionary label missing');
+  assert(entry.options.label() === 'dsh-video-editor', 'en label must keep the exact user spelling');
+  assert(dictionaryOf(env, 'zh')['nav.label'] === 'dsh-video-editor', 'zh dictionary label missing');
+  assert(dictionaryOf(env, 'en')['nav.label'] === 'dsh-video-editor', 'en dictionary label missing');
 });
 
 test('sidebar icon honours the host owner props and native line style', () => {
@@ -1201,7 +1201,7 @@ test('panel renders the preparing status, one return action and one resizable AI
   const separator = splitterOf(tree);
   assert(separator !== null && separator.props.role === 'separator', 'resize separator missing');
   const text = textOf(tree);
-  for (const forbidden of ['空工作区', '从一个想法', '创建工程', '导出', '时间线', 'Vedio Editor', '简化界面效果']) {
+  for (const forbidden of ['空工作区', '从一个想法', '创建工程', '导出', '时间线', 'dsh-video-editor', '简化界面效果']) {
     assert(text.includes(forbidden) === false, `panel still renders removed content "${forbidden}"`);
   }
 });

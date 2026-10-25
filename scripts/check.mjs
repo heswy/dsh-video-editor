@@ -277,8 +277,8 @@ check('P0-005: sidebar entry registration matches the verified list contract', (
   assert(clientSource.includes("ctx.slots.inject('sidebar.panellist'"), 'sidebar entry must follow declaration lifetimes through slots.inject');
   assert(clientSource.includes("ctx.slots.inject('main'"), 'main panel declaration hook missing');
   assert(clientSource.includes("name: 'main'") && clientSource.includes('key: PANEL_ID'), 'main panel key must stay dsh-video');
-  assert(clientSource.includes("'nav.label': 'Vedio Editor'"), 'exact user-requested label spelling missing from locale dictionaries');
-  assert(clientSource.indexOf("'nav.label': 'Vedio Editor'") !== clientSource.lastIndexOf("'nav.label': 'Vedio Editor'"), 'label must exist in both shipped dictionaries');
+  assert(clientSource.includes("'nav.label': 'dsh-video-editor'"), 'exact user-requested label spelling missing from locale dictionaries');
+  assert(clientSource.indexOf("'nav.label': 'dsh-video-editor'") !== clientSource.lastIndexOf("'nav.label': 'dsh-video-editor'"), 'label must exist in both shipped dictionaries');
   return 'native sidebar.panellist id/order/label + main key';
 });
 

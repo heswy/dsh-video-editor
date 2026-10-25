@@ -1,6 +1,6 @@
 {
   "meta": {
-    "title": "DSH Video",
+    "title": "dsh-video-editor",
     "description": "对话优先的视频工作区：右侧为原生创作对话，左侧为自动跟随最新 AI 发布画面的只读预览。"
   }
 }
