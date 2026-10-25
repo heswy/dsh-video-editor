@@ -9,7 +9,7 @@
 An AI video workspace inside DeepSeek Harness.<br>
 Create and refine in chat, preview alongside it, edit across tracks, and export to MP4.
 
-[![Version](https://img.shields.io/badge/version-1.0.0-829cff?style=flat-square)](docs/STATUS.md) [![DSH](https://img.shields.io/badge/DeepSeek_Harness-%E2%89%A50.2.1--rc.2-5865f2?style=flat-square)](https://github.com/deepseek-ai/deepseek-harness) [![Node](https://img.shields.io/badge/Node.js-22%2B-70b798?style=flat-square)](https://nodejs.org/) [![Platform](https://img.shields.io/badge/tested-macOS_Apple_Silicon-a7b8d3?style=flat-square)](#installation) [![MIT](https://img.shields.io/badge/license-MIT-c4b5fd?style=flat-square)](LICENSE)
+[![npm](https://img.shields.io/npm/v/dsh-video-editor?color=829cff&style=flat-square)](https://www.npmjs.com/package/dsh-video-editor) [![DSH](https://img.shields.io/badge/DeepSeek_Harness-%E2%89%A50.2.1--rc.2-5865f2?style=flat-square)](https://github.com/deepseek-ai/deepseek-harness) [![Node](https://img.shields.io/badge/Node.js-22%2B-70b798?style=flat-square)](https://nodejs.org/) [![Platform](https://img.shields.io/badge/tested-macOS_Apple_Silicon-a7b8d3?style=flat-square)](#installation) [![MIT](https://img.shields.io/badge/license-MIT-c4b5fd?style=flat-square)](LICENSE)
 
 [简体中文](README.md) · **English**
 
@@ -42,8 +42,6 @@ Open DSH **Plugins → Add plugin**, enter one of the following sources, install
 https://github.com/heswy/dsh-video-editor
 ```
 
-> Installation support is currently in a PR. The address above will include the complete changes once merged into main; the older main has not passed this installation path.
-
 Plain JavaScript and engine sources ship in the repository. DSH installs dependencies; no plugin build script approval is needed. Pin a verified commit for a stable installation: `github:heswy/dsh-video-editor#<commit>`.
 
 ### npm package
@@ -52,7 +50,7 @@ Plain JavaScript and engine sources ship in the repository. DSH installs depende
 dsh-video-editor
 ```
 
-> **First npm publication pending.** Use GitHub until it is published. `dsh-video` belongs to another author. Choose the official npm registry, or wait for your mirror to synchronize.
+Choose the official npm registry, or wait for your mirror to synchronize. `dsh-video` belongs to another author.
 
 ### Release / offline package
 

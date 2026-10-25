@@ -9,7 +9,7 @@
 DeepSeek Harness 内的 AI 视频创作与剪辑工作台。<br>
 右侧对话生成与续改，左侧即时预览，多轨剪辑与 MP4 导出一站完成。
 
-[![Version](https://img.shields.io/badge/version-1.0.0-829cff?style=flat-square)](docs/STATUS.md) [![DSH](https://img.shields.io/badge/DeepSeek_Harness-%E2%89%A50.2.1--rc.2-5865f2?style=flat-square)](https://github.com/deepseek-ai/deepseek-harness) [![Node](https://img.shields.io/badge/Node.js-22%2B-70b798?style=flat-square)](https://nodejs.org/) [![Platform](https://img.shields.io/badge/tested-macOS_Apple_Silicon-a7b8d3?style=flat-square)](#安装) [![MIT](https://img.shields.io/badge/license-MIT-c4b5fd?style=flat-square)](LICENSE)
+[![npm](https://img.shields.io/npm/v/dsh-video-editor?color=829cff&style=flat-square)](https://www.npmjs.com/package/dsh-video-editor) [![DSH](https://img.shields.io/badge/DeepSeek_Harness-%E2%89%A50.2.1--rc.2-5865f2?style=flat-square)](https://github.com/deepseek-ai/deepseek-harness) [![Node](https://img.shields.io/badge/Node.js-22%2B-70b798?style=flat-square)](https://nodejs.org/) [![Platform](https://img.shields.io/badge/tested-macOS_Apple_Silicon-a7b8d3?style=flat-square)](#安装) [![MIT](https://img.shields.io/badge/license-MIT-c4b5fd?style=flat-square)](LICENSE)
 
 **简体中文** · [English](README.en.md)
 
@@ -42,8 +42,6 @@ DeepSeek Harness 内的 AI 视频创作与剪辑工作台。<br>
 https://github.com/heswy/dsh-video-editor
 ```
 
-> 本次安装适配尚在 PR 中。合入 main 后，上述地址才包含完整适配；此前请勿把旧 main 安装视为已验证。
-
 源码直接提供 JavaScript 和引擎源码，依赖由 DSH 安装，无需授权插件构建脚本。稳定使用可固定到已验收提交：`github:heswy/dsh-video-editor#<commit>`。
 
 ### npm 包名
@@ -52,7 +50,7 @@ https://github.com/heswy/dsh-video-editor
 dsh-video-editor
 ```
 
-> **待首次 npm 发布。** 发布前请使用 GitHub；`dsh-video` 是其他作者的包，请勿混淆。npm 来源选择官方源，或等待所用镜像同步。
+npm 来源选择官方源，或等待所用镜像同步。`dsh-video` 是其他作者的包，请勿混淆。
 
 ### Release / 离线包
 
