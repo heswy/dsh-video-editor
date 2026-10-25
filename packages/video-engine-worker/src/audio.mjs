@@ -24,7 +24,7 @@ export function audioMixPlan(t, root) {
         rate /= 0.5;
       }
       tempo.push(`atempo=${rate}`);
-      const gain = 10 ** (((c.volumeDb ?? 0) + (tr.gainDb ?? 0)) / 20);
+      const gain = 10 ** (((c.volumeDb ?? 0) + (tr.gainDb ?? 0) + (c.sourceGainDb ?? 0)) / 20);
       const filters = [
         `atrim=start=${(c.sourceInFrame ?? 0) / a.fps}:duration=${duration * speed}`,
         'asetpts=PTS-STARTPTS',

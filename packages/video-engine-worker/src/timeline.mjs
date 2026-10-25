@@ -134,7 +134,7 @@ export function validateTimeline(t) {
         const a = assets.get(c.assetId);
         if (!a)
           fail("E_ASSET_NOT_FOUND", "Referenced asset is missing", "timeline");
-        if ((tr.kind === "audio") !== (a.kind === "audio"))
+        if ((tr.kind === "audio") !== (a.kind === "audio" || (c.audioOnly === true && a.kind === "video" && a.hasAudio === true)))
           fail(
             "E_TRACK_KIND",
             "Audio assets require an audio track",
@@ -153,6 +153,7 @@ export function validateTimeline(t) {
         }
       }
       if (c.volumeDb !== undefined) num(c.volumeDb, -60, 12);
+      if (c.sourceGainDb !== undefined) {if(!c.audioOnly) fail("E_TIMELINE_INVALID","Inherited gain requires detached audio"); num(c.sourceGainDb,-60,12);}
       if (c.fadeInFrames !== undefined)
         int(c.fadeInFrames, 0, c.durationFrames);
       if (c.fadeOutFrames !== undefined)
@@ -376,6 +377,30 @@ export function applyOperations(input, ops) {
         const oldEnd = c.startFrame + c.durationFrames,
           oldDur = c.durationFrames;
         switch (o.op) {
+          case "clip.detachAudio": {
+            keys(o, ["op", "clipId"]);
+            const a = t.assets.find(x => x.assetId === c.assetId);
+            if (tr.kind !== "video" || c.kind !== "media" || !a?.hasAudio)
+              fail("E_NO_AUDIO", "此视频无音频");
+            if (t.tracks.some(x => x.clips.some(y => y.detachedFrom === c.clipId)))
+              fail("E_AUDIO_DETACHED", "此片段原声已分离");
+            let target = t.tracks.find(x => x.kind === "audio" && !x.locked && !x.muted && !(x.gainDb ?? 0) && x.clips.length < 200 && x.clips.every(y => y.startFrame >= c.startFrame + c.durationFrames || y.startFrame + y.durationFrames <= c.startFrame));
+            if (!target) {
+              if (t.tracks.filter(x => x.kind === "audio").length >= 3)
+                fail("E_LIMIT", "音频轨已满，请先腾出一条可用音轨");
+              target = {trackId:id("tr_"),kind:"audio",name:"音频轨",clips:[]};
+              t.tracks.push(target);
+            }
+            const audio = {...c, clipId:id("cl_"), audioOnly:true, detachedFrom:c.clipId,
+              label:((c.label ?? a.name ?? "视频").slice(0,110) + " · 原声"),
+              volumeDb:c.volumeDb ?? 0, sourceGainDb:tr.gainDb ?? 0,
+              muted:!!(c.muted || tr.muted)};
+            delete audio.outTransition;
+            target.clips.push(audio);
+            c.muted = true;
+            created = [audio.clipId]; affected.push(audio.clipId);
+            break;
+          }
           case "clip.split": {
             keys(o, ["op", "clipId", "atFrame"]);
             int(o.atFrame, c.startFrame + 1, oldEnd - 1);
@@ -556,7 +581,7 @@ export function applyOperations(input, ops) {
         op: o.op,
         affectedClipIds: affected,
         createdIds: created,
-        summary: `${{ "clip.split": "切分片段", "clip.trim": "调整片段边缘", "clip.delete": "删除片段", "clip.move": "移动片段", "clip.reorder": "重排片段", "clip.insert": "加入素材", "clip.duplicate": "复制片段", "clip.speed": "调整速度", "clip.replace": "替换素材", "clip.set": "更新片段", "clip.volume": "调整音量", "clip.fade": "调整淡入淡出", "clip.transition": "调整转场", "track.add": "添加轨道", "track.update": "更新轨道", "track.remove": "删除轨道", "timeline.settings": "调整作品设置", "scene.insert": "加入 AI 场景", "scene.replace": "更新 AI 场景" }[o.op]}（${affected.length || created.length || 1} 个对象）${targetLabel ? ` · ${targetLabel}` : ""}${detail ? ` · ${detail}` : ""}`,
+        summary: `${{ "clip.detachAudio": "分离音频", "clip.split": "切分片段", "clip.trim": "调整片段边缘", "clip.delete": "删除片段", "clip.move": "移动片段", "clip.reorder": "重排片段", "clip.insert": "加入素材", "clip.duplicate": "复制片段", "clip.speed": "调整速度", "clip.replace": "替换素材", "clip.set": "更新片段", "clip.volume": "调整音量", "clip.fade": "调整淡入淡出", "clip.transition": "调整转场", "track.add": "添加轨道", "track.update": "更新轨道", "track.remove": "删除轨道", "timeline.settings": "调整作品设置", "scene.insert": "加入 AI 场景", "scene.replace": "更新 AI 场景" }[o.op]}（${affected.length || created.length || 1} 个对象）${targetLabel ? ` · ${targetLabel}` : ""}${detail ? ` · ${detail}` : ""}`,
       });
     } catch (e) {
       e.message = `Operation ${i} (${o.op}): ${e.message}`;
@@ -584,11 +609,11 @@ export function generateComposition(t) {
       )
         continue;
       if (c.kind === "media") {
-        tag = a.kind === "audio" || tr.hidden ? "audio" : "video";
+        tag = a.kind === "audio" || c.audioOnly || tr.hidden ? "audio" : "video";
         const gain =
           tr.muted || c.muted
             ? 0
-            : 10 ** (((tr.gainDb ?? 0) + (c.volumeDb ?? 0)) / 20);
+            : 10 ** (((tr.gainDb ?? 0) + (c.volumeDb ?? 0) + (c.sourceGainDb ?? 0)) / 20);
         attrs = `src="${esc(a.path)}" crossorigin="anonymous" playsinline preload="auto" data-media-start="${c.sourceInFrame / a.fps}" data-playback-rate="${c.speed}" data-volume="${gain}" data-has-audio="${a.kind === "audio" || a.hasAudio === true}" data-fade-in="${(c.fadeInFrames ?? 0) / 30}" data-fade-out="${(c.fadeOutFrames ?? 0) / 30}"`;
       } else if (c.kind === "image") {
         tag = "img";
@@ -818,11 +843,12 @@ export class Timelines {
       revision: timelineRevision(t),
       schema: t.schema,
       settings: t.settings,
-      assets: t.assets.map(({ assetId, kind, fps, durationFrames }) => ({
+      assets: t.assets.map(({ assetId, kind, fps, durationFrames, hasAudio }) => ({
         assetId,
         kind,
         fps,
         durationFrames,
+        hasAudio,
       })),
       tracks: t.tracks.map((tr) => ({
         ...tr,

@@ -45,6 +45,8 @@ const RUNTIME_PATHS = [
   'locale/en.json',
   'locale/zh.json',
   'host/bridge.js',
+  'host/updates.js',
+  'host/release-runtime.js',
   'host/audio.js',
   'host/audio-synth.js',
   'host/audio-synth-worker.js',
@@ -87,9 +89,10 @@ const REVIEWED_ENGINE_PAIRS = Object.freeze([
   { client: '0.8.1', worker: '0.8.1' },
   { client: '0.8.2', worker: '0.8.2' },
   { client: '0.8.3', worker: '0.8.3' },
+  { client: '0.9.0', worker: '0.9.0' },
 ]);
 /** Managed-project registries exist from engine 0.3.0; stricter than the pair list on purpose. */
-const MANAGED_ENGINE_VERSIONS = Object.freeze(['0.3.0', '0.3.1', '0.3.2', '0.4.0', '0.5.0', '0.6.0', '0.7.0', '0.8.0', '0.8.1', '0.8.2', '0.8.3']);
+const MANAGED_ENGINE_VERSIONS = Object.freeze(['0.3.0', '0.3.1', '0.3.2', '0.4.0', '0.5.0', '0.6.0', '0.7.0', '0.8.0', '0.8.1', '0.8.2', '0.8.3', '0.9.0']);
 
 const ENGINE_CLIENT = 'packages/video-engine-client';
 const ENGINE_WORKER = 'packages/video-engine-worker';

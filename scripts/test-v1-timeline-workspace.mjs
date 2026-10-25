@@ -132,8 +132,10 @@ try {
     "lavfi",
     "-i",
     "testsrc2=s=320x180:r=30:d=20",
+    ...(process.env.VISUALS_ACCEPTANCE==='1'?["-f","lavfi","-i","sine=frequency=440:duration=20"]:[]),
     "-c:v",
     "libx264",
+    ...(process.env.VISUALS_ACCEPTANCE==='1'?["-c:a","aac","-shortest"]:[]),
     video,
   ]);
   const receipt = await bridge.uploadAsset(
@@ -271,14 +273,89 @@ try {
   await page.goto("http://127.0.0.1:" + server.address().port);
   await page.waitForSelector(".dv-canvas-shell[data-canvas-phase=ready]");
   await page.waitForSelector(".dv-timeline-clip");
+  await page.waitForFunction(()=>[...document.querySelectorAll('.dv-filmstrip img')].filter(x=>x.naturalWidth>0).length>=2);
+  assert.ok(await page.$$eval('.dv-filmstrip img',xs=>new Set(xs.map(x=>x.src)).size>1));checks++;
+  await page.waitForFunction(()=>document.querySelector('.dv-timeline')?.getAttribute('aria-busy')==='false'&&document.querySelector('.dv-timeline')?.dataset.durationMode==='auto');
+  await page.evaluate(()=>{const m=document.getElementById('mount');m.style.transform='translateX(48px)';m.style.width='680px';});
+  const contextTarget=await page.$('.dv-timeline-clip');const contextRect=await contextTarget.boundingBox();
+  const contextPoint={x:contextRect.x+100,y:contextRect.y+25};
+  await page.mouse.click(contextPoint.x,contextPoint.y,{button:'right'});
+  await page.waitForSelector('.dv-timeline-more[open]');
+  const contextBounds=await page.$eval('.dv-timeline-menu',e=>{const r=e.getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,bottom:r.bottom};});
+  assert.ok(Math.min(Math.abs(contextBounds.left-contextPoint.x),Math.abs(contextBounds.right-contextPoint.x))<=8,JSON.stringify({contextPoint,contextBounds}));
+  assert.ok(Math.min(Math.abs(contextBounds.top-contextPoint.y),Math.abs(contextBounds.bottom-contextPoint.y))<=8,JSON.stringify({contextPoint,contextBounds}));
+  assert.ok(contextBounds.left>=8&&contextBounds.right<=892&&contextBounds.top>=8&&contextBounds.bottom<=752);checks++;
+  await page.keyboard.press('Escape');
+  const trackRect=await (await page.$('.dv-track-name-text')).boundingBox();
+  const trackPoint={x:trackRect.x+10,y:trackRect.y+8};
+  await page.mouse.click(trackPoint.x,trackPoint.y,{button:'right'});
+  await page.waitForSelector('.dv-track-menu-title');
+  const trackBounds=await page.$eval('.dv-timeline-menu',e=>{const r=e.getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,bottom:r.bottom};});
+  assert.ok(Math.min(Math.abs(trackBounds.left-trackPoint.x),Math.abs(trackBounds.right-trackPoint.x))<=8,JSON.stringify({trackPoint,trackBounds}));
+  assert.ok(Math.min(Math.abs(trackBounds.top-trackPoint.y),Math.abs(trackBounds.bottom-trackPoint.y))<=8,JSON.stringify({trackPoint,trackBounds}));checks++;
+  await page.keyboard.press('Escape');
+  await page.evaluate(()=>{const m=document.getElementById('mount');m.style.transform='';m.style.width='800px';});
+  if(process.env.VISUALS_ACCEPTANCE==='1'){
+    const before=await bridge.invoke('timeline.inspect',{projectId});
+    const original=before.tracks[0].clips[0];
+    const time=await page.$eval('.dv-seek',e=>Number(e.value));
+    await page.click('[data-clip-id="'+original.clipId+'"]',{button:'right'});
+    for(const button of await page.$$('.dv-timeline-menu button'))if(await button.evaluate(e=>e.textContent)==='关闭视频原声')await button.click();
+    await page.waitForFunction(id=>document.querySelector('[data-clip-id="'+id+'"]')?.classList.contains('is-muted'),{},original.clipId);
+    assert.equal(await page.$eval('[data-clip-id="'+original.clipId+'"]',e=>!!e.querySelector('.dv-clip-envelope')),true,'Ordinary mute retains waveform');checks++;
+    await page.click('button[aria-label="撤销"]');
+    await page.waitForFunction(id=>!document.querySelector('[data-clip-id="'+id+'"]')?.classList.contains('is-muted'),{},original.clipId);
+    await page.click('[data-clip-id="'+original.clipId+'"]',{button:'right'});
+    await page.waitForSelector('.dv-timeline-more[open]');
+    assert.equal(await page.$eval('.dv-seek',e=>Number(e.value)),time);checks++;
+    await page.waitForFunction(()=>[...document.querySelectorAll('.dv-timeline-menu button')].some(b=>b.textContent==='分离音频'&&!b.disabled));
+    assert.equal(await page.$$eval('.dv-timeline-menu button',xs=>xs.some(x=>x.textContent==='关闭视频原声')),true);
+    const detach=await page.$('.dv-timeline-menu button');assert.equal(await detach.evaluate(e=>e.textContent),'分离音频');await detach.click();
+    await page.waitForFunction(()=>document.querySelector('.dv-timeline-clip.is-audio.is-selected'));
+    await page.waitForFunction(()=>!document.querySelector('.dv-timeline-more[open]'));
+    const after=await bridge.invoke('timeline.inspect',{projectId});const audio=after.tracks.flatMap(t=>t.clips).find(c=>c.detachedFrom===original.clipId);
+    assert.equal(after.tracks[0].clips[0].muted,true);assert.equal(audio.durationFrames,original.durationFrames);assert.equal(audio.assetId,original.assetId);checks++;
+    await page.waitForFunction(()=>[...document.querySelectorAll('.dv-clip-envelope')].some(x=>x.width>0&&x.getContext('2d').getImageData(0,0,x.width,x.height).data.some((v,i)=>i%4===3&&v>0)));
+    const videoSelector='[data-clip-id="'+original.clipId+'"]';
+    assert.equal(await page.$eval(videoSelector,e=>!!e.querySelector('.dv-clip-envelope')),false,'Detached video must hide its waveform');
+    assert.equal(await page.$eval(videoSelector,e=>e.querySelector('.dv-clip-visuals').classList.contains('has-original-audio')),false,'Detached video must reclaim waveform space');checks++;
+    await page.click(videoSelector,{button:'right'});
+    await page.waitForSelector('.dv-timeline-menu');
+    const enableOriginal=await page.$$('.dv-timeline-menu button');
+    for(const button of enableOriginal)if(await button.evaluate(e=>e.textContent)==='开启视频原声')await button.click();
+    await page.waitForFunction(sel=>!!document.querySelector(sel+' .dv-clip-envelope'),{},videoSelector);checks++;
+    await page.click('button[aria-label="撤销"]');
+    await page.waitForFunction(sel=>!document.querySelector(sel+' .dv-clip-envelope'),{},videoSelector);
+    await page.screenshot({path:join(out,'detached-audio.png')});checks++;
+    await page.click('button[aria-label="撤销"]');await page.waitForFunction(()=>!document.querySelector('.dv-timeline-clip.is-audio'));
+    const undone=await bridge.invoke('timeline.inspect',{projectId});assert.equal(undone.tracks[0].clips[0].muted,original.muted);await page.waitForSelector(videoSelector+' .dv-clip-envelope');checks++;
+    await page.click('button[aria-label="重做"]');await page.waitForFunction(()=>document.querySelector('.dv-timeline-clip.is-audio'));
+    const redone=await bridge.invoke('timeline.inspect',{projectId});assert.equal(redone.tracks.flatMap(t=>t.clips).find(c=>c.detachedFrom===original.clipId).clipId,audio.clipId);checks++;
+    await page.click('button[aria-label="撤销"]');await page.waitForFunction(()=>!document.querySelector('.dv-timeline-clip.is-audio'));
+    await page.waitForFunction(()=>document.querySelector('.dv-timeline').getAttribute('aria-busy')==='false');
+  }
   await page.waitForSelector('.dv-timeline[data-duration-mode="auto"][data-duration-frames="600"]');
   await page.waitForFunction(()=>document.querySelector('.dv-time').textContent.includes('/ 20.00'));
+  await page.waitForNetworkIdle({idleTime:500,timeout:15000});
+  await page.evaluate(()=>document.getElementById('mount').style.width='799px');
+  await page.waitForNetworkIdle({idleTime:500,timeout:15000});
+  const coverage=await page.$eval('.dv-clip-visuals',el=>{const r=el.getBoundingClientRect(),bands=[...el.querySelectorAll('.dv-filmstrip')].filter(x=>x.children.length).map(x=>x.getBoundingClientRect());return {left:Math.min(...bands.map(x=>x.left))-r.left,right:r.right-Math.max(...bands.map(x=>x.right)),width:r.width};});
+  assert.ok(coverage.left<=2&&coverage.right<=2,JSON.stringify(coverage));checks++;
+  await page.evaluate(()=>document.getElementById('mount').style.width='800px');
+  await page.waitForNetworkIdle({idleTime:500,timeout:15000});
+  await page.evaluate(()=>{window.visualTilesBefore=document.querySelectorAll('.dv-filmstrip img').length;window.visualMinTiles=window.visualTilesBefore;window.visualObserver=new MutationObserver(()=>{window.visualMinTiles=Math.min(window.visualMinTiles,document.querySelectorAll('.dv-filmstrip img').length);});window.visualObserver.observe(document.querySelector('.dv-timeline'),{childList:true,subtree:true});});
+  await page.click('.dv-play');await page.waitForFunction(()=>Number(document.querySelector('.dv-seek').value)>.2);await page.click('.dv-play');
+  await page.waitForNetworkIdle({idleTime:500,timeout:15000});
+  const preserved=await page.evaluate(()=>{window.visualObserver.disconnect();return {before:window.visualTilesBefore,min:window.visualMinTiles};});
+  assert.ok(preserved.min>=preserved.before,JSON.stringify(preserved));checks++;
+  await page.evaluate(()=>window.seek(0));
+
   await page.waitForFunction(()=>document.querySelector('.dv-timeline').getAttribute('aria-busy')==='false');
   assert.equal((await bridge.invoke('timeline.inspect',{projectId})).settings.durationFrames,600);checks++;
   checks++;
   assert.equal(await page.$$eval('.dv-canvas-bar button',xs=>xs.some(x=>x.textContent==='素材')),false,'playback bar must not contain the media entry');
   assert.equal(await page.$eval('.dv-resource-bar button[aria-label="素材"]',e=>e.getAttribute('aria-expanded')),'false');
-  assert.equal(await page.$eval('.dv-timeline-notice',e=>getComputedStyle(e).display).catch(()=> 'none'),'none','idle timeline has no permanent instruction footer');checks++;
+  if(process.env.VISUALS_ACCEPTANCE!=='1')assert.equal(await page.$eval('.dv-timeline-notice',e=>getComputedStyle(e).display).catch(()=> 'none'),'none','idle timeline has no permanent instruction footer');checks++;
   assert.equal(await page.$$eval('.dv-track-mute',xs=>xs.every(x=>x.querySelector('svg')&&!x.textContent.trim())),true,'track sound actions use icons, not ambiguous letters');checks++;
   assert.equal(await page.$$('.dv-track-visibility').then(xs=>xs.length),1,'video tracks expose a picture toggle');checks++;
   await page.click('.dv-track-visibility');
@@ -291,8 +368,8 @@ try {
   await page.click('.dv-time');
   assert.equal(await page.$eval('.dv-timeline-more',e=>e.open),false,'outside click dismisses edit menu');checks++;
   await page.click('.dv-timeline-more > summary');
-  assert.deepEqual(await page.$$eval('.dv-timeline-menu button',xs=>xs.map(e=>e.textContent)),['复制片段','与前一片段交换','与后一片段交换','添加视频轨','添加音轨','紧凑轨道','删除轨道']);checks++;
-  assert.equal(await page.$eval('.dv-timeline-menu button:nth-child(2)',e=>e.disabled),true);
+  assert.deepEqual(await page.$$eval('.dv-timeline-menu button',xs=>xs.map(e=>e.textContent).filter(x=>!['分离音频','关闭视频原声'].includes(x))),['复制片段','与前一片段交换','与后一片段交换','添加视频轨','添加音轨','紧凑轨道','删除轨道']);checks++;
+  assert.equal(await page.$$eval('.dv-timeline-menu button',xs=>xs.find(e=>e.textContent==='与前一片段交换').disabled),true);
   const editMenu=await page.$eval('.dv-timeline-menu',e=>{const r=e.getBoundingClientRect();return {top:r.top,bottom:r.bottom,height:innerHeight};});
   assert(editMenu.top>=0&&editMenu.bottom<=editMenu.height,'all menu actions fit in viewport');checks++;
   await page.screenshot({path:join(out,'edit-menu.png')});
@@ -352,6 +429,15 @@ try {
   await page.mouse.move(edge.right-2,scrolled.y+12);await page.mouse.down();await page.waitForFunction(x=>document.querySelector('.dv-timeline-scroll').scrollLeft>x+8,{},edge.left);await page.mouse.up();checks++;
   await page.click('button[aria-label="适应时间线"]');await page.$eval('.dv-timeline-scroll',e=>{e.scrollLeft=0;});
 
+  const middle=await page.$eval('.dv-timeline-clip',e=>{const r=e.getBoundingClientRect();return {x:r.x+r.width*.6,y:r.y+r.height/2};});
+  await page.mouse.click(middle.x,middle.y);
+  await page.waitForFunction(()=>Math.abs(Number(document.querySelector('.dv-seek').value)-12)<.1,{timeout:3000}).catch(async e=>{console.log('click-time-debug',middle,await page.$eval('.dv-timeline',n=>({seek:document.querySelector('.dv-seek').value,head:n.querySelector('.dv-timeline-playhead').style.left,clip:n.querySelector('.dv-timeline-clip').outerHTML.slice(0,450)})));throw e;});checks++;
+  const contextTime=await page.$eval('.dv-seek',e=>Number(e.value));
+  await page.mouse.click(middle.x,middle.y,{button:'right'});
+  assert.equal(await page.$eval('.dv-seek',e=>Number(e.value)),contextTime);await page.keyboard.press('Escape');checks++;
+  const blankTail=await page.$eval('.dv-timeline-lane',e=>{const lane=e.getBoundingClientRect(),clip=e.querySelector('.dv-timeline-clip').getBoundingClientRect();return {x:clip.right+8,y:lane.y+lane.height/2};});
+  await page.mouse.click(blankTail.x,blankTail.y);
+  await page.waitForFunction(()=>Number(document.querySelector('.dv-seek').value)===20);checks++;
   const snapRevision=(await bridge.invoke('timeline.inspect',{projectId})).revision;
   const snapAppearance=()=>page.$eval('.dv-snap-toggle',e=>({background:getComputedStyle(e).backgroundColor,color:getComputedStyle(e).color}));
   const enabledSnap=await snapAppearance();await page.click('.dv-snap-toggle');const disabledSnap=await snapAppearance();
@@ -829,7 +915,7 @@ try {
     await page.waitForFunction(old=>document.querySelector('.dv-canvas-shell').dataset.canvasRevision!==old&&document.querySelector('.dv-canvas-shell').dataset.previewPending==='false',{},oldPreview);
     const nextFrame=await (await page.$('.dv-stage-frame[aria-hidden="false"]')).contentFrame();
     await nextFrame.waitForFunction(()=>document.querySelector('audio')?.muted===false,{timeout:5000});checks++;
-    await page.waitForFunction(()=>[...document.querySelectorAll('.dv-clip-waveform')].some(x=>x.naturalWidth>0));checks++;
+    await page.waitForFunction(()=>[...document.querySelectorAll('.dv-clip-envelope')].some(x=>x.width>0&&x.getContext('2d').getImageData(0,0,x.width,x.height).data.some((v,i)=>i%4===3&&v>0)));checks++;
     await page.screenshot({path:join(out,'audio-timeline.png')});
     await page.evaluate(()=>document.getElementById('mount').style.cssText+=';--dsw-alias-bg-base:#fff;--dsw-alias-label-primary:#202126;--dsw-alias-label-secondary:#70747c;--dsw-alias-interactive-bg-hover:#f0f2f4;color:#202126');
     await page.screenshot({path:join(out,'audio-timeline-light.png')});

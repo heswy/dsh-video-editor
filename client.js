@@ -139,6 +139,36 @@ window.__ModuleLoader__.load({
       'video.reference.customRange': '自定义时间区间',
       'video.reference.title': '引用',
 
+      'video.timeline.detachAudio': "分离音频",
+      'video.timeline.noAudio': "此视频无音频",
+      'video.timeline.alreadyDetached': "此片段原声已分离",
+      'video.timeline.detachAudioHelp': "将视频原声放入独立音频轨",
+      'video.timeline.doubleAudio': "原声已分离，重新开启会与独立音频叠加播放",
+      'video.update.title': "插件更新",
+      'video.update.close': "关闭更新面板",
+      'video.update.busy': "请等待当前操作或导出结束",
+      'video.update.version': "当前版本",
+      'video.update.idle': "检查是否有新版本。",
+      'video.update.checking': "正在检查更新…",
+      'video.update.available': "有新版本可用。安装由 DSH 管理，作品保留在原处。期间编辑器可能重新加载，可从侧栏重新打开。",
+      'video.update.availableButton': "有新版本",
+      'video.update.current': "已是最新正式版。",
+      'video.update.local': "当前是本地开发安装，由开发者更新；不会自动替换。",
+      'video.update.unsupported': "此安装来源或 DSH 版本暂不支持在线更新。请在 DSH 插件页管理。",
+      'video.update.unpublished': "尚未发布正式版本。",
+      'video.update.release-unavailable': "新版本尚未提供适用于这台设备的安装包，请稍后再试。",
+      'video.update.check-failed': "暂时无法检查更新，请稍后重试。",
+      'video.update.installing': "正在通过 DSH 安装更新，请稍候…",
+      'video.update.restart-required': "更新已安装，重启 DSH 后生效。",
+      'video.update.installed': "更新已应用。重新打开编辑器可确认版本。",
+      'video.update.failed': "更新未完成。请重试或在 DSH 插件页检查安装状态。",
+      'video.update.notes': "查看更新说明",
+      'video.update.install': "安装更新",
+      'video.update.check': "检查更新",
+      'video.timeline.enableOriginal': "开启视频原声",
+      'video.timeline.disableOriginal': "关闭视频原声",
+      'video.timeline.enableClipSound': "开启片段声音",
+      'video.timeline.disableClipSound': "关闭片段声音",
       'video.audio.volume': "音量",
       'video.audio.fadeIn': "淡入",
       'video.audio.fadeOut': "淡出",
@@ -383,6 +413,36 @@ window.__ModuleLoader__.load({
       'video.reference.customRange': 'Custom time range',
       'video.reference.title': 'References',
 
+      'video.timeline.detachAudio': "Detach audio",
+      'video.timeline.noAudio': "This video has no audio",
+      'video.timeline.alreadyDetached': "Original audio is already detached",
+      'video.timeline.detachAudioHelp': "Put original audio on an independent audio track",
+      'video.timeline.doubleAudio': "Audio is detached; enabling original audio will play both",
+      'video.update.title': "Plugin updates",
+      'video.update.close': "Close updates",
+      'video.update.busy': "Wait for the current operation or export to finish",
+      'video.update.version': "Current version",
+      'video.update.idle': "Check for a newer release.",
+      'video.update.checking': "Checking for updates…",
+      'video.update.available': "A new release is available. DSH installs it; your projects stay in place. The editor may reload; reopen it from the sidebar.",
+      'video.update.availableButton': "Update available",
+      'video.update.current': "You have the latest stable release.",
+      'video.update.local': "Local development installation. Updated by the developer, never replaced automatically.",
+      'video.update.unsupported': "This source or DSH version does not support online updates. Manage it in DSH Plugins.",
+      'video.update.unpublished': "No stable release has been published yet.",
+      'video.update.release-unavailable': "The new release has no package for this device yet. Please try again later.",
+      'video.update.check-failed': "Cannot check right now. Please try again later.",
+      'video.update.installing': "DSH is installing the update. Please wait…",
+      'video.update.restart-required': "Update installed. Restart DSH to use it.",
+      'video.update.installed': "Update applied. Reopen the editor to confirm its version.",
+      'video.update.failed': "Update did not complete. Retry or check installation status in DSH Plugins.",
+      'video.update.notes': "Release notes",
+      'video.update.install': "Install update",
+      'video.update.check': "Check for updates",
+      'video.timeline.enableOriginal': "Enable original audio",
+      'video.timeline.disableOriginal': "Disable original audio",
+      'video.timeline.enableClipSound': "Enable clip audio",
+      'video.timeline.disableClipSound': "Disable clip audio",
       'video.audio.volume': "Volume",
       'video.audio.fadeIn': "Fade in",
       'video.audio.fadeOut': "Fade out",
@@ -1587,9 +1647,17 @@ window.__ModuleLoader__.load({
 .dv-drop-preview.is-invalid{border-color:var(--dsw-alias-state-error-primary,#dd777d);color:var(--dsw-alias-state-error-primary,#dd777d)}
 .dv-drop-preview span{position:absolute;bottom:calc(100% + 5px);left:0;padding:3px 6px;border-radius:4px;background:var(--dsw-alias-bg-layer-1,#25262a);box-shadow:0 2px 8px #0002;font-size:10px;white-space:nowrap}
 .dv-timeline-compact .dv-drag-origin,.dv-timeline-compact .dv-drop-preview{top:4px;bottom:4px}
+
+.dv-root .dv-timeline-track[data-kind=video]{height:88px}.dv-root .dv-timeline-track[data-kind=audio]{height:64px}
+.dv-root .dv-timeline-clip{display:block;background:#315e8038;border-color:#668eaa66}.dv-root .dv-timeline-clip.is-audio{background:#175f4e;border-color:#4b998766}
+.dv-root .dv-timeline-clip-label,.dv-root .is-audio .dv-timeline-clip-label{position:absolute;left:0;right:0;top:0;height:18px;line-height:18px;padding:0 7px;font-size:10px;background:#315e8055;text-shadow:none;z-index:2}
+.dv-root .is-audio .dv-timeline-clip-label{background:#124a3ee0;color:#e0f4ec}
+.dv-clip-visuals{position:absolute;inset:18px 0 0;pointer-events:none;overflow:hidden;background:#18354812}.dv-filmstrip{position:absolute;top:0;bottom:0;display:flex;overflow:hidden}.dv-filmstrip img{min-width:0;flex:1;width:0;height:100%;object-fit:cover;pointer-events:none}.has-original-audio:not(.is-audio-visual) .dv-filmstrip{bottom:17px}.dv-clip-envelope{position:absolute;bottom:0;height:16px;background:#164c42d9;pointer-events:none}.is-audio-visual .dv-clip-envelope{height:32px;background:transparent}.is-muted .dv-clip-envelope{opacity:.3}.dv-timeline-track:has(.dv-track-visibility[aria-pressed=false]) .dv-filmstrip{opacity:.25}
+.dv-root .dv-timeline-compact .dv-timeline-track[data-kind=video]{height:52px}.dv-root .dv-timeline-compact .dv-timeline-track[data-kind=audio]{height:42px}.dv-timeline-compact .dv-clip-visuals{top:14px}.dv-root .dv-timeline-compact .dv-timeline-clip-label{height:14px;line-height:14px;font-size:9px}.dv-timeline-compact .has-original-audio:not(.is-audio-visual) .dv-filmstrip{bottom:10px}.dv-timeline-compact .dv-clip-envelope{height:10px}.dv-timeline-compact .is-audio-visual .dv-clip-envelope{height:20px}
 /* Resource shelf, transport, and editing tools have separate visual roles. */
 
 .dv-root .dv-canvas-shell[data-preview-only="true"]{padding:0;gap:0;overflow:hidden;container-type:inline-size;container-name:video-canvas}
+.dv-update-control{position:relative;flex-shrink:0}.dv-update-control>button{font-size:11px;color:var(--dsw-alias-label-secondary,#858992)}.dv-update-panel{position:absolute;right:0;top:calc(100% + 12px);z-index:60;box-sizing:border-box;width:min(300px,calc(100vw - 24px));padding:18px;border:1px solid var(--dsw-alias-border-l1,#8883);border-radius:12px;background:var(--dsw-alias-bg-layer-1,#25262a);color:var(--dsw-alias-label-primary,#eee);box-shadow:0 12px 40px #0003;font-size:12px}.dv-update-panel header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}.dv-update-panel p{line-height:1.7;margin:12px 0}.dv-update-panel small{color:var(--dsw-alias-label-secondary,#858992)}.dv-update-panel a{display:block;margin-top:8px;color:inherit}.dv-update-panel footer{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
 .dv-resource-bar{display:flex;align-items:center;gap:4px;min-height:44px;padding:0 16px;flex-shrink:0;border-bottom:1px solid var(--dsw-alias-border-l1,#ffffff10)}
 .dv-resource-tab{display:flex;align-items:center;gap:7px;padding:7px 10px;border:0;border-radius:5px;background:transparent;color:var(--dsw-alias-label-secondary,#aaaeb6);font:inherit;font-size:12px;cursor:pointer}
 .dv-resource-tab:hover,.dv-resource-tab[aria-expanded=true]{background:var(--dsw-alias-interactive-bg-hover,#ffffff0c);color:var(--dsw-alias-label-primary,#eee)}
@@ -3312,6 +3380,30 @@ window.__ModuleLoader__.load({
       return panel;
     }
 
+    async function updateRequest(action,extra){
+      const response=await fetch('api/dsh-video/updates',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action,...extra})});
+      if(!response.ok)throw new Error('Update request failed');return response.json();
+    }
+    function UpdatePanel(props){
+      const h=React.createElement,t=props.t,ref=usePanelDismiss(props.onClose,'updates'),v=props.value;
+      return h('section',{className:'dv-update-panel',ref,role:'dialog','aria-label':t('video.update.title')},
+        h('header',null,h('strong',null,t('video.update.title')),h('button',{className:'dv-icon-button',onClick:props.onClose,'aria-label':t('video.update.close')},'×')),
+        h('small',null,t('video.update.version')+' '+(v.currentVersion||'…')),
+        h('p',{role:'status'},t('video.update.'+v.phase)),
+        v.latestVersion?h('strong',null,'v'+v.latestVersion):null,
+        v.releaseUrl?h('a',{href:v.releaseUrl,target:'_blank',rel:'noopener noreferrer'},t('video.update.notes')):null,
+        h('footer',null,h('button',{className:'dv-button',disabled:['checking','installing','installed','restart-required'].includes(v.phase),onClick:props.onCheck},t('video.update.check')),['available','failed'].includes(v.phase)&&v.latestVersion?h('button',{className:'dv-button dv-button-primary',onClick:props.onInstall,disabled:props.busy,title:props.busy?t('video.update.busy'):undefined},t('video.update.install')):null));
+    }
+    function UpdateControl(props){
+      const h=React.createElement,t=props.t,[open,setOpen]=React.useState(false),[value,setValue]=React.useState({phase:'idle'}),alive=React.useRef(true);
+      async function request(action,extra){try{const next=await updateRequest(action,extra);if(alive.current)setValue(next);}catch{if(alive.current)setValue(v=>({...v,phase:action==='install'?'failed':'check-failed'}));}}
+      React.useEffect(()=>{alive.current=true;const timer=setTimeout(()=>void request('check'),15000);return()=>{alive.current=false;clearTimeout(timer);};},[]);
+      React.useEffect(()=>{if(value.phase!=='installing')return;const timer=setInterval(()=>void request('status'),1000);return()=>clearInterval(timer);},[value.phase]);
+      const check=()=>{setValue(v=>({...v,phase:'checking'}));void request('check');};
+      return h('div',{className:'dv-update-control'},h('button',{className:'dv-button dv-button-quiet','data-panel-trigger':'updates','aria-expanded':open,'aria-label':t('video.update.title'),onClick:()=>{setOpen(!open);if(!open&&value.phase==='idle')check();}},t(value.phase==='available'?'video.update.availableButton':'video.update.title')),
+        open?h(UpdatePanel,{t,value,busy:props.busy,onClose:()=>setOpen(false),onCheck:check,onInstall:()=>{setValue(v=>({...v,phase:'installing'}));void request('install',{version:value.latestVersion,confirm:true});}}):null);
+    }
+
     function MediaLibraryPanel(props) {
       const panelRef = usePanelDismiss(props.onClose, "media");
       const [referenceRevision,setReferenceRevision]=React.useState('');
@@ -3990,16 +4082,33 @@ window.__ModuleLoader__.load({
     }
     function TimelinePopover(props) {
       const nodeRef=React.useRef(null);
+      const hidePopup=()=>{const menu=nodeRef.current?.children[1];if(menu?.hasAttribute('popover'))menu.hidePopover?.();};
       React.useEffect(()=>{
         const node=nodeRef.current,owner=node.ownerDocument;
-        const outside=e=>{if(node.open&&!node.contains(e.target))node.open=false;};
-        const escape=e=>{if(node.open&&e.key==='Escape'&&!e.isComposing){e.preventDefault();e.stopPropagation();node.open=false;node.firstElementChild?.focus();}};
+        const close=()=>{hidePopup();node.open=false;};
+        const outside=e=>{if(node.open&&!node.contains(e.target))close();};
+        const escape=e=>{if(node.open&&e.key==='Escape'&&!e.isComposing){e.preventDefault();e.stopPropagation();close();node.firstElementChild?.focus();}};
         owner.addEventListener('pointerdown',outside,true);
         owner.addEventListener('keydown',escape,true);
         return()=>{owner.removeEventListener('pointerdown',outside,true);owner.removeEventListener('keydown',escape,true);};
       },[]);
-      React.useEffect(()=>{if(props.requestOpen)nodeRef.current.open=true;},[props.requestOpen]);
-      return React.createElement('details',{className:props.className,style:props.style,ref:nodeRef,onToggle:()=>{if(!nodeRef.current.open)props.onClosed?.();},onClick:e=>{if(props.closeOnAction&&e.target.closest('button:not(:disabled)')){nodeRef.current.open=false;nodeRef.current.firstElementChild?.focus();}}},props.children);
+      React.useEffect(()=>{
+        const node=nodeRef.current,menu=node.children[1];
+        if(!props.requestOpen||!menu)return;
+        node.open=true;
+        // The top layer uses viewport coordinates even inside transformed host panels.
+        menu.setAttribute('popover','manual');
+        menu.style.margin='0';menu.style.right='auto';menu.style.bottom='auto';menu.style.color='inherit';
+        menu.style.maxWidth='calc(100vw - 16px)';menu.style.maxHeight='calc(100vh - 16px)';
+        menu.showPopover?.();
+        const place=()=>{const view=node.ownerDocument.defaultView,r=menu.getBoundingClientRect(),{x,y}=props.requestOpen;
+          menu.style.left=Math.max(8,Math.min(x+r.width<=view.innerWidth-8?x:x-r.width,view.innerWidth-r.width-8))+'px';
+          menu.style.top=Math.max(8,Math.min(y+r.height<=view.innerHeight-8?y:y-r.height,view.innerHeight-r.height-8))+'px';};
+        place();const observer=new ResizeObserver(place);observer.observe(menu);
+        const view=node.ownerDocument.defaultView;view.addEventListener('resize',place);
+        return()=>{observer.disconnect();view.removeEventListener('resize',place);menu.hidePopover?.();menu.removeAttribute('popover');};
+      },[props.requestOpen]);
+      return React.createElement('details',{className:props.className,style:props.style,ref:nodeRef,onToggle:()=>{if(!nodeRef.current.open){hidePopup();props.onClosed?.();}},onClick:e=>{if(props.closeOnAction&&e.target.closest('button')){hidePopup();nodeRef.current.open=false;props.onClosed?.();nodeRef.current.firstElementChild?.focus();}}},props.children);
     }
 
     function TrackDeleteConfirmation(props) {
@@ -4009,6 +4118,47 @@ window.__ModuleLoader__.load({
         React.createElement('p',null,props.t('video.timeline.removeTrackHelp')),
         React.createElement('button',{className:'dv-button',disabled:props.busy,onClick:props.onCancel},props.t('video.timeline.cancelDelete')),
         React.createElement('button',{className:'dv-button',disabled:props.busy,onClick:props.onConfirm},props.t('video.timeline.confirmDelete')));
+    }
+
+    function ClipVisuals(props) {
+      const h=React.createElement,root=React.useRef(null),canvas=React.useRef(null);
+      const [view,setView]=React.useState(null),[result,setResult]=React.useState(null);
+      React.useEffect(()=>{
+        const el=root.current;
+        let timer;const measure=()=>{clearTimeout(timer);timer=setTimeout(()=>{if(!el)return;if(el.ownerDocument.hidden){setView(null);return;}const r=el.getBoundingClientRect(),v=el.closest('.dv-timeline')?.getBoundingClientRect();if(!v||r.bottom<v.top||r.top>v.bottom||r.right<v.left+156||r.left>v.right){setView(null);return;}const left=Math.max(0,v.left+156-r.left),right=Math.min(r.width,v.right-r.left);if(right<=left)return;setView({left,right,width:r.width});},180);};
+        const observer=new ResizeObserver(measure);if(el)observer.observe(el);el?.ownerDocument.addEventListener('scroll',measure,true);el?.ownerDocument.addEventListener('visibilitychange',measure);measure();
+        return()=>{clearTimeout(timer);observer.disconnect();el?.ownerDocument.removeEventListener('scroll',measure,true);el?.ownerDocument.removeEventListener('visibilitychange',measure);};
+      },[props.zoom,props.revision]);
+      React.useEffect(()=>{
+        if(!view||props.playing)return;let dead=false,taskId;const c=props.clip;
+        const cancel=()=>{dead=true;if(taskId)void hostRequest('timeline.visuals.cancel',{projectId:props.projectId,taskId}).catch(()=>{});};
+        (async()=>{try{
+          const visibleStart=Math.max(c.startFrame,Math.floor(c.startFrame+view.left/props.zoom*30)),visibleEnd=Math.min(c.startFrame+c.durationFrames,Math.ceil(c.startFrame+view.right/props.zoom*30));
+          const count=Math.max(1,Math.min(24,Math.ceil((view.right-view.left)/88))),batches=Math.ceil(count/4);
+          let jobs=result?.revision===props.revision?result.jobs.filter(j=>j.endFrame>visibleStart&&j.startFrame<visibleEnd):[];
+          for(let batch=0;batch<batches&&!dead;batch++){
+            const startFrame=Math.floor(visibleStart+(visibleEnd-visibleStart)*batch/batches),endFrame=Math.floor(visibleStart+(visibleEnd-visibleStart)*(batch+1)/batches);
+            if(endFrame<=startFrame)continue;
+            const sampleCount=Math.min(4,count-batch*4);
+            if(jobs.some(j=>j.startFrame===startFrame&&j.endFrame===endFrame&&j.count===sampleCount))continue;
+            const request=await hostRequest('timeline.visuals.request',{projectId:props.projectId,expectedRevision:props.revision,clipId:c.clipId,startFrame,endFrame,count:sampleCount});taskId=request.taskId;
+            if(dead){void hostRequest('timeline.visuals.cancel',{projectId:props.projectId,taskId}).catch(()=>{});break;}
+            let status=request;
+            while(!dead&&!['complete','failed','cancelled'].includes(status.status)){await new Promise(resolve=>setTimeout(resolve,180));if(dead)break;status=await hostRequest('timeline.visuals.status',{projectId:props.projectId,taskId});}
+            if(dead)break;
+            if(status.status==='complete'&&status.revision===props.revision){jobs=jobs.filter(j=>j.endFrame<=startFrame||j.startFrame>=endFrame);jobs.push({...status.result,startFrame,endFrame,count:sampleCount});setResult({jobs:[...jobs],revision:props.revision});}
+          }
+        }catch{/* Name and editing remain available when derivation fails. */}})();return cancel;
+      },[view,props.revision,props.clip.clipId,props.projectId,props.playing]);
+      function drawEnvelope(el){
+        if(!el||!view||result?.revision!==props.revision)return;
+        const height=props.audio?32:16,width=Math.max(1,Math.ceil(view.right-view.left));el.width=width*2;el.height=height*2;const ctx=el.getContext('2d');ctx.scale(2,2);ctx.clearRect(0,0,width,height);ctx.fillStyle='#c8f4e1';
+        for(const job of result.jobs){const wave=job.waveform;if(!wave)continue;const gain=Math.min(8,1/Math.max(.125,wave.materialPeak)),effective=10**(((props.clip.volumeDb??0)+(props.track.gainDb??0)+(props.clip.sourceGainDb??0))/20);for(let x=0;x<width;x++){const frame=props.clip.startFrame+(view.left+x)/props.zoom*30;if(frame<job.startFrame||frame>=job.endFrame)continue;const index=Math.min(255,Math.floor((frame-job.startFrame)/(job.endFrame-job.startFrame)*256));let fade=1;if(props.clip.fadeInFrames)fade=Math.min(fade,(frame-props.clip.startFrame)/props.clip.fadeInFrames);if(props.clip.fadeOutFrames)fade=Math.min(fade,(props.clip.startFrame+props.clip.durationFrames-frame)/props.clip.fadeOutFrames);const value=Math.min(1,Math.max(0,wave.peaks[index]*gain*effective*fade))**.65,half=value*(height/2-1);ctx.fillRect(x,height/2-half,1,Math.max(.5,half*2));}}
+      }
+      React.useEffect(()=>drawEnvelope(canvas.current),[result,view,props.audio,props.clip,props.track,props.revision]);
+      return h('div',{ref:root,className:'dv-clip-visuals'+(props.audio?' is-audio-visual':'')+(props.hasAudio?' has-original-audio':''),'aria-hidden':true},
+        result?.revision===props.revision?result.jobs.map((job,j)=>h('div',{key:j,className:'dv-filmstrip',style:{left:(job.startFrame-props.clip.startFrame)/30*props.zoom,width:(job.endFrame-job.startFrame)/30*props.zoom}},job.thumbnails.map((image,k)=>h('img',{key:k,src:image.data,alt:'',draggable:false})))):null,
+        props.hasAudio&&view?h('canvas',{ref:el=>{canvas.current=el;drawEnvelope(el);},className:'dv-clip-envelope',style:{left:view.left,width:view.right-view.left}}):null);
     }
 
     function TimelinePanel(props) {
@@ -4028,7 +4178,7 @@ window.__ModuleLoader__.load({
         [drag, setDrag] = React.useState(null),
         [scrub,setScrub]=React.useState(null);
       const [recovery,setRecovery]=React.useState(null);
-      const [selectedTrack,setSelectedTrack]=React.useState(null),[removeTrack,setRemoveTrack]=React.useState(null),[trackContext,setTrackContext]=React.useState(null);
+      const [selectedTrack,setSelectedTrack]=React.useState(null),[removeTrack,setRemoveTrack]=React.useState(null),[trackContext,setTrackContext]=React.useState(null),[clipContext,setClipContext]=React.useState(null);
       const gutter=156;
       const waves=React.useRef(new Set());
       const alive = React.useRef(true),
@@ -4097,8 +4247,10 @@ window.__ModuleLoader__.load({
           if (!alive.current) return;
           setRecovery(null);
           setNotice(attempt.quiet?'':result.changeSummary?.summary || t('video.timeline.saved'));
-          await load();
+          const fresh=await load();
           await props.onReload();
+          const detached=attempt.params.ops?.find(o=>o.op==='clip.detachAudio');
+          if(detached){const track=fresh.tracks.find(tr=>tr.clips.some(c=>c.detachedFrom===detached.clipId));const clip=track?.clips.find(c=>c.detachedFrom===detached.clipId);if(clip){setSelected(clip.clipId);setSelectedTrack(track.trackId);requestAnimationFrame(()=>laneRefs.current.get(track.trackId)?.scrollIntoView({block:'nearest',inline:'nearest'}));}}
           return result;
         } catch (e) {
           if (alive.current) {
@@ -4203,7 +4355,7 @@ window.__ModuleLoader__.load({
         }
         raf=requestAnimationFrame(scrollDrag);return ()=>cancelAnimationFrame(raf);
       },[Boolean(drag)]);
-      React.useEffect(()=>{for(const a of data?.assets??[]){if(a.kind!=='audio'||waves.current.has(a.assetId))continue;waves.current.add(a.assetId);void hostRequest('asset.derive',{projectId:props.projectId,assetId:a.assetId,kind:'waveform'}).then(()=>{if(alive.current)setWaveVersion(v=>v+1);}).catch(()=>{waves.current.delete(a.assetId);});}},[data?.revision]);
+
       React.useEffect(()=>{
         const el=viewport.current;if(!el)return;
         const observer=new ResizeObserver(()=>setViewWidth(el.clientWidth));
@@ -4244,6 +4396,12 @@ window.__ModuleLoader__.load({
         scrubRef.current=g;setScrub(g);props.onScrubStart?.();
         timelineRef.current?.focus({preventScroll:true});timelineRef.current?.setPointerCapture(e.pointerId);
         moveScrub(e.clientX);
+      }
+      function seekAtLane(clientX,lane){
+        if(!lane)return;
+        const raw=(clientX-lane.getBoundingClientRect().left)/zoom;
+        const time=Math.max(0,Math.min(duration/30,Math.round(raw*30)/30));
+        props.onScrubStart?.();props.onScrubEnd?.(time);if(!props.onScrubEnd)props.onSeek(time);
       }
       function scrubKey(e) {
         const step=e.shiftKey?30:1;
@@ -4300,10 +4458,11 @@ window.__ModuleLoader__.load({
           lifted:gesture.lifted||Math.hypot(e.clientX-gesture.x,e.clientY-gesture.y)>=4};
       }
       function pointerDown(e,c,edge){
-        if(busy||data.tracks.find(tr=>tr.clips.some(x=>x.clipId===c.clipId))?.locked)return;
+        if(e.button!==0||busy||data.tracks.find(tr=>tr.clips.some(x=>x.clipId===c.clipId))?.locked)return;
+        const clickTime=Math.max(0,Math.min(duration/30,Math.round((c.startFrame/30+(e.clientX-e.currentTarget.getBoundingClientRect().left)/zoom)*30)/30));
         e.preventDefault();e.stopPropagation();setSelected(c.clipId);setSelectedTrack(c.trackId||data.tracks.find(x=>x.clips.some(v=>v.clipId===c.clipId))?.trackId);timelineRef.current.focus({preventScroll:true});timelineRef.current.setPointerCapture(e.pointerId);
         gestureMoved.current=false;
-        const gesture={clipId:c.clipId,x:e.clientX,y:e.clientY,pointerX:e.clientX,pointerY:e.clientY,edge,delta:0,dx:0,dy:0,lifted:false,
+        const gesture={clipId:c.clipId,clickTime,x:e.clientX,y:e.clientY,pointerX:e.clientX,pointerY:e.clientY,edge,delta:0,dx:0,dy:0,lifted:false,
           scrollLeft:viewport.current?.scrollLeft??0,scrollTop:viewport.current?.scrollTop??0,revision:data.revision,zoom,snap,playheadFrame:frame};
         gestureRef.current=gesture;setDrag(gesture);
       }
@@ -4311,7 +4470,8 @@ window.__ModuleLoader__.load({
       function pointerUp(e,c){
         const gesture=gestureRef.current;if(!gesture)return;
         const final=dragPosition(e,gesture);gestureRef.current=null;setDrag(null);
-        if(!final.lifted||gesture.revision!==data.revision)return;
+        if(gesture.revision!==data.revision)return;
+        if(!final.lifted){if(!gesture.edge){props.onScrubStart?.();props.onScrubEnd?.(gesture.clickTime);if(!props.onScrubEnd)props.onSeek(gesture.clickTime);}gestureMoved.current=true;return;}
         gestureMoved.current=true;
         if(final.edge){if(final.delta)void write([{op:'clip.trim',clipId:c.clipId,edge:final.edge,deltaFrames:final.delta}]);}
         else commitMove(final);
@@ -4360,7 +4520,9 @@ window.__ModuleLoader__.load({
           h('span',{className:'dv-tool-divider'}),
           tool(t('video.timeline.split'),'M9 9 20 3M9 15l11 6M12 12l-3-3M12 12l-3 3M6 6a3 3 0 1 0 0 6 3 3 0 0 0 0-6M6 12a3 3 0 1 0 0 6 3 3 0 0 0 0-6',cut,busy||!chosen),
           tool(t('video.timeline.delete'),'M4 6h16M9 6V3h6v3M7 6l1 15h8l1-15',()=>chosen&&write([{op:'clip.delete',clipId:chosen.clipId,ripple:false}]),busy||!chosen),
-          h(TimelinePopover,{className:'dv-timeline-more',closeOnAction:true,requestOpen:trackContext,onClosed:()=>setTrackContext(null),style:trackContext?{position:'static'}:undefined},h('summary',{'aria-label':t('video.audio.more'),title:t('video.audio.more')},'···'),h('div',{key:trackContext?'track-context-menu':'edit-menu',className:'dv-timeline-menu',style:trackContext?{position:'fixed',left:trackContext.x,top:trackContext.y,bottom:'auto',maxHeight:'calc(100vh - 24px)',overflowY:'auto'}:undefined},
+          h(TimelinePopover,{className:'dv-timeline-more',closeOnAction:true,requestOpen:clipContext||trackContext,onClosed:()=>{setTrackContext(null);setClipContext(null);},style:(clipContext||trackContext)?{position:'static'}:undefined},h('summary',{'aria-label':t('video.audio.more'),title:t('video.audio.more')},'···'),h('div',{key:clipContext?'clip-context-menu':trackContext?'track-context-menu':'edit-menu',className:'dv-timeline-menu',style:(clipContext||trackContext)?{position:'fixed',left:(clipContext||trackContext).x,top:(clipContext||trackContext).y,bottom:'auto',maxHeight:'calc(100vh - 24px)',overflowY:'auto'}:undefined},
+            !trackContext&&chosen&&!chosen.audioOnly&&data.assets.find(a=>a.assetId===chosen.assetId)?.kind==='video'?h('button',{key:'detach',disabled:busy||!data.assets.find(a=>a.assetId===chosen.assetId)?.hasAudio||clips.some(c=>c.detachedFrom===chosen.clipId),title:t(!data.assets.find(a=>a.assetId===chosen.assetId)?.hasAudio?'video.timeline.noAudio':clips.some(c=>c.detachedFrom===chosen.clipId)?'video.timeline.alreadyDetached':'video.timeline.detachAudioHelp'),onClick:()=>write([{op:'clip.detachAudio',clipId:chosen.clipId}])},t('video.timeline.detachAudio')):null,
+            !trackContext&&chosen?.kind==='media'&&(data.assets.find(a=>a.assetId===chosen.assetId)?.hasAudio||chosen.audioOnly||data.assets.find(a=>a.assetId===chosen.assetId)?.kind==='audio')?h('button',{key:'clip-sound',disabled:busy,title:clips.some(c=>c.detachedFrom===chosen.clipId)?t('video.timeline.doubleAudio'):undefined,onClick:()=>write([{op:'clip.set',clipId:chosen.clipId,patch:{muted:!chosen.muted}}])},t('video.timeline.'+(!chosen.audioOnly&&data.assets.find(a=>a.assetId===chosen.assetId)?.kind==='video'?(chosen.muted?'enableOriginal':'disableOriginal'):(chosen.muted?'enableClipSound':'disableClipSound')))):null,
             !trackContext?h('button',{key:'duplicate',disabled:busy||!chosen,onClick:()=>chosen&&write([{op:'clip.duplicate',clipId:chosen.clipId,mode:'ripple'}])},t('video.timeline.duplicate')):null,
             !trackContext?h('button',{key:'previous',disabled:busy||!chosen||data.tracks.find(tr=>tr.trackId===chosen.trackId)?.clips[0]?.clipId===chosen.clipId,onClick:()=>moveOrder(-1)},t('video.timeline.swapPrevious')):null,
             !trackContext?h('button',{key:'next',disabled:busy||!chosen||data.tracks.find(tr=>tr.trackId===chosen.trackId)?.clips.at(-1)?.clipId===chosen.clipId,onClick:()=>moveOrder(1)},t('video.timeline.swapNext')):null,
@@ -4462,7 +4624,7 @@ window.__ModuleLoader__.load({
               .map((tr) =>
                 h(
                   "div",
-                  { key: tr.trackId, className: "dv-timeline-track", "data-kind":tr.kind,onContextMenu:e=>{e.preventDefault();e.stopPropagation();setSelectedTrack(tr.trackId);const view=e.currentTarget.ownerDocument.defaultView;setTrackContext({x:Math.max(12,Math.min(e.clientX,view.innerWidth-212)),y:Math.max(12,Math.min(e.clientY,view.innerHeight-310))});} },
+                  { key: tr.trackId, className: "dv-timeline-track", "data-kind":tr.kind,onContextMenu:e=>{e.preventDefault();e.stopPropagation();setSelectedTrack(tr.trackId);setClipContext(null);setTrackContext({x:e.clientX,y:e.clientY});} },
                   h("div", { className: "dv-timeline-track-name",'data-selected':activeTrack?.trackId===tr.trackId?'true':'false',onClick:()=>setSelectedTrack(tr.trackId) },
                     h('button',{className:'dv-track-name-text',title:tr.name,onClick:()=>setSelectedTrack(tr.trackId),'aria-pressed':activeTrack?.trackId===tr.trackId?'true':'false'}, /^(视频轨|音频轨)(\s*\d+)?$/.test(tr.name)?t(tr.kind==='audio'?'video.timeline.audioTrack':'video.timeline.videoTrack').replace('轨道','轨')+' '+(data.tracks.filter(x=>x.kind===tr.kind).indexOf(tr)+1):tr.name),
                     tr.kind==='video'?h('button',{className:'dv-track-visibility','aria-label':t(tr.hidden?'video.timeline.showTrack':'video.timeline.hideTrack')+' '+tr.name,title:t(tr.hidden?'video.timeline.showTrack':'video.timeline.hideTrack')+' · '+tr.name,'aria-pressed':tr.hidden?'false':'true',disabled:busy,onClick:()=>write([{op:'track.update',trackId:tr.trackId,patch:{hidden:!tr.hidden}}])},h(StudioIcon,{name:tr.hidden?'video-off':'video'})):null,
@@ -4472,6 +4634,7 @@ window.__ModuleLoader__.load({
                     {
                       className: "dv-timeline-lane"+(drag?.lifted&&!drag.edge&&drag.trackId===tr.trackId?(drag.valid?" is-drop-target":" is-drop-invalid"):""),ref:el=>{if(el)laneRefs.current.set(tr.trackId,el);else laneRefs.current.delete(tr.trackId);},
                       "data-track-id": tr.trackId,
+                      onClick:e=>{if(e.target===e.currentTarget){setSelectedTrack(tr.trackId);seekAtLane(e.clientX,e.currentTarget);}},
                       style: { width },
                       onDragOver: (e) => e.preventDefault(),
                       onDrop: (e) => {
@@ -4510,14 +4673,15 @@ window.__ModuleLoader__.load({
                             (selected === c.clipId ? " is-selected" : "") +
                             (drag?.clipId===c.clipId&&drag.lifted&&!drag.edge?" is-dragging"+(!drag.valid?" is-invalid":""):""),
                           "data-clip-id": c.clipId,
+                          onContextMenu:e=>{e.preventDefault();e.stopPropagation();setSelected(c.clipId);setSelectedTrack(tr.trackId);setTrackContext(null);setClipContext({x:e.clientX,y:e.clientY});},
                           tabIndex: 0,
                           role: "button",
                           "aria-label": c.label || c.clipId,
                           "aria-pressed": selected === c.clipId,
-                          onClick: () => {
+                          onClick: (e) => {
                             if(gestureMoved.current){gestureMoved.current=false;return;}
                             setSelected(c.clipId);setSelectedTrack(tr.trackId);
-                            props.onSeek(c.startFrame / 30);
+                            seekAtLane(e.clientX,e.currentTarget.parentElement);
                           },
                           onKeyDown:e=>{if(e.target!==e.currentTarget)return;if(e.key==='Enter'||e.key===' '){e.preventDefault();setSelected(c.clipId);setSelectedTrack(tr.trackId);props.onSeek(c.startFrame/30);}},
                           onPointerDown: (e) => pointerDown(e, c, null),
@@ -4530,7 +4694,7 @@ window.__ModuleLoader__.load({
                                 : undefined,
                           },
                         },
-                        tr.kind==='audio'?h('img',{className:'dv-clip-waveform',style:{width:((data.assets.find(a=>a.assetId===c.assetId)?.durationFrames??c.durationFrames)/(data.assets.find(a=>a.assetId===c.assetId)?.fps??30))/(c.durationFrames/30*(c.speed||1))*100+'%',left:-((c.sourceInFrame??0)/(data.assets.find(a=>a.assetId===c.assetId)?.fps??30))/(c.durationFrames/30*(c.speed||1))*100+'%'},src:'api/dsh-video/derived?projectId='+encodeURIComponent(props.projectId)+'&assetId='+encodeURIComponent(c.assetId)+'&kind=waveform#v='+waveVersion,alt:'',draggable:false,onError:e=>{e.target.style.visibility='hidden';}}):null,
+                        h(ClipVisuals,{projectId:props.projectId,revision:data.revision,clip:c,track:tr,zoom,playing:props.playing,audio:tr.kind==='audio',hasAudio:tr.kind==='audio'||(data.assets.find(a=>a.assetId===c.assetId)?.hasAudio&&!(c.muted&&clips.some(audio=>audio.detachedFrom===c.clipId)))}),
                         h("span", {
                           className: "dv-timeline-edge",
                           role: "slider",
@@ -6308,7 +6472,7 @@ window.__ModuleLoader__.load({
           actionError !== null ? h('span', { className: 'dv-tool-error', role: 'alert' }, errorText(actionError, t)) : null,
           busy !== null ? h('span', { className: 'dv-tool-hint' }, t('video.canvas.busy')) : null
         ),
-        previewOnly && props.timelineEnabled!==false ? h(TimelinePanel,{key:"timeline:"+projectId,t,projectId,revision:inspected.revision,time,onSeek:seekTo,onScrubStart:()=>{timelineScrubRef.current={held:true};setPlaying(false);void postActiveCommand('pause');},onScrubEnd:value=>{timelineScrubRef.current={held:false,time:value,until:Date.now()+1500};seekTo(value);},onReload,assetToAdd,onAssetConsumed:()=>setAssetToAdd(null),onQueueAsset:setAssetToAdd}) : null,
+        previewOnly && props.timelineEnabled!==false ? h(TimelinePanel,{key:"timeline:"+projectId,t,projectId,revision:inspected.revision,time,playing,onSeek:seekTo,onScrubStart:()=>{timelineScrubRef.current={held:true};setPlaying(false);void postActiveCommand('pause');},onScrubEnd:value=>{timelineScrubRef.current={held:false,time:value,until:Date.now()+1500};seekTo(value);},onReload,assetToAdd,onAssetConsumed:()=>setAssetToAdd(null),onQueueAsset:setAssetToAdd}) : null,
         drawerOpen && previewOnly ? h(MediaLibraryPanel,{key:"media:"+projectId,t:t,projectId:projectId,onClose:()=>setDrawerOpen(false),onAdd:asset=>{setAssetToAdd(asset);setDrawerOpen(false);}}) : null,
         drawerOpen && previewOnly === false
           ? h(
@@ -8194,6 +8358,7 @@ window.__ModuleLoader__.load({
               )
             : null,
           h('span', { className: 'dv-spacer', key: 'spacer' }),
+          h(UpdateControl,{key:'updates',t,busy:projectBusy!==null||exportState?.phase==='running'}),
           exportControl()
         ),
         h(

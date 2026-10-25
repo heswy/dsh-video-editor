@@ -1,5 +1,60 @@
 # 当前项目状态
 
+## 集成入口：1.0.0 最后功能合入main（2026-10-25）
+
+用户明确授权合码；本轮时间线可视化、手动分离音频、媒体跳转、波形及右键菜单修正、插件更新通道统一通过 [PR #33](https://github.com/heswy/dsh-video-editor/pull/33) 集成。PR的实时合并状态以GitHub为准，下面“未合并”文字保留为此前验收快照，不再代表当前集成状态。
+
+当前安装仍为已验收b45e28a固定包；合码不重新打包或替换安装。GitHub首次公开Release尚未发布；可分发macOS arm64包与待启用的发布工作流模板已备好。首次公网下载/升级需发布后验证。
+
+
+## 当前安装：1.0.0 插件更新候选（2026-10-25）
+
+用户指定更新入口作为1.0.0最后功能；无npm账号，采用GitHub Releases首发，保留新DSH的npm版本API适配。顶栏“插件更新”提供当前版本、检查/新版说明/用户点击安装/失败重试/需重启提示。link本地开发安装不联网、不替换；正式版资产按平台架构匹配。独立认证UI路由，不对AI开放安装URL或更新方法。
+
+固定运行时/root/engine `b45e28af184bfb1ac53e4232e1361ae8fc1d6827`，bundle1.0.0 / engine0.9.0；目录 `artifacts/p2-b/staging-v1.0.0-updates-verified`，INTEGRITY SHA256 `580ae822909bf4c3b72b8195380b4c242e19369e799efc0ce313aeb29006bbe8`。官方管理器安装启用并重启，实际worker路径核对；原生更新面板显示当前1.0.0及本地开发来源，Esc关闭通过。bb7829e旧包保留回滚。PR #33未合并，未公开发布。
+
+12项更新/发行配置测试、8项真实浏览器UI检查、最终固定包工作区103项、源码门禁58/86/71通过。真实DSH CLI在临时DSH_HOME安装测试0.9.9→1.0.0 tarball，同一工程revision保留且新引擎真实抽帧成功；实际DSH额外临时插件从认证HTTP用户动作触发，自身卸载后继续安装新版成功（disposed=true），已通过官方管理器移除测试插件。启动apply的HMR事务内不能嵌套管理操作；生产安装仅走用户HTTP动作，后台只检查、不安装。
+
+可迁移发行包 `artifacts/v1/release-updates-b45e28a/dsh-video-1.0.0-darwin-arm64.tgz`，SHA256 `99b82a48ce8737d29a71f20a7afc21d172f47b79d9bffa7b8cadc94fef3a6f26`，包含引擎及JS依赖，非本机link布局；仍需DSH>=0.2.1-rc.2、系统Node22+/FFmpeg/Chrome。目前只实测macOS arm64。GitHub发布工作流模板已准备，当前OAuth缺workflow scope，未启用/未在云端执行；首次公网下载/升级必须正式Release发布后验证，不能以本地包和模拟feed冒充公网已通。
+
+证据 `artifacts/v1/evidence/plugin-updates-20261025`；[任务](tasks/V1-plugin-updates.md)、[更新通道说明](releases/UPDATE-CHANNEL.md)。
+
+
+## 当前修正：右键菜单贴近点击点（2026-10-25）
+
+片段和轨道菜单已改用原始鼠标坐标、浏览器top layer与实际尺寸避让；窗口边缘向左/上展开，保留8px边距，轨道右键不沿用片段上下文。源码/固定包工作区各103项通过，源码门禁58/86/71通过。官方管理器安装并重启，原生片段及音频轨右键截图确认菜单角贴近指针，Esc收起通过；未执行工程写入。
+
+当前固定运行时 `bb7829e1ae8196a3ddddf64329815873c5a2477b`，目录 `artifacts/p2-b/staging-v1.0.0-context-anchor-final`，bundle1.0.0 / engine0.9.0；INTEGRITY SHA256 `b2351fdd41db4416d68ceef27d292a968a0286c8bb9c836ff947c070d96a7e16`。55ff055旧包保留回滚，PR #33未合并。证据 `artifacts/v1/evidence/context-anchor-20261025/native-clip-menu.png` 与 `native-track-menu.png`。
+
+
+## 当前修正：分离后隐藏视频波形（2026-10-25）
+
+用户验收要求已实现：分离后视频只显示名称和缩略图，波形留在独立音轨；普通静音保留暗波形，重开视频原声/撤销分离恢复波形。源码与固定包工作区均101项通过，源码门禁58/86/71通过。官方管理器安装并重启，实际worker来源及原生截图确认新版本已加载。
+
+固定运行时 `55ff055c1093ea60a294a5e1a5b81d918a923a90`，bundle1.0.0 / engine0.9.0；目录 `artifacts/p2-b/staging-v1.0.0-detached-wave-55ff055-final`，INTEGRITY SHA256 `0763abf2c78e4c30ebc200bd4ad36465aaf9c63cf01cc30e2a5dd322b1fc9724`。旧5ddb697包保留回滚；PR #33继续未合并。证据 `artifacts/v1/evidence/detached-wave-20261025/native-hidden-wave.png`。未改变音频处理或用户工程数据。
+
+
+## 当前安装：1.0.0 时间线可视化候选（2026-10-25）
+
+已完成五项：真实多分辨率音频波形、导入视频及AI场景连续缩略图、视频原声波形、蓝色视频/绿色音频名称条、右键手动分离音频。分离保持源区间、速度、音量和淡化，视频原声关闭；独立编辑、一次撤销/重做。AI可调用同一事务，本轮不保证AI理解和端到端效果。
+
+官方Plugin Manager安装并重启，固定目录 `artifacts/p2-b/staging-v1.0.0-visuals-5ddb697`，clean runtime/root/engine `5ddb6974b864c014fdf8424dbf88f7df10f2f63c`，bundle1.0.0 / engine0.9.0，INTEGRITY SHA256 `13b896bd1ab86c452683970d0ee1e402b8ec6f5857fadf913e5fffc8ab16908a`；实际worker进程来源已核对。810891c旧包保留回滚，PR #33未合并，未公开发布。
+
+固定包工作区98项、worker及真实采样92项通过；源码门禁58/86/71、版本10通过。120秒视频/音频/AI场景混合工程首屏6338ms、采样期间inspect 3ms、缓存220ms，峰值worker RSS约303MiB、缓存718279字节；大素材1GiB引用、流式上传/Range/重启及引用保护通过。21秒AAC导出四处音画偏差最大21.313ms，小于1帧。
+
+原生独立“1.0.0 时间线验收”工程：完整胶片条/原声波形/独立音轨实际显示；右键分离、自动选中、菜单关闭、撤销/重做、中段6.01秒定位、播放至9.26秒暂停通过，暂停后保留完整缩略图。原生按钮导出12秒360帧H264/48kHz立体声AAC，实际音频mean -19.0dB、peak -11.6dB；不把此分析称为扬声器听感验收。两个原用户工程timeline SHA256不变。证据目录 `artifacts/v1/evidence/timeline-visuals-20261025`，截图 `native-final.png`。
+
+本机成品已安装；通用跨平台安装器、硬件扬声器听感及真实AI分离效果不在本次已验证结论内。实现与边界见任务记录。
+
+
+## 当前安装：1.0.0 媒体跳转修复候选（2026-10-24）
+
+用户授权直接操控电脑验收。官方Plugin Manager安装启用并重启，当前固定包 `artifacts/p2-b/staging-v1.0.0-media-native-810891c`，clean runtime/root/engine `810891cc3c34d28ac01ac98261058d70265f2444`，bundle1.0.0 / engine0.8.3，INTEGRITY SHA256 `0ff8720c3c9c02b166603d706d03584b6aa784b1635e660ea9ce6641fa057245`。旧包保留回滚，未公开发布。
+
+原生Test工程实测：启动后直接跳44.05秒显示视频；点击视频片段定位65.53秒，画面更新；连续播放66.02→70.77秒画面持续更新；暂停后点击空白视频轨定位29.80秒并显示对应画面。按钮明确为“开启作品预览声音”，点击后收起；未监听系统输出，扬声器听感不算已验收。两个用户工程timeline SHA256与操作前一致。固定包工作区90项、长GOP媒体7项通过；新增媒体origin/CSP保护6项通过，源码门禁58/86/71、版本10通过。首个1563cbc包原生黑屏已被此包替代。截图位于 `artifacts/v1/evidence/media-preview-20261024/native-810891c-accepted.png`。
+
+[修复记录](tasks/V1-media-preview-recovery.md)；[可视化方案](plans/V1.0-TIMELINE-VISUALIZATION.md)。波形增强、视频缩略图/原声波形及分离音频仍是方案项，未实现，不能据此宣称整个1.0.0全部需求验收完成。
+
 ## 当前安装：1.0.0 最终用户验收包（2026-10-24）
 
 用户授权安装最终发布版本，准备自行测试。已冻结 clean runtime/root/engine `e09f267f19e7219e8a05e2ed6474a7f4b7f55142`（基线main `6dfd8b2`），bundle **1.0.0** / engine **0.8.3**；固定目录 `artifacts/p2-b/staging-v1.0.0-final-20261024`，INTEGRITY SHA256 `b31218bf46689a4aa1e3681d91b01a01076f493f9585d579ff3c923b1e99cf97`。源码门禁58/86/71、版本10通过，最终固定包Chrome工作区87项、真实音频工具/上轨/4秒120帧AAC导出14项通过。
