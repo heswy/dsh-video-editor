@@ -1,0 +1,63 @@
+name: Build DSH Video release
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+permissions:
+  contents: read
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  macos-arm64:
+    runs-on: macos-15
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Validate release identity
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT_NAME" = release ]; then
+            test "$RELEASE_TAG" = "v$(node -p 'require("./package.json").version')"
+            git merge-base --is-ancestor HEAD origin/main
+          fi
+          test "$(uname -m)" = arm64
+      - name: Prepare reviewed engine dependency closure
+        run: npm ci --ignore-scripts --prefix packages/video-engine-worker
+      - name: Verify source
+        run: |
+          npm run check
+          node --test tests/*.test.mjs
+      - name: Build immutable stage and distribution
+        run: |
+          node scripts/stage-dev.mjs --engine-commit "$GITHUB_SHA" --bundle-version "$(node -p 'require("./package.json").version')" --node "$(command -v node)" --browser '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' --font '/System/Library/Fonts/Supplemental/Arial.ttf' --out "$RUNNER_TEMP/video-stage"
+          node scripts/pack-release.mjs "$RUNNER_TEMP/video-stage" "$RUNNER_TEMP/video-release"
+      - name: Verify fixed package workspace
+        env:
+          VISUALS_ACCEPTANCE: '1'
+          M4_AUDIO: '1'
+          M5_COLLAB: '1'
+        run: node scripts/test-v1-timeline-workspace.mjs "$RUNNER_TEMP/workspace-evidence" --staging "$RUNNER_TEMP/video-stage"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dsh-video-darwin-arm64
+          path: |
+            ${{ runner.temp }}/video-release/*.tgz
+            ${{ runner.temp }}/video-release/SHA256SUMS
+          if-no-files-found: error
+      - name: Attach immutable package to published release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: gh release upload "$RELEASE_TAG" "$RUNNER_TEMP/video-release/"*.tgz "$RUNNER_TEMP/video-release/SHA256SUMS" --repo "$GITHUB_REPOSITORY"

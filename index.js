@@ -48,7 +48,7 @@ export function apply(ctx, config) {
   const disposers = [];
   let manager;try{manager=ctx.get?.('pluginManager');}catch{}
   const updates=new PluginUpdates({manager,beforeInstall:async()=>{
-    for(const [jobId,job] of bridge.jobs){const result=await bridge.callClient('status',{projectId:job.projectId,jobId});if(!['succeeded','failed','cancelled','timed_out'].includes(result.state))throw new Error('Render in progress');}
+    for(const [jobId,job] of bridge.jobs){const result=await bridge.callClient('status',{jobId});if(!['succeeded','failed','cancelled','timed_out'].includes(result.state))throw new Error('Render in progress');}
   }});
 
   ctx.effect(
