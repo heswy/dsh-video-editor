@@ -15,3 +15,6 @@ test('authenticated UI route only accepts explicit approved install, rejects ext
 
 test('changed install source and active render cannot initiate an update',async()=>{const f=fixture();await f.service.check();f.service.beforeInstall=async()=>{throw new Error('render');};await assert.rejects(()=>f.service.install('1.0.1'));assert.equal(f.calls.length,0);});
 test('failed GitHub target explicitly restores the previous source',async()=>{const calls=[];const f=fixture({installBundle:async spec=>{calls.push(spec);return {application:spec===source?'applied':'failed'};}});await f.service.check();await f.service.install('1.0.1');await f.service.pending;assert.equal(f.service.status().restored,true);assert.deepEqual(calls,[release.assets[0].browser_download_url,source]);});
+
+test('network failure remains retryable and never installs',async()=>{const f=fixture();f.service.fetchImpl=async()=>{throw new Error('offline');};assert.equal((await f.service.check()).phase,'check-failed');assert.equal((await f.service.check()).phase,'check-failed');assert.equal(f.calls.length,0);});
+test('oversized release response is refused',async()=>{const f=fixture();f.service.fetchImpl=async()=>new Response('x'.repeat(1048577));assert.equal((await f.service.check()).phase,'check-failed');assert.equal(f.calls.length,0);});

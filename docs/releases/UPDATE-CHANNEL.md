@@ -8,7 +8,7 @@ V1 首轮发行渠道为公开仓库 `https://github.com/heswy/dsh-video-editor/
 
 本机当前是link安装，显示“本地开发安装，由开发者更新”；不会将测试候选静默替换为公网包。转为正式发行安装时，使用官方插件管理器安装Release URL。未知来源/旧DSH不支持时提供明确状态，不猜测来源。已发布npm安装在支持版本API的DSH上走官方listVersions/updateBundle。
 
-运行先决条件：系统可用Node22+、FFmpeg和Chrome；DSH自身Node/Electron进程不当作普通Node执行。首轮发行包带引擎及JavaScript依赖，不带这些系统程序，不宣称Linux、Windows或Intel实机验收。
+运行先决条件：DSH至少0.2.1-rc.2，系统可用Node22+、FFmpeg和Chrome；DSH自身Node/Electron进程不当作普通Node执行。首轮发行包带引擎及JavaScript依赖，不带这些系统程序，不宣称Linux、Windows或Intel实机验收。
 
 ## 开发者发布流程
 

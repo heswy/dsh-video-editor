@@ -26,7 +26,7 @@ for(const name of ['engine-client','engine-worker']){
  for(const item of ['src','package.json','README.md',...(name==='engine-worker'?['protocol.schema.json']:[])])await cp(join(stage,name,item),join(target,item),{recursive:true,dereference:true});
  if(name==='engine-worker')await cp(join(stage,name,'node_modules'),join(target,'node_modules'),{recursive:true,dereference:true});
 }
-manifest.private=false;delete manifest.dependencies;delete manifest.devDependencies;delete manifest.scripts;
+manifest.private=false;manifest.engines={node:'>=22',dsh:'>=0.2.1-rc.2'};delete manifest.dependencies;delete manifest.devDependencies;delete manifest.scripts;
 manifest.repository={type:'git',url:'https://github.com/heswy/dsh-video-editor.git'};manifest.homepage='https://github.com/heswy/dsh-video-editor';manifest.keywords=['dsh-plugin','video-editor'];
 manifest.files=[...(manifest.files||[]),'runtime/','RELEASE.json'];
 await writeFile(join(pkg,'package.json'),JSON.stringify(manifest,null,2)+'\n');
