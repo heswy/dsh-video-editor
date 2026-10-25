@@ -13,7 +13,7 @@ try {
   const profile=join(env.DSH_HOME,'profiles/source-test');await mkdir(profile,{recursive:true});
   await writeFile(join(profile,'package.json'),JSON.stringify({name:'source-test',private:true,dsh:{profile:{bundles:[]}}}));
   await writeFile(join(profile,'cordis.patch.yml'),'[]\n');
-  execFileSync('dsh',['plugin','--profile','source-test','add',spec,'--ignore-scripts','--registry=https://registry.npmjs.org'],{env,timeout:240000,encoding:'utf8',maxBuffer:1048576});
+  execFileSync('dsh',['plugin','--profile','source-test','add',spec,'--ignore-scripts','--registry=https://registry.npmjs.org','--store-dir='+join(temp,'pnpm-store'),'--cache-dir='+join(temp,'pnpm-cache')],{env,timeout:240000,encoding:'utf8',maxBuffer:1048576});
   const installed=join(profile,'node_modules/dsh-video-editor');
   const manifest=JSON.parse(await readFile(join(installed,'package.json'),'utf8'));
   assert.equal(manifest.name,'dsh-video-editor');assert.equal(manifest.version,'1.0.0');

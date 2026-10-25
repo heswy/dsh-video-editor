@@ -5,7 +5,7 @@
 | 输入 | DSH 的处理方式 | 本项目 |
 |---|---|---|
 | `https://github.com/heswy/dsh-video-editor` | 获取 Git 源码并安装依赖 | 直接提供 JS 与引擎源码，无 prepare/postinstall。稳定版建议固定提交。 |
-| `dsh-video-editor` 或 `dsh-video-editor@1.0.0` | 从所选 npm registry 下载已发布包 | 需要先发布到 npm；镜像可能延迟同步。 |
+| `dsh-video-editor` 或 `dsh-video-editor@1.0.0` | 从所选 npm registry 下载已发布包 | 已发布1.0.0；镜像可能延迟同步。 |
 | HTTPS `.tgz` URL / 本地 `.tgz` 绝对路径 | 安装压缩包及声明依赖 | 常规 npm 包需联网获取依赖；离线平台包另含依赖。 |
 | 本地源码目录绝对路径 | link 开发安装 | 先在源码目录装好依赖；不自动替换为公网版本。 |
 
@@ -41,7 +41,7 @@ Release 页面 URL 不是安装包地址。GitHub 仓库 URL 也不会自动下�
    npm publish --ignore-scripts --access public --registry=https://registry.npmjs.org /absolute/release-output/dsh-video-editor-1.0.0.tgz
    ```
 
-   npm 可能要求网页/双因素认证；用户自行完成，不索取验证码或令牌。登录成功不等于包已发布。
+   npm 发布要求账号启用2FA，并可能要求网页/通行密钥确认；用户自行完成，不索取验证码或令牌。登录成功或命令返回成功均不能代替公网验证。首次发布的占位版本/旧缓存不可当作正式1.0.0；核对 registry 的 latest、版本和包摘要。
 5. 发布后确认 npm 元数据、下载包摘要，再用临时 DSH_HOME 执行包名安装、创建工程及真实抽帧；GitHub 则固定合入提交验证（`node scripts/test-source-install.mjs <git-or-npm-spec>`）。然后移除 README 的“待发布/待合入”提示。版本不可覆盖，后续修复使用1.0.1。
 
 ## GitHub Release 与离线包
