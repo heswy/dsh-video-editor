@@ -4610,7 +4610,7 @@ window.__ModuleLoader__.load({
                                 : undefined,
                           },
                         },
-                        h(ClipVisuals,{projectId:props.projectId,revision:data.revision,clip:c,track:tr,zoom,playing:props.playing,audio:tr.kind==='audio',hasAudio:tr.kind==='audio'||data.assets.find(a=>a.assetId===c.assetId)?.hasAudio}),
+                        h(ClipVisuals,{projectId:props.projectId,revision:data.revision,clip:c,track:tr,zoom,playing:props.playing,audio:tr.kind==='audio',hasAudio:tr.kind==='audio'||(data.assets.find(a=>a.assetId===c.assetId)?.hasAudio&&!(c.muted&&clips.some(audio=>audio.detachedFrom===c.clipId)))}),
                         h("span", {
                           className: "dv-timeline-edge",
                           role: "slider",
