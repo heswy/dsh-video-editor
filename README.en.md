@@ -28,6 +28,7 @@ Create and refine in chat, preview alongside it, edit across tracks, and export 
 | **Edit across tracks** | Import images, video, and audio; move, trim, split, duplicate, reorder, and snap clips. |
 | **See your sound** | Inspect real waveforms and continuous thumbnails. Detach video audio into its own track. |
 | **Keep your progress** | Share undo/redo between AI and manual edits. Projects persist across restarts. |
+| **Score a selection** | Drag a time range on the timeline, attach it to the chat, and describe the scene; the AI writes an instrumental prompt, calls your configured model, and places the score exactly over the range. |
 | **Export a finished video** | Render H264/AAC MP4 with progress and cancellation. |
 
 ## Installation
@@ -39,7 +40,7 @@ Open DSH **Plugins → Add plugin**, enter one of the following sources, install
 ### GitHub repository
 
 ```text
-https://github.com/heswy/dsh-video-editor
+https://github.com/helailai666/dsh-video-editor
 ```
 
 ### npm package
@@ -65,6 +66,16 @@ Try an idea like this:
 
 Projects save automatically to `~/Movies/DSH Video` and use your DSH model configuration.
 
+## Music settings (all in the page, no config files)
+
+- Open **Settings** in the chat header. Under **Music models** add, edit, remove, test, and pick the default model (built-in Qianwen plus your own compatible services, sync or async task protocol, with Base URL, remote model ID, and API key). Keys stay local, are never re-displayed, and no configuration file editing is ever required.
+- Under **System prompt** append your extra instructions (for example scoring preferences); save or restore the default at any time. The fixed safety rules are never overridden.
+- Click **Range scoring** on the timeline, drag to select a range, then **Add to chat** (or copy the reference and type `@`, picking 当前时间范围) and describe the scene, e.g.:
+
+> This beat is confrontational and driving — generate and add background music for the selected range.
+
+A successful score is trimmed exactly to the selection; a shorter asset stays in Materials with an honest note — never looped, never moving or overwriting other clips.
+
 ## Updates, disabling, and rollback
 
 Use **Plugin updates** in the editor toolbar to check and install new versions.
@@ -74,7 +85,7 @@ Disable the plugin from DSH's plugin page. To roll back, reinstall the previous 
 ## Development
 
 ```sh
-git clone https://github.com/heswy/dsh-video-editor.git
+git clone https://github.com/helailai666/dsh-video-editor.git
 cd dsh-video-editor
 npm ci --ignore-scripts
 npm run check
@@ -83,7 +94,7 @@ node --test tests/*.test.mjs
 
 The runtime loads JavaScript directly. `host/` owns project, session, and resource boundaries; `client.js` provides the native workspace; `packages/` contains the independent engine. Read [development rules](docs/DEVELOPMENT.md) and the [publishing guide](docs/releases/UPDATE-CHANNEL.md).
 
-Report problems through [Issues](https://github.com/heswy/dsh-video-editor/issues) with your DSH/plugin version, device, and reproduction steps. See [SECURITY](SECURITY.md) for vulnerability reports.
+Report problems through [Issues](https://github.com/helailai666/dsh-video-editor/issues) with your DSH/plugin version, device, and reproduction steps. See [SECURITY](SECURITY.md) for vulnerability reports.
 
 ## Acknowledgements and license
 

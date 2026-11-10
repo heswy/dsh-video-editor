@@ -1,6 +1,20 @@
 # 当前状态
 
-更新：2026-10-25。
+更新：2026-11-10。
+
+## 1.0.1：GitHub 源码安装通道
+
+设置页音乐模型、追加系统提示词与选区配乐已通过 PR #1 合入 main（c7e8a80）。版本 bump 至 **1.0.1**，安装源统一为 `https://github.com/helailai666/dsh-video-editor`（README、发行指南、插件更新检测 `host/updates.js` 与相关测试同步）。DSH 插件页填该仓库 URL 即可安装/更新；`v1.0.1` tag 在 bump 合入 main 后创建。npm 仍为 1.0.0，1.0.1 的 npm 发布未执行（需 npm 登录与 POSIX 安装验证门禁）。
+
+## 分支中：设置页音乐模型、追加提示词与选区配乐（已合入）
+
+`codex/music-model-range-score`（基于 main b901caf）实现并分层验证：
+
+- Host：`host/plugin-settings.js` 页面唯一设置存储（白名单、损坏保留、原子 0600、同步快照）；`audio.js` 动态模型 CRUD/密钥隔离（secrets models 段）、qianwen-sync/qianwen-async 协议、task ID 先持久化后轮询、重启只恢复查询、公网 HTTPS+DNS/重定向/下载围栏；Bridge 新增 `audio.model.*`、`prompt.*`、`audio.check{modelId}`、`audio.generate{modelId,durationFrames}`，全部 UI-only 防护到位。
+- 提示词：固定规则移除旧云禁令，追加 `User additional instructions` 块（≤2000 字符），总预算 8000（timeline 固定段实测约 5.4k，原计划 6000 会挤掉选区必需的 facts，已放宽并注释）。
+- Client：设置页（音乐模型/系统提示词两页签、不回显 Key）、时间线框选配乐模式、当前选区注册原生 `@`「当前时间范围」+ 复制引用备用；worker 合法空白 range 返回 resolved。
+- 本机（Windows）已验证：audio provider 合约（含自定义协议/恢复/SSRF 全绿）、plugin-settings 合约、model-contract 15 项、reference-client 30 项、worker timeline 18 项、smoke-client 86 项、check.mjs 54 通过/4 既有失败（与 main 基线一致）。
+- 本机无法验证（引擎 worker 明确拒绝 win32，为既有平台边界）：test-v1-audio-host、timeline-workspace 框选 E2E、audio-creation 严格选区端到端、conversation-chain——需在 macOS/Linux 环境运行后随 PR 评审补证。真实供应商（自定义同步/异步服务）与真实 DSH 端到端配乐上轨未验证，不做已验收声明。
 
 ## 1.0.0
 
@@ -28,4 +42,4 @@ npm **dsh-video-editor@1.0.0** 已于2026-10-25公开发布：[npm 包](https://
 
 实测平台为 macOS Apple Silicon；Node22+、FFmpeg/ffprobe、Chrome 由系统提供。Windows/Linux/Intel、扬声器听感及真实模型复杂多轮效果未在本轮复验。画布对象直接编辑延期。
 
-开发规则见 [DEVELOPMENT](DEVELOPMENT.md)，交接见 [handoffs](handoffs/README.md)。历史证据见[整理前固定版本](https://github.com/heswy/dsh-video-editor/tree/56841bb60b989aa55aa0ef4897f107a8a66823d1)。
+开发规则见 [DEVELOPMENT](DEVELOPMENT.md)，交接见 [handoffs](handoffs/README.md)。历史证据见[整理前固定版本](https://github.com/helailai666/dsh-video-editor/tree/56841bb60b989aa55aa0ef4897f107a8a66823d1)。

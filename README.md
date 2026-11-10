@@ -28,6 +28,7 @@ DeepSeek Harness 内的 AI 视频创作与剪辑工作台。<br>
 | **多轨剪辑** | 导入图片、视频与音频；移动、裁剪、拆分、复制、排序和吸附。 |
 | **看见声音** | 真实音频波形、连续视频缩略图，视频原声一键分离为独立音轨。 |
 | **放心修改** | AI 与手动操作共享撤销/重做；工程自动保存，重开继续创作。 |
+| **选区配乐** | 时间线框选一段时间，加入对话并描述剧情节奏；AI 撰写器乐提示词，调用你配置的模型生成配乐并精确覆盖选区。 |
 | **交付成片** | 导出带声音的 H264/AAC MP4，查看进度或取消任务。 |
 
 ## 安装
@@ -39,7 +40,7 @@ DeepSeek Harness 内的 AI 视频创作与剪辑工作台。<br>
 ### GitHub 仓库
 
 ```text
-https://github.com/heswy/dsh-video-editor
+https://github.com/helailai666/dsh-video-editor
 ```
 
 ### npm 包名
@@ -65,6 +66,16 @@ npm 安装推荐选择官方源。
 
 工程自动保存到 `~/Movies/DSH Video`，模型沿用 DSH 中的配置。
 
+## 配乐设置（全部在页面完成）
+
+- 打开对话侧顶栏的 **设置**：在 **音乐模型** 页签添加、编辑、删除、测试连接并选择默认模型（内置千问 + 你自己的兼容服务，支持同步或异步任务协议，填 Base URL、远端模型 ID 和 API Key）。密钥只保存在本机，页面不回显；无需编辑任何配置文件。
+- 在 **系统提示词** 页签追加你的补充指令（如配乐偏好），随时保存或恢复默认；固定安全规则不被覆盖。
+- 时间线点 **框选配乐** 后拖动选择时间范围，用 **添加到聊天**（或复制引用 + 输入 `@` 选「当前时间范围」）带上描述，例如：
+
+> 这段剧情是对立、对抗节奏，请为选中的时间范围生成并添加背景音乐。
+
+生成成功后配乐严格覆盖选区上轨；素材短于选区时保留在素材库并如实说明，不会循环或挤动其它片段。
+
 ## 更新、停用与回滚
 
 点击顶栏 **插件更新** 检查并安装新版本。
@@ -74,7 +85,7 @@ npm 安装推荐选择官方源。
 ## 开发
 
 ```sh
-git clone https://github.com/heswy/dsh-video-editor.git
+git clone https://github.com/helailai666/dsh-video-editor.git
 cd dsh-video-editor
 npm ci --ignore-scripts
 npm run check
@@ -83,7 +94,7 @@ node --test tests/*.test.mjs
 
 运行时为直接加载的 JavaScript。`host/` 负责工程、会话与资源边界，`client.js` 提供原生工作区，`packages/` 保存独立视频引擎。开发规则见 [DEVELOPMENT](docs/DEVELOPMENT.md)，发布流程见[发行指南](docs/releases/UPDATE-CHANNEL.md)。
 
-发现问题请提交 [Issue](https://github.com/heswy/dsh-video-editor/issues)，附 DSH/插件版本、设备及复现步骤。安全问题见 [SECURITY](SECURITY.md)。
+发现问题请提交 [Issue](https://github.com/helailai666/dsh-video-editor/issues)，附 DSH/插件版本、设备及复现步骤。安全问题见 [SECURITY](SECURITY.md)。
 
 ## 致谢与许可
 
