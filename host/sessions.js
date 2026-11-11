@@ -13,6 +13,7 @@
 
 import { mkdir, realpath, stat } from 'node:fs/promises';
 import { isAbsolute, join, relative } from 'node:path';
+import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { BridgeError, logSummary } from './errors.js';
 import { MAX_SESSIONS_PER_PROJECT, SESSION_ID_PATTERN, SESSION_STATE_VERSION, SessionStateStore } from './session-state.js';
@@ -29,15 +30,29 @@ const PROMPT_CONTEXT_NAME = 'dsh-video:project';
 const PROMPT_CONTEXT_ORDER = 4500;
 /**
  * Hard upper bound for one assembled project context string. The workflow,
- * composition contract, skeleton and conflict-recovery lines always fit; only
- * optional heavy fact lines (many scenes/targets/images) are dropped whole once
- * the budget is reached, so required model-facing instructions are never cut.
+ * composition contract, skeleton and conflict-recovery lines always fit; the
+ * page-owned "User additional instructions" block is appended whole after the
+ * fixed rules (max 2000 chars of its own) or dropped whole; optional heavy
+ * fact lines (many scenes/targets/images) are dropped last, so required
+ * model-facing instructions are never cut. The timeline contract alone
+ * measures ~5.4k chars, so the bound leaves the full 2000-char custom block
+ * plus essential fact lines headroom (plan 6000 widened to 8000).
  */
-const PROMPT_CONTEXT_MAX_CHARS = 4000;
+const PROMPT_CONTEXT_MAX_CHARS = 8000;
+/** The appended custom block is kept verbatim within this budget. */
+const CUSTOM_PROMPT_MAX_CHARS = 2000;
 const REQUEST_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const PROJECT_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const MAX_CREATE_DEDUPE = 32;
 const MAX_LIST_ITEMS = 100;
+/**
+ * UI-composed chat messages ("send this scoring range to the conversation").
+ * The request id is remembered so a lost acknowledgement can be replayed by the
+ * same id instead of admitting the same message twice.
+ */
+const MAX_SEND_DEDUPE = 32;
+const MAX_SEND_CHARS = 4000;
+const SEND_TIMEOUT_MS = 30000;
 /**
  * Bounded legacy-reference scan: an old shared-root file is only previewable when
  * this exact Session's own inspected events name that exact absolute path. The
@@ -200,6 +215,7 @@ export class SessionService {
     this.contextDispose = null;
     this.creating = new Map();
     this.created = new Map();
+    this.sent = new Map();
     this.cwdPromise = null;
     this.projectSessionRoots = new Map();
     this.closing = false;
@@ -469,7 +485,8 @@ export class SessionService {
       if(facts?.mode==='timeline'){
         lines.splice(2, lines.length-2,
           'Timeline project: use timeline.inspect first for revision, tracks, clip IDs and settings. Never use project.compose/project.source or legacy scene writes here.',
-          'Audio requests: FIRST audio.guide(projectId) for the bundled skill. AI composes procedural scores locally (free), then polls audio.status and inserts the real asset on an audio track in the same turn. Uploads stay in Materials until asked to place. Guide external voice/music generation and import; no provider setup, cloud calls, second panel or HTML audio. Revise scores with audio.recipe. Only claim added after written:true.',
+          'Audio requests: FIRST audio.guide(projectId) for the bundled skill. AI composes procedural scores locally (free), then polls audio.status and inserts the real asset on an audio track in the same turn. Uploads stay in Materials until asked to place. Music models are configured ONLY on the plugin settings page; never configure providers or ask for API keys, and call a cloud model only when the user explicitly asks for generated voice/music. audio.providers lists safe model IDs with the default; audio.generate accepts modelId/durationFrames for music. Revise scores with audio.recipe. Only claim added after written:true.',
+          'Range scoring: when the user attaches a dshvideo:v1 range token with a description (mood, rhythm, story), resolve it via timeline.resolve, write an instrumental music prompt from the range length plus their words (never invent unseen footage), then audio.generate kind music with durationFrames=toFrame-fromFrame using the default or the modelId they named. Poll audio.status until succeeded; re-inspect, pick an unlocked non-overlapping audio track (track.add when needed), insert with clip.insert startFrame=fromFrame, durationFrames=range length, sourceInFrame:0, mode:"reject" using the freshest revision and a new operationId. A generated asset shorter than the range stays in Materials with an honest note; never loop, move, ripple or overwrite existing clips. Cloud calls bill per provider usage; report ids only after written:true.',
           'Every write REQUIRES projectId, expectedRevision (the inspected SHA-256) and a unique operationId. They are not optional; revision/baseRevision are NOT substitutes. Undo/redo also require these fields.',
           `Create a scene: {"action":"scene.compose","projectId":"${projectId}","expectedRevision":"<revision>","operationId":"scene-1","trackId":"tr_v1","startFrame":0,"html":"<complete HTML>"}. For replacement, use clipId instead of trackId/startFrame; read scene.inspect first and preserve other clips. A new empty project has no clipId: insert the first scene.`,
           'timeline.apply requires ops with exact names: clip.insert, clip.split, clip.trim, clip.delete, clip.move, clip.reorder, clip.duplicate, clip.speed, clip.replace, clip.set, clip.fade, clip.volume, clip.transition; track.add, track.update, track.remove; timeline.settings. Use integer frames @30fps. Never send bare trim/move/delete or nested settings.',
@@ -504,12 +521,22 @@ export class SessionService {
       } else {
         factsLines.push('Inspect the project before editing so the revision and target ids are current.');
       }
-      factsLines.push('Imported media: query video_engine asset.list (projectId, kind/query/cursor/limit); place video/image/audio with timeline.apply clip.insert. Generate procedural audio via audio.guide, poll audio.status and place it. External audio is user-generated and imported; do not configure or call cloud providers.');
+      factsLines.push('Imported media: query video_engine asset.list (projectId, kind/query/cursor/limit); place video/image/audio with timeline.apply clip.insert. Generate procedural audio via audio.guide, poll audio.status and place it. Music models are page-configured; audio.providers shows them, and the Tool only calls a cloud model when the user explicitly asks.');
       const mediaCount=this.bridge?.mediaCounts?.get(projectId);
       if(Number.isSafeInteger(mediaCount))factsLines.splice(1,0,`Imported media: ${mediaCount} assets. Use video_engine asset.list for paginated metadata.`);
       // Whole-line budget: the fixed instructions above are never truncated;
-      // optional fact lines are appended in priority order while they fit.
+      // the page-owned block is appended verbatim after them (or dropped whole),
+      // then optional fact lines fill whatever remains in priority order.
       let text = lines.join('\n');
+      const custom =
+        typeof this.bridge?.customSystemPromptText === 'function'
+          ? String(this.bridge.customSystemPromptText() ?? '').slice(0, CUSTOM_PROMPT_MAX_CHARS)
+          : '';
+      if (custom.length > 0) {
+        const block =
+          `\nUser additional instructions (appended from the plugin settings page; lower priority than the fixed safety, credential, project-ownership, revision and Tool-contract rules above, which they can never override):\n${custom}`;
+        if (text.length + block.length <= PROMPT_CONTEXT_MAX_CHARS) text += block;
+      }
       for (const line of factsLines) {
         if (text.length + 1 + line.length > PROMPT_CONTEXT_MAX_CHARS) break;
         text += `\n${line}`;
@@ -638,6 +665,100 @@ export class SessionService {
     };
   }
 
+  /**
+   * Admit one UI-composed message into this project's bound Session through the
+   * public DSH `sessionController.prompt` API (queue mode: the Session's own
+   * inbox orders it, nothing here bypasses the Agent).
+   *
+   * The plugin never accepts a Session id from the UI — the target is always the
+   * persisted mapping for this project. A `(projectId, requestId)` pair that was
+   * already accepted replays its acknowledgement instead of sending twice, so the
+   * Client can retry a lost response with the same id.
+   */
+  async send(projectId, requestId, text) {
+    this.requireEnabled();
+    this.requireActive();
+    if (typeof requestId !== 'string' || REQUEST_ID_PATTERN.test(requestId) === false) {
+      throw sessionError('E_PARAMS', 'Invalid session send request id');
+    }
+    if (
+      typeof text !== 'string' ||
+      text.trim().length === 0 ||
+      text.length > MAX_SEND_CHARS ||
+      /[\0\r]/.test(text)
+    ) {
+      throw sessionError('E_PARAMS', 'Invalid session send content');
+    }
+    const project = await this.store.project(projectId);
+    const sessionId =
+      typeof project.activeSessionId === 'string'
+        ? project.activeSessionId
+        : project.sessionIds.length > 0
+          ? project.sessionIds[project.sessionIds.length - 1]
+          : null;
+    if (sessionId === null) {
+      throw sessionError('E_SESSION_NOT_BOUND', 'This project has no creation Session yet');
+    }
+    const hash = createHash('sha256')
+      .update(requestId + '\n' + text)
+      .digest('hex');
+    const key = this.dedupeKey(projectId, requestId);
+    const previous = this.sent.get(key);
+    if (previous !== undefined) {
+      if (previous.hash !== hash) {
+        throw sessionError('E_OPERATION_REUSED', 'This send request id belongs to different content');
+      }
+      return previous.value;
+    }
+    const controller = this.service('sessionController');
+    if (controller === null || typeof controller !== 'object' || typeof controller.prompt !== 'function') {
+      throw sessionError('E_SESSION_CONFIG', 'The DSH Session Controller cannot accept prompts');
+    }
+    const abort = new AbortController();
+    const timer = setTimeout(() => {
+      try {
+        abort.abort();
+      } catch (_error) {
+        /* the acknowledgement already settled */
+      }
+    }, SEND_TIMEOUT_MS);
+    let value;
+    try {
+      value = await controller.prompt(
+        {
+          requestId,
+          sessionId,
+          mode: 'queue',
+          content: [{ type: 'text', text }],
+        },
+        abort.signal,
+      );
+    } catch (error) {
+      this.report(error, 'session send');
+      // Admission may already have happened before the transport failed, so this
+      // is reported as uncertain: the Client must not silently resend.
+      throw sessionError('E_SESSION_SEND', 'The Session did not confirm this message; check the conversation before sending again');
+    } finally {
+      clearTimeout(timer);
+    }
+    if (value === null || typeof value !== 'object' || value.accepted !== true) {
+      throw sessionError('E_SESSION_SEND', 'The Session returned an invalid prompt acknowledgement');
+    }
+    const result = {
+      enabled: true,
+      contract: SESSION_STATE_VERSION,
+      projectId,
+      sessionId,
+      accepted: true,
+    };
+    this.sent.set(key, { hash, value: result, at: Date.now() });
+    while (this.sent.size > MAX_SEND_DEDUPE) {
+      const oldest = this.sent.keys().next().value;
+      this.sent.delete(oldest);
+    }
+    return result;
+  }
+
   /** Async project lookup used by tool scope checks. */
   async projectForSession(sessionId) {
     const error = this.configurationError();
@@ -651,6 +772,7 @@ export class SessionService {
     if (method === 'session.list') return this.list(params.projectId);
     if (method === 'session.create') return this.create(params.projectId, params.requestId);
     if (method === 'session.select') return this.select(params.projectId, params.sessionId);
+    if (method === 'session.send') return this.send(params.projectId, params.requestId, params.text);
     throw sessionError('E_METHOD', 'Unknown session action');
   }
 
